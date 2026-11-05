@@ -77,7 +77,7 @@ import { SubpromptsSection } from '../../../subprompts/subprompts-section';
       } @else {
         <div class="space-y-3">
           @for (prompt of prompts(); track prompt.id) {
-            <div class="qt-card">
+            <div class="qt-card hover:qt-bg-surface-hover transition">
               <div class="flex justify-between items-start">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1">

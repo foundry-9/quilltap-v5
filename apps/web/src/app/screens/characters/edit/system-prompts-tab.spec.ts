@@ -239,6 +239,13 @@ describe('CharacterSystemPromptsTab', () => {
     });
   });
 
+  it('a listed prompt card carries v4’s class string, the hover fill a defined utility (v4 94f041764, PromptList.tsx:62)', async () => {
+    const fixture = await render(stubClient([prompt()]));
+    expect(
+      ((fixture.nativeElement as HTMLElement).querySelector('.qt-card') as HTMLElement).className,
+    ).toBe('qt-card hover:qt-bg-surface-hover transition');
+  });
+
   it('editing a prompt dispatches characterPromptUpdate', async () => {
     const seen: Array<{ type: string; [k: string]: unknown }> = [];
     const fixture = await render(stubClient([prompt()], (req) => seen.push(req)));

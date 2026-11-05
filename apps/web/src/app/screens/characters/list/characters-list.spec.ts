@@ -895,3 +895,44 @@ describe('CharacterCard — the archived tombstone card (P4.D64)', () => {
     expect(fixture.nativeElement.textContent).toContain('☆');
   });
 });
+
+describe('CharacterCard — the toggle names and states (v4 94f041764, AuroraView.tsx:563-588)', () => {
+  function toggles(fixture: ComponentFixture<CharactersList>): HTMLButtonElement[] {
+    return ['Remove from favorites', 'Disable Carina answers (@-queries)', 'Switch to LLM control'].map(
+      (t) => fixture.nativeElement.querySelector(`button[title="${t}"]`) as HTMLButtonElement,
+    );
+  }
+
+  it('names all three toggles after the character and reports their pressed state', async () => {
+    const fixture = await render(
+      stubClient([
+        character({ id: 'a', name: 'Bertie', isFavorite: true, canBeCarina: true, controlledBy: 'user' }),
+      ]),
+    );
+    const [fav, carina, you] = toggles(fixture);
+    expect([fav, carina, you].map((b) => b.getAttribute('aria-label'))).toEqual([
+      'Favorite Bertie',
+      'Carina answers (@-queries) for Bertie',
+      'You play Bertie',
+    ]);
+    expect([fav, carina, you].map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'true', 'true']);
+  });
+
+  it('reports not-pressed when each toggle is off', async () => {
+    const fixture = await render(stubClient([character({ id: 'a', name: 'Bertie' })]));
+    const buttons = ['Add to favorites', 'Enable Carina answers (@-queries)', 'Switch to user control'].map(
+      (t) => fixture.nativeElement.querySelector(`button[title="${t}"]`) as HTMLButtonElement,
+    );
+    expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false', 'false']);
+  });
+
+  it('sizes the favourite to a 24px target and hides its glyph from assistive tech', async () => {
+    const fixture = await render(stubClient([character({ id: 'a', name: 'Bertie', isFavorite: true })]));
+    const fav = fixture.nativeElement.querySelector('button[title="Remove from favorites"]') as HTMLButtonElement;
+    expect(fav.className).toBe(
+      'text-2xl qt-text-favorite transition-transform hover:scale-110 inline-flex items-center justify-center min-w-6 min-h-6',
+    );
+    const glyph = fav.querySelector('span[aria-hidden="true"]') as HTMLElement;
+    expect(glyph?.textContent?.trim()).toBe('⭐');
+  });
+});

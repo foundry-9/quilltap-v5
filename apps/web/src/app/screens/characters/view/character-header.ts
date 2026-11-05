@@ -74,12 +74,14 @@ interface StatItem {
             <div class="flex flex-shrink-0 items-center gap-2">
               <button
                 type="button"
-                class="text-2xl qt-text-favorite transition-transform hover:scale-110 disabled:opacity-50"
+                class="text-2xl qt-text-favorite transition-transform hover:scale-110 disabled:opacity-50 inline-flex items-center justify-center min-w-6 min-h-6"
                 [disabled]="togglingFavorite()"
                 [title]="character().isFavorite ? 'Remove from favorites' : 'Add to favorites'"
+                aria-label="Favorite"
+                [attr.aria-pressed]="!!character().isFavorite"
                 (click)="toggleFavorite.emit()"
               >
-                {{ character().isFavorite ? '⭐' : '☆' }}
+                <span aria-hidden="true">{{ character().isFavorite ? '⭐' : '☆' }}</span>
               </button>
               <button
                 type="button"
@@ -93,6 +95,8 @@ interface StatItem {
                     ? 'Disable Carina answers (@-queries)'
                     : 'Enable Carina answers (@-queries)'
                 "
+                aria-label="Carina answers (@-queries)"
+                [attr.aria-pressed]="!!character().canBeCarina"
                 (click)="toggleCarina.emit()"
               >
                 <qt-icon name="monitor" class="w-6 h-6" />
@@ -109,6 +113,8 @@ interface StatItem {
                     ? 'Switch to LLM control'
                     : 'Switch to user control'
                 "
+                aria-label="You play this character"
+                [attr.aria-pressed]="character().controlledBy === 'user'"
                 (click)="toggleControlledBy.emit()"
               >
                 <qt-icon name="user" class="w-6 h-6" />

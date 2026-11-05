@@ -59,7 +59,7 @@ import { injectCharacterSubprompts, subpromptErrorMessage } from './subprompts.a
       } @else {
         <div class="space-y-3">
           @for (s of subprompts(); track s.id) {
-            <div class="qt-card hover:bg-accent/50 transition">
+            <div class="qt-card hover:qt-bg-surface-hover transition">
               <div class="flex justify-between items-start">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1">

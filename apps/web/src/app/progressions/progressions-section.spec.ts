@@ -179,6 +179,12 @@ describe('ProgressionsSection — the header', () => {
 });
 
 describe('ProgressionsSection — the list', () => {
+  it('lights a row on hover with the defined surface-hover utility (v4 94f041764, ProgressionsSection.tsx:165)', async () => {
+    const fixture = await render(stub({ faction: 'Ordo Aurum', progressions: { cannon: CANNON } }));
+    const card = el(fixture).querySelector('.qt-card') as HTMLElement;
+    expect(card.className).toBe('qt-card hover:qt-bg-surface-hover transition');
+  });
+
   it('lists an entry with its id, its state and the line the character reads', async () => {
     const fixture = await render(stub({ faction: 'Ordo Aurum', progressions: { cannon: CANNON } }));
     expect(text(fixture)).toContain('Cannon recharge');

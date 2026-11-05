@@ -29,7 +29,10 @@
  *     `aria-label` / `[attr.aria-label]` / `aria-labelledby` / `title` /
  *     `[title]` — C9 R3. `title` counts (`CENSUS_TITLE_COUNTS_AS_NAME`, P4.D358
  *     R-6): the SPA names dozens of icon buttons that way, and the axe sweep is
- *     the stricter judge on buttons.
+ *     the stricter judge on buttons. A button carrying a static
+ *     `aria-hidden="true"` is exempt: it is not in the accessibility tree, so
+ *     it has no name to need (P4.D383 L4 — v4 `94f041764`'s tab-strip close
+ *     cross).
  *
  * A dynamic `[attr.role]` binding is not policed (its value is runtime).
  *
@@ -117,6 +120,9 @@ export function templateOffenders(raw) {
     }
     if (tag === 'button' && !selfClosing) {
       if (hasName(attrs) || attrs.has('title') || attrs.has('[title]')) continue
+      // Out of the accessibility tree, so it has no name to need (P4.D383 L4 —
+      // v4 `94f041764`'s tab-strip close cross, a pointer convenience).
+      if (attrs.get('aria-hidden') === 'true') continue
       const body = innerOf(tpl, t.index + t[0].length, 'button')
       const stripped = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<qt-icon\b[^>]*\/?>(?:\s*<\/qt-icon>)?/g, '')
       if (/<qt-icon\b/.test(body) && stripped.trim() === '') {
@@ -188,6 +194,8 @@ function selfTest() {
     ['icon-only button', '<button type="button"><qt-icon name="close" /></button>', 1],
     ['icon button with aria-label', '<button type="button" aria-label="Close"><qt-icon name="close" /></button>', 0],
     ['icon button with title', '<button type="button" title="Close"><qt-icon name="close" /></button>', 0],
+    ['icon button hidden from assistive tech', '<button type="button" tabindex="-1" aria-hidden="true"><qt-icon name="close" /></button>', 0],
+    ['icon button, aria-hidden false', '<button type="button" aria-hidden="false"><qt-icon name="close" /></button>', 1],
     ['icon button with text', '<button type="button"><qt-icon name="plus" /> Add</button>', 0],
     ['a > in a binding', '<input [value]="a > b ? 1 : 2" />', 1],
     ['a control quoted in a comment', '<!-- the <select> below --><label>X <select></select></label>', 0],
