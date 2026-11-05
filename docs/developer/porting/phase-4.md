@@ -7157,6 +7157,78 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `624d0d25c` 4.12.x catch-up round (P4.D361 → {P4.D362 → {P4.D363 ∥ P4.D364 → P4.D367 ∥ P4.D369 → {P4.D370 ∥ P4.D371} ∥ P4.D372 ∥ P4.D374 → P4.D375} ∥ P4.D366 → P4.D368 ∥ P4.D373 ∥ P4.D376 → {P4.D377 ∥ P4.D378 ∥ P4.D379 ∥ P4.D380} ∥ P4.D381} ∥ P4.D365 ∥ P4.D382 ∥ P4.D383 → {P4.D384 ∥ P4.D385 ∥ P4.D386 → P4.D387 ∥ P4.D388}) — ORDERED 2026-11-04
+
+**ORDERED 2026-11-04 — NEXT 3 of the `236c04e35` unification (the 4.12.0
+catch-up), with NEXT 2's Storyteller items 41 / 29 folded in by the human's
+ruling.** Baseline `236c04e35`. **PINNED at v4 `624d0d25c`** (v4 `main`
+HEAD at planning, `4.13.0-dev.8`; it contains 4.12.0 and 4.12.1). The round
+absorbs all SEVENTY-FOUR ledger §3 rows. v4 committed `4089469a8` (the
+Optimizer's "Refine from Memories & Instructions") during planning; it is
+recorded UNPROCESSED and is NOT this round's.
+
+**Surveys of record:** `work-orders/surveys/2026-11-04-setupphase-{schema-
+migrations-deps,salon-wire-spine,deus-prompts,character-kind,documents-
+mount-stores,wardrobe-items-pascal,search-recall-brahma,spa-css-wcag,
+vendor-norport}.md`.
+
+- **The split:** twenty-eight lanes by FILE OWNERSHIP and nine named
+  stacking commits, each carrying `(v4 624d0d25c)` in its subject.
+  - **Server stacking chains:**
+    - **`REAIM`** (P4.D361) is the root of the regenerating server lanes.
+    - **`SCHEMA`** (P4.D362) carries D23 moves 22 and 23
+      (`chat_messages.isEstablishedFact`,
+      `connection_profiles.maxImagesPerRequest`), the fresh-only
+      `characters.kind` / `projects.brahmaConnectionProfileId`, three
+      ensures, and the export dumps. It parents P4.D363 (FTS), P4.D364
+      (Anthropic + the full re-record), P4.D369, P4.D372 (Deus Ex
+      Machina) and P4.D374 (Brahma).
+    - **`PROVIDERS`** (P4.D364) parents P4.D367 (the image budget).
+    - **`KIND`** (P4.D369) parents P4.D370 (Agent Mode) and P4.D371
+      (generators).
+    - **`CATALOG`** (P4.D374) parents P4.D375 (window-first search).
+    - **`FRAMES`** (P4.D366, from `REAIM`) parents P4.D368 (Storyteller
+      "All at once").
+    - **`REACH`** (P4.D376, from `REAIM`) parents P4.D377 (item routes),
+      P4.D378 (pools / transfers), P4.D379 (Pascal presets) and P4.D380
+      (the document core).
+  - **Server lanes cut from `REAIM` or `main`:**
+    - P4.D373 (the probation prompts) and P4.D381 (the store API) branch
+      from `REAIM`.
+    - P4.D365 (SQLite3MC 2.4.0 + `db integrity` + croner 11) and P4.D382
+      (vendor) cut from `main`.
+  - **SPA:** **`CSS`** (P4.D383) parents P4.D384 (frames reducer),
+    P4.D385 (composer / Deus), P4.D386 (`BROWSER`, the item browser) and
+    P4.D388 (smalls). P4.D387 (the document browser, D18 retired)
+    branches from `BROWSER`.
+- **Rulings (human, 2026-11-04):**
+  - **R-A:** bump SQLite3MC to 2.4.0.
+  - **R-B:** pin at `624d0d25c`.
+  - **R-C:** scope = the drift plus items 41 / 29.
+  - **R-D:** retire D18 and port v4's `document-browser/`.
+  - **R-E:** `.docx` `render-html` is a named refusal.
+  - **R-F:** a full provider re-record.
+  - **R-G:** Salon frames rendered at the sink.
+  - The planner's calls (§R.11) may be overruled before lane start.
+- **Left out (R-Z):** the other NEXT-2 smalls (the next round), `4089469a8`,
+  the owed dogfood pass (it waits for the catch-up — 2026-11-04 ruling),
+  and every v4 filing candidate.
+- **Unifier order (§S.1):**
+  - **Server:** P4.D361 → P4.D365 → P4.D362 → P4.D363 → P4.D364 → P4.D367
+    → P4.D369 → P4.D370 → P4.D371 → P4.D372 → P4.D373 → P4.D374 → P4.D375
+    → P4.D366 → P4.D368 → P4.D376 → P4.D377 → P4.D378 → P4.D379 → P4.D380
+    → P4.D381.
+  - **SPA:** P4.D383 → P4.D386 → P4.D387 → P4.D384 → P4.D385 → P4.D388.
+  - **Then:** P4.D382.
+- The oracle baseline MOVES to `624d0d25c` at unification. ⚠ **D18 is
+  RETIRED by R-D** when P4.D387 lands; the unifier records it beside the
+  locked decision.
+
+**NEXT after this round unifies:** the next `/driftcheck` (`4089469a8` at
+least), then the follow-ups smalls round (the `236c04e35` unification's
+NEXT 2, minus items 41 / 29), then the owed dogfood pass once v5's baseline
+reaches the Friday copy's v4 state.
+
 ## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {{P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356} ∥ {P4.D350 → P4.D349} ∥ {P4.D354 → P4.D355} ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D357 ∥ P4.D358 ∥ P4.D359 ∥ P4.D360) — UNIFIED 2026-11-04 (ordered 2026-10-29)
 
 **UNIFIED on main (2026-11-04). ALL TWENTY LANES LANDED.** The unify branch

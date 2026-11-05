@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
+
+_Docs-only change._
+
+`/setupphase` for the catch-up past `236c04e35`, pinned at v4 `624d0d25c` (`4.13.0-dev.8`, with 4.12.0 and 4.12.1). Nine read-only surveys measured every hunk at the pin; 28 work orders split the 74 ledger rows by file ownership: 22 server lanes and 6 SPA lanes under nine named stacking commits (REAIM, SCHEMA, PROVIDERS, FRAMES, KIND, CATALOG, REACH, CSS, BROWSER). The orders carry an identical round block (md5 `5b6846bf0d1d85dcc5d9e02332f148e2`), and Storyteller "All at once" (P4.D343 items 41 / 29) is folded in. The human ruled: bump SQLite3MC to 2.4.0, retire D18 for v4's document browser, refuse `.docx` `render-html` by name, re-record every provider corpus, and render Salon frames at the sink. The drift ledger marks all 74 rows ORDERED and records v4 `4089469a8` (committed during planning) as UNPROCESSED; `phase-4.md` gains the ORDERED section.
+
 #### 2026-11-04 — docs(porting): driftcheck — 11 more v4 commits past `236c04e35` (character kind, 4.12.1 window-first search); 73 pending
 
 _Docs-only change._
