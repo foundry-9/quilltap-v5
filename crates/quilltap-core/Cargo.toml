@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.1427"
+version = "0.0.1428"
 edition = "2021"
 publish = false
 
@@ -18,7 +18,8 @@ publish = false
 #     `PRAGMA cipher` → "chacha20" on the real instance (2026-06-27).
 
 [dependencies]
-# DB cipher: SQLite3MultipleCiphers 2.3.5 (sqleet/ChaCha20 default), linked via
+# DB cipher: SQLite3MultipleCiphers 2.4.0 on SQLite 3.53.4 (sqleet/ChaCha20
+# default; v4 driver 13.0.3's own amalgamation + defines.gypi), linked via
 # the amalgamation compiled by the `quilltap-sqlite3mc-sys` crate (its pinned
 # version keeps that 12 MB C compile cached across our version bumps). VERIFIED
 # 2026-06-27: opened Friday (37 tables, 33 chars, 20320 memories) cipher=chacha20.

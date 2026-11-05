@@ -27,7 +27,8 @@ system cannot be verified by inspection — never accept a port without its diff
   file v4 writes; a schema change breaks both existing instances and the oracle
   comparison.
 - **The database cipher.** It is **ChaCha20 / sqleet** (SQLite3MultipleCiphers,
-  utelle, matching v4's bundled 2.3.5), **not** SQLCipher. No `cipher=` pragma.
+  utelle, matching v4's bundled 2.4.0 / SQLite 3.53.4 — the driver's own
+  amalgamation bytes and `defines.gypi`), **not** SQLCipher. No `cipher=` pragma.
   Reject anything reaching for `rusqlite` + `bundled-sqlcipher` (AES-only — it
   returns `NotADatabase` on every real instance).
 - **The open sequence.** `PRAGMA key = "x'<hex>'"` (raw-hex, KDF skipped) is the

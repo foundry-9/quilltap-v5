@@ -34,17 +34,15 @@
 //! openers flip each file to WAL; v5's writers are TRUNCATE — R-B).
 //!
 //! Named both-ways tables (a convergence trips them):
-//!   - `STAT4_NOT_COMPILED` — v4's `better-sqlite3-multiple-ciphers` is built
-//!     with `SQLITE_ENABLE_STAT4` (measured: `PRAGMA compile_options`); this
-//!     workspace's `quilltap-sqlite3mc-sys` is not. So v4's `ANALYZE`
-//!     repopulates `sqlite_stat4` and v5's EMPTIES it (the committed trio
-//!     already carries v4-written stat4 rows), leaving v5's file smaller. Per
-//!     database: `freelist_count` and every `sqlite_stat1` row compare
-//!     EXACTLY; `page_count` compares exactly whenever the stat4 counts agree,
-//!     and otherwise ONLY this explanation is accepted (v5's build without
-//!     STAT4, v5's table empty, v4's populated, v4's file no smaller). A build
-//!     that gains STAT4 fails the table — retire it then. (A FINDING for the
-//!     human, not ported: the define lives in the pinned sys crate.)
+//!   - `STAT4_NOT_COMPILED` — RETIRED by measurement (P4.D365, 2026-11). It
+//!     carved v4's `SQLITE_ENABLE_STAT4` build against a v5 build without it
+//!     (v4's `ANALYZE` repopulated `sqlite_stat4`, v5's emptied it, so only
+//!     `page_count` could differ). The sys crate now vendors v4's driver
+//!     amalgamation and compiles it with v4's `defines.gypi`, so STAT4 is in
+//!     both builds and every database compares EXACTLY — `freelist_count`,
+//!     every `sqlite_stat1` row, the `sqlite_stat4` row count and
+//!     `page_count`. `the_build_has_stat4` pins the converged build (a build
+//!     that loses STAT4 fails there first, by name).
 //!   - `DEGRADED_OPTIMIZE_ERROR_TEXT` — the degraded sibling's per-database
 //!     ERROR: v4 re-opens and quotes SQLite (`file is not a database`); v5
 //!     never re-opens and renders the partition's degraded sentence. The key
@@ -520,39 +518,27 @@ fn build_has_stat4() -> bool {
     opts.iter().any(|o| o == "ENABLE_STAT4")
 }
 
-/// One database's outcome under `STAT4_NOT_COMPILED` (the module doc).
+/// The `STAT4_NOT_COMPILED` retirement's pin (P4.D365): the build has STAT4,
+/// as v4's driver does, so [`compare_db`] carves nothing.
+#[test]
+fn the_build_has_stat4() {
+    assert!(
+        build_has_stat4(),
+        "the linked SQLite lost SQLITE_ENABLE_STAT4 — v4's defines.gypi sets it; \
+         `STAT4_NOT_COMPILED` was retired on the converged build (P4.D365)"
+    );
+}
+
+/// One database's outcome — every key exact (the `STAT4_NOT_COMPILED` carve
+/// retired with the converged build; the module doc).
 fn compare_db(name: &str, d: &str, v4: &Value, v5: &Value, failures: &mut Vec<String>) {
-    for key in ["freelist", "stat1"] {
+    for key in ["freelist", "stat1", "stat4Rows", "pageCount"] {
         if v4[key] != v5[key] {
             failures.push(format!(
                 "{name} dbs.{d}.{key}: v4 {} v5 {}",
                 v4[key], v5[key]
             ));
         }
-    }
-    if v4["stat4Rows"] == v5["stat4Rows"] {
-        if v4["pageCount"] != v5["pageCount"] {
-            failures.push(format!(
-                "{name} dbs.{d}.pageCount: v4 {} v5 {}",
-                v4["pageCount"], v5["pageCount"]
-            ));
-        }
-        return;
-    }
-    // STAT4_NOT_COMPILED: v4's ANALYZE repopulated `sqlite_stat4`; v5's build
-    // has no STAT4, so its ANALYZE EMPTIED the table (SQLite's non-STAT4
-    // `openStatTable` deletes the rows of a stat table it does not maintain)
-    // and the file is no larger (smaller once the samples outgrow a page). Any
-    // other difference — or the
-    // build gaining STAT4 — is a failure.
-    let explained = !build_has_stat4()
-        && v5["stat4Rows"] == json!(0)
-        && v4["stat4Rows"].as_i64().is_some_and(|n| n > 0)
-        && v4["pageCount"].as_i64() >= v5["pageCount"].as_i64();
-    if !explained {
-        failures.push(format!(
-            "{name} dbs.{d}: STAT4_NOT_COMPILED does not explain v4 {v4} v5 {v5}"
-        ));
     }
 }
 

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — deps(sqlite3mc): vendor SQLite3MC 2.4.0 / SQLite 3.53.4 from v4's driver 13.0.3, defines at parity
+
+_Versions: sqlite3mc-sys 0.2.0, core 0.0.1428._
+
+P4.D365 item 1 (v4 `8832cfd20`, the human's ruling R-A). `quilltap-sqlite3mc-sys` now vendors the amalgamation v4's driver `better-sqlite3-multiple-ciphers` 13.0.3 ships (`deps/sqlite3/sqlite3.{c,h}`, byte-exact) plus its `deps/defines.gypi`, and `build.rs` reads its defines from that file. The previous 2.3.5 vendor was utelle's option-free release amalgamation, not the driver's bytes (the driver generates its parser with `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`). Dropped v5-only `SQLITE_HAS_CODEC` and `SQLITE3MC_USE_RANDOM_FILL_MEMORY`; `SQLITE_USE_URI` is now `0` (no workspace open uses a URI filename or `ATTACH`). One define is held: `SQLITE_DEFAULT_FOREIGN_KEYS` (`SQLITE_DEFAULT_FK_HELD`), because a `restore_vintage_state` fixture seeds through a raw connection that relies on foreign keys being off by default. The production writer already sets `PRAGMA foreign_keys = ON`. The cipher is unchanged (sqleet / ChaCha20).
+
+New tier-1 family `sqlite_build_parity_equivalence` (+ oracle `sqlite-build-parity.ts`) compares `sqlite_version()`, `sqlite_source_id()`, `sqlite3mc_version()`, the ordered `PRAGMA compile_options` (58 rows; `COMPILER=` masked, the one HELD row carved both ways), and `PRAGMA cipher` against v4's real driver, plus cross-library opens both ways, a wrong pepper and a tampered page. New guard `committed_fixture_cipher_guard` opens all 113 committed `*.db` fixtures (112 encrypted, one named empty file) on the new build. `STAT4_NOT_COMPILED` is retired in `daily_db_optimize_equivalence` and `cli_differential`: STAT4 is now built in, and stat4 row counts and page counts compare exactly. Version text moved in `commit.md`, `phase-0.md` and the core comments.
+
 #### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
 
 _Docs-only change._
