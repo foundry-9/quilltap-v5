@@ -1031,6 +1031,12 @@ _No crate versions bumped._
 
 `help/` re-vendored whole from v4 `624d0d25c`: `deus-ex-machina.md` added and thirty-four pages overwritten, byte-exact. The two guard literals move 137 → 138 (`help_tree_embed_guard`, `host_help_docs_boot`, whose message now names the pin) after measuring red at the old count. The help tree, section-size and ensure oracles were regenerated from the pin and are green. Tests and docs only; the help tree is a build input, so no crate bump.
 
+#### 2026-11-04 — docs(porting): P4.D383 — record the `CSS` stacking commit `3ed560020` in the order's status header
+
+_Docs-only change._
+
+The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
+
 #### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
 
 _Versions: SPA 0.5.972._
