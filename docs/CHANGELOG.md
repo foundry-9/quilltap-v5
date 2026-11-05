@@ -56,6 +56,12 @@ P4.D365 item 1 (v4 `8832cfd20`, the human's ruling R-A). `quilltap-sqlite3mc-sys
 
 New tier-1 family `sqlite_build_parity_equivalence` (+ oracle `sqlite-build-parity.ts`) compares `sqlite_version()`, `sqlite_source_id()`, `sqlite3mc_version()`, the ordered `PRAGMA compile_options` (58 rows; `COMPILER=` masked, the one HELD row carved both ways), and `PRAGMA cipher` against v4's real driver, plus cross-library opens both ways, a wrong pepper and a tampered page. New guard `committed_fixture_cipher_guard` opens all 113 committed `*.db` fixtures (112 encrypted, one named empty file) on the new build. `STAT4_NOT_COMPILED` is retired in `daily_db_optimize_equivalence` and `cli_differential`: STAT4 is now built in, and stat4 row counts and page counts compare exactly. Version text moved in `commit.md`, `phase-0.md` and the core comments.
 
+#### 2026-11-04 — docs(porting): P4.D382 lane record — vendored trees, NO-PORT ratification record, help guards
+
+_Docs-only change._
+
+Lane record for P4.D382: the 32 NO-PORT blocks with re-run censuses and proposed statuses, the Lexical 0.53 measurement (`eb90eb466` ratified, no byte moved), the mermaid 12.3 facts and the handoff tables (help md5s, the twelve About lines for P4.D388, the ChaCha20 wording for the unifier). One finding: `spelling_guard` is red on `main` from one line of the planner's survey.
+
 #### 2026-11-04 — vendor(docs): the `docs/v4/` mirror to `624d0d25c`, 518 → 537 files (P4.D382)
 
 _Docs-only change._
