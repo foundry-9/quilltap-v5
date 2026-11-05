@@ -197749,3 +197749,124 @@ The pattern predates the round. P4.D359's newly live Humanoid beat exposed it. T
 - **HANDOFFs H1–H8** as in the order; H8 discharge: `29c1e2690`, `600c2906f`, `134961572`, `604a082c4`, `a0ed5ecad`, `a3d53eae1` — oracle re-aimed by P4.D361 (`REAIM`).
 - **Gotchas:** tsx ESM turns a deleted EXPORT into a link-time SyntaxError for static imports (empty NDJSON), not a silent undefined; only dynamic/namespace uses are silent.
 - **Versions unchanged:** core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38, SPA 0.5.971, sys 0.1.0. 💸: none.
+
+## P4.D365 — lane record (LANE COMPLETE, 2026-11-04)
+
+DRIVER + CLI + croner: the SQLite3MC 2.4.0 / SQLite 3.53.4 bump (R-A), `quilltap db integrity` (R-3), croner 11. Wave 0, cut from `main`, no stacking commit.
+
+### Where it ran
+
+- The session started in the app-made worktree `.claude/worktrees/p4-d365-sqlite3mc-588721` on branch `claude/p4-d365-sqlite3mc-588721`, clean, at `f56f1d311` (the orders' commit, confirmed with `git log -1 -- <order>`). It did not move. The spaceless path `~/source/quilltap-v5/.claude/worktrees/p4-d365-sqlite3mc-588721` was used for every recipe and the sweep (memory note `sweep-driver-spaced-path`).
+- **§2 probe (an observation, §R.2):** v4 moved: `4089469a8` ("feat: Refine from Memories & Instructions" — the Optimizer work R-B left out, now committed) observed at 2026-11-04 23:07 CST; tree clean; `bugfix` unmoved past `997657639`. The pin stayed usable (`624d0d25c`, `4.13.0-dev.8`).
+- **The pin:** `/tmp/qt-v4-pin-p4.d365-624d0d25c` at `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`. `npm ci --offline --ignore-scripts` (1,075 packages) then `npm rebuild better-sqlite3`. Measured under the pin: `better-sqlite3` → `better-sqlite3-multiple-ciphers` **13.0.3**, `croner` **11.0.0**, `zod` 4.6.7; `grep -c 'SQLite3 Multiple Ciphers 2.4.0' deps/sqlite3/sqlite3.h` = 1. The loaded binary is the shipped prebuild `node_modules/better-sqlite3/prebuilds/darwin-arm64.node` (`build/Release` holds only `obj.target` after the ignore-scripts install). `pin-plugin-sdks.sh`: `cli driver 13.0.3 | sqlite 3.53.4 | cipher chacha20`; floors `openai 7.47.0 | anthropic 1.4.0 | genai 2.32.0 | openrouter 1.5.34 | plugin-utils 2.7.3`. Never swept, never recreated.
+
+### Commits (branch `claude/p4-d365-sqlite3mc-588721`)
+
+| commit | subject | versions |
+|---|---|---|
+| `19a0c9c88` | deps(sqlite3mc): vendor SQLite3MC 2.4.0 / SQLite 3.53.4 from v4's driver 13.0.3, defines at parity | sqlite3mc-sys 0.2.0, core 0.0.1428 |
+| `80ccfd186` | feat(cli): quilltap db integrity (v4 70d2859d8) | cli 0.0.39 |
+| `439feb66c` | fix(enclave): cron slots follow croner 11 (v4 3936fdf65) | core 0.0.1429 |
+
+(Before close, A was amended once — the HELD entry below, its changelog text and its message — and B once — a clippy `cmp_owned` in `db_integrity.rs` — both by autosquashed fixups; C rode the rebase unchanged. One sys commit, as the order requires.)
+
+### Item 1–3 — the amalgamation (commit A)
+
+- **Vendored, byte-exact (`cp` + `cmp`, no normalisation; all three LF):**
+  - `vendor/sqlite3mc_amalgamation.c` ← `deps/sqlite3/sqlite3.c`: 13,019,798 bytes, sha256 `ad84d2c24540cf62ea27ee414911a32963390769bd031f39a50aec0ad90614a0` (`#define SQLITE_UDL_CAPABLE_PARSER 1` at `:154`).
+  - `vendor/sqlite3mc_amalgamation.h` ← `deps/sqlite3/sqlite3.h`: 699,088 bytes, sha256 `eae796d67d1a8236ed47b3fff858beb2d2a34f3b7ca0d8b6ea97e21729967374`.
+  - `vendor/defines.gypi` ← `deps/defines.gypi`: 1,196 bytes, sha256 `9139d3ce20fb5cd848e95da2fd20d4c4fd3d8d33b512d2781d70cb2a3de7c5bb` (38 entries).
+  - `sqlite3ext.h` deliberately NOT vendored (v5 loads no extensions).
+- **`build.rs`** reads `defines.gypi`'s `'defines': [ … ]` in file order (a line parser that refuses an empty list or an unexpected line) and passes each to `cc::Build::define`, minus a named `HELD` table. `SQLITE_HAS_CODEC` / `SQLITE3MC_USE_RANDOM_FILL_MEMORY` dropped; `SQLITE_USE_URI=0`. `rerun-if-changed` on all three files; the panic text names the right `crates/quilltap-sqlite3mc-sys/vendor/` path; the `locate_amalgamation` why-comment kept verbatim.
+- **HELD: ONE — `SQLITE_DEFAULT_FOREIGN_KEYS` (`SQLITE_DEFAULT_FK_HELD`, L-4 as predicted).** The decision rule ran with FULL parity: item 2 green, item 3 green, `cargo test -p quilltap-core --lib` **4,200 passed / 0 failed**, then the first workspace gate: 901 binaries / 6,028 / **5 failed** — four owned elsewhere (below) and ONE this lane's rule must attribute: `restore_vintage_state::annotations_restore_onto_a_vintage_instance_without_colliding` → `seed the surviving annotation: … FOREIGN KEY constraint failed` (extended code 787). Attributed by reasoning (an FK error text) and proved by the one-define flip: `DEFAULT_FOREIGN_KEYS` into `HELD`, the binary re-run by name → **10/10**. It is a v5 FIXTURE premise (the test seeds through a raw connection that relies on FKs being off by default) in a family this lane does not own (P4.D362's `restore_vintage_state`), so (a) and (b) hold → HELD, printed as a `cargo:warning`, and the parity family's `HELD` table carves it both ways (58 compile options equal; `DEFAULT_FOREIGN_KEYS` present on v4, absent on v5). Production parity is unchanged by the hold: v5's writer sets `PRAGMA foreign_keys = ON` explicitly. ⚠ **FINDING (H3, pre-existing, not caused by the bump):** the CLI's raw `quilltap db --write` opens through `dbopen::open_encrypted` without `foreign_keys = ON`, where v4's driver (built with `DEFAULT_FOREIGN_KEYS=1`) enforces FKs on the same statement — a `--write` that orphans a row succeeds on v5 and fails on v4. Converging the default (and migrating the FK-off test fixtures) closes it; that is the next round's, with this hold.
+- **Cold amalgamation compiles paid: 4** — dev/test with full parity (1 m 14 s), release with full parity (inside 2 m 22 s), dev/test with the hold (1 m 12 s), release with the hold (inside the final gate's release build). One define iteration.
+- **URI census:** 0 `ATTACH`, 0 `file:` URI filenames in SQL or open paths across `crates/`; the 7 `open_with_flags` sites all open plain paths (`db/runtime.rs:687`, `test_support.rs:525`, `daily_db_optimize.rs:591`, `daily_db_optimize_equivalence.rs:324`, `dbopen.rs:84`, `web/tests/contract.rs:215`, …). `USE_URI=0` changes nothing reachable.
+- **Item 2 red-first (unported `main`, the 2.3.5 build):** 4 parity failures — `sqliteVersion` 3.53.2 ≠ 3.53.4; `sourceId` `2026-06-03 19:12:13 d6e03d8c…` ≠ `2026-07-24 19:02:57 bf7c7f30…`; `sqlite3mcVersion` 2.3.5 ≠ 2.4.0; `compile_options` —
+  - v4 only (20): `DEFAULT_CACHE_SIZE=-16000`, `DEFAULT_FOREIGN_KEYS`, `DEFAULT_MEMSTATUS=0`, `DEFAULT_WAL_SYNCHRONOUS=1`, `DQS=0`, `ENABLE_FTS3`, `ENABLE_FTS3_PARENTHESIS`, `ENABLE_FTS4`, `ENABLE_GEOPOLY`, `ENABLE_MATH_FUNCTIONS`, `ENABLE_PERCENTILE`, `ENABLE_STAT4`, `ENABLE_UPDATE_DELETE_LIMIT`, `LIKE_DOESNT_MATCH_BLOBS`, `OMIT_DEPRECATED`, `OMIT_PROGRESS_CALLBACK`, `OMIT_SHARED_CACHE`, `OMIT_TCL_VARIABLE`, `SOUNDEX`, `THREADSAFE=2`;
+  - v5 only (3): `DEFAULT_CACHE_SIZE=-2000`, `DEFAULT_WAL_SYNCHRONOUS=2`, `THREADSAFE=1`.
+  - Already GREEN before the bump (as expected): `cipher` = chacha20, the v4→v5 read, the v5→v4 readback, both wrong-key rows, the tampered row. The self-test leg was red (`rusqlite::version()` 3.53.2).
+- **Item 2 green after:** 9 oracle rows + 4 readback rows, zero diffs; `compileOptions` equal in order with `COMPILER=` masked (`ENV_COMPILER`, one row each side) — 59 rows at full parity, 58 + the one HELD row after the hold; self-test leg `OK: v5 links SQLite 3.53.4 / SQLite3 Multiple Ciphers 2.4.0, cipher chacha20`.
+- **Cross-opens (the cipher proof):** v4 writes `/tmp/p4d365/v4-written.db` (raw-hex key, no `cipher=`, TRUNCATE; TEXT with U+2014/é/🖋, REAL π, BLOB `00017f80feff`, a 9,000-char filler) → v5's read path reads it byte-equal, `PRAGMA cipher` chacha20. v5's `Writer::open_writable` writes `/tmp/p4d365/v5-written.db` → v4's driver reads the same four rows, `quick_check` `ok`, `cipher` chacha20.
+- **Tier-2 item 7 (landed):** wrong pepper → both sides `SQLITE_NOTADB` / `file is not a database` (v4's file and v5's file); 16 bytes flipped at offset 6144 (page 2) of a copy → both sides `quick_check` and a scan throw `SQLITE_CORRUPT` / `database disk image is malformed`. Plants self-check on both sides. **Mutation-proven:** WRONG_PEPPER := PEPPER reddens both wrong-key rows; reading the untampered file reddens `v4Tampered`.
+- **Item 3, `committed_fixture_cipher_guard`:** 113 `git ls-files '*.db'` — 112 open read-only (`chacha20`, `quick_check` ok, non-empty `sqlite_master`) and 1 named `EMPTY_FIXTURE` (`crates/quilltap-web/tests/fixtures/chat-compressed-mount.db`, a deliberate 0-byte file — no cipher to prove; both ways). GREEN on unported `main` (2.3.5) and on 2.4.0. Peppers that opened: harness-corpus `dGVzdHBl…MDE=` ×93, `ZpjI5jcj…EKrjJk=` ×8, `b3JhY2xl…` (spec `oracle-test-pepper`) ×4, `3q2+796tvu/erb7v…` ×3, chat-cast ×2, `dGVzdC1wZXBwZXItZm9yLWZpeHR1cmVzLW9ubHktMzJieXRl` ×2 (all from committed builders / fixture specs). ⚠ **Gotcha fixed in-lane:** the three `migration-vintage/` fixtures are WAL-mode, so even a read-only open grew `-shm`/`-wal` files in the source tree — the guard now opens a scratch COPY of every fixture.
+- **STAT4 retired by measurement (L-3, both legs):** `daily_db_optimize_equivalence` regenerated from the pin (both zones, 27 lines each) — **26 rows / 0 failures per zone** with `freelist`, every `sqlite_stat1` row, the `sqlite_stat4` row count AND `page_count` compared exactly; e.g. `fresh` (UTC): main 76 pages / 81 stat4 rows, llm-logs 11 / 6, mount-index 64 / 287 — v4 and v5 equal (the old carve recorded 76.0 vs 72.0 KB etc.). NEW pin `the_build_has_stat4`. `cli_differential`: `normalize_stat4_sizes` and the size pin deleted; the `db optimize` rows compare raw sizes and are green; the pin inverted to "the build HAS STAT4". Memory notes `sqlite-stat4-build-difference` / `sqlite-dqs-build-difference` should be marked RETIRED (H1 — not lane files).
+- **Docs moved:** `commit.md:29-30`, `phase-0.md` (a dated 2026-11 paragraph appended after the 2026-06-27 resolution), `crates/quilltap-core/Cargo.toml:21`, `chat_settings_impersonation_voice_mode_repair.rs:48`/`:431` (3.53.4), the sys crate's `Cargo.toml` (PINNED comment + the dated `0.2.0` line) and `build.rs` docblock.
+
+### Item 4 — `quilltap db integrity` (commit B)
+
+- NEW `crates/quilltap-cli/src/db_integrity.rs` (L-5): `cmd_integrity` / `integrity_one_db` per v4 `cmdIntegrity` / `integrityOneDb` at the pin, through `dbopen::open_encrypted` read-only with v4's three friendly names; its own `IntegrityExit { Silent(code), Loud(CmdError) }` (no edit to `db_characters.rs`); v4's why-comment carried. `db_cmd.rs`: one `get_lock_status` (v4 `getLockStatus`: absent / corrupt / stale / active / suspect) now shared by `optimize_lock_refusal` (same bytes) and the integrity note (`live_instance_pid_part`, v4's truthy `lock.pid` + `${…}`); `format_duration` `pub(crate)`; the `"integrity"` arm; docs name it shipped. `main.rs` gains the module.
+- **Code names:** `SQLITE_CODE_NAMES`, the 107 `SetCode` entries of the pin's `node_modules/better-sqlite3/src/util/constants.cpp` in order (an `unordered_map` with `emplace`; no duplicate values), values resolved from the vendored 2.4.0 header, fallback `UNKNOWN_SQLITE_ERROR_<n>`. `cli_sqlite_code_names_guard` (a unit test in the cli bin — the integration tests cannot import bin modules): names/order vs the pin's file (SKIP-loud without `QT_V4_CHECKOUT`) and every value vs the vendored header — `OK … 107 codes match the pin`.
+- **`db_help.txt`** re-captured with `node $PIN/packages/quilltap/bin/quilltap.js db --help` (7,115 bytes). `diff` old → new: exactly two diff hunks — the `integrity [target...]` block (`:60-62` → `:60-63`) and the example (`:108`). (The order said "three hunks"; v4's `bin/quilltap.js` change shows as two hunks in the captured bytes. Nothing else moved.)
+- **Tier R red-first (unported cli):** 438 cases / 39 failure lines — all 15 new integrity rows red plus `db help`; every other row green (incl. every `db optimize` row on raw sizes — the STAT4 leg). **Green after: 438 cases / 0 failures.**
+- Rows: `db integrity`, `all`, `main`, `mount-points main` (order kept), `bogus` (`Error: Unknown integrity target 'bogus'. Allowed: main | llm-logs | mount-points | all`, exit 1), `--json`, `llm-logs removed` + `--json`, `unreadable main`, `wrong key`, `tampered page` + `--json`, `live lock` + `--json`.
+- **WRONG KEY arm (measured):** BOTH sides take the OPEN-FAILURE arm — the `SELECT 1` probe reads page 1 — so every target prints `  open failed: Cannot open <friendly>: file is not a database` + v4's hint line, then `One or more databases could not be opened.`, exit 2.
+- **TAMPERED PAGE (16 bytes at offset 9216, page 3 of `quilltap.db`, plant self-checked):** both sides print `  integrity_check: page read failed (SQLITE_CORRUPT): database disk image is malformed`, `One or more databases reported integrity issues — see above.`, exit 1, silent.
+- **The not-found quirk (recorded):** a missing `quilltap-llm-logs.db` prints `Skipping llm-logs: <path> not found.` and the run still ends `All databases reported ok.`, exit 0 — v4's `anyOpenFailed` excludes `reason === 'not found'` and `anyIssues` excludes `openable === false`.
+- Live lock: `Live instance detected (PID <n>) — running read-only checks.`, absent under `--json`.
+
+### Item 5 — croner 11 (commit C)
+
+- **Source:** croner 10.0.1 and 11.0.0 from the offline npm cache (`npm pack … --offline --cache ~/.npm-clean`), `dist/croner.js` pretty-printed with the lane's `apps/web` esbuild (no prettier is installed) and read whole. No download.
+- **Red-first under the pin (unported `cron.rs`):** the probe assert fired (`11.0.0` ≠ `10.0.1`); with `EXPECTED_CRONER` moved, **exactly the planner's twelve** — Chicago `e8`, `g1`, `g2`, `g5`, `g7`, `h2`, `h4`, `i5`, `i6`, `i10` and Kolkata `e8` (11 + 1 as tabled; values identical to the order's table) — plus seven of the NEW rows (`k12`, `k13`, `k16`, `k17` ×2 zones, `k20`, `k21`). No other row moved. (The family now COLLECTS every differing row before failing — it stopped at the first before.)
+- **Rule changes carried (by `cron.rs` item):**
+  - `parse_pattern`: `?` → `*` right after the 5/6/7-field padding, BEFORE `L`/`LW` and the `starDOM`/`starDOW`/`starYear` checks; NEW `Pattern::is_fixed_time` (seconds, minutes, hours each one value, no `*` or `/`).
+  - `apply`: `hour > 23` (was `> 59`) and the month's REAL last day (was February's fixed 28).
+  - `match_day_value` (croner 11 `_matchDayValue`), shared by `find_next` and the NEW `pattern_matches` (`CronDate.match`).
+  - `recurse`: the 400-years-from-this-increment bound for a wildcard year (croner 11's fix for the stack overflow); a never-matching `0 0 30 2 *` still → `None` (measured `null`).
+  - The DST machinery transcribed from croner 11: `Fields`/`local_fields`/`offset_ms` (`g`/`M`), `resolve` (`v`: Single / Ambiguous / Gap), `transition_between` (`_`), `fold_side` (`U`), `run_at` (`_runAt`), `walk` (`_walk`), `next_from_pattern` (`_findOccurrence`). `wall_to_instant_ms` / `reconstruct_through_wall` (croner 10's local-`Date` constructor round trip) are gone: croner 11 no longer maps through the local constructor, so the jiff `Compatible` rationale was re-derived — jiff now supplies only offsets and local fields; the one-off LOCAL string still maps through `Compatible` because that is V8's `Date.parse`.
+  - `next_one_off`: keeps milliseconds (the first three fraction digits, V8 `ReadMilliseconds`) and a `Z`/offset instant as-is; runs iff `once > anchor` (croner 11 `_next`).
+  - The `//!` header's quirk list rewritten for 11 with the row ids, the 10.0.1 history kept as one sentence.
+- **Row ids:** KEPT (`e8_qmark_dom_every_day_quirk`, `h2_fold_between_lands_in_past`, `h4_fold_hourly_skips_repeat`, `i5`/`i6_…_ms_dropped…`, `i10_…_shifts`); the case header and `cron.rs` say what croner 11 does with each.
+- **New rows (both zones):** `k11_c11_fold_every30_first_pass`, `k12_c11_fold_every30_into_second_pass`, `k13_c11_fold_every15_second_pass`, `k14_c11_gap_hourly_minute`, `k15_c11_gap_hourly_seconds`, `k16_c11_gap_fixed_seconds`, `k17_c11_qmark_dow`, `k18_c11_qmark_dom_and_dow`, `k19_c11_qmark_dom_month_dow`, `k20_c11_oneoff_999ms_future`, `k21_c11_oneoff_plus0530_at_fold`, `k22_c11_never_matching_year`. (`k1`–`k10` already existed, so the new ones start at `k11`.)
+- **Green:** `enclave_cron_equivalence` **136 rows per zone, zero diffs**, first run after the port. Core unit tests `enclave::cron` 14/14, the moved four re-pinned to croner-11 values verified by a TZ-pinned Node probe at the pin (2026-11-04) and renamed for what they now assert, plus `dst_gap_interval_pattern_skips_the_gap` and `dst_fold_interval_pattern_runs_both_passes`.
+
+### Gate
+
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets -- -D warnings` and `--features quilltap-core/native-transport`: clean (after `apps/web` `npm ci` + `npm run build`). `cargo build --release -p quilltap-cli`: this lane's bin, rebuilt after the hold.
+- **`cargo test --workspace --no-fail-fast`** (full log `/tmp/p4d365/workspace-gate.log`; env `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, `QT_NODE`, the parity / cron ×2 / daily-optimize ×2 oracles; no other gate was running): **901 binaries / 6,029 passed / 4 failed / 3 ignored.** The four, none this lane's:
+  - `builtin_prompt_templates_guard` — 21 vendored prompts vs the pin's 22 (P4.D373, §R.7 by design);
+  - `provider_sdk_version_guard` — the floors moved (P4.D364, by design);
+  - `qtap_schema_embed_guard` — the pin's `qtap-export.schema.json` (117,110 vs 115,274 bytes; P4.D362 owns it, §R.10 (o));
+  - `spelling_guard` — PRE-EXISTING on `main`: `work-orders/surveys/2026-11-04-setupphase-vendor-norport.md:295` (committed with the orders). Not this lane's file.
+  (The first gate, before the hold, was 901 / 6,028 / 5 — the same four plus the FK red.)
+- **This lane's families by name, `--nocapture`, own OK lines seen:** `sqlite_build_parity_equivalence` (oracle + readback + self-test legs); `committed_fixture_cipher_guard` (113: 112 opened + 1 EMPTY_FIXTURE); `enclave_cron_equivalence` (136 + 136); `daily_db_optimize_equivalence` (26 + 26, `the_build_has_stat4`); `cli_differential` **438 cases / 0 failures**; `cli_sqlite_code_names_guard` (107); `cargo test -p quilltap-core --lib enclave::cron` 14/14.
+- **The sweep from the pin** (`recipe_sweep.py --v5w ~/source/quilltap-v5/.claude/worktrees/p4-d365-sqlite3mc-588721 --v4 $PIN --force`, one sweep, none other running; `--self-test` → 0): **6 ok / 1 run_failed of 7** — `sqlite_build_parity_equivalence`, `enclave_cron_equivalence`, `daily_db_optimize_equivalence`, `cli_differential`, `enclave_lifecycle_tier2_equivalence` (UNMOVED), `degraded_sibling_open_equivalence` (UNMOVED) ok; `chat_create_capstone_equivalence` red on ONE case, `outfit_llm_choose_shared_composite` (v4 dresses Aria in the Livery coat / boots; v5 in the project-tier set) — v4 `4efea65e5`'s Green Room spread (`spreadAcrossCoveredSlots`), P4.D373's by its order §G and the deus survey §5.1; its cron case is green, so the croner caller is UNMOVED.
+- SPA: not touched (item 6 withdrawn). No Playwright.
+
+### Tier-3 records (for P4.D382's NO-PORT record and §S.6)
+
+- **R-2 NO-PORT:** v4's INFO `SQLCipher driver loaded` `{driverVersion, sqliteVersion}` and DEBUG `Could not read SQLCipher driver versions` `{error}` (`lib/database/backends/sqlite/client.ts:103`, `:115-133`). v5 has no Node driver and no main-client "connection established" line. No source.
+- **`8832cfd20` NO-PORT rows:** `packages/quilltap/lib/native-modules.js` (prebuild load-and-classify — v5 links statically), `bin/quilltap.js`'s heal comment, `jest.global-setup.js`, the two driver tests (`native-rebuild.test.js` deleted, `native-driver-check.test.js`), Dockerfile / `Dockerfile.ci` / `release.yml` / the standalone tarball / `build-push-docker.ts` (P4.10's image never installs the Node driver), v4 CLAUDE.md's v13-only-API rule. From `3936fdf65`: `jest-fetch-mock` 4.2, `@types/yauzl` → devDependencies.
+- **`REAL_INSTANCE_OPEN_AWAITS_DOGFOOD` ⚠:** CLAUDE.md's proof for a cipher change is the real-instance open of a Friday COPY; it needs the real pepper (never in a lane) and the dogfood pass waits for catch-up (2026-11-04 ruling). This lane's proofs are synthetic (items 2, 3, 7). Live Friday was not opened or copied.
+- **Not ported (capability parity only):** `SQLITE_ENABLE_GEOPOLY`, `PERCENTILE`, `SOUNDEX`, `FTS3`/`FTS4`, `MATH_FUNCTIONS` converge by the build; no v5 code calls them.
+- **Out of scope:** compiler optimisation (`-O3` vs v5's per-profile `opt-level`); `sqlite3ext.h`.
+- **Tier-2 item 6 (the SPA's croner):** WITHDRAWN by §R.11 "Vendor" (P4.D388 owns the SPA dependency lines) → H2.
+
+### HANDOFFs
+
+| id | to | what | measurable |
+|---|---|---|---|
+| H1 | the unifier (§S.5 / §S.7) | CLAUDE.md's cipher paragraph "(**2.3.5**, on SQLite 3.53.2 in the matching amalgamation)" → "(**2.4.0**, on SQLite 3.53.4 — the driver's own amalgamation bytes and `defines.gypi`, vendored from `better-sqlite3-multiple-ciphers` 13.0.3; `SQLITE_DEFAULT_FOREIGN_KEYS` held)"; the sys-crate sentence gains "— bumped 0.1.0 → 0.2.0 once, for 2.4.0 (P4.D365)"; memory notes `sqlite-stat4-build-difference` and `sqlite-dqs-build-difference` marked RETIRED (both converged) | `grep -c '2\.3\.5\|3\.53\.2' CLAUDE.md` = 0 on the union |
+| H2 | P4.D388 | the SPA's `croner` `^10.0.1` → `^11.0.0` + a `0 0 ? * 5` preview spec row | `apps/web/package-lock.json` croner `11.0.0` |
+| H3 | the next round (with the FK hold) | the CLI `db --write` FK divergence above (pre-existing; v5 production writer unaffected); converging `SQLITE_DEFAULT_FOREIGN_KEYS` needs the FK-off fixtures migrated first (`restore_vintage_state`'s raw seed is the one the gate found) | `HELD` empty and `restore_vintage_state` green |
+| H4 | P4.D388 | the About page lists NO croner or SQLite3MC version (`about-page.ts:457` "xterm.js, node-pty, ws, croner"); its `SQLite + SQLCipher` (`:424`) and `better-sqlite3-multiple-ciphers (SQLCipher)` (`:438`) are `70d2859d8`'s About hunk, already P4.D388's (C17). No credit change from this lane. | the named lines |
+
+### Planner corrections applied
+
+- ⚠ **§R.6:** this lane bumps core (+2: 0.0.1428, 0.0.1429) — `enclave/cron.rs` is core. (The §R.6 text already carries the correction.)
+- **Ownership extensions L-6 applied:** `daily_db_optimize_equivalence.rs`, `cases/enclave-cron.ts`, NEW `db_integrity.rs`, `sqlite_build_parity_equivalence.rs`, `committed_fixture_cipher_guard.rs`, `sqlite-build-parity.ts`, the cli `cli_sqlite_code_names_guard` (inside `db_integrity.rs`), the three core comment lines, `crates/quilltap-core/Cargo.toml:21`. Also touched: `crates/quilltap-cli/src/main.rs` (one `mod db_integrity;` line) and `crates/quilltap-harness/tests/enclave_cron_equivalence.rs` (`EXPECTED_CRONER`, its header, the collect-all change) — both implied by the order. L-7: item 6 not this lane's (§R.11).
+
+### 💸 for the dogfood pass (waits per the 2026-11-04 ruling)
+
+- **The real-instance open on 2.4.0** (no spend): on the Friday COPY, `quilltap db integrity` → three `integrity_check: ok` blocks, `All databases reported ok.`, exit 0; then `quilltap db optimize` (`sqlite_stat4` populated after `ANALYZE`, as v4's).
+- **A v4 ↔ v5 shared-instance round trip** (no spend): v5 writes one Salon message to the copy, v4 (at the pin) reads it, and back; `PRAGMA cipher` = chacha20 both.
+- **An autonomous room's schedule across croner 11** (no spend): `30 2 * * *` on a spring-forward day shows 03:00 local in `scheduleNextRunAt` (and the SPA preview once H2 lands); `0 0 ? * 5` previews a Friday.
+
+### Regen recipes (authored or moved by this lane)
+
+- `sqlite_build_parity_equivalence`: the four-step recipe in its header (oracle from `cd ~/source/quilltap-server` = the pin → `QT_SQLITE_BUILD_PARITY_WRITE=1 … -- write_v5_file` → the oracle `--read /tmp/p4d365/v5-written.db` → `QT_ORACLE_SQLITE_BUILD_PARITY` + `_READBACK` … `-- parity --nocapture`), outputs under `/tmp/p4d365/`; sweep-driver clean.
+- `enclave_cron_equivalence`: unchanged recipe (`TZ=America/Chicago` / `TZ=Asia/Kolkata npx tsx harness/oracle/cases/enclave-cron.ts`, cwd = the pin); the corpus grew to 136 rows.
+- `daily_db_optimize_equivalence`, `cli_differential`: unchanged recipes, run from the pin.
+- No committed fixture changed; no other family's oracle is invalidated (every committed `*.db` keeps its bytes — the guard proves they open).
+
+**Versions at close:** sqlite3mc-sys 0.2.0, core 0.0.1429, cli 0.0.39; host / web / tauri / SPA unchanged; harness frozen 0.0.1110.

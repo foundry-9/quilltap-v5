@@ -30,6 +30,12 @@ _No crate versions bumped._
 
 Oracle-side only (`harness/oracle/**` plus four Rust test files; zero `crates/*/src`). Rows: (1) `file-attachment-tier3` section E now drives `applyImageTransportBudget` / `collectAttachmentMimeTypes` from `image-transport-budget` (v4 `29c1e2690` deleted the adapter module); (2) `item-mutations-tier2` calls `createItemFolder` / `renameItemFolder` / `deleteItemFolder` over `WARDROBE_FOLDER_KIND` and captures `[ItemFolders]` (`600c2906f`); (3) `inventory-keystone-tier2` the same over `INVENTORY_FOLDER_KIND`, with a loud self-check instead of a silent `TypeError` row (`134961572`); (4) `item-folders` gets a local `normalizeInventoryFolderName` wrapper; (5) `documents-rename-target` imports `computeRenameTarget` from the document core (`a3d53eae1`); (6) `storyteller-pure` drops the `sse` rows (`604a082c4`) and the Rust test gains an `offer` floor; (7) the four transfers-`GET` rows are removed on both sides (`a0ed5ecad`); (8) the eight `doc-*` / roster cases now seam `@/lib/doc-edit` `reindexSingleFile` (never-settling), the old seam being inert (15 real chain calls measured); (9) `mount-read` drives v4's real files `GET` under tsx with self-checked session / startup stubs. Removed ids: `sse-0`..`sse-6`, `__destinations`, `dest_list`, `transfers_destinations`, `transfers_destinations_vaultless`. Drift reds the re-aims expose stay red for their owners.
 
+#### 2026-11-05 — docs(porting): P4.D365 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The P4.D365 lane record (status log) and the order's status header: the SQLite3MC 2.4.0 bump with `SQLITE_DEFAULT_FOREIGN_KEYS` held, `quilltap db integrity`, and croner 11. The workspace gate's four reds are owned elsewhere (three by-design sibling reds and a pre-existing spelling hit in a committed survey). Handoffs: CLAUDE.md's cipher text to the unifier; the SPA croner bump to P4.D388; a pre-existing CLI `--write` foreign-key divergence to the next round.
+
 #### 2026-11-04 — fix(enclave): cron slots follow croner 11 (v4 3936fdf65)
 
 _Versions: core 0.0.1429._
