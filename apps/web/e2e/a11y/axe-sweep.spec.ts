@@ -176,9 +176,12 @@ test.describe('P4.D358 — axe sweep (WCAG 2.2 AA, every bundled pack, light and
     const unique = [...new Set(seen)].sort();
     if (process.env['QT_AXE_REBASELINE'] === '1') {
       const prior = new Map(known.map((r) => [r.key, r.owner]));
+      // A NEW row is never attributed to a landed lane (P4.D383 L5 — the old
+      // `color-contrast` fallback stamped 'P4.D357' long after it closed);
+      // whoever re-baselines owns the row by name.
       const rows = unique.map((key) => ({
         key,
-        owner: prior.get(key) ?? (key.split('|')[3] === 'color-contrast' ? 'P4.D357' : 'UNOWNED'),
+        owner: prior.get(key) ?? 'UNOWNED',
       }));
       writeFileSync(KNOWN_FILE, JSON.stringify(rows, null, 2) + '\n');
       return;
