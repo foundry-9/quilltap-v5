@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-05 — test(spa): P4.D383 — the axe baseline re-measured: queue badges ruled v4-faithful, 23 earl-grey rows a ThemeService follow-up (v4 624d0d25c)
+
+_Versions: SPA 0.5.974._
+
+P4.D383 item 12. `known-violations.json` re-baselined on the branch: 521 → 509 rows, none new. The 12 character-card `target-size` follow-ups are gone (the card dropped `leading-none` and gained the 24px target). The 420 `qt-queue-badge-*` rows are byte-identical to v4 at the pin in CSS, tokens and markup, and are now owned by a v4-faithful ruling that records each row's measured ratio (1.04:1 to 3.30:1). The 23 `earl-grey|dark` muted-text rows did not clear: they read `--theme-muted-foreground`, and v5's ThemeService never applies a pack's `tokens.json` colours as v4's `lib/themes/utils.ts` does, so earl-grey dark falls back to the default `hsl(225 8% 58%)` (4.18:1). They are now owned as a named follow-up. The 66 ParticipantCard rows are unchanged. The sweep's fallback owner for a new row is now `UNOWNED`.
+
 #### 2026-11-04 — feat(spa): P4.D383 — WCAG 2.2 template edits, roving-focus tab strip, a11y-names aria-hidden exemption (v4 624d0d25c)
 
 _Versions: SPA 0.5.973._

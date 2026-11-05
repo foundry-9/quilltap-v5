@@ -1,95 +1,83 @@
 [
   {
     "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
-  },
-  {
-    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -117,367 +105,355 @@
   },
   {
     "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.7:1 (#7f654a on #2f2242) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.72:1 (#736747 on #1c253d) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.74:1 (#6e664f on #1d2331) on art-deco|dark"
   },
   {
     "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on art-deco|dark"
   },
   {
     "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
-  },
-  {
-    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.06:1 (#caad84 on #b2a7c0) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.08:1 (#c0af81 on #a1a9ba) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.2:1 (#bdb7a9 on #a2a7b3) on art-deco|light"
   },
   {
     "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on art-deco|light"
   },
   {
     "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.gap-3.flex-1.min-w-0 > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/characters\"]",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/prospero\"]",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/salon\"]",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-project-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-project-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -505,163 +481,163 @@
   },
   {
     "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|#composer-spellcheck > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|#composition-mode > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|#auto-lock > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|#backup-restore > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|#encryption-passphrase > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
-    "owner": "P4.D357"
+    "owner": "FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); earl-grey dark mutedForeground hsl(0 0% 70.6%) falls back to styles.css .dark hsl(225 8% 58%); measured 4.18:1 (#8b909c on #2f2f2f)"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on earl-grey|dark"
   },
   {
     "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on earl-grey|dark"
   },
   {
     "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -689,155 +665,143 @@
   },
   {
     "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on earl-grey|light"
   },
   {
     "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on earl-grey|light"
   },
   {
     "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
-  },
-  {
-    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -865,155 +829,143 @@
   },
   {
     "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9e7c7e on #5e2428) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.57:1 (#7b6244 on #2f233b) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.56:1 (#7e6536 on #352824) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#736447 on #2b2424) on great-estate|dark"
   },
   {
     "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#758e81 on #19432d) on great-estate|dark"
   },
   {
     "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
-  },
-  {
-    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
-  },
-  {
-    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
-    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1041,143 +993,143 @@
   },
   {
     "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.34:1 (#eecbcb on #e2a8a8) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c6ac85 on #b3a8ba) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.04:1 (#c8ae79 on #b6aba5) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.14:1 (#c1b59f on #b0a9a6) on great-estate|light"
   },
   {
     "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.28:1 (#c5dfd0 on #9fcab0) on great-estate|light"
   },
   {
     "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1205,143 +1157,143 @@
   },
   {
     "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|dark"
   },
   {
     "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|dark"
   },
   {
     "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1369,143 +1321,143 @@
   },
   {
     "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.2:1 (#9f7979 on #5f201f) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.63:1 (#406f82 on #382139) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.23:1 (#735725 on #2c2521) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 2.8:1 (#746752 on #292320) on madmans-box|light"
   },
   {
     "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.19:1 (#778e82 on #1d422e) on madmans-box|light"
   },
   {
     "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1533,143 +1485,143 @@
   },
   {
     "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on old-school|dark"
   },
   {
     "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on old-school|dark"
   },
   {
     "key": "old-school|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1697,143 +1649,143 @@
   },
   {
     "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on old-school|light"
   },
   {
     "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on old-school|light"
   },
   {
     "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on old-school|light"
   },
   {
     "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on old-school|light"
   },
   {
     "key": "rains|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -1861,143 +1813,143 @@
   },
   {
     "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.09:1 (#a47374 on #681518) on rains|dark"
   },
   {
     "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.28:1 (#8e7fa2 on #432964) on rains|dark"
   },
   {
     "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.13:1 (#7388aa on #163972) on rains|dark"
   },
   {
     "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.3:1 (#85888f on #333845) on rains|dark"
   },
   {
     "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 3.15:1 (#718e7f on #134329) on rains|dark"
   },
   {
     "key": "rains|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
@@ -2025,62 +1977,62 @@
   },
   {
     "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   },
   {
     "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.36:1 (#f7c4c4 on #f29c9d) on rains|light"
   },
   {
     "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#ddcbf0 on #c7a9e6) on rains|light"
   },
   {
     "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.32:1 (#c1d7fa on #98bcf6) on rains|light"
   },
   {
     "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.35:1 (#d1d3d8 on #b2b6be) on rains|light"
   },
   {
     "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
-    "owner": "P4.D357"
+    "owner": "RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured 1.29:1 (#c3dfce on #9bcaad) on rains|light"
   }
 ]
