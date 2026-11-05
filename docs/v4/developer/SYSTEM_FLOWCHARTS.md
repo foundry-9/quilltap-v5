@@ -97,7 +97,7 @@ flowchart TD
     SP18 --> MEM["assembleRecall()<br/><i>lib/memory/recall/assemble.ts</i>"]
 
     MEM --> MEM1["buildRecallQuery()<br/>distil + embed ONCE"]
-    MEM1 --> MEM2["searchRecall()<br/>gather → hydrate → score → select"]
+    MEM1 --> MEM2["searchRecall()<br/>gather (top-K ∪ probes ∪ window rows ∪ anchors) → hydrate → score → select"]
     MEM2 --> MEM3["frozen archive → recap (chat start) → head → inter-character<br/>a row in at most one pool"]
     MEM3 --> MEM4["render.ts<br/>age · subject · words · keywords — no debug labels"]
     MEM4 --> DELIVER["deliverRecall()<br/>after compression + request assembly:<br/>stamp delivered lines, append ring, debug record"]
@@ -612,7 +612,7 @@ flowchart TD
     COMP --> SCENE["3. buildTurnSceneState()<br/>stored scene + live wardrobe<br/>+ per-recipient cache<br/><i>turn-scene-state.ts</i>"]
     SCENE --> RECALL["4. assembleTurnRecall() ∥ retrieveTurnKnowledge()<br/>→ compressTurnMemories()<br/><i>turn-recall.ts</i>"]
     RECALL --> WHISPER["5. Staff whispers<br/>postTurnTimestamp → offerCoreWhisper<br/>→ postCommonplaceWhispers (+ scene commit, sweep)<br/>→ announceTurnMail<br/><i>turn-whispers.ts</i>"]
-    WHISPER --> TRAIL["6. Trailing sections, read in parallel<br/>progressions ∥ Inventory ∥ referent ledger<br/>+ closing echo ∥ inform block; turn notes<br/><i>turn-trailing.ts, inform-block.ts</i>"]
+    WHISPER --> TRAIL["6. Trailing sections, read in parallel<br/>progressions ∥ Inventory ∥ referent ledger<br/>+ closing echo ∥ inform block ∥ established-fact reminder; turn notes<br/><i>turn-trailing.ts, inform-block.ts, established-fact-reminder.ts</i>"]
     TRAIL --> MEASURE["countMessagesTokens() over blocks 1–3,<br/>timestamp line, trailing message<br/>(scene note over the candidate rows)<br/>+ reservedOutgoingTokens"]
     MEASURE --> HIST["7. turnHistoryRows() → packTurnHistory()<br/>window cut (both chat shapes),<br/>summary anchors, pack to what is left<br/><i>turn-history.ts</i>"]
     HIST --> ASM["buildLeadingSystemBlocks()<br/>+ historyContextMessages()<br/>+ timestamp line + trailing message"]

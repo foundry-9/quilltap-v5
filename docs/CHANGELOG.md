@@ -56,6 +56,12 @@ P4.D365 item 1 (v4 `8832cfd20`, the human's ruling R-A). `quilltap-sqlite3mc-sys
 
 New tier-1 family `sqlite_build_parity_equivalence` (+ oracle `sqlite-build-parity.ts`) compares `sqlite_version()`, `sqlite_source_id()`, `sqlite3mc_version()`, the ordered `PRAGMA compile_options` (58 rows; `COMPILER=` masked, the one HELD row carved both ways), and `PRAGMA cipher` against v4's real driver, plus cross-library opens both ways, a wrong pepper and a tampered page. New guard `committed_fixture_cipher_guard` opens all 113 committed `*.db` fixtures (112 encrypted, one named empty file) on the new build. `STAT4_NOT_COMPILED` is retired in `daily_db_optimize_equivalence` and `cli_differential`: STAT4 is now built in, and stat4 row counts and page counts compare exactly. Version text moved in `commit.md`, `phase-0.md` and the core comments.
 
+#### 2026-11-04 — vendor(docs): the `docs/v4/` mirror to `624d0d25c`, 518 → 537 files (P4.D382)
+
+_Docs-only change._
+
+The v4 docs mirror brought to v4 `624d0d25c` in 51 operations: 29 overwrites (the 4.11.0 and 4.12.0 changelog sections moved into `CHANGELOG_V4.md`, and `DATABASE_ENCRYPTION.md` now correctly says ChaCha20-Poly1305), 19 additions (both copies of the window-first search spec, the refactor specs, the 4.12.0 and 4.12.1 release notes), two SVAR specs moved to `complete/`, and the CLI README. A byte and path census against the pin shows zero differences.
+
 #### 2026-11-04 — vendor(help): the `624d0d25c` help tree, 137 → 138 pages (P4.D382)
 
 _No crate versions bumped._
