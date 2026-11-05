@@ -118,7 +118,13 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// rewritten by four, `memory-recall-relevance.md` with three, …) move no
 /// count. The tree re-vendored WHOLE at the pin. Measured RED at 137 on disk
 /// vs this constant's 135 before the move.
-const VENDORED_FILE_COUNT: usize = 137;
+///
+/// **138 at v4 `624d0d25c` (137 + 1, P4.D382):** `deus-ex-machina.md` added;
+/// thirty-four pages re-vendored (`mount-points.md`, `inventory.md`,
+/// `wardrobe.md` with four commits' hunks each) move no count. The tree
+/// re-vendored WHOLE at the pin. Measured RED at 138 on disk vs this
+/// constant's 137 before the move.
+const VENDORED_FILE_COUNT: usize = 138;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
