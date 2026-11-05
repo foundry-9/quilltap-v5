@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
+
+_Versions: SPA 0.5.972._
+
+P4.D383's stacking commit (contract C16). Re-vendors v4's `app/styles/qt-components/` span `236c04e35..624d0d25c` into the nine changed files: 72 hunks by `patch`, the two `_chat.css` rejects (the message-link fallbacks and the Document Mode header block) applied by hand, and one fuzz-misplaced hunk (the `.qt-mention-chip:focus-visible` ring) moved back to v4's position. Every file's diff against the pin now equals its diff against the baseline (v5's recorded adaptations), except `_chat.css`, which differs by exactly three v5-only lines fixed with v4's own `87c3860df` substitutions: `.qt-rich-editor-content blockquote` and `.qt-doc-header-button-active` (`--qt-accent` kept as a hook with a `--color-foreground` fallback). New classes include `qt-bg-popover`, the open-menu `qt-card` rise, `qt-tab-select`, the Deus Ex Machina `qt-chat-*established-fact*` set, and `.qt-page-toolbar-left:empty`. Ports v4's `scripts/check-css-vars.mjs` as `apps/web/scripts/check-css-vars.mjs`, retargeted at the SPA's paths, with a new `--self-test` (12 cases), and runs it in both `npm run lint` and `npm test`; it found 109 undefined `var()`s on main and finds 0 now. Adds `::highlight(quilltap-conversation-search)` to `src/styles.css`. Vendors both `deus-ex-machina.svg` files (default and Madman's Box) byte-exact, plus the `_icons.css` mask rule. Applies the five theme-pack `styles.css` diffs and bumps all six `theme.json` versions (plus Madman's Box's `deus-ex-machina` key), with `theme-contrast.spec.ts`'s `PACK_MANIFESTS` moved to match. New `deus-icon-assets.spec.ts`.
+
 #### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
 
 _Docs-only change._

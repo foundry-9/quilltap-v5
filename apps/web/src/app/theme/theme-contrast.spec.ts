@@ -46,12 +46,12 @@ const PACK_IDS = ['art-deco', 'earl-grey', 'great-estate', 'madmans-box', 'old-s
 
 /** `theme.json` at the pin — re-vendor from v4 and re-record when one moves. */
 const PACK_MANIFESTS: Record<(typeof PACK_IDS)[number], { version: string; supportsDarkMode: boolean }> = {
-  'art-deco': { version: '1.0.13', supportsDarkMode: true },
-  'earl-grey': { version: '1.3.10', supportsDarkMode: true },
-  'great-estate': { version: '1.0.10', supportsDarkMode: true },
-  'madmans-box': { version: '1.1.9', supportsDarkMode: false },
-  'old-school': { version: '1.0.14', supportsDarkMode: true },
-  rains: { version: '1.3.14', supportsDarkMode: true },
+  'art-deco': { version: '1.0.14', supportsDarkMode: true },
+  'earl-grey': { version: '1.3.11', supportsDarkMode: true },
+  'great-estate': { version: '1.0.11', supportsDarkMode: true },
+  'madmans-box': { version: '1.1.10', supportsDarkMode: false },
+  'old-school': { version: '1.0.15', supportsDarkMode: true },
+  rains: { version: '1.3.15', supportsDarkMode: true },
 };
 
 /** v5's one adaptation of the vendored packs: asset URLs served from `/themes/<id>/`. */
@@ -206,7 +206,7 @@ describe('theme token contrast (release checklist 13)', () => {
 
 describe('bundled theme packs', () => {
   for (const id of PACK_IDS) {
-    it(`${id}: theme.json is at v4's 4.11.0 version`, () => {
+    it(`${id}: theme.json is at v4's 624d0d25c (4.13.0-dev.8) version`, () => {
       const manifest = JSON.parse(read(`public/themes/${id}/theme.json`)) as {
         version: string;
         supportsDarkMode: boolean;
