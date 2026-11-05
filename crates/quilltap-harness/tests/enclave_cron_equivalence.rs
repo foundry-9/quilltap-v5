@@ -1,6 +1,7 @@
 //! Tier-1 differential: the enclave cron slot computation (U4.2).
 //!
-//! v4 evaluates autonomous-room schedules with croner 10.0.1 in the system
+//! v4 evaluates autonomous-room schedules with croner 11.0.0 (10.0.1 before
+//! v4 `3936fdf65` / P4.D365) in the system
 //! local timezone (`new Cron(expr).nextRun(anchor)`, try/catch → null); the
 //! port is `quilltap_core::enclave::cron::next_occurrence` with the timezone
 //! injected. The oracle replays a committed corpus once per timezone (Node
@@ -28,7 +29,8 @@ use quilltap_core::enclave::cron::next_occurrence;
 use serde::Deserialize;
 
 /// The croner version the port transcribes; a v4 bump must fail loudly here.
-const EXPECTED_CRONER: &str = "10.0.1";
+/// (11.0.0 since P4.D365 — v4 `3936fdf65`; 10.0.1 before.)
+const EXPECTED_CRONER: &str = "11.0.0";
 
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
@@ -75,6 +77,9 @@ fn run_file(path: &str, expected_tz: &[&str]) -> usize {
     }
 
     let mut count = 0usize;
+    // Every mismatching row is collected before failing, so a red run names
+    // the whole set (P4.D365 — the croner 11 move reddened twelve at once).
+    let mut failures: Vec<String> = Vec::new();
     for line in lines {
         let row: Row =
             serde_json::from_str(line).unwrap_or_else(|e| panic!("bad row: {e}\n{line}"));
@@ -91,12 +96,19 @@ fn run_file(path: &str, expected_tz: &[&str]) -> usize {
         let anchor_ms = iso_to_ms(&anchor_iso)
             .unwrap_or_else(|| panic!("case '{id}': unparseable anchor {anchor_iso}"));
         let got = next_occurrence(&expr, anchor_ms, &tz).map(iso_from_unix_ms);
-        assert_eq!(
-            got, next_iso,
-            "case '{id}' (expr {expr:?}, anchor {anchor_iso}, tz {tz}): rust={got:?} oracle={next_iso:?}"
-        );
+        if got != next_iso {
+            failures.push(format!(
+                "case '{id}' (expr {expr:?}, anchor {anchor_iso}, tz {tz}): rust={got:?} oracle={next_iso:?}"
+            ));
+        }
         count += 1;
     }
+    assert!(
+        failures.is_empty(),
+        "{} of {count} rows differ in {path}:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
     assert!(
         count >= 50,
         "oracle file {path} looks truncated: only {count} case rows"
