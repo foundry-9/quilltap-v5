@@ -1031,6 +1031,12 @@ _No crate versions bumped._
 
 `help/` re-vendored whole from v4 `624d0d25c`: `deus-ex-machina.md` added and thirty-four pages overwritten, byte-exact. The two guard literals move 137 → 138 (`help_tree_embed_guard`, `host_help_docs_boot`, whose message now names the pin) after measuring red at the old count. The help tree, section-size and ensure oracles were regenerated from the pin and are green. Tests and docs only; the help tree is a build input, so no crate bump.
 
+#### 2026-11-05 — docs(porting): P4.D383 — the lane record and LANE COMPLETE status header
+
+_Docs-only change._
+
+Appends P4.D383's lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the invariance tables, the red-first counts, the axe measurement and ruling, the earl-grey ThemeService follow-up, the census, and the gate counts.
+
 #### 2026-11-05 — test(spa): P4.D383 — the axe baseline re-measured: queue badges ruled v4-faithful, 23 earl-grey rows a ThemeService follow-up (v4 624d0d25c)
 
 _Versions: SPA 0.5.974._
