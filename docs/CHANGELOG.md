@@ -56,6 +56,12 @@ P4.D365 item 1 (v4 `8832cfd20`, the human's ruling R-A). `quilltap-sqlite3mc-sys
 
 New tier-1 family `sqlite_build_parity_equivalence` (+ oracle `sqlite-build-parity.ts`) compares `sqlite_version()`, `sqlite_source_id()`, `sqlite3mc_version()`, the ordered `PRAGMA compile_options` (58 rows; `COMPILER=` masked, the one HELD row carved both ways), and `PRAGMA cipher` against v4's real driver, plus cross-library opens both ways, a wrong pepper and a tampered page. New guard `committed_fixture_cipher_guard` opens all 113 committed `*.db` fixtures (112 encrypted, one named empty file) on the new build. `STAT4_NOT_COMPILED` is retired in `daily_db_optimize_equivalence` and `cli_differential`: STAT4 is now built in, and stat4 row counts and page counts compare exactly. Version text moved in `commit.md`, `phase-0.md` and the core comments.
 
+#### 2026-11-04 — vendor(help): the `624d0d25c` help tree, 137 → 138 pages (P4.D382)
+
+_No crate versions bumped._
+
+`help/` re-vendored whole from v4 `624d0d25c`: `deus-ex-machina.md` added and thirty-four pages overwritten, byte-exact. The two guard literals move 137 → 138 (`help_tree_embed_guard`, `host_help_docs_boot`, whose message now names the pin) after measuring red at the old count. The help tree, section-size and ensure oracles were regenerated from the pin and are green. Tests and docs only; the help tree is a build input, so no crate bump.
+
 #### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
 
 _Docs-only change._
