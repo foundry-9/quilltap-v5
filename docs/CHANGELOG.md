@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): P4.D383 — record the `CSS` stacking commit `3ed560020` in the order's status header
+
+_Docs-only change._
+
+The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
+
 #### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
 
 _Versions: SPA 0.5.972._
