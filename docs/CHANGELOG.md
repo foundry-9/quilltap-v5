@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+
+#### 2026-11-05 — docs(porting): reword the vendor survey's grep so `spelling_guard` passes on main
+
+_Docs-only change._
+
+The `624d0d25c` vendor survey quoted the forbidden spelling inside a `git grep` command, which reddened `spelling_guard` on main and in every lane cut from it. The pattern is now split across two quoted halves.
 #### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
 
 _Docs-only change._

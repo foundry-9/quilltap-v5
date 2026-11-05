@@ -292,7 +292,7 @@ precedent does.
   did.
 - **Spelling:** `harness/tools/check_spelling.py` scans `help/` (only
   `docs/v4/` is exempt, `ALLOWED_PREFIXES` `:63`).
-  `git grep -il quilttap 624d0d25c -- help` is EMPTY. The 15 hits in `docs/`
+  `git grep -il 'quil''ttap' 624d0d25c -- help` is EMPTY. The 15 hits in `docs/`
   are the same set and count as at the baseline, all under the exempt mirror.
 
 ### A.3 The rule, unchanged
