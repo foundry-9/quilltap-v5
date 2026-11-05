@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-05 — docs(porting): P4.D365 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The P4.D365 lane record (status log) and the order's status header: the SQLite3MC 2.4.0 bump with `SQLITE_DEFAULT_FOREIGN_KEYS` held, `quilltap db integrity`, and croner 11. The workspace gate's four reds are owned elsewhere (three by-design sibling reds and a pre-existing spelling hit in a committed survey). Handoffs: CLAUDE.md's cipher text to the unifier; the SPA croner bump to P4.D388; a pre-existing CLI `--write` foreign-key divergence to the next round.
+
 #### 2026-11-04 — fix(enclave): cron slots follow croner 11 (v4 3936fdf65)
 
 _Versions: core 0.0.1429._
