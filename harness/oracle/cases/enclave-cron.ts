@@ -1,7 +1,8 @@
 /**
  * Oracle case: enclave cron slot computation (U4.2).
  *
- * Drives v4's REAL cron library — croner 10.0.1, resolved from the v4
+ * Drives v4's REAL cron library — croner 11.0.0 (v4 `3936fdf65`; 10.0.1
+ * before P4.D365), resolved from the v4
  * checkout's node_modules — through the exact one-shot call-site shape shared
  * by `nextCronFireFrom` (autonomous-room-schedule-tick.ts), `recomputeNextRun`
  * (autonomous-room-turn.ts), and the manual-start slot consumption
@@ -25,15 +26,22 @@
  *   { kind: "row", id, expr, anchorIso, tz, nextIso | null }.
  *
  * The corpus is committed here (not generated): plain 5-field patterns,
- * 6-field seconds, steps/ranges/lists (incl. croner 10's strict-stepping
+ * 6-field seconds, steps/ranges/lists (incl. croner's strict-stepping
  * rejections), month/day names (incl. the sequential-replace JANFEB quirk),
- * dom+dow union vs the `+` AND modifier, `L`/`LW`/`W`/`#`/`5L` modifiers, the
- * `?`-before-starDOM quirk, month-end wraps, leap Feb 29 / never-matching
- * Feb 30, DST spring-forward (America/Chicago 2026-03-08) and fall-back
- * (2026-11-01, incl. the fold row whose nextRun lands BEFORE the anchor),
+ * dom+dow union vs the `+` AND modifier, `L`/`LW`/`W`/`#`/`5L` modifiers, `?`
+ * in day fields, month-end wraps, leap Feb 29 / never-matching Feb 30, DST
+ * spring-forward (America/Chicago 2026-03-08) and fall-back (2026-11-01),
  * anchors exactly on a slot / at odd ms offsets, croner's one-off datetime
  * branch (":" in the pattern), nicknames, 7-field years, and a battery of
- * malformed inputs that must collapse to null.
+ * malformed inputs that must collapse to null. The `k11`-`k22` rows
+ * (P4.D365) isolate croner 11's classes: interval patterns through both
+ * passes of a fold, gap skipping vs the fixed-time transition run, `?` in
+ * every day field, one-off milliseconds and offset instants, and a
+ * never-matching year pattern. Some older row ids still name croner 10's
+ * behaviour (`e8_…_every_day_quirk`, `h2_…_lands_in_past`,
+ * `h4_…_skips_repeat`, `i5` / `i6_…_ms_dropped…`, `i10_…_shifts`); they are
+ * kept for continuity, and `enclave/cron.rs`'s header says what croner 11
+ * does with each.
  */
 
 import { createRequire } from 'node:module';
@@ -206,6 +214,26 @@ const corpus: Row[] = [
   { id: 'k8_month_step_is_index_based', expr: '0 0 1 */3 *', anchor: '2026-06-15T12:00:00.000Z' },
   { id: 'k9_day_step_is_index_based', expr: '0 0 */10 * *', anchor: '2026-06-15T12:00:00.000Z' },
   { id: 'k10_multi_space', expr: '0  12   * * *', anchor: '2026-06-15T12:00:00.000Z' },
+
+  // --- K (P4.D365): the croner 11 classes the rows above do not isolate -----
+  // Interval patterns across the 2026-11-01 fold run BOTH passes.
+  { id: 'k11_c11_fold_every30_first_pass', expr: '*/30 * * * *', anchor: '2026-11-01T06:15:00.000Z' },
+  { id: 'k12_c11_fold_every30_into_second_pass', expr: '*/30 * * * *', anchor: '2026-11-01T06:45:00.000Z' },
+  { id: 'k13_c11_fold_every15_second_pass', expr: '*/15 * * * *', anchor: '2026-11-01T07:20:00.000Z' },
+  // An hourly (interval) pattern skips the 2026-03-08 gap; a fixed-time one
+  // with seconds runs at the transition.
+  { id: 'k14_c11_gap_hourly_minute', expr: '5 * * * *', anchor: '2026-03-08T07:30:00.000Z' },
+  { id: 'k15_c11_gap_hourly_seconds', expr: '30 5 * * * *', anchor: '2026-03-08T07:30:00.000Z' },
+  { id: 'k16_c11_gap_fixed_seconds', expr: '15 45 2 * * *', anchor: '2026-03-08T07:30:00.000Z' },
+  // `?` is `*` before the star checks, in every field.
+  { id: 'k17_c11_qmark_dow', expr: '0 0 1 * ?', anchor: '2026-06-15T12:00:00.000Z' },
+  { id: 'k18_c11_qmark_dom_and_dow', expr: '0 0 ? * ?', anchor: '2026-06-15T12:00:00.000Z' },
+  { id: 'k19_c11_qmark_dom_month_dow', expr: '0 0 ? ? ?', anchor: '2026-06-15T12:00:00.000Z' },
+  // One-offs keep milliseconds and offset instants.
+  { id: 'k20_c11_oneoff_999ms_future', expr: '2026-06-15T10:30:00.999', anchor: '2026-06-15T15:30:00.998Z' },
+  { id: 'k21_c11_oneoff_plus0530_at_fold', expr: '2026-11-01T12:30:00+05:30', anchor: '2026-10-01T00:00:00.000Z' },
+  // A never-matching 7-field year pattern (Feb 30 in 2027).
+  { id: 'k22_c11_never_matching_year', expr: '0 0 0 30 2 * 2027', anchor: '2026-06-15T12:00:00.000Z' },
 ];
 
 // Probe row: the Rust side asserts the resolved timezone and croner version

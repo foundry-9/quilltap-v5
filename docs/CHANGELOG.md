@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — fix(enclave): cron slots follow croner 11 (v4 3936fdf65)
+
+_Versions: core 0.0.1429._
+
+P4.D365 item 5. v4 moved croner 10.0.1 → 11.0.0, and `enclave/cron.rs` (a transcription of croner's forward engine) follows it, from croner 11's published `dist/croner.js`. `?` now becomes `*` before the star checks, so `0 0 ? * 5` is Fridays only. Fixed-time patterns in a spring-forward gap run at the transition (03:00, not 03:30), and interval patterns skip the gap. In a fall-back fold, fixed-time patterns run once at the earlier pass and never behind the anchor; interval patterns run through both passes (croner 11's `_findOccurrence` / `_walk` / `_runAt` and its own `v` / `_` DST resolution, transcribed). One-off datetimes keep their milliseconds and their offset instants. Never-matching wildcard-year searches stop after 400 years. `apply()` now checks `hour > 23` and the month's real last day. `EXPECTED_CRONER` is now `11.0.0`. Twelve corpus rows moved as measured at planning. Twelve new `k11`–`k22` rows cover the new classes (136 per zone, both zones green). The family now lists every differing row instead of stopping at the first.
+
 #### 2026-11-04 — feat(cli): quilltap db integrity (v4 70d2859d8)
 
 _Versions: cli 0.0.39._

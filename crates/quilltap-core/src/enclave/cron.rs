@@ -1,57 +1,75 @@
 //! The croner-semantics next-occurrence computation — U4.2 of the enclave
 //! engine (`docs/developer/porting/enclave-engine.md`).
 //!
-//! v4 evaluates autonomous-room cron schedules with **croner 10.0.1** (JS), in
-//! three identical one-shot call sites (`nextCronFireFrom` in
-//! `autonomous-room-schedule-tick.ts`, `recomputeNextRun` in
-//! `autonomous-room-turn.ts`, and the manual-start slot consumption in
-//! `autonomous-room.service.ts`):
+//! v4 evaluates autonomous-room cron schedules with **croner 11.0.0** (JS;
+//! v4 `3936fdf65` moved it from 10.0.1), in three identical one-shot call
+//! sites (`nextCronFireFrom` in `autonomous-room-schedule-tick.ts`,
+//! `recomputeNextRun` in `autonomous-room-turn.ts`, and the manual-start slot
+//! consumption in `autonomous-room.service.ts`):
 //!
 //! ```text
 //! try { return new Cron(cronExpr).nextRun(anchor) ?? null } catch { return null }
 //! ```
 //!
 //! v4 passes **no timezone option**, so croner runs in Node's system-local
-//! timezone using plain JS `Date` semantics: the anchor's wall-clock fields
-//! come from the local getters (`getHours()` …), and the computed wall time is
-//! mapped back to an instant with the local `new Date(y, m, d, …)` constructor.
-//! That constructor's DST mapping (ES spec `LocalTZA`) is: for a *skipped*
-//! wall time (spring-forward gap) use the offset **before** the transition,
-//! and for a *repeated* wall time (fall-back fold) pick the **earlier**
-//! occurrence — exactly `jiff`'s `Compatible` disambiguation strategy (gap →
-//! `before` offset, fold → `before` offset). So the port takes the timezone as
-//! an **injected IANA name** (production passes the host's local zone) and
-//! maps wall ↔ instant through `jiff`, reproducing V8's local-`Date` behavior.
+//! timezone: the anchor's wall-clock fields come from the local getters
+//! (`getHours()` …). croner 11 no longer maps a computed wall time back
+//! through the local `new Date(y, m, d, …)` constructor (croner 10 did, and
+//! inherited V8's `LocalTZA` rule: gap → pre-transition offset, fold →
+//! earlier pass). It resolves each candidate wall time ITSELF (`v`): a
+//! single instant, a fold's two instants, or a gap — reading the zone's
+//! offset at chosen instants (`M`) and binary-searching an offset transition
+//! to the second (`_`). The port takes the timezone as an **injected IANA
+//! name** (production passes the host's local zone), transcribes those
+//! helpers step for step, and reads only the offsets and local fields through
+//! `jiff`.
 //!
 //! **Crate decision (recorded per the work order):** no cron crate. The Rust
-//! `croner` crate (3.0.1, same author) sits on chrono + chrono-tz and carries
-//! its own DST disambiguation, which does not reproduce the *tz-less* JS-Date
-//! path v4 actually exercises. The whole forward engine of croner-JS 10.0.1
-//! (`CronPattern.parse` + `CronDate.increment/recurse/_findMatch/apply`,
-//! `src/pattern.ts` + `src/date.ts`) is a few hundred lines and is transcribed
-//! here byte-faithfully instead, over jiff for the two tzdb touch points. The
-//! differential (`enclave_cron_equivalence`) drives v4's real installed croner
-//! and pins the semantics, including the quirks:
+//! `croner` crate sits on chrono + chrono-tz and carries its own DST
+//! disambiguation, which does not reproduce the *tz-less* path v4 actually
+//! exercises. The forward engine of croner-JS (`CronPattern.parse`,
+//! `CronDate.increment/recurse/_findMatch/_matchDayValue/match/apply`, and
+//! `Cron._findOccurrence/_walk/_runAt` with the DST helpers) is a few hundred
+//! lines and is transcribed here instead, from croner 11.0.0's published
+//! `dist/croner.js` (the npm tarball ships only the minified bundle). The
+//! differential (`enclave_cron_equivalence`) drives v4's real installed
+//! croner and pins the semantics:
 //!
 //! - `nextRun(anchor)` is strictly-after at **second** granularity: croner
 //!   bumps `second += 1` and zeroes ms before searching, so an anchor exactly
 //!   on a slot skips it, and odd-ms anchors round up to the next second.
 //! - dom/dow **union** (legacy OR) when both are restricted; the `+` prefix on
 //!   dow forces AND (`0 0 13 * +5` = Friday the 13th).
-//! - `starDOM` is checked *before* `?` → `*` substitution, so `0 0 ? * 5`
-//!   fires **every day** (dom reads as unrestricted-but-not-star → OR with
-//!   dow) while `0 0 * * 5` fires Fridays only.
 //! - Month/day name replacement is sequential-global, so `JANFEB` → `12` →
 //!   December (v4's alpha-replace quirk, banked in the corpus).
-//! - A fold wall time maps to the **earlier** occurrence, so an anchor between
-//!   the two occurrences of a repeated 01:30 gets a `nextRun` *in the past*.
 //! - `5#` (empty nth) is falsy → plain "any Friday"; `5L` = last Friday;
-//!   `L`/`LW`/`15W` day-of-month modifiers per croner 10.
+//!   `L`/`LW`/`15W` day-of-month modifiers.
 //! - Optional 6th (seconds) and 7th (year) fields; `@daily`-style nicknames
 //!   (`@reboot` throws); 5-field seconds default to `0`.
 //! - A pattern containing `:` at index > 0 is croner's **one-off datetime**
-//!   branch: the string is parsed as a local (or `Z`/offset) ISO datetime,
-//!   truncated to seconds, and returned iff strictly after the anchor.
+//!   branch: the string is parsed as V8's `Date.parse` parses it (a local
+//!   or `Z`/offset ISO datetime) and returned iff strictly after the anchor.
+//!
+//! **What croner 11 changed** (each pinned by a corpus row, ids in brackets —
+//! the ids that name croner 10's behaviour keep their names for continuity):
+//! - `?` is substituted BEFORE the star checks, so `0 0 ? * 5` is Fridays
+//!   only (`e8_qmark_dom_every_day_quirk`; croner 10 read dom as restricted
+//!   and fired every day).
+//! - A FIXED-TIME pattern (one second, one minute, one hour, no `*` or `/`)
+//!   whose wall time falls in a spring-forward gap runs at the first valid
+//!   time after the gap — 03:00, not 03:30 (`g1`, `g2`, `g5`, `g7`); an
+//!   INTERVAL pattern skips the gap's wall times.
+//! - In a fall-back fold a fixed-time pattern runs once, at the earlier pass,
+//!   and never behind the anchor — anchored between the two passes it runs
+//!   the next day (`h2_fold_between_lands_in_past`); an interval pattern runs
+//!   through BOTH passes (`h4_fold_hourly_skips_repeat`).
+//! - A one-off keeps its milliseconds and a `Z` / offset instant as it is
+//!   (`i5`, `i6`, `i10`).
+//! - A never-matching wildcard-year pattern gives up after 400 years of
+//!   search per increment (croner 10's recursion overflowed the stack).
+//!
+//! History: this module transcribed croner 10.0.1 from 2026-07-08 (U4.2)
+//! until P4.D365 (2026-11), whose rows above record what moved.
 //!
 //! Documented bounded seams (conservative-failure, kept out of the corpus):
 //! the one-off branch accepts the strict ISO-8601 subset
@@ -378,6 +396,8 @@ struct Pattern {
     star_dow: bool,
     star_year: bool,
     use_and_logic: bool,
+    /// croner 11 `isFixedTime` (see [`parse_pattern`]).
+    is_fixed_time: bool,
 }
 
 impl Pattern {
@@ -397,6 +417,7 @@ impl Pattern {
             star_dow: false,
             star_year: false,
             use_and_logic: false,
+            is_fixed_time: false,
         }
     }
 
@@ -781,6 +802,16 @@ fn parse_pattern(raw: &str) -> Result<Pattern, ()> {
         parts.push("*".to_string());
     }
 
+    // `?` is a wildcard alias, substituted across every field — croner 11
+    // does it FIRST (croner 10 substituted after the starDOM / starDOW
+    // checks, so `0 0 ? * 5` read dom as "restricted" and fired every day;
+    // 11 reads it as `*` → AND with dow → Fridays only).
+    if pattern_str.contains('?') {
+        for p in parts.iter_mut() {
+            *p = p.replace('?', "*");
+        }
+    }
+
     // `LW` / `L` in day-of-month become pattern-level flags.
     if parts[3].to_uppercase() == "LW" {
         pat.last_weekday = true;
@@ -790,7 +821,6 @@ fn parse_pattern(raw: &str) -> Result<Pattern, ()> {
         pat.last_day_of_month = true;
     }
 
-    // starDOM / starYear are checked BEFORE `?` substitution (the `?`-quirk).
     pat.star_dom = parts[3] == "*";
     pat.star_year = parts[6] == "*";
 
@@ -811,15 +841,7 @@ fn parse_pattern(raw: &str) -> Result<Pattern, ()> {
         }
     }
 
-    // starDOW also precedes `?` substitution.
     pat.star_dow = parts[5] == "*";
-
-    // `?` is a wildcard alias, substituted across every field.
-    if pattern_str.contains('?') {
-        for p in parts.iter_mut() {
-            *p = p.replace('?', "*");
-        }
-    }
 
     // Field alphabets.
     for (i, p) in parts.iter().enumerate() {
@@ -837,6 +859,16 @@ fn parse_pattern(raw: &str) -> Result<Pattern, ()> {
     part_to_array(&mut pat, Part::Year, &parts[6], 0, 1)?;
     // (croner's `dayOfWeek[7] → [0]` copy is dead code at length 7 — setPart
     // already normalizes 7 to 0 — so there is nothing to mirror.)
+
+    // croner 11 `isFixedTime`: seconds, minutes and hours each name exactly
+    // one value with no `*` or `/` — a "runs once a day at H:M:S" pattern,
+    // which DST handling treats differently from an interval pattern.
+    let fixed = |field: &str, arr: &[i64]| {
+        !field.contains('*') && !field.contains('/') && arr.iter().filter(|v| **v != 0).count() == 1
+    };
+    pat.is_fixed_time = fixed(&parts[0], &pat.second)
+        && fixed(&parts[1], &pat.minute)
+        && fixed(&parts[2], &pat.hour);
 
     Ok(pat)
 }
@@ -917,16 +949,18 @@ fn pattern_arr(pat: &Pattern, t: Target) -> &[i64] {
     }
 }
 
-/// croner `CronDate.apply()`: if any field could be out of bounds, renormalize
-/// the whole bag through `Date.UTC` semantics (fields may be arbitrarily out
-/// of range, including Feb 29 in a leap year which round-trips unchanged but
-/// still returns true — the caller relies on that for the month re-check).
+/// croner `CronDate.apply()`: if any field is out of bounds, renormalize the
+/// whole bag through `Date` UTC arithmetic (croner 11 builds it with
+/// `setUTCFullYear` + `setUTCHours`, so years 0-99 are absolute — as
+/// `days_from_civil` is). croner 11 checks `hour > 23` and the month's REAL
+/// last day (10 checked `hour > 59` and February's fixed 28, so a leap Feb 29
+/// round-tripped unchanged but still answered true).
 fn apply(w: &mut Wall) -> bool {
     let out = w.month > 11
         || w.month < 0
-        || w.day > DAYS_OF_MONTH[w.month as usize]
+        || w.day > last_day_of_month(w.year, w.month)
         || w.day < 1
-        || w.hour > 59
+        || w.hour > 23
         || w.minute > 59
         || w.second > 59
         || w.hour < 0
@@ -955,81 +989,63 @@ fn apply(w: &mut Wall) -> bool {
     true
 }
 
+/// croner 11 `_matchDayValue`: the day-of-month verdict `dom` for `day` in
+/// `w`'s month, widened by the `W` / `LW` / `L` modifiers and combined with
+/// day-of-week by croner's legacy rule (v4 passes no options, so
+/// `domAndDow` is false): `+` forces AND; otherwise a non-star dom ORs with
+/// dow (the union), and a star dom ANDs (dom side all-ones, dow decides).
+fn match_day_value(pat: &Pattern, w: &Wall, dom: i64, day: i64) -> i64 {
+    let mut r = dom;
+    if r == 0 {
+        for (a, &on) in pat.nearest_weekdays.iter().enumerate() {
+            if on != 0 {
+                let o = nearest_weekday(w.year, w.month, a as i64 + 1);
+                if o != -1 && o == day {
+                    r = 1;
+                    break;
+                }
+            }
+        }
+    }
+    if pat.last_weekday && day == last_weekday_of_month(w.year, w.month) {
+        r = 1;
+    }
+    if pat.last_day_of_month && day == last_day_of_month(w.year, w.month) {
+        r = 1;
+    }
+    if !pat.star_dow {
+        let first = weekday_of(w.year, w.month, 1);
+        let mut o = pat.day_of_week[((first + (day - 1)) % 7) as usize];
+        if o != 0 && (o & ANY_OCCURRENCE) != 0 {
+            o = if is_nth_weekday_of_month(w.year, w.month, day, o) {
+                1
+            } else {
+                0
+            };
+        }
+        let (dom_hit, dow_hit) = (r != 0, o != 0);
+        let hit = if pat.use_and_logic || pat.star_dom {
+            dom_hit && dow_hit
+        } else {
+            dom_hit || dow_hit
+        };
+        r = if hit { 1 } else { 0 };
+    }
+    r
+}
+
 /// croner `_findMatch` (forward direction): 1 = current value matches,
 /// 2 = advanced to a later value, 3 = no match at this level.
 fn find_next(w: &mut Wall, target: Target, pat: &Pattern, offset: i64) -> u8 {
     let original = get_field(w, target);
-    let precomputed_last_day = if pat.last_day_of_month {
-        Some(last_day_of_month(w.year, w.month))
-    } else {
-        None
-    };
-    let f_dom_week_day = if !pat.star_dow && target == Target::Day {
-        Some(weekday_of(w.year, w.month, 1))
-    } else {
-        None
-    };
     let arr = pattern_arr(pat, target);
     let len = arr.len() as i64;
-
     let mut i = original + offset;
     while i < len {
         let mut mtch: i64 = if i >= 0 { arr[i as usize] } else { 0 };
-
-        // Nearest-weekday (`W`) days.
-        if target == Target::Day && mtch == 0 {
-            for day_with_w in 0..31i64 {
-                if pat.nearest_weekdays[day_with_w as usize] != 0 {
-                    let execution_day = nearest_weekday(w.year, w.month, day_with_w - offset);
-                    if execution_day == -1 {
-                        continue;
-                    }
-                    if execution_day == i - offset {
-                        mtch = 1;
-                        break;
-                    }
-                }
-            }
+        if target == Target::Day {
+            mtch = match_day_value(pat, w, mtch, i - offset);
         }
-        // Last weekday of month (`LW`).
-        if target == Target::Day
-            && pat.last_weekday
-            && i - offset == last_weekday_of_month(w.year, w.month)
-        {
-            mtch = 1;
-        }
-        // Last day of month (`L`).
-        if target == Target::Day
-            && pat.last_day_of_month
-            && Some(i - offset) == precomputed_last_day
-        {
-            mtch = 1;
-        }
-        // Day-of-week, combined with day-of-month by croner's legacy rule:
-        // `+` forces AND; otherwise a non-star dom ORs with dow (the union),
-        // and a star dom ANDs (dom side is all-ones, so dow decides).
-        if target == Target::Day && !pat.star_dow {
-            let f_dom = f_dom_week_day.unwrap_or(0);
-            let mut dow_match = pat.day_of_week[((f_dom + ((i - offset) - 1)) % 7) as usize];
-            if dow_match != 0 && (dow_match & ANY_OCCURRENCE) != 0 {
-                dow_match = if is_nth_weekday_of_month(w.year, w.month, i - offset, dow_match) {
-                    1
-                } else {
-                    0
-                };
-            }
-            let dom_hit = mtch != 0;
-            let dow_hit = dow_match != 0;
-            let hit = if pat.use_and_logic {
-                dom_hit && dow_hit
-            } else if !pat.star_dom {
-                dom_hit || dow_hit
-            } else {
-                dom_hit && dow_hit
-            };
-            mtch = if hit { 1 } else { 0 };
-        }
-
         if mtch != 0 {
             set_field(w, target, i - offset);
             return if original != i - offset { 2 } else { 1 };
@@ -1039,12 +1055,46 @@ fn find_next(w: &mut Wall, target: Target, pat: &Pattern, offset: i64) -> u8 {
     3
 }
 
+/// croner `CronDate.match`: do `w`'s fields satisfy the pattern as they stand
+/// (no search)? `Cron._walk`'s inclusive start asks it of a transition
+/// instant's wall fields.
+fn pattern_matches(pat: &Pattern, w: &Wall) -> bool {
+    if !pat.star_year
+        && (w.year < 0 || w.year >= pat.year.len() as i64 || pat.year[w.year as usize] == 0)
+    {
+        return false;
+    }
+    for (target, offset) in STEPS {
+        let v = get_field(w, target);
+        let arr = pattern_arr(pat, target);
+        if v + offset < 0 || v + offset >= arr.len() as i64 {
+            return false;
+        }
+        let mut o = arr[(v + offset) as usize];
+        if target == Target::Day {
+            o = match_day_value(pat, w, o, v);
+        }
+        if o == 0 {
+            return false;
+        }
+    }
+    true
+}
+
 /// croner `CronDate.recurse` — every recursive call in the original is in tail
 /// position, so this is the loop-ified transcription. Returns false where the
 /// JS returns null (no occurrence within the year-3000/-10000 search bound).
 fn recurse(w: &mut Wall, pat: &Pattern) -> bool {
+    let start_year = w.year;
     let mut doing: usize = 0;
     loop {
+        // croner 11's bound for a never-matching wildcard-year pattern (it
+        // replaced croner 10's recursion, which overflowed the stack): give up
+        // once the search has wandered more than 400 years from where this
+        // increment began.
+        if pat.star_year && (w.year - start_year).abs() > 400 {
+            return false;
+        }
         // Year-constraint fast-forward (7-field patterns only).
         if doing == 0 && !pat.star_year {
             if w.year >= 0 && (w.year as usize) < pat.year.len() && pat.year[w.year as usize] == 0 {
@@ -1127,25 +1177,128 @@ fn recurse(w: &mut Wall, pat: &Pattern) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Wall ↔ instant bridges (V8 local-Date semantics via jiff Compatible)
+// Wall ↔ instant — croner 11's own DST resolution (`v`, `_`, `U`, `M`), with
+// the zone's offsets read through jiff
 // ---------------------------------------------------------------------------
 
-/// `new Date(y, m, d, h, min, s, ms)` in the target zone: jiff's Compatible
-/// disambiguation is exactly the ES `LocalTZA` rule (gap → pre-transition
-/// offset, fold → earlier occurrence).
-fn wall_to_instant_ms(tz: &TimeZone, w: &Wall) -> Option<i64> {
-    let dt = civil::DateTime::new(
-        i16::try_from(w.year).ok()?,
-        i8::try_from(w.month + 1).ok()?,
-        i8::try_from(w.day).ok()?,
-        i8::try_from(w.hour).ok()?,
-        i8::try_from(w.minute).ok()?,
-        i8::try_from(w.second).ok()?,
-        0,
-    )
-    .ok()?;
-    let ts = tz.to_ambiguous_timestamp(dt).compatible().ok()?;
-    Some(ts.as_millisecond() + w.ms)
+/// croner 11 `x`: the probe distance either side of an instant when looking
+/// for a second occurrence of a wall time (3 h — wider than any DST shift).
+const PROBE_MS: i64 = 3 * 3_600_000;
+/// croner 11 `N`: one day, the window `_findOccurrence` searches for the next
+/// offset transition.
+const DAY_MS: i64 = 86_400_000;
+
+/// The six wall-clock fields croner's `TimePoint` carries (`month` 1-12) —
+/// what `C` compares and `w` turns into `Date.UTC`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Fields {
+    y: i64,
+    m: i64,
+    d: i64,
+    h: i64,
+    i: i64,
+    s: i64,
+}
+
+impl Fields {
+    fn of(w: &Wall) -> Fields {
+        Fields {
+            y: w.year,
+            m: w.month + 1,
+            d: w.day,
+            h: w.hour,
+            i: w.minute,
+            s: w.second,
+        }
+    }
+
+    /// croner `w`: `Date.UTC(y, m - 1, d, h, i, s)`.
+    fn as_utc_ms(&self) -> i64 {
+        (days_from_civil(self.y, self.m, self.d) * 86_400 + self.h * 3_600 + self.i * 60 + self.s)
+            * 1_000
+    }
+}
+
+/// croner `g(date, undefined)`: the instant's local wall-clock fields
+/// (v4 passes no timezone, so croner reads the JS local getters — here, the
+/// injected zone).
+fn local_fields(tz: &TimeZone, ms: i64) -> Option<Fields> {
+    let w = instant_to_wall(tz, ms)?;
+    Some(Fields::of(&w))
+}
+
+/// croner `M`: the zone's offset at an instant, as `w(local fields)` minus the
+/// instant floored to the second.
+fn offset_ms(tz: &TimeZone, ms: i64) -> Option<i64> {
+    Some(local_fields(tz, ms)?.as_utc_ms() - (ms - ms.rem_euclid(1_000)))
+}
+
+/// croner 11's three-way answer for a wall time (`v`).
+enum Resolved {
+    Single(i64),
+    Ambiguous { earlier: i64, later: i64 },
+    Gap { before: i64, after: i64 },
+}
+
+/// croner 11 `v`: resolve a wall time in the zone — one instant, two (a
+/// fall-back fold), or none (a spring-forward gap, with the instants either
+/// side). Transcribed step for step.
+fn resolve(tz: &TimeZone, f: &Fields) -> Option<Resolved> {
+    let e = f.as_utc_ms();
+    let n = e - offset_ms(tz, e)?;
+    let s = local_fields(tz, n)?;
+    if s == *f {
+        let a = s.as_utc_ms() - n;
+        let o = n - (offset_ms(tz, n - PROBE_MS)? - a);
+        if o < n && local_fields(tz, o)? == *f {
+            return Some(Resolved::Ambiguous {
+                earlier: o,
+                later: n,
+            });
+        }
+        let u = n + (a - offset_ms(tz, n + PROBE_MS)?);
+        if u > n && local_fields(tz, u)? == *f {
+            return Some(Resolved::Ambiguous {
+                earlier: n,
+                later: u,
+            });
+        }
+        return Some(Resolved::Single(n));
+    }
+    let r = e - (s.as_utc_ms() - n);
+    if local_fields(tz, r)? == *f {
+        return Some(Resolved::Single(r));
+    }
+    Some(Resolved::Gap {
+        before: n.min(r),
+        after: n.max(r),
+    })
+}
+
+/// croner 11 `_`: binary-search `[lo, hi]` in whole seconds for the first
+/// instant whose offset differs from `lo`'s — the transition instant (or
+/// `hi` when the window holds none).
+fn transition_between(tz: &TimeZone, mut lo: i64, mut hi: i64) -> Option<i64> {
+    let n = offset_ms(tz, lo)?;
+    while hi - lo > 1_000 {
+        let mid = lo + ((hi - lo) / 2_000) * 1_000;
+        if offset_ms(tz, mid)? == n {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    Some(hi)
+}
+
+/// croner 11 `U`: is the instant the EARLIER or the LATER pass of a repeated
+/// wall time? `None` when its wall time is not repeated.
+fn fold_side(tz: &TimeZone, ms: i64) -> Option<bool> {
+    let f = local_fields(tz, ms)?;
+    match resolve(tz, &f)? {
+        Resolved::Ambiguous { later, .. } => Some(ms < later),
+        _ => None,
+    }
 }
 
 /// The anchor's wall-clock fields (JS local getters on the input `Date`).
@@ -1163,28 +1316,94 @@ fn instant_to_wall(tz: &TimeZone, ms: i64) -> Option<Wall> {
     })
 }
 
-/// croner `CronDate.getTime()` round-trip of an existing instant: project to
-/// wall fields, then rebuild through the local constructor. During a fall-back
-/// fold the rebuild picks the earlier occurrence, so an instant in the
-/// repeated hour's second pass shifts an hour earlier — a real croner
-/// behavior the corpus pins.
-fn reconstruct_through_wall(tz: &TimeZone, ms: i64) -> Option<i64> {
-    let w = instant_to_wall(tz, ms)?;
-    let whole = Wall { ms: 0, ..w };
-    Some(wall_to_instant_ms(tz, &whole)? + w.ms)
-}
-
-/// The pattern branch of `nextRun`: seed from the anchor's local fields,
-/// `second += 1; ms = 0`, then search.
-fn next_from_pattern(pat: &Pattern, anchor_ms: i64, tz: &TimeZone) -> Option<i64> {
-    let mut w = instant_to_wall(tz, anchor_ms)?;
+/// croner `CronDate.increment` (no interval): `second += 1; ms = 0`, apply,
+/// search. `false` = no occurrence within the bound.
+fn increment(w: &mut Wall, pat: &Pattern) -> bool {
     w.second += 1;
     w.ms = 0;
-    apply(&mut w);
-    if !recurse(&mut w, pat) {
+    apply(w);
+    recurse(w, pat)
+}
+
+/// croner 11 `Cron._runAt` (forward): the instant a matching wall time runs
+/// at, if it is strictly after `after`. A plain wall time runs once. A fold's
+/// wall time runs at its EARLIER pass only for a fixed-time pattern, and at
+/// whichever of the two passes comes first after `after` for an interval
+/// pattern (so an interval runs through both copies of the repeated hour). A
+/// gap's wall time does not exist: an interval pattern skips it, and a
+/// fixed-time pattern runs at the transition itself (the first valid time
+/// after the gap — 03:00 for a 02:30 schedule on a spring-forward day),
+/// provided the transition falls on the same calendar day.
+fn run_at(pat: &Pattern, w: &Wall, after: i64, tz: &TimeZone) -> Option<Option<i64>> {
+    let later_than = |ms: i64| ms > after;
+    let f = Fields::of(w);
+    Some(match resolve(tz, &f)? {
+        Resolved::Single(d) => later_than(d).then_some(d),
+        Resolved::Ambiguous { earlier, later } => {
+            if pat.is_fixed_time {
+                later_than(earlier).then_some(earlier)
+            } else {
+                [earlier, later].into_iter().find(|&ms| later_than(ms))
+            }
+        }
+        Resolved::Gap {
+            before,
+            after: gap_after,
+        } => {
+            if !pat.is_fixed_time {
+                None
+            } else {
+                let h = transition_between(tz, before, gap_after)?;
+                let c = local_fields(tz, h)?;
+                (c.y == f.y && c.m == f.m && c.d == f.d && later_than(h)).then_some(h)
+            }
+        }
+    })
+}
+
+/// croner 11 `Cron._walk` (forward): from `start`'s wall fields, step to each
+/// matching wall time in turn and return the first that [`run_at`] runs
+/// strictly after `after`. `inclusive` tries `start` itself first when it
+/// already matches. `None` = no occurrence (or a zone lookup out of range).
+fn walk(pat: &Pattern, start: Wall, after: i64, inclusive: bool, tz: &TimeZone) -> Option<i64> {
+    let mut u = start;
+    if (!inclusive || !pattern_matches(pat, &u)) && !increment(&mut u, pat) {
         return None;
     }
-    wall_to_instant_ms(tz, &w)
+    loop {
+        if let Some(h) = run_at(pat, &u, after, tz)? {
+            return Some(h);
+        }
+        if !increment(&mut u, pat) {
+            return None;
+        }
+    }
+}
+
+/// The pattern branch of `nextRun` — croner 11 `Cron._findOccurrence`
+/// (forward). Walk from the anchor; then, when the anchor sits in the EARLIER
+/// pass of a repeated hour and the pattern is not fixed-time, also walk from
+/// the coming offset transition (inclusive) and take whichever run comes
+/// first — so an hourly pattern anchored in the first 01:xx still runs at the
+/// second 01:00.
+fn next_from_pattern(pat: &Pattern, anchor_ms: i64, tz: &TimeZone) -> Option<i64> {
+    let start = instant_to_wall(tz, anchor_ms)?;
+    let r = walk(pat, start, anchor_ms, false, tz);
+    if pat.is_fixed_time || fold_side(tz, anchor_ms) != Some(true) {
+        return r;
+    }
+    let o = anchor_ms.div_euclid(1_000) * 1_000;
+    let u = transition_between(tz, o, o + DAY_MS)?;
+    if let Some(r) = r {
+        if u - r > 0 {
+            return Some(r);
+        }
+    }
+    let h = walk(pat, instant_to_wall(tz, u)?, u - 1, true, tz);
+    match (r, h) {
+        (Some(r), Some(h)) => Some(if r - h > 0 { h } else { r }),
+        (r, h) => r.or(h),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,13 +1417,16 @@ struct IsoParts {
     h: i64,
     mi: i64,
     s: i64,
+    /// Milliseconds — the first three fraction digits, right-padded (V8's
+    /// `ReadMilliseconds`); 0 when absent.
+    ms: i64,
     /// Minutes east of UTC; `Some(0)` for `Z`. `None` = no offset (local).
     offset_min: Option<i64>,
 }
 
 /// The strict ISO-8601 subset of `Date.parse` that croner's one-off branch
-/// consumes: `YYYY-MM-DDTHH:MM[:SS[.f{1,9}]][Z|±HH:MM]`. Fractional seconds
-/// are consumed but dropped (croner truncates the one-off to whole seconds).
+/// consumes: `YYYY-MM-DDTHH:MM[:SS[.f{1,9}]][Z|±HH:MM]`. croner 11 keeps the
+/// milliseconds (croner 10 truncated the one-off to whole seconds).
 /// V8 validates components *syntactically* (day 01-31 in any month, hour
 /// 00-23 or exactly `24:00[:00[.000]]`) and normalizes calendar overflow
 /// (`2026-02-30` → Mar 2 — probed on Node 24, banked in the corpus). V8's
@@ -1246,6 +1468,7 @@ fn parse_iso_local(s: &str) -> Option<IsoParts> {
     let mut pos = 16usize;
     let mut sec = 0i64;
     let mut frac_zero = true;
+    let mut ms = 0i64;
     if lit(pos, b':') {
         sec = digits(pos + 1, 2)?;
         pos += 3;
@@ -1255,10 +1478,16 @@ fn parse_iso_local(s: &str) -> Option<IsoParts> {
                 if b[pos + 1 + n] != b'0' {
                     frac_zero = false;
                 }
+                if n < 3 {
+                    ms = ms * 10 + (b[pos + 1 + n] - b'0') as i64;
+                }
                 n += 1;
             }
             if n == 0 {
                 return None;
+            }
+            for _ in n..3 {
+                ms *= 10;
             }
             pos += 1 + n;
         }
@@ -1294,23 +1523,33 @@ fn parse_iso_local(s: &str) -> Option<IsoParts> {
         h,
         mi,
         s: sec,
+        ms,
         offset_min,
     })
 }
 
+/// The one-off branch of `nextRun` (croner 11). The string resolves to an
+/// instant exactly as V8's `Date.parse` resolves it — a `Z` / offset form is
+/// that instant; a local form maps through the zone (a skipped wall time
+/// with the pre-transition offset, a repeated one to its earlier pass) —
+/// milliseconds INCLUDED, and croner 11 keeps that instant as it is (croner
+/// 10 truncated it to seconds and rebuilt it through the local wall fields,
+/// which moved a `Z` instant in a fold's second pass an hour earlier). It
+/// runs iff strictly after the anchor (`_next`: `anchor - once >= 0` → null).
 fn next_one_off(expr: &str, anchor_ms: i64, tz: &TimeZone) -> Option<i64> {
     let p = parse_iso_local(expr)?;
-    // Resolve the string to an instant (seconds precision — croner's
-    // TimePoint drops fractional seconds).
-    let once0_ms = match p.offset_min {
+    let once_ms = match p.offset_min {
         Some(off) => {
             (days_from_civil(p.y, p.mo, p.d) * 86_400 + p.h * 3_600 + p.mi * 60 + p.s - off * 60)
                 * 1_000
+                + p.ms
         }
         None => {
             // Normalize calendar overflow (Feb 30 → Mar 2, 24:00 → next day)
             // the way V8's MakeDay/MakeTime do, then map the normalized wall
-            // time through the local constructor.
+            // time through the local constructor (jiff's Compatible strategy
+            // is the ES `LocalTZA` rule: gap → pre-transition offset, fold →
+            // earlier pass).
             let total_secs =
                 days_from_civil(p.y, p.mo, p.d) * 86_400 + p.h * 3_600 + p.mi * 60 + p.s;
             let day_num = total_secs.div_euclid(86_400);
@@ -1332,19 +1571,10 @@ fn next_one_off(expr: &str, anchor_ms: i64, tz: &TimeZone) -> Option<i64> {
                 .compatible()
                 .ok()?
                 .as_millisecond()
+                + p.ms
         }
     };
-    // croner routes the resolved instant back through the local wall fields
-    // (TimePoint → fromDate → getTime), which shifts a fold's second
-    // occurrence to the earlier one.
-    let once_ms = reconstruct_through_wall(tz, once0_ms)?;
-    let anchor_recon = reconstruct_through_wall(tz, anchor_ms)?;
-    // Strictly after: `once.getTime() <= previousRun.getTime()` → null.
-    if once_ms <= anchor_recon {
-        None
-    } else {
-        Some(once_ms)
-    }
+    (once_ms > anchor_ms).then_some(once_ms)
 }
 
 #[cfg(test)]
@@ -1360,8 +1590,8 @@ mod tests {
         next_occurrence(expr, anchor, tz).map(iso_from_unix_ms)
     }
 
-    // Pinned values below were verified against v4's real croner 10.0.1
-    // (TZ-pinned Node probe, 2026-07-08); the full corpus lives in the
+    // Pinned values below were verified against v4's real croner 11.0.0
+    // (TZ-pinned Node probe, 2026-11-04); the full corpus lives in the
     // enclave_cron_equivalence differential.
 
     #[test]
@@ -1382,32 +1612,53 @@ mod tests {
     }
 
     #[test]
-    fn dst_gap_maps_to_post_transition_wall_time() {
-        // 2026-03-08 02:30 CT does not exist; V8 maps it with the
-        // pre-transition offset → 03:30 CDT.
+    fn dst_gap_fixed_time_runs_at_the_first_valid_time() {
+        // 2026-03-08 02:30 CT does not exist; croner 11 runs a fixed-time
+        // pattern at the transition, 03:00 CDT (croner 10: 03:30).
         assert_eq!(
             next_iso("30 2 * * *", "2026-03-08T07:00:00.000Z", CHI).as_deref(),
-            Some("2026-03-08T08:30:00.000Z")
+            Some("2026-03-08T08:00:00.000Z")
         );
     }
 
     #[test]
-    fn dst_fold_picks_earlier_occurrence_even_behind_anchor() {
-        // Anchor 07:00Z = 01:00 CST (between the two 01:30s); croner returns
-        // the EARLIER 01:30 CDT = 06:30Z — before the anchor. A pinned quirk.
+    fn dst_gap_interval_pattern_skips_the_gap() {
+        // `*/30 * * * *` from 01:45 CST: 02:00 and 02:30 do not exist, so the
+        // next run is 03:00 CDT = 08:00Z.
+        assert_eq!(
+            next_iso("*/30 * * * *", "2026-03-08T07:45:00.000Z", CHI).as_deref(),
+            Some("2026-03-08T08:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn dst_fold_fixed_time_never_runs_behind_the_anchor() {
+        // Anchor 07:00Z = 01:00 CST (between the two 01:30s): a fixed-time
+        // pattern runs only the earlier 01:30 (06:30Z, past), so the next run
+        // is tomorrow's 01:30 CST (croner 10 returned the past 06:30Z).
         assert_eq!(
             next_iso("30 1 * * *", "2026-11-01T07:00:00.000Z", CHI).as_deref(),
-            Some("2026-11-01T06:30:00.000Z")
+            Some("2026-11-02T07:30:00.000Z")
         );
     }
 
     #[test]
-    fn question_mark_dom_is_not_star_dom() {
-        // `?` in dom substitutes to `*` AFTER the starDOM check, so dom ORs
-        // with dow → every day; a literal `*` ANDs → Fridays only.
+    fn dst_fold_interval_pattern_runs_both_passes() {
+        // Anchor 06:30Z = 01:30 CDT (the first pass): the hourly pattern runs
+        // at the SECOND 01:00 (01:00 CST = 07:00Z) before 02:00 CST.
+        assert_eq!(
+            next_iso("0 * * * *", "2026-11-01T06:30:00.000Z", CHI).as_deref(),
+            Some("2026-11-01T07:00:00.000Z")
+        );
+    }
+
+    #[test]
+    fn question_mark_dom_is_star_dom() {
+        // croner 11 substitutes `?` → `*` BEFORE the starDOM check, so `?` and
+        // `*` agree: dom unrestricted → AND with dow → Fridays only.
         assert_eq!(
             next_iso("0 0 ? * 5", "2026-06-15T12:00:00.000Z", CHI).as_deref(),
-            Some("2026-06-16T05:00:00.000Z")
+            Some("2026-06-19T05:00:00.000Z")
         );
         assert_eq!(
             next_iso("0 0 * * 5", "2026-06-15T12:00:00.000Z", CHI).as_deref(),
@@ -1474,16 +1725,16 @@ mod tests {
             next_iso("2026-12-25T09:00:00", "2027-01-01T00:00:00.000Z", CHI),
             None
         );
-        // Fractional seconds are truncated before the strictly-after compare.
+        // croner 11 keeps the milliseconds (croner 10 truncated them).
         assert_eq!(
-            next_iso("2026-06-15T10:30:00.500", "2026-06-15T15:30:00.200Z", CHI),
-            None
+            next_iso("2026-06-15T10:30:00.500", "2026-06-15T15:30:00.200Z", CHI).as_deref(),
+            Some("2026-06-15T15:30:00.500Z")
         );
-        // A Z-instant in the fold's second occurrence reconstructs an hour
-        // earlier through the wall round-trip.
+        // A Z-instant in the fold's second pass is kept as it is (croner 10
+        // rebuilt it through the wall fields, an hour earlier).
         assert_eq!(
             next_iso("2026-11-01T07:30:00Z", "2026-10-01T00:00:00.000Z", CHI).as_deref(),
-            Some("2026-11-01T06:30:00.000Z")
+            Some("2026-11-01T07:30:00.000Z")
         );
         // V8 normalizes syntactically-valid day overflow (Feb 30 → Mar 2) and
         // accepts hour 24 as exactly 24:00 — both probed against real croner.
