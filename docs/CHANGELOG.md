@@ -18,6 +18,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 _Docs-only change._
 
 The `624d0d25c` vendor survey quoted the forbidden spelling inside a `git grep` command, which reddened `spelling_guard` on main and in every lane cut from it. The pattern is now split across two quoted halves.
+#### 2026-11-04 — docs(porting): P4.D361 lane record and the `REAIM` sha in the order's status header
+
+_Docs-only change._
+
+Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
+
 #### 2026-11-04 — REAIM: the IMPORT-DEAD / MOCK-INERT / STALE oracle re-aims at 624d0d25c — 9 C1 rows, 18 families load, 11 rows retired
 
 _No crate versions bumped._
