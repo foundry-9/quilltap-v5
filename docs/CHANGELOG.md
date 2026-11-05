@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — vendor(docs): the `docs/v4/` mirror to `624d0d25c`, 518 → 537 files (P4.D382)
+
+_Docs-only change._
+
+The v4 docs mirror brought to v4 `624d0d25c` in 51 operations: 29 overwrites (the 4.11.0 and 4.12.0 changelog sections moved into `CHANGELOG_V4.md`, and `DATABASE_ENCRYPTION.md` now correctly says ChaCha20-Poly1305), 19 additions (both copies of the window-first search spec, the refactor specs, the 4.12.0 and 4.12.1 release notes), two SVAR specs moved to `complete/`, and the CLI README. A byte and path census against the pin shows zero differences.
+
 #### 2026-11-04 — vendor(help): the `624d0d25c` help tree, 137 → 138 pages (P4.D382)
 
 _No crate versions bumped._
