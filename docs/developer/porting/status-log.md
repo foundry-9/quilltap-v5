@@ -197734,3 +197734,240 @@ The pattern predates the round. P4.D359's newly live Humanoid beat exposed it. T
 1. The owed dogfood pass (the round's live surfaces — `phase-4.md`).
 2. A follow-ups smalls round: the notes above, plus P4.D343 item 41 (the simultaneous round, which re-enables "All at once").
 3. The 4.12.0 catch-up: 62 commits, two D23 moves (`drift-ledger.md` §1 / §3).
+
+## P4.D383 — the SPA CSS / themes / WCAG 2.2 lane (lane record)
+
+Lane `claude/p4-d383-css-1b9a5c` (worktree `.claude/worktrees/p4-d383-css-1b9a5c`), pin `624d0d25c` (4.13.0-dev.8), baseline `236c04e35`, 2026-11-04 → 2026-11-05. The session STARTED on the branch, already cut at the orders' commit `f56f1d311`; no move was needed. `apps/web/node_modules` was installed with `npm ci` (not the clone); `target/` was cloned from main with `cp -cR`.
+
+**Commits:** `3ed560020` `CSS:` (items 1–8, SPA 0.5.972) · `3d57a5574` docs (the `CSS` sha in the status header) · `53bb83947` items 9–11 (SPA 0.5.973) · `88daa9ef2` item 12, the axe re-baseline (SPA 0.5.974) · this record (docs-only). Item 13's live measurement is recorded below (no commit).
+
+### §R.2 probe (observation)
+
+"v4 moved: `4089469a8` (feat: Refine from Memories & Instructions) observed at 2026-11-04 23:07 CST; tree clean; bugfix unmoved; pin usable (`rev-parse 624d0d25c^{commit}` OK, `"version": "4.13.0-dev.8",`)." Every v4 byte was read with `git show 624d0d25c:` / `236c04e35:` / `git diff 236c04e35 624d0d25c`. **No pin worktree was made**: item 12 (c), the live v4 axe run, was not attempted, because (a) proved the queue badges byte-identical.
+
+### The `CSS` commit `3ed560020` and the C16 census
+
+On the branch at `3ed560020`, each C16 name exists:
+1. `qt-bg-popover`: `_utilities.css:81`.
+2. `qt-tab-select`: `_workspace.css:214`, `:227`, `:231`.
+3. The six `qt-chat-*established-fact*` classes: composer ×2, base ×3, band ×1, row ×2, toggle ×6, message ×2 (in `_chat.css`).
+4. `[data-icon="deus-ex-machina"]`: `_icons.css:132`.
+5. `::highlight(quilltap-conversation-search)`: `src/styles.css:248`.
+6. `.qt-page-toolbar-left:empty`: `_layout.css:724`.
+7. `.qt-card:has([aria-haspopup][aria-expanded="true"])`: `_surfaces.css:52-53`.
+8. The default icon `public/images/icons/deus-ex-machina.svg` (cmp-identical to v4's).
+9. The override `public/themes/madmans-box/icons/deus-ex-machina.svg` (cmp-identical).
+10. The madmans-box `theme.json` `deus-ex-machina` key (line 256).
+11. The `check-css-vars` wiring in `package.json` `lint` and `test`.
+
+### Red-first counts
+
+- **`check-css-vars`:** 109 problems on main (`_chat` 44, `_content` 1, `_surfaces` 64) → 18 after the mechanical patch (exactly the order's list) → 0.
+- **`theme-contrast.spec.ts`:** green on main (52 tests); 6 red on the `theme.json` bumps alone; green after `PACK_MANIFESTS` moved.
+- **`tab-strip.spec.ts`:** 5 failed / 2 passed on main (click-select and the scroll effect already held); 7/7 after.
+- **`deus-icon-assets.spec.ts`:** 4 / 4 red before the icons; green after.
+- **The item-9 specs:** 13 failed / 127 passed across 9 files on main; 140 / 140 after.
+- **`check-qt-classes` C16 premise** (a scratch file, `git add -N`): `qt-bg-popover` and `hover:qt-tab-select` were RED on main and green on `CSS`. Bare `qt-chat-established-fact-toggle` is not a guarded family.
+
+### The re-vendor
+
+- **Applied:** `patch -p0` per file from `git diff 236c04e35 624d0d25c -- app/styles/qt-components/` (72 hunks).
+- **The two `_chat.css` rejects, by hand:**
+  - the message-link fallbacks (v5 `:970`, `:976`): `hsl(var(--primary))` → `var(--color-primary)`;
+  - the Document Mode block from `.qt-doc-title` (≈62 lines), with v4's `87c3860df` table: `--qt-text-primary` → `--color-foreground`, `--qt-border` → `--color-border`, `--qt-primary` → `--color-primary`, `--qt-text-secondary` / `--qt-text-muted` → `--color-muted-foreground`.
+- **Fuzz misplacement:** the `.qt-mention-chip:focus-visible` ring hunk landed at ≈`:1006`. The invariance diff caught it, and it was moved back before the `/* ==== end P4.D359 ==== */` fence.
+- **Item 3, the v5-only residues** (before → after):
+  - `.qt-rich-editor-content blockquote`: `border-color: var(--qt-border-color, hsl(var(--border)))` → `var(--qt-border-color, var(--color-border))`.
+  - `.qt-doc-header-button-active`: `color: var(--qt-text-primary)` → `var(--color-foreground)`, and `background: color-mix(in srgb, var(--qt-accent, var(--qt-text-primary)) 18%, transparent)` → `…var(--qt-accent, var(--color-foreground))…` (L1: `--qt-accent` kept as a hook).
+
+**Adaptation invariance:** the sorted `^[<>]` lines of diff(v4 base, v5 main@`f56f1d311`) against diff(v4 pin, v5@`3ed560020`), by count and md5 (first 8). They are equal for every file except `_chat.css`, which differs by exactly the three item-3 lines above.
+
+| file | base n | base md5 | pin n | pin md5 |
+|---|---|---|---|---|
+| qt-components/_chat.css | 336 | 663ca386 | 336 | a699816f |
+| qt-components/_content.css | 120 | 129451b4 | 120 | 129451b4 |
+| qt-components/_icons.css | 12 | 1f87e492 | 12 | 1f87e492 |
+| qt-components/_index.css | 1 | e030d9ba | 1 | e030d9ba |
+| qt-components/_interactive.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_intervention.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_layout.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_roleplay.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_storyteller.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_surfaces.css | 168 | 159a0f34 | 168 | 159a0f34 |
+| qt-components/_toast.css (v5-only file) | 105 | ad189e55 | 105 | ad189e55 |
+| qt-components/_typography.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| qt-components/_utilities.css | 45 | effbcb09 | 45 | effbcb09 |
+| qt-components/_variables.css | 21 | ef6c5a24 | 21 | ef6c5a24 |
+| qt-components/_workspace.css | 48 | 0b6f35b1 | 48 | 0b6f35b1 |
+| art-deco/styles.css | 4 | 2d0484a8 | 4 | 2d0484a8 |
+| art-deco/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| art-deco/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| earl-grey/styles.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| earl-grey/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| earl-grey/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| great-estate/styles.css | 4 | e1ceb8ba | 4 | e1ceb8ba |
+| great-estate/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| great-estate/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| madmans-box/styles.css | 19 | 479efa9b | 19 | 479efa9b |
+| madmans-box/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| madmans-box/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| old-school/styles.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| old-school/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| old-school/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| rains/styles.css | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| rains/theme.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+| rains/tokens.json | 0 | d41d8cd9 | 0 | d41d8cd9 |
+
+**Packs:**
+- the five `styles.css` diffs were applied with `patch` (rc 0);
+- the six `theme.json` bumps: art-deco 1.0.14, earl-grey 1.3.11, great-estate 1.0.11, madmans-box 1.1.10, old-school 1.0.15, rains 1.3.15;
+- madmans-box gains the `deus-ex-machina` key.
+
+**`check-css-vars.mjs` port** (217-line diff vs v4, `/tmp/p4d383/checker-port.diff`). Every change is one of the following:
+- the retargeted roots (CSS sources `src/` + `public/themes/`; TS sources `src/app/**/*.ts` minus `.spec.ts`; checked files `src/*.css` + `src/**/*.css`; `REPO_ROOT` = the script's `..`);
+- the refactor into `addCssDefinitions` / `addTsLiterals` / `problemsIn`, so the self-test drives the same code;
+- the 12-case `--self-test`;
+- a success line.
+
+Mutation proof: emptying `TAILWIND_PREFIXES` fails one case, and removing the `definedName` push fails one case.
+
+### Template edits (items 9–11)
+
+- **`brahma/model-picker.ts`:** `qt-bg-surface` → `qt-bg-popover`.
+- **`images/standalone-generate-image-dialog.ts:114`:** `bg-background` → `qt-bg-popover`.
+- **`progressions-section.ts`, `subprompts-section.ts`:** `hover:bg-accent/50` → `hover:qt-bg-surface-hover`.
+- **`system-prompts-tab.ts:80`:** `qt-card` → `qt-card hover:qt-bg-surface-hover transition` (L3).
+- **`memory-cascade-dialog.ts`:** v4's label class strings on the three radios and the checkbox (L3).
+- **`chat-sidebar.ts`:** the collapsed avatar reads `<name><status>[ <position>], expand sidebar`.
+- **`character-card.ts`:**
+  - the favourite drops v5's extra `leading-none` (L2) and gains `inline-flex items-center justify-center min-w-6 min-h-6`;
+  - its glyph is wrapped in `<span aria-hidden="true">`;
+  - `aria-label` / `aria-pressed` on all three toggles (`Favorite <name>`, `Carina answers (@-queries) for <name>`, `You play <name>`).
+- **`character-header.ts`:** the same pattern, with the unparameterised labels.
+- **`workspace/chrome/tab-strip.ts`** (R12), the roving-focus tabs pattern:
+  - the outer element is `role="presentation"` and keeps `data-tab-id`, `.qt-tab`, the click and the drag handlers;
+  - an inner `button.qt-tab-select` has `role="tab"`, `aria-selected`, a roving `tabindex` and `aria-keyshortcuts="Delete"`;
+  - the close cross is `tabindex="-1" aria-hidden="true"`;
+  - keys: ArrowLeft / ArrowRight wrap, Home / End jump, Delete closes.
+  - The e2e selectors all use the outer `.qt-tab` / `data-tab-id`, so no e2e edit was needed. The workspace shortcuts need modifiers, so there is no clash with bare arrows.
+- **`scripts/check-a11y-names.mjs`:** rule 4 skips `aria-hidden="true"` (L4). It has two new self-test rows (27 / 27), and removing the line fails one row.
+- **Item 11 `:empty`** (`layout/page-toolbar-left-empty.spec.ts`): the left section matches `:empty` with no content (Angular's anchor is a comment), does not match with content, and matches again once cleared. The premise holds, so there is no `page-toolbar.ts` edit.
+
+**Recorded no-edit sites:**
+- the two `qt-dialog` sites are already opaque (`qt-modal`);
+- `setup/profile` has no counterpart (no v5 page);
+- v4's `EntitySearchDropdown` maps to the image dialog's one site, edited above.
+
+**L1–L6 as applied:**
+- **L1:** `--qt-accent` kept as a hook.
+- **L2:** `leading-none` dropped.
+- **L3:** v4's class strings.
+- **L4:** the `aria-hidden` exemption.
+- **L5:** the axe fallback owner is `UNOWNED`.
+- **L6:** the `::highlight` comment adapted ("Angular-owned"; P4.D384 named).
+
+### The axe work (item 12)
+
+**(a) Static comparison, IDENTICAL to v4 at the pin:**
+- the `.qt-queue-badge*` rules in `_content.css` (43 lines);
+- the `--qt-queue-badge` tokens in `_variables.css` (23);
+- every pack's queue-badge lines (art-deco 17, earl-grey 11, great-estate 15, madmans-box 9, old-school 11, rains 11; `tokens.json` 0);
+- the markup (the outer span's `badgeClass` + idle + pulse, the two inner spans, the same five badge classes).
+
+**(b) Measured:** one a11y run (`QT_AXE_OUT=/tmp/p4d383/axe-raw QT_AXE_REBASELINE=1 npx playwright test --project=a11y`, 2 passed, 7.5 m).
+
+The queue-badge colour-contrast ratios per pack|mode, as min–max over danger / embedding / memory / story / summary (7 pages each):
+
+| pack | dark | light |
+|---|---|---|
+| art-deco | 2.70–3.15 | 1.06–1.36 |
+| earl-grey | 3.09–3.30 | 1.29–1.36 |
+| great-estate | 2.56–3.20 | 1.04–1.34 |
+| madmans-box (dark by decree) | 2.23–3.20 | 2.23–3.20 |
+| old-school | 3.09–3.30 | 1.29–1.36 |
+| rains | 3.09–3.30 | 1.29–1.36 |
+
+Sampled rows:
+- earl-grey dark memory: #7388aa on #163972, 3.13;
+- art-deco light embedding: #caad84 on #b2a7c0, 1.06;
+- madmans-box memory: #735725 on #2c2521, 2.23.
+
+**(c)** Not attempted (see the probe).
+
+**RULING:** the 420 rows are `RULE v4-faithful: qt-queue-badge-* byte-identical to v4 624d0d25c (CSS, tokens, markup); measured <ratio>:1 (<fg> on <bg>) on <pack|mode>`, with each row's own ratio.
+
+**Re-baseline diff:** 521 → 509, NO new row.
+- **GONE:** the 12 `FOLLOW-UP: v5 character-card.ts:87 adds leading-none` target-size rows (art-deco and great-estate, both modes, cards 1–3).
+- **Re-owned:** the 420 queue-badge rows (above).
+- **Unchanged:** the 66 ParticipantCard `RULE v4-faithful` rows.
+- **SURVIVOR, explained:** the 23 `earl-grey|dark` colour-contrast rows (`qt-meta` ×8, `qt-card-subtitle` ×7, `qt-card-description` ×5, three nav links). All measure **4.18:1, #8b909c on #2f2f2f**.
+  - #8b909c is the DEFAULT stylesheet's `.dark --theme-muted-foreground: hsl(225 8% 58%)`, not earl-grey's.
+  - v5's `ThemeService` links a pack's `styles.css` but never applies its `tokens.json` `--theme-*` colours. Only the appearance preview's `scoped-theme-css.ts` does. v4's `lib/themes/utils.ts` maps `mutedForeground` → `--theme-muted-foreground` at runtime, and earl-grey dark is `hsl(0 0% 70.6%)`.
+  - The pin's earl-grey `--text-400` lift (59% → 61%) does not reach these elements. The order's premise that it would was wrong.
+  - `theme.service.ts` is outside this lane's ownership, so the rows are owned `FOLLOW-UP: v5 ThemeService never applies a pack's tokens.json --theme-* colours (v4 lib/themes/utils.ts does); … measured 4.18:1 (#8b909c on #2f2f2f)`.
+  - **FOLLOW-UP for the next smalls round:** port v4's runtime token application into `ThemeService`. It affects every pack whose `styles.css` does not itself override a `--theme-*` colour.
+
+### Tier 2
+
+- **Item 13, the card rise, measured.** The built `dist/.../styles-*.css` rule is `.qt-card:has([aria-haspopup][aria-expanded=true]),.qt-card-interactive:has(…){position:relative;z-index:20;translate:none}`. In a scratch Chromium page (no commit), an open-menu card computes `z-index: 20; position: relative`, and a closed card and a later plain sibling compute `auto` / `static`. The live Inventory beat waits for the union dogfood row.
+- **Item 14, the census** (`absolute[^"]*\b(bg-background|qt-bg-default)\b`):
+  - `wardrobe-item-row:210` / `:248`, `outfit-quick-pick:64`, `wardrobe-control-dialog:403`, `item-folder-row:73` → P4.D386 (named by v4);
+  - `search-bar:66` → P4.D384 (named by v4);
+  - `avatar-generation-pane.ts:86` (an absolute icon button) and `photos-page.ts:196` (a `bg-background/85` badge pill) are not floating panels;
+  - **no v5-only dropdowns remain**, so there are no FOLLOW-UP rows.
+
+### HANDOFFs, NO-PORT and NO-COUNTERPART
+
+**HANDOFFs:**
+- the W1 template edits of §R.10 (x) to their owners (S.3 "Owned elsewhere");
+- the `IconName` `deus-ex-machina` entry → P4.D385;
+- the three help pages → P4.D382.
+
+**NO-PORT** (for P4.D382's ratification):
+- `705b954c2`: v5's one `@theme inline` block already holds it;
+- the `packages/theme-storybook/**` mirrors in `87c3860df` / `94f041764` / `29ba4d3f8`;
+- v4's `CLAUDE.md` / `README.md` / version lines;
+- `94f041764`'s `SlideOverPanel` `inert`: already ported (`ui/slide-over-panel.ts:90`).
+
+**NO-COUNTERPART:** `app/setup/profile/page.tsx`; `EntitySearchDropdown.tsx`.
+
+**Recorded:**
+- the axe sweep stays ONE-WAY;
+- `check-css-vars` checks `.css` only.
+
+### Gates
+
+**SPA gates:**
+- On `CSS` (`3ed560020`): lint green; `npm test` 634 files / 15,565; build green.
+- On items 9–11 (`53bb83947`): lint and build green; `npm test` 637 / 15,587 with ONE red in the untouched `autonomous/autonomous-room-badges.spec.ts` ("arms the shared second hand…", a timer count of 2 against 1). It is green 3/3 by file alone: a load flake.
+- **Final, at `88daa9ef2`:** lint, `npm test` **637 files / 15,587 passed**, and build, all green.
+
+**Playwright** (one file at a time, `--project=chromium`):
+- The 17 files the tab strip / toolbar / card edits reach. Each passed in its by-file run: aa-foundation 1, characters-flow 7, inventory-flow 9, memory-maintenance-flow 11, page-toolbar-flow 8, prompt-templates-flow 2, settings-concierge-flow 4, spa-riders-flow 11, wardrobe-flow 21, workspace-brahma-console-flow 5, workspace-document-standalone-flow 4, workspace-flow 13, workspace-help-ask-flow 4, workspace-help-guide-flow 4, workspace-search-documents-flow 3, workspace-tab-refresh-flow 2.
+  - The exception was `settings-memory-consolidation-flow`: 2 passed / 1 failed. The red was the first beat's `unlock` readiness wait on a cold server ("Extraction Grain" heading not visible in 10 s). The re-run by file alone was **3 / 3**: a timing flake, not a CSS or markup cause.
+- `--project=a11y` (the axe sweep plus the re-baseline): 2 passed.
+- The e2e served the CURRENT debug `target/debug/quilltap-web`. The cloned `target/release` bins were Oct 28 builds, so they were moved aside inside this lane's own target (`target/release/stale-*-2026-10-28`) before the first run; the target is deleted at close.
+
+**Rust:**
+- `cargo fmt --all --check` clean.
+- `cargo clippy --workspace --all-targets -- -D warnings` clean, and clean again with `--features quilltap-core/native-transport`.
+- By name: `toast_stacking_guard` 5 / 5, `public_schemas_vendor_guard` 3 / 3, `custom_tool_schema_embed_guard` 5 / 5, `quilltap-web --test health_structure` 5 / 5.
+- `spelling_guard` is RED, INHERITED: the one hit is `docs/developer/porting/work-orders/surveys/2026-11-04-setupphase-vendor-norport.md:295`, in the base commit `f56f1d311` (setupphase), not a lane file. It is the unifier's fix (a `quilltap-spelling-exception` mark or rewording).
+- `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast`: **893 binaries / 6,019 passed / 4 failed / 3 ignored.**
+  - `spelling_guard`: the inherited red above.
+  - Three live-checkout guards, red only because the v4 checkout is past the pin, each owned by a sibling lane of this round:
+    - `builtin_prompt_templates_guard` (21 vendored vs 22 at v4 HEAD);
+    - `provider_sdk_version_guard` (the root and plugin SDK installs moved);
+    - `qtap_schema_embed_guard` (the export schema is 117,110 bytes vs 115,274 vendored).
+  - No Rust source changed in this lane.
+
+### Versions at close
+
+SPA 0.5.974. No crate bumped; harness frozen.
+
+### Dogfood rows (§S.8; no spend; after the union, on a Friday copy)
+
+- **Every pack × mode:** a wardrobe / inventory row's kebab over a long list is opaque and paints above the later rows (needs P4.D386's attributes). The help guide chrome and Document Mode's header carry colour. An alert link is underlined and inherits the alert's ink. The earl-grey dark card subtitles are readable: EXPECT them still 4.18:1 until the ThemeService follow-up lands.
+- **The tab strip by keyboard:** Tab lands on the active tab only; arrows move and select with wrap; Home / End jump; Delete closes; the cross works by mouse; a screen reader announces "tab, selected, n of m" with no stray "Close".
+- **The characters list:** the toggles announce "Favorite <name>, toggle button, pressed / not pressed".
+- **Madman's Box:** the Deus Ex Machina toggle shows the triangle glyph (once P4.D385 lands); every other pack shows the proscenium.

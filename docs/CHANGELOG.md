@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-05 — docs(porting): P4.D383 — the lane record and LANE COMPLETE status header
+
+_Docs-only change._
+
+Appends P4.D383's lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the invariance tables, the red-first counts, the axe measurement and ruling, the earl-grey ThemeService follow-up, the census, and the gate counts.
+
 #### 2026-11-05 — test(spa): P4.D383 — the axe baseline re-measured: queue badges ruled v4-faithful, 23 earl-grey rows a ThemeService follow-up (v4 624d0d25c)
 
 _Versions: SPA 0.5.974._
