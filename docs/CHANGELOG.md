@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — feat(cli): quilltap db integrity (v4 70d2859d8)
+
+_Versions: cli 0.0.39._
+
+P4.D365 item 4 (ruling R-3). `quilltap db integrity [main|llm-logs|mount-points|all] [--json]` runs `PRAGMA integrity_check` read-only on each encrypted database, as v4's `cmdIntegrity` / `integrityOneDb` do at the pin. There is no `cipher_integrity_check` (SQLite3MC has none). A page that fails to decrypt reports `page read failed (<code>): <message>`, where `<code>` is better-sqlite3's name for the extended SQLite code; the full 107-name table is transcribed from the driver's `constants.cpp` and checked by `cli_sqlite_code_names_guard`. Exit codes are 0 for ok, 1 for issues and 2 for an open failure; both non-zero exits print no `Error:` line. A live instance is noted, not refused. A missing file is skipped and does not fail the run (v4's rule). The new code lives in `db_integrity.rs`; `db_cmd.rs` shares one lock-status reader between `optimize` and `integrity`. `db_help.txt` was re-captured from the pin's CLI. Fifteen new Tier R rows cover all targets, `--json`, a bogus target, a missing sibling, an unreadable file, a wrong key, a tampered page (self-checked plant) and a live lock.
+
 #### 2026-11-04 — deps(sqlite3mc): vendor SQLite3MC 2.4.0 / SQLite 3.53.4 from v4's driver 13.0.3, defines at parity
 
 _Versions: sqlite3mc-sys 0.2.0, core 0.0.1428._

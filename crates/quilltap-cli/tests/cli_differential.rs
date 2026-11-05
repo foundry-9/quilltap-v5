@@ -210,7 +210,14 @@ fn normalize_durations(text: &str) -> String {
             None => (line, ""),
         };
         let mut done = false;
-        for label in ["  VACUUM: ", "  ANALYZE: ", "  PRAGMA optimize: "] {
+        // P4.D365 `db integrity`: its one `  duration: ` line rides the same
+        // arm (no `FAILED after` form there).
+        for label in [
+            "  VACUUM: ",
+            "  ANALYZE: ",
+            "  PRAGMA optimize: ",
+            "  duration: ",
+        ] {
             let Some(rest) = body.strip_prefix(label) else {
                 continue;
             };
@@ -232,14 +239,22 @@ fn normalize_durations(text: &str) -> String {
             continue;
         }
         let trimmed = body.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("\"ms\": ") {
-            let digits = rest.trim_end_matches(',');
-            if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
-                let indent = &body[..body.len() - trimmed.len()];
-                let comma = if rest.ends_with(',') { "," } else { "" };
-                out.push_str(&format!("{indent}\"ms\": <MS>{comma}{nl}"));
-                continue;
+        let mut masked = false;
+        // `"ms"` (optimize steps) and `"durationMs"` (P4.D365 `db integrity`).
+        for key in ["\"ms\": ", "\"durationMs\": "] {
+            if let Some(rest) = trimmed.strip_prefix(key) {
+                let digits = rest.trim_end_matches(',');
+                if !digits.is_empty() && digits.chars().all(|c| c.is_ascii_digit()) {
+                    let indent = &body[..body.len() - trimmed.len()];
+                    let comma = if rest.ends_with(',') { "," } else { "" };
+                    out.push_str(&format!("{indent}{key}<MS>{comma}{nl}"));
+                    masked = true;
+                }
+                break;
             }
+        }
+        if masked {
+            continue;
         }
         out.push_str(line);
     }
@@ -2794,10 +2809,9 @@ fn cli_differential() {
     );
 
     // Recognized-but-unshipped verbs exit loud on the v5 side only — assert
-    // v5 directly (not diffed; v4 ships them). P4.D259 shipped `optimize`; the
-    // pin narrows to the verbs still refused (`backup` / `integrity` are the
-    // order's Tier 3).
-    for verb in ["schema", "backup", "integrity"] {
+    // v5 directly (not diffed; v4 ships them). P4.D259 shipped `optimize` and
+    // P4.D365 `integrity`; the pin narrows to the verbs still refused.
+    for verb in ["schema", "backup"] {
         let opts = CaseOpts::default();
         ctx.reset_live(&opts);
         let r = ctx.run_v5(&d(&[verb]), &opts);
@@ -3461,6 +3475,142 @@ fn cli_differential() {
                 normalize_durations: true,
                 ..Default::default()
             },
+        );
+        let _ = sleeper.kill();
+        let _ = sleeper.wait();
+    }
+
+    // ---------------- db integrity (P4.D365, v4 70d2859d8) ----------------
+    {
+        let dur = || CaseOpts {
+            normalize_durations: true,
+            ..Default::default()
+        };
+        let with = |pre: PreHook<'static>| CaseOpts {
+            pre: Some(pre),
+            normalize_durations: true,
+            ..Default::default()
+        };
+        ctx.case_with("db integrity", &d(&["integrity"]), dur());
+        ctx.case_with("db integrity all", &d(&["integrity", "all"]), dur());
+        ctx.case_with("db integrity main", &d(&["integrity", "main"]), dur());
+        // Named targets keep the order given.
+        ctx.case_with(
+            "db integrity two named",
+            &d(&["integrity", "mount-points", "main"]),
+            dur(),
+        );
+        ctx.case_with("db integrity bogus", &d(&["integrity", "bogus"]), dur());
+        ctx.case_with("db integrity json", &d(&["integrity", "--json"]), dur());
+        // A MISSING sibling is skipped and does NOT fail the run: v4's
+        // `anyOpenFailed` excludes `reason === 'not found'` and `anyIssues`
+        // excludes `openable === false` — so the summary still reads "All
+        // databases reported ok." and the exit is 0 (a v4 quirk, recorded).
+        ctx.case_with(
+            "db integrity llm-logs removed",
+            &d(&["integrity"]),
+            with(Box::new(|live: &Path| {
+                std::fs::remove_file(live.join("instA/data/quilltap-llm-logs.db")).unwrap();
+            })),
+        );
+        ctx.case_with(
+            "db integrity json llm-logs removed",
+            &d(&["integrity", "--json"]),
+            with(Box::new(|live: &Path| {
+                std::fs::remove_file(live.join("instA/data/quilltap-llm-logs.db")).unwrap();
+            })),
+        );
+        // An UNOPENABLE file → `  open failed: …`, exit 2.
+        ctx.case_with(
+            "db integrity unreadable main",
+            &d(&["integrity"]),
+            with(Box::new(unreadable_pre)),
+        );
+        // The WRONG key: `.dbkey` rewrapped around another pepper.
+        ctx.case_with(
+            "db integrity wrong key",
+            &d(&["integrity"]),
+            CaseOpts {
+                pre: Some(Box::new(rekey_pre)),
+                normalize_durations: true,
+                ..Default::default()
+            },
+        );
+        // A TAMPERED page: 16 bytes flipped inside page 3 of the main
+        // database. Self-checked (memory note `tier-r-vacuous-equal-rows`):
+        // the bytes moved, and a read through the right key now fails.
+        let tamper_pre = |live: &Path| {
+            let path = live.join("instA/data/quilltap.db");
+            let mut bytes = std::fs::read(&path).unwrap();
+            let at = 2 * 4096 + 1024;
+            assert!(
+                bytes.len() >= 3 * 4096,
+                "main fixture has under three pages"
+            );
+            let before = bytes[at..at + 16].to_vec();
+            for b in &mut bytes[at..at + 16] {
+                *b ^= 0x5a;
+            }
+            assert_ne!(before, bytes[at..at + 16], "the tamper plant did not plant");
+            std::fs::write(&path, &bytes).unwrap();
+            let conn = rusqlite::Connection::open_with_flags(
+                &path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .unwrap();
+            conn.pragma_update(
+                None,
+                "key",
+                format!("x'{}'", dbkey::pepper_b64_to_key_hex(PEPPER).unwrap()),
+            )
+            .unwrap();
+            let check: Result<Vec<String>, rusqlite::Error> = (|| {
+                let mut st = conn.prepare("PRAGMA integrity_check")?;
+                let rows = st.query_map([], |r| r.get::<_, String>(0))?;
+                rows.collect()
+            })();
+            assert!(
+                !matches!(check.as_deref(), Ok([only]) if only == "ok"),
+                "the tampered page still reads clean: {check:?}"
+            );
+        };
+        ctx.case_with(
+            "db integrity tampered page",
+            &d(&["integrity"]),
+            with(Box::new(tamper_pre)),
+        );
+        ctx.case_with(
+            "db integrity json tampered page",
+            &d(&["integrity", "--json"]),
+            with(Box::new(tamper_pre)),
+        );
+        // A LIVE lock is noted, not refused (absent under `--json`).
+        let mut sleeper = Command::new(&ctx.node)
+            .args(["-e", "setTimeout(() => {}, 60000)"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn node sleeper");
+        let pid = sleeper.id();
+        let active_lock = {
+            let host = host.clone();
+            move |live: &Path| {
+                std::fs::write(
+                    live.join("instA/data/quilltap.lock"),
+                    lock_json(pid, &host, "local", &iso_minus_secs(60), vec![]),
+                )
+                .unwrap();
+            }
+        };
+        ctx.case_with(
+            "db integrity live lock",
+            &d(&["integrity", "main"]),
+            with(Box::new(active_lock.clone())),
+        );
+        ctx.case_with(
+            "db integrity json live lock",
+            &d(&["integrity", "main", "--json"]),
+            with(Box::new(active_lock)),
         );
         let _ = sleeper.kill();
         let _ = sleeper.wait();

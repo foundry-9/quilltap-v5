@@ -1,7 +1,8 @@
 //! `quilltap db` — the legacy flag path (v4 `bin/quilltap.js` `dbCommand`,
 //! lines 790–1099) + the instance-lock CLI commands (`handleLockCommand`,
 //! lines 465–685). The high-level verbs (`schema`, `find`, …) are recognized
-//! (v4 `db-commands.js` `VERBS`) and exit loud until their round lands.
+//! (v4 `db-commands.js` `VERBS`); `characters`, `optimize` and `integrity`
+//! ship, and the rest exit loud until their round lands.
 
 use serde_json::{Map, Value};
 
@@ -22,7 +23,8 @@ use crate::vtable::console_table;
 const DB_HELP: &str = include_str!("help/db_help.txt");
 
 /// v4 `db-commands.js` `VERBS` — the high-level verb set. All recognized;
-/// `characters` (P4.D66) and `optimize` (P4.D259) ship, the rest exit loud.
+/// `characters` (P4.D66), `optimize` (P4.D259) and `integrity` (P4.D365,
+/// `db_integrity.rs`) ship, the rest exit loud.
 const DB_VERBS: &[&str] = &[
     // Not yet shipped. When it ships, v4's no-arg `schema` groups tables by
     // `db-commands.js`'s `DB_DOMAINS` (`322a5488e`), whose `logs` domain
@@ -293,6 +295,13 @@ fn run_verb_path(
         // P4.D259 (Tier 2): the optimize verb, over core's own step runner —
         // the one the server's daily PHASE 0.75 pass runs.
         "optimize" => cmd_optimize(&rest, &ctx),
+        // P4.D365: v4 `70d2859d8`'s integrity verb. Its two failure exits are
+        // SILENT (v4 sets `err.silent`, so `runVerb` prints no `Error:`).
+        "integrity" => match crate::db_integrity::cmd_integrity(&rest, &ctx) {
+            Ok(()) => Ok(()),
+            Err(crate::db_integrity::IntegrityExit::Silent(code)) => return code,
+            Err(crate::db_integrity::IntegrityExit::Loud(e)) => Err(e),
+        },
         other if DB_VERBS.contains(&other) => {
             out::elog(&format!(
                 "Error: db subcommand '{other}' is recognized but not yet available in this build of the quilltap CLI."
@@ -968,7 +977,7 @@ fn format_bytes(n: f64) -> String {
 }
 
 /// v4 `formatDuration`.
-fn format_duration(ms: u64) -> String {
+pub(crate) fn format_duration(ms: u64) -> String {
     use quilltap_core::jsnum::to_fixed;
     if ms < 1000 {
         return format!("{ms} ms");
@@ -987,12 +996,30 @@ fn optimize_file_size(path: &str) -> f64 {
 }
 
 /// v4 launcher `getLockStatus` (`lock-helpers.js:54-107`) — the read-only
-/// decision a maintenance verb refuses on. `Ok(())` for `absent` / `stale`;
-/// the refusal sentence otherwise.
-fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
+/// lock decision the maintenance verbs share: `optimize` refuses on it,
+/// `integrity` only notes it.
+enum LockStatus {
+    Absent,
+    Corrupt {
+        lock_path: String,
+    },
+    Stale,
+    /// Held by a live owner; `reason` is v4's sentence fragment.
+    Active {
+        lock: Map<String, Value>,
+        reason: String,
+    },
+    /// The PID is alive but does not look like a Quilltap process.
+    Suspect {
+        lock: Map<String, Value>,
+        reason: String,
+    },
+}
+
+fn get_lock_status(data_dir: &str) -> LockStatus {
     let lock_path = node_join(data_dir, "quilltap.lock");
     if !std::path::Path::new(&lock_path).exists() {
-        return Ok(());
+        return LockStatus::Absent;
     }
     // `JSON.parse(readFileSync)` — only a read or parse failure is `corrupt`;
     // a non-object parses fine and simply matches no host (stale).
@@ -1000,9 +1027,7 @@ fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
         .ok()
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
     let Some(parsed) = parsed else {
-        return Err(format!(
-            "Lock file at {lock_path} is corrupt. Inspect it manually or clean with `quilltap db --lock-clean`, then retry."
-        ));
+        return LockStatus::Corrupt { lock_path };
     };
     let lock = match parsed {
         Value::Object(o) => o,
@@ -1010,29 +1035,23 @@ fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
     };
     let hostname = quilltap_host::lock::hostname();
     let pid = lock_num(&lock, "pid");
-    let active = |reason: String| {
-        Err(format!(
-            "Database is currently in use — {reason}.\nStop the running Quilltap instance before optimizing, then try again.\n(See `quilltap db --lock-status` for details.)"
-        ))
-    };
     if lock_str(&lock, "hostname") == hostname {
         let alive = pid.is_finite() && is_pid_alive(pid as u32);
         if !alive {
-            return Ok(()); // stale: PID no longer running
+            return LockStatus::Stale; // PID no longer running
         }
         if !verify_pid_is_quilltap(pid as u32) {
             let reason = format!(
                 "PID {} is alive but does not look like a Quilltap process",
                 crate::nodefmt::js_num_string(pid)
             );
-            return Err(format!(
-                "Lock file {reason}.\nThis may be a stale lock from a reused PID. Inspect it with\n`quilltap db --lock-status` and clean it up with `quilltap db --lock-clean` if safe."
-            ));
+            return LockStatus::Suspect { lock, reason };
         }
-        return active(format!(
+        let reason = format!(
             "held by PID {} on this host",
             crate::nodefmt::js_num_string(pid)
-        ));
+        );
+        return LockStatus::Active { lock, reason };
     }
     // Different hostname — could be a VM/container sharing the data dir.
     let environment = lock_str(&lock, "environment");
@@ -1042,12 +1061,70 @@ fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
             "{}s",
             crate::nodefmt::js_num_string(quilltap_core::jsnum::math_round(age_ms / 1000.0))
         );
-        return active(format!(
+        let reason = format!(
             "held by {environment} instance on {} (heartbeat {age} ago)",
             lock_str(&lock, "hostname")
-        ));
+        );
+        return LockStatus::Active { lock, reason };
     }
-    Ok(())
+    LockStatus::Stale
+}
+
+/// The decision `cmdOptimize` refuses on: `Ok(())` for `absent` / `stale`;
+/// the refusal sentence otherwise.
+fn optimize_lock_refusal(data_dir: &str) -> Result<(), String> {
+    match get_lock_status(data_dir) {
+        LockStatus::Absent | LockStatus::Stale => Ok(()),
+        LockStatus::Corrupt { lock_path } => Err(format!(
+            "Lock file at {lock_path} is corrupt. Inspect it manually or clean with `quilltap db --lock-clean`, then retry."
+        )),
+        LockStatus::Suspect { reason, .. } => Err(format!(
+            "Lock file {reason}.\nThis may be a stale lock from a reused PID. Inspect it with\n`quilltap db --lock-status` and clean it up with `quilltap db --lock-clean` if safe."
+        )),
+        LockStatus::Active { reason, .. } => Err(format!(
+            "Database is currently in use \u{2014} {reason}.\nStop the running Quilltap instance before optimizing, then try again.\n(See `quilltap db --lock-status` for details.)"
+        )),
+    }
+}
+
+/// JS `${v}` for a JSON value: an object is `[object Object]`, an array joins
+/// its elements' strings with `,` (null → empty), recursively.
+fn js_template_string(v: &Value) -> String {
+    match v {
+        Value::Null => String::new(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => crate::nodefmt::js_num_string(n.as_f64().unwrap_or(0.0)),
+        Value::String(s) => s.clone(),
+        Value::Object(_) => "[object Object]".to_string(),
+        Value::Array(items) => items
+            .iter()
+            .map(js_template_string)
+            .collect::<Vec<_>>()
+            .join(","),
+    }
+}
+
+/// `cmdIntegrity`'s note (P4.D365): `Some(pidPart)` when the lock is
+/// `active` or `suspect` — `pidPart` is ` (PID <n>)` when `lock.pid` is
+/// truthy, else empty — and `None` otherwise.
+pub(crate) fn live_instance_pid_part(data_dir: &str) -> Option<String> {
+    let lock = match get_lock_status(data_dir) {
+        LockStatus::Active { lock, .. } | LockStatus::Suspect { lock, .. } => lock,
+        _ => return None,
+    };
+    // `${lockStatus.lock.pid}` behind a JS truthiness test.
+    let pid = match lock.get("pid") {
+        Some(Value::Number(n)) => {
+            let f = n.as_f64().unwrap_or(0.0);
+            (f != 0.0 && !f.is_nan()).then(|| crate::nodefmt::js_num_string(f))
+        }
+        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+        Some(Value::Bool(true)) => Some("true".to_string()),
+        // An object or array is truthy; `${…}` stringifies it as JS does.
+        Some(v @ (Value::Object(_) | Value::Array(_))) => Some(js_template_string(v)),
+        _ => None,
+    };
+    Some(pid.map(|p| format!(" (PID {p})")).unwrap_or_default())
 }
 
 /// v4 `cmdOptimize` — `VACUUM`, `ANALYZE`, `PRAGMA optimize` per target with

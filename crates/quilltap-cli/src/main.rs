@@ -30,6 +30,7 @@ mod anchor_probe_cmd;
 mod completion_cmd;
 mod db_characters;
 mod db_cmd;
+mod db_integrity;
 mod dbopen;
 mod docs_cmd;
 mod http;
