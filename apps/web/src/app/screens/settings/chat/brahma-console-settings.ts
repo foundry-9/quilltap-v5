@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 
-import { CoreClient } from '../../../core/core-client';
+import { InlineBrahmaProfileSelect } from '../../../brahma/inline-brahma-profile-select';
+import { CoreClient, coreErrorMessage } from '../../../core/core-client';
 import { ToastService } from '../../../ui/toast.service';
 import {
   DEFAULT_MAX_AGENT_TURNS,
@@ -8,6 +9,7 @@ import {
   MIN_TURNS,
   getBrahmaConsoleSettings,
   updateBrahmaConsoleSettings,
+  updateInlineBrahmaProfile,
 } from './brahma-console-settings.api';
 
 /**
@@ -24,14 +26,22 @@ import {
  * entry (non-finite / out of `[5, 200]`) is reverted rather than nagged (the
  * bounds live in the copy), and an unchanged value is a no-op. Copy carries over
  * verbatim in v4's steampunk register.
+ *
+ * Below the budget, the inline `@Brahma` engine (v4 `c539c82e0`
+ * `InlineBrahmaProfileSetting`): ONE shared select saving
+ * `inlineConnectionProfileId` alone. v4's two hooks share one query key, so
+ * the section rides this card's one load — an `@if` block, hidden until the
+ * load settles (v4 `if (isLoading) return null`), not a sub-component.
  */
 @Component({
   selector: 'qt-brahma-console-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [InlineBrahmaProfileSelect],
   template: `
     @if (loading()) {
       <p class="qt-text-small qt-text-muted">Loading Console settings&hellip;</p>
     } @else {
+      <div class="space-y-6">
       <div class="space-y-4">
         <p class="qt-text-small qt-text-muted">
           Put a knotty question to the Brahma Console &mdash; &ldquo;where in the ledgers is
@@ -75,6 +85,26 @@ import {
           <p class="qt-text-small qt-text-destructive">{{ error() }}</p>
         }
       </div>
+      <div class="space-y-2">
+        <label for="brahma-inline-profile" class="qt-text-label block">
+          Engine for <code>&#64;Brahma</code> in the Salon
+        </label>
+        <p class="qt-text-small qt-text-muted">
+          Summon Brahma mid-conversation with <code>&#64;Brahma:</code> or
+          <code>&#64;Brahma?</code> and he consults the ledgers on whichever engine is named here. A
+          project may name an engine of its own on its Prospero page, which takes precedence within
+          that project&rsquo;s chats; should the chosen profile be dismissed from service, Brahma
+          quietly falls back on your default.
+        </p>
+        <qt-inline-brahma-profile-select
+          inputId="brahma-inline-profile"
+          [value]="inlineProfileId()"
+          inheritLabel="Use my default profile"
+          [disabled]="savingInline()"
+          (profileChange)="saveInline($event)"
+        />
+      </div>
+      </div>
     }
   `,
 })
@@ -90,6 +120,9 @@ export class BrahmaConsoleSettings {
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly draft = signal<string>(String(DEFAULT_MAX_AGENT_TURNS));
+  /** The STORED inline engine (`null` = the user's default). */
+  protected readonly inlineProfileId = signal<string | null>(null);
+  protected readonly savingInline = signal(false);
 
   /** The last persisted value — an unusable draft reverts to it, an unchanged
    *  draft skips the round-trip (v4's `turns` state + `savedTurns` ref, which
@@ -105,6 +138,7 @@ export class BrahmaConsoleSettings {
       const settings = await getBrahmaConsoleSettings(this.core);
       this.turns = settings.maxAgentTurns;
       this.draft.set(String(settings.maxAgentTurns));
+      this.inlineProfileId.set(settings.inlineConnectionProfileId);
     } catch (err) {
       // v4 (`BrahmaConsoleSettings.tsx:41`) surfaces the server's own sentence
       // (`getErrorMessage(err, …)`); only a message-less failure gets the line.
@@ -145,6 +179,24 @@ export class BrahmaConsoleSettings {
       this.draft.set(String(this.turns));
     } finally {
       this.saving.set(false);
+    }
+  }
+
+  /** v4 `InlineBrahmaProfileSetting`'s mutation (`BrahmaConsoleSettings.tsx:32-46`). */
+  protected async saveInline(profileId: string | null): Promise<void> {
+    this.savingInline.set(true);
+    try {
+      const saved = await updateInlineBrahmaProfile(this.core, profileId);
+      // v4 `setQueryData(settings)`: adopt what the server STORED.
+      this.inlineProfileId.set(saved.inlineConnectionProfileId);
+      this.toasts.showSuccess('Inline Brahma engine saved');
+    } catch (err) {
+      console.debug('[BrahmaConsoleSettings] Inline profile save failed', {
+        error: coreErrorMessage(err, 'Unknown error'),
+      });
+      this.toasts.showError(coreErrorMessage(err, 'Failed to save Brahma Console settings'));
+    } finally {
+      this.savingInline.set(false);
     }
   }
 }

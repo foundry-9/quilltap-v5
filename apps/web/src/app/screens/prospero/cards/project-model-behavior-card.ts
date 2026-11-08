@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
+import { InlineBrahmaProfileSelect } from '../../../brahma/inline-brahma-profile-select';
 import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import type { ProjectDetail, RoleplayTemplateDto } from '../../../core/core-contract';
@@ -26,14 +27,17 @@ import { projectKeys, updateProject } from '../projects.api';
  * updated from the dialog's success, so the summary changes at once without
  * waiting on a refetch.
  */
+/** v4's `useId()` field id: one per mounted card. */
+let cardSeq = 0;
+
 @Component({
   selector: 'qt-project-model-behavior-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, ProjectToolSettingsModal],
+  imports: [CollapsibleCard, ProjectToolSettingsModal, InlineBrahmaProfileSelect],
   template: `
     <qt-collapsible-card
       title="Model Behavior"
-      description="Agent mode, roleplay template & tool defaults"
+      description="Agent mode, roleplay template, inline Brahma & tool defaults"
       icon="cpu"
       [defaultOpen]="defaultOpen()"
     >
@@ -110,6 +114,23 @@ import { projectKeys, updateProject } from '../projects.api';
           }
         </div>
 
+        <!-- v4 c539c82e0 (ModelBehaviorCard.tsx:157-170): the inline Brahma engine. -->
+        <div class="p-3 rounded-lg qt-border qt-bg-surface">
+          <h4 [id]="brahmaHeadingId" class="qt-label text-foreground mb-1">Inline Brahma Engine</h4>
+          <p class="qt-text-xs qt-text-secondary mb-2">
+            The connection profile Brahma consults on when summoned with <code>&#64;Brahma:</code> or
+            <code>&#64;Brahma?</code> in this project's chats. Leave on inherit to use the engine
+            named under Settings &rarr; Chat &rarr; Brahma Console.
+          </p>
+          <qt-inline-brahma-profile-select
+            [ariaLabelledBy]="brahmaHeadingId"
+            [value]="project().brahmaConnectionProfileId ?? null"
+            inheritLabel="Inherit from global setting"
+            selectClass="qt-input w-full max-w-xs"
+            (profileChange)="onBrahmaProfile($event)"
+          />
+        </div>
+
         <div class="flex items-center justify-between p-3 rounded-lg qt-border qt-bg-surface">
           <div>
             <h4 class="qt-label text-foreground">Default Tool Settings</h4>
@@ -146,6 +167,8 @@ export class ProjectModelBehaviorCard {
   private readonly toasts = inject(ToastService);
   protected readonly savingTemplate = signal(false);
   protected readonly showToolSettings = signal(false);
+  /** v4 `${fieldId}-f3` — the heading the engine select is labelled by. */
+  protected readonly brahmaHeadingId = `qt-pmb-${++cardSeq}-f3`;
 
   /**
    * v4 keeps both arrays in local state seeded from the project (`:39-40`) and
@@ -259,6 +282,33 @@ export class ProjectModelBehaviorCard {
       );
     } finally {
       this.savingTemplate.set(false);
+    }
+  }
+
+  /**
+   * v4 `useProjectDetail.ts:159-178` (`handleSaveBrahmaConnectionProfile`).
+   * Its own method rather than `save(...)`: the select is CONTROLLED (it
+   * snaps the DOM back itself, so the helper's #143 reset has nothing to do),
+   * and v4 logs the failure where the helper's handlers do not.
+   */
+  protected async onBrahmaProfile(profileId: string | null): Promise<void> {
+    try {
+      await updateProject(this.core, this.project().id, { brahmaConnectionProfileId: profileId });
+      await this.queryClient.invalidateQueries({ queryKey: projectKeys.detail(this.project().id) });
+      this.toasts.showSuccess(
+        profileId
+          ? 'Inline Brahma engine set for project'
+          : 'Inline Brahma engine set to inherit from global',
+      );
+    } catch (err) {
+      const msg =
+        err instanceof CoreDispatchError
+          ? 'Failed to update the inline Brahma engine'
+          : err instanceof Error && err.message
+            ? err.message
+            : 'Failed to update the inline Brahma engine';
+      console.error('useProjectDetail: save inline Brahma profile error', msg);
+      this.toasts.showError(msg);
     }
   }
 

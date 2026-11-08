@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — feat(spa): the inline Brahma engine select in Settings → Chat → Brahma Console and the project Model Behavior card (v4 c539c82e0)
+
+_Versions: SPA 0.5.975._
+
+P4.D388 unit (iii), contract C10. New `brahma/inline-brahma-profile-select.ts` ports `InlineBrahmaProfileSelect`. It reads the shared `['connection-profiles']` query with `useConnectionProfiles`' coercions (an absent `allowToolUse` reads true). Options are an inherit choice, then "(a profile that has since left the building)" for a stored id that names no profile, then `name (provider • model) — your default — no tools`. The select is controlled: the DOM snaps back to the stored value until the caller's value changes. The Brahma Console settings card gains v4's "Engine for @Brahma in the Salon" section under the turn budget, hidden while the settings load. It saves `inlineConnectionProfileId` alone through the new `updateInlineBrahmaProfile`, adopts the stored answer, and toasts `Inline Brahma engine saved`; a budget save still sends `maxAgentTurns` alone. The project Model Behavior card gains the "Inline Brahma Engine" block, labelled by its heading, and the new subtitle. It saves `brahmaConnectionProfileId` alone with v4's two toasts and fixed refusal sentence. Until P4.D374's server keys land, the v5 server echoes no engine and the select stays on inherit.
+
 #### 2026-11-08 — feat(spa): the profile editor hides sampling a provider declines, and edits the per-profile image cap (v4 544c7ab1e, d439f6dc9)
 
 _Versions: SPA 0.5.974._

@@ -15,6 +15,12 @@ import type {
  * `brahmaConsoleSettingsUpdate` dispatch verbs (P4.D57's Shared contract), NOT
  * the per-user `chatSettings` blob.
  *
+ * v4 `c539c82e0` adds the inline `@Brahma` engine,
+ * `brahmaConsole.inlineConnectionProfileId`. The PUT merges over the stored
+ * settings, so sending only this field leaves the turn budget alone — and the
+ * turn-budget dial likewise sends only its own field (v4
+ * `BrahmaConsoleSettings.tsx:17-22`).
+ *
  * The response is read DEFENSIVELY through `CoreClient.dispatchData` (the
  * settings precedent — data-retention, taboo, text-replacements): the server
  * pins the body `{ maxAgentTurns }`, so no narrowed `CoreResponse` variant is
@@ -36,6 +42,18 @@ export const MAX_TURNS = 200;
 export interface BrahmaConsoleSettingsDto {
   /** Tool-use turns the Console may take before it must answer (default 50; bounds 5–200). */
   maxAgentTurns: number;
+  /**
+   * The connection profile the inline `@Brahma:` / `@Brahma?` answerer uses in
+   * Salon chats, or `null` for the user's default (v4 `c539c82e0`). A server
+   * that has not learned the key yet omits it — read as `null`.
+   */
+  inlineConnectionProfileId: string | null;
+}
+
+/** Read `inlineConnectionProfileId` defensively: a string, else `null`. */
+function readInline(data: Record<string, unknown>): string | null {
+  const v = data['inlineConnectionProfileId'];
+  return typeof v === 'string' ? v : null;
 }
 
 /** Read `maxAgentTurns` defensively, falling back to the default (v4's own load guard). */
@@ -47,15 +65,42 @@ function readTurns(data: Record<string, unknown>, fallback: number): number {
 export async function getBrahmaConsoleSettings(core: CoreClient): Promise<BrahmaConsoleSettingsDto> {
   const req: BrahmaConsoleSettingsRequest = { type: 'brahmaConsoleSettings' };
   const data = await core.dispatchData(req);
-  return { maxAgentTurns: readTurns(data, DEFAULT_MAX_AGENT_TURNS) };
+  return {
+    maxAgentTurns: readTurns(data, DEFAULT_MAX_AGENT_TURNS),
+    inlineConnectionProfileId: readInline(data),
+  };
 }
 
-/** v4 PUT `/settings/brahma-console` → the STORED echo (throws on validation). */
+/**
+ * v4 PUT `/settings/brahma-console` with the budget ALONE → the STORED echo
+ * (throws on validation). It never carries `inlineConnectionProfileId`, so a
+ * budget save never touches the engine.
+ */
 export async function updateBrahmaConsoleSettings(
   core: CoreClient,
   maxAgentTurns: number,
 ): Promise<BrahmaConsoleSettingsDto> {
   const req: BrahmaConsoleSettingsUpdateRequest = { type: 'brahmaConsoleSettingsUpdate', maxAgentTurns };
   const data = await core.dispatchData(req);
-  return { maxAgentTurns: readTurns(data, maxAgentTurns) };
+  return { maxAgentTurns: readTurns(data, maxAgentTurns), inlineConnectionProfileId: readInline(data) };
+}
+
+/**
+ * v4 `InlineBrahmaProfileSetting`'s PUT (`c539c82e0`): `{inlineConnectionProfileId}`
+ * ALONE — `null` clears it, an id sets it; the budget is absent, so it is kept.
+ * Answers the STORED settings.
+ */
+export async function updateInlineBrahmaProfile(
+  core: CoreClient,
+  profileId: string | null,
+): Promise<BrahmaConsoleSettingsDto> {
+  const req: BrahmaConsoleSettingsUpdateRequest = {
+    type: 'brahmaConsoleSettingsUpdate',
+    inlineConnectionProfileId: profileId,
+  };
+  const data = await core.dispatchData(req);
+  return {
+    maxAgentTurns: readTurns(data, DEFAULT_MAX_AGENT_TURNS),
+    inlineConnectionProfileId: readInline(data),
+  };
 }

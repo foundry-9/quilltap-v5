@@ -293,3 +293,161 @@ describe('ProjectModelBehaviorCard — failure toasts (v4 three-way branch)', ()
     });
   }
 });
+
+/**
+ * P4.D388 (C10): v4 `c539c82e0`'s "Inline Brahma Engine" block in
+ * `ModelBehaviorCard.tsx:157-170` and `useProjectDetail.ts:159-178`
+ * (`handleSaveBrahmaConnectionProfile`) at the pin `624d0d25c`.
+ */
+describe('ProjectModelBehaviorCard — the inline Brahma engine (P4.D388, v4 c539c82e0)', () => {
+  const PROFILES = [
+    { id: 'p1', name: 'Aria GPT', provider: 'OPENAI', modelName: 'gpt-5', isDefault: true, allowToolUse: true },
+  ];
+
+  async function mountCard(
+    over: Partial<ProjectDetail>,
+    onUpdate: (req: Record<string, unknown>) => unknown = () => ({ project: project(over) }),
+  ): Promise<{ fixture: ComponentFixture<ProjectModelBehaviorCard>; dispatchData: ReturnType<typeof vi.fn> }> {
+    const dispatchData = vi.fn(async (req: Record<string, unknown>) => {
+      if (req['type'] === 'projectUpdate') return onUpdate(req);
+      if (req['type'] === 'roleplayTemplateList') return [];
+      return {};
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ProjectModelBehaviorCard],
+      providers: [
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        {
+          provide: CoreClient,
+          useValue: {
+            dispatchData,
+            dispatchExpect: vi.fn(async () => ({ type: 'connectionProfiles', data: { profiles: PROFILES } })),
+          },
+        },
+      ],
+    });
+    const fixture = TestBed.createComponent(ProjectModelBehaviorCard);
+    fixture.componentRef.setInput('project', project(over));
+    fixture.componentRef.setInput('defaultOpen', true);
+    fixture.detectChanges();
+    await settle(fixture);
+    return { fixture, dispatchData };
+  }
+
+  const engineSelect = (f: ComponentFixture<unknown>) =>
+    (f.nativeElement as HTMLElement).querySelector(
+      'qt-inline-brahma-profile-select select',
+    ) as HTMLSelectElement;
+  const toasts = () =>
+    TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message }));
+
+  it('the subtitle names the inline Brahma engine', async () => {
+    const { fixture } = await mountCard({});
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
+      'Agent mode, roleplay template, inline Brahma & tool defaults',
+    );
+  });
+
+  it("carries v4's heading and paragraph between the template block and the tool row, labelled by the heading", async () => {
+    const { fixture } = await mountCard({});
+    const el = fixture.nativeElement as HTMLElement;
+    const heading = Array.from(el.querySelectorAll('h4')).find(
+      (h) => h.textContent?.trim() === 'Inline Brahma Engine',
+    )!;
+    expect(heading).toBeTruthy();
+    expect(heading.className).toBe('qt-label text-foreground mb-1');
+    const block = heading.parentElement!;
+    expect(block.className).toBe('p-3 rounded-lg qt-border qt-bg-surface');
+    const para = block.querySelector('p')!;
+    expect(para.className).toBe('qt-text-xs qt-text-secondary mb-2');
+    expect(para.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      "The connection profile Brahma consults on when summoned with @Brahma: or @Brahma? in this project's chats. Leave on inherit to use the engine named under Settings → Chat → Brahma Console.",
+    );
+    expect(Array.from(para.querySelectorAll('code')).map((c) => c.textContent)).toEqual(['@Brahma:', '@Brahma?']);
+    // Between Default Roleplay Template and Default Tool Settings.
+    expect(block.previousElementSibling!.querySelector('h4')!.textContent?.trim()).toBe('Default Roleplay Template');
+    expect(block.nextElementSibling!.querySelector('h4')!.textContent?.trim()).toBe('Default Tool Settings');
+    const select = engineSelect(fixture);
+    expect(heading.id).not.toBe('');
+    expect(select.getAttribute('aria-labelledby')).toBe(heading.id);
+    expect(select.getAttribute('class')).toBe('qt-input w-full max-w-xs');
+    expect(select.options[0].textContent?.trim()).toBe('Inherit from global setting');
+  });
+
+  it('two cards get different heading ids', async () => {
+    const a = await mountCard({});
+    const idA = (a.fixture.nativeElement as HTMLElement).querySelector('qt-inline-brahma-profile-select select')!.getAttribute('aria-labelledby');
+    const b = await mountCard({});
+    const idB = (b.fixture.nativeElement as HTMLElement).querySelector('qt-inline-brahma-profile-select select')!.getAttribute('aria-labelledby');
+    expect(idA).not.toBe(idB);
+  });
+
+  it('shows the stored engine', async () => {
+    const { fixture } = await mountCard({ brahmaConnectionProfileId: 'p1' });
+    expect(engineSelect(fixture).value).toBe('p1');
+  });
+
+  it("choosing an engine PUTs only brahmaConnectionProfileId and toasts v4's sentence", async () => {
+    const { fixture, dispatchData } = await mountCard({});
+    const select = engineSelect(fixture);
+    select.value = 'p1';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(dispatchData).toHaveBeenCalledWith({
+      type: 'projectUpdate',
+      projectId: 'proj1',
+      project: { brahmaConnectionProfileId: 'p1' },
+    });
+    expect(toasts()).toEqual([{ type: 'success', message: 'Inline Brahma engine set for project' }]);
+  });
+
+  it('choosing inherit PUTs null and toasts the inherit sentence', async () => {
+    const { fixture, dispatchData } = await mountCard({ brahmaConnectionProfileId: 'p1' });
+    const select = engineSelect(fixture);
+    select.value = '';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(dispatchData).toHaveBeenCalledWith({
+      type: 'projectUpdate',
+      projectId: 'proj1',
+      project: { brahmaConnectionProfileId: null },
+    });
+    expect(toasts()).toEqual([
+      { type: 'success', message: 'Inline Brahma engine set to inherit from global' },
+    ]);
+  });
+
+  it('a refusal toasts the FIXED sentence, logs, and leaves the stored engine showing', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { fixture } = await mountCard({}, () => {
+      throw new CoreDispatchError({ kind: 'validation', message: 'no such profile' });
+    });
+    const select = engineSelect(fixture);
+    select.value = 'p1';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'Failed to update the inline Brahma engine' }]);
+    expect(err).toHaveBeenCalledWith(
+      'useProjectDetail: save inline Brahma profile error',
+      'Failed to update the inline Brahma engine',
+    );
+    expect(select.value).toBe('');
+    err.mockRestore();
+  });
+
+  it('a thrown Error toasts its own message', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { fixture } = await mountCard({}, () => {
+      throw new Error('network down');
+    });
+    const select = engineSelect(fixture);
+    select.value = 'p1';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'network down' }]);
+    vi.restoreAllMocks();
+  });
+});
