@@ -1055,6 +1055,12 @@ _Docs-only change._
 
 The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
 
+#### 2026-11-08 — feat(search): "This conversation" matches in the header search and dialog, the Custom Highlight paint (v4 4f5047241, 94f041764, 29ba4d3f8)
+
+_Versions: SPA 0.5.974._
+
+P4.D384 item 9, the search side (the Salon offers its source in a later commit). New `chat/conversation-search.ts` twins v4's `lib/chat/conversation-search.ts`, proven by a 94-row oracle corpus recorded from v4's real module at `624d0d25c`; the corpus measures v4's UTF-16 snippet slice splitting a surrogate pair at either edge, which v5 reproduces. New `chat/search-highlight.ts` ports `useSearchHighlight`: one shared `quilltap-conversation-search` Highlight per document, each owner's own ranges, a once-per-frame repaint, and a no-op without `CSS.highlights`. The page toolbar service gains an owner-cleared `conversationSearch` slot. New `search/conversation-matches.ts` renders v4's matches group. The header search bar gains the in-chat group (limit 5) above an `Everywhere` divider, the highlight, a Clear button, the two-stage Escape, a pick that keeps the query, and the chat-aware placeholder. The search dialog gains the `This conversation` chip (limit 50) and `aria-pressed` on every chip. Both dropdowns move to `qt-bg-popover`, and the results' `Show all …` button gains its `aria-label`. The `?msg=` deferral line in `search.logic.ts` is retired.
+
 #### 2026-11-08 — feat(salon): kind-tagged stream frames, the raised-hand status machine, the established-fact send (v4 604a082c4, 9eab8d2da)
 
 _Versions: SPA 0.5.973._

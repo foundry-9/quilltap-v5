@@ -68,6 +68,7 @@ import {
                   type="button"
                   (click)="typeCountClick.emit(group.type)"
                   class="text-primary hover:underline cursor-pointer"
+                  [attr.aria-label]="'Show all ' + totalFor(group.type) + ' ' + labelPlural(group.type).toLowerCase()"
                   [title]="'Show all ' + totalFor(group.type) + ' ' + labelPlural(group.type).toLowerCase()"
                 >
                   ({{ group.results.length }}/{{ totalFor(group.type) }})

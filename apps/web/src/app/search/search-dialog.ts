@@ -3,15 +3,23 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  computed,
   effect,
   inject,
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 
+import {
+  CONVERSATION_SEARCH_MIN_QUERY,
+  type ConversationSearchSource,
+} from '../chat/conversation-search';
+
 import { Icon } from '../ui/icon';
+import { ConversationMatches } from './conversation-matches';
 import { SearchResults } from './search-results';
 import { searchPaged } from './search.api';
 import { appendDeduped } from './search.logic';
@@ -28,6 +36,8 @@ import { DialogFocus } from '../ui/dialog-focus';
 const ALL_TYPES = ALL_SEARCH_TYPES;
 /** v4 `PAGE_SIZE`. */
 const PAGE_SIZE = 20;
+/** v4 `CONVERSATION_LIMIT` — in-chat matches the dialog lists (`4f5047241`). */
+const CONVERSATION_LIMIT = 50;
 /** v4 300ms debounce. */
 const DEBOUNCE_MS = 300;
 
@@ -41,12 +51,18 @@ const DEBOUNCE_MS = 300;
  * v4's open/close lifecycle is reproduced with the host owning `isOpen`:
  * opening seeds `initialQuery`/`initialTypes` (and fires the initial search
  * when the seed is ≥2 chars); closing resets everything.
+ *
+ * In a Salon chat (P4.D384, v4 `4f5047241`) the host passes the focused
+ * conversation's source: a `This conversation` chip (on by default, off when
+ * the dialog was opened on one type) lists up to 50 in-chat matches above an
+ * `Everywhere` divider; picking one hands the query back to the bar
+ * (`conversationReveal`), reveals the message, and closes.
  */
 @Component({
   selector: 'qt-search-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'onEscape($event)' },
-  imports: [DialogFocus, Icon, SearchResults],
+  imports: [ConversationMatches, DialogFocus, Icon, SearchResults],
   template: `
     @if (isOpen()) {
       <!-- Backdrop (v4: a full-viewport button on qt-dialog-overlay). -->
@@ -61,7 +77,7 @@ const DEBOUNCE_MS = 300;
         class="fixed inset-x-4 top-16 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-2xl z-[101]"
       >
         <div
-          class="bg-background rounded-lg shadow-2xl overflow-hidden"
+          class="qt-bg-popover rounded-lg shadow-2xl overflow-hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Search"
@@ -98,10 +114,21 @@ const DEBOUNCE_MS = 300;
             </div>
 
             <div class="flex flex-wrap gap-2 mt-3">
+              @if (conversation()) {
+                <button
+                  type="button"
+                  (click)="includeConversation.set(!includeConversation())"
+                  [attr.aria-pressed]="includeConversation()"
+                  [class]="includeConversation() ? 'qt-filter-chip-active' : 'qt-filter-chip'"
+                >
+                  This conversation
+                </button>
+              }
               @for (type of allTypes; track type) {
                 <button
                   type="button"
                   (click)="toggleType(type)"
+                  [attr.aria-pressed]="selectedTypes().includes(type)"
                   [class]="selectedTypes().includes(type) ? 'qt-filter-chip-active' : 'qt-filter-chip'"
                 >
                   {{ chipLabel(type) }}
@@ -112,6 +139,19 @@ const DEBOUNCE_MS = 300;
 
           <!-- Results -->
           <div #scrollContainer class="max-h-[60vh] overflow-y-auto" (scroll)="onScroll()">
+            @if (conversationResults(); as inChat) {
+              <qt-conversation-matches
+                [matches]="inChat.matches"
+                [total]="inChat.total"
+                [query]="query()"
+                (select)="onConversationSelect($event)"
+              />
+              <div
+                class="px-3 pt-2 pb-1 border-t qt-border-default qt-text-xs font-semibold uppercase tracking-wider"
+              >
+                Everywhere
+              </div>
+            }
             @if (hasSearched()) {
               <qt-search-results
                 [results]="results()"
@@ -164,7 +204,11 @@ export class SearchDialog {
   readonly initialQuery = input<string>('');
   /** Pre-select specific types when opening the dialog. */
   readonly initialTypes = input<SearchType[] | undefined>(undefined);
+  /** The open Salon chat, searched first behind a "This conversation" chip. */
+  readonly conversation = input<ConversationSearchSource | null>(null);
   readonly close = output<void>();
+  /** Emitted with the trimmed query when an in-chat match is picked, just before closing. */
+  readonly conversationReveal = output<string>();
 
   protected readonly allTypes = ALL_TYPES;
   protected readonly query = signal('');
@@ -176,6 +220,21 @@ export class SearchDialog {
   protected readonly hasMore = signal(false);
   protected readonly totalCount = signal(0);
   protected readonly countsByType = signal<Partial<Record<SearchType, number>>>({});
+  /**
+   * "This conversation" is a filter of its own beside the global types; it is
+   * on by default, and off when the dialog was opened to look at one type.
+   */
+  protected readonly includeConversation = signal(true);
+  private readonly trimmedQuery = computed(() => this.query().trim());
+  protected readonly conversationResults = computed(() => {
+    const conversation = this.conversation();
+    const trimmed = this.trimmedQuery();
+    // `untracked`: v4's `useMemo` keys on [conversation, includeConversation,
+    // trimmedQuery] only.
+    return conversation && this.includeConversation() && trimmed.length >= CONVERSATION_SEARCH_MIN_QUERY
+      ? untracked(() => conversation.search(trimmed, CONVERSATION_LIMIT))
+      : null;
+  });
 
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
   private readonly scrollContainer = viewChild<ElementRef<HTMLDivElement>>('scrollContainer');
@@ -223,6 +282,8 @@ export class SearchDialog {
         // initialTypes] only (search-dialog.tsx:110-140).
         const seedTypes = initialTypes && initialTypes.length > 0 ? initialTypes : ALL_TYPES;
         this.selectedTypes.set(seedTypes);
+        // v4: opened on one type → the in-chat filter starts OFF; otherwise ON.
+        this.includeConversation.set(!(initialTypes && initialTypes.length > 0));
         setTimeout(() => this.searchInput()?.nativeElement.focus(), 100);
         if (initial && initial.length >= 2) {
           void this.performSearch(initial, seedTypes, 0, true);
@@ -246,6 +307,13 @@ export class SearchDialog {
   /** v4 chip text: `type.charAt(0).toUpperCase() + type.slice(1)`. */
   protected chipLabel(type: SearchType): string {
     return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+
+  /** v4 `handleConversationSelect`: hand the query back, reveal, close. */
+  protected onConversationSelect(messageId: string): void {
+    this.conversationReveal.emit(this.trimmedQuery());
+    this.conversation()?.reveal(messageId);
+    this.close.emit();
   }
 
   protected onEscape(event?: Event): void {

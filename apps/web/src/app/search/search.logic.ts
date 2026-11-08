@@ -17,11 +17,8 @@ import type { SearchResult, SearchType } from './search.types';
  *   screen doesn't read `?tag=` yet, so the row lands on the unfiltered
  *   gallery. The param is carried so the affordance lights up when the screen
  *   learns it).
- * - `/salon/{id}?msg={messageId}` → unchanged (a named deferral: v5's Salon
- *   has no `?msg=` message-anchor affordance, and the workspace redirect
- *   guard carries only the chat id — the row lands in the right conversation,
- *   unanchored).
- * - everything else (`/salon/{id}`) → unchanged.
+ * - everything else (`/salon/{id}`, and `/salon/{id}?msg={messageId}` — the
+ *   Salon takes that reveal itself) → unchanged.
  */
 export function mapResultUrl(url: string): string {
   if (url.startsWith('/aurora/')) {

@@ -170,3 +170,32 @@ describe('SearchResults — the documents row (v4 DocumentResultCard)', () => {
     expect(passed.clicks).toBe(0);
   });
 });
+
+/**
+ * P4.D384 — v4 `94f041764` gave the per-type `Show all …` button an
+ * `aria-label` equal to its title, so a screen reader hears the words rather
+ * than the bare `(shown/total)` count.
+ */
+describe('SearchResults — the Show all button is named (v4 94f041764)', () => {
+  it('carries aria-label = title', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [SearchResults],
+      providers: [provideRouter([])],
+    });
+    const fixture = TestBed.createComponent(SearchResults);
+    fixture.componentRef.setInput('results', [memoryResult(0.5)]);
+    fixture.componentRef.setInput('query', 'remembered');
+    fixture.componentRef.setInput('countsByType', { memories: 9 });
+    fixture.componentRef.setInput('hasTypeCountClick', true);
+    fixture.detectChanges();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector(
+      'button[title^="Show all"]',
+    ) as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    expect(button.getAttribute('title')).toBe('Show all 9 memories');
+    expect(button.getAttribute('aria-label')).toBe('Show all 9 memories');
+    expect((button.textContent ?? '').trim()).toBe('(1/9)');
+  });
+});

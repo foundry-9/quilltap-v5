@@ -605,3 +605,47 @@ rm -f "$F"; cp <V5>/apps/web/oracle/stream-frames.recorder.ts "$PIN/"
 cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx stream-frames.recorder.ts > "$F"
 wc -l < "$F"   # 179
 ```
+
+## P4.D384 — `conversation-search.oracle.ndjson` ("find in this chat")
+
+Recorded 2026-11-07 at the pin `624d0d25c` (`/tmp/qt-v4-pin-p4d384-624d0d25c`,
+its own `npm ci`) through v4's REAL `lib/chat/conversation-search.ts`
+(`4f5047241`), a pure module with no imports.
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `conversation-search.oracle.ndjson` | 94 — 1 `constants`, 24 `text`, 6 `escape`, 19 `pattern`, 44 `find` | `8fde42c0a2861b9d60dab239a75694476c65fac436e3f384b12523c500a28494` | `lib/chat/conversation-search.ts` (`4f5047241`) | `app/chat/conversation-search.oracle.spec.ts` |
+
+- **Row shape:** `{id, kind, …inputs, out}`; the spec compares
+  `JSON.stringify` bytes. `find` rows carry the messages, query, limit and a
+  `speaker` MODE (`absent` / `null` / `byId` / `announcer`) the spec rebuilds
+  as the same `speakerOf` callback; `pattern` rows record `{source, flags,
+  probeHit}` or `null`.
+- **Corpus:** v4's own `conversation-search.test.ts` cases plus every
+  `toSearchableText` pass, TOOL / empty / `systemSender` rows, `limit` under
+  the total and `0`, metacharacters, 1 vs 2 trimmed characters, `u`-flag case
+  folding (`İ` folds to nothing but itself; `ß` ↔ `ẞ` but NOT `SS`; the Kelvin
+  sign ↔ `k`; `ſ` ↔ `S`), positions 0 / end / 40 / 41 / past 140, overlapping
+  `aa` in `aaaa` (counted non-overlapping: 2), and astral edges.
+- **Measured (not fixed):** the snippet slices UTF-16 code units, so an astral
+  character straddling the window splits — v4 emits a lone LOW surrogate after
+  the leading `…` (`find: astral characters straddling the snippet start`,
+  message 2) and a lone HIGH surrogate before the trailing `…` (`… snippet
+  end`, message 2). v5 reproduces the split byte for byte.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`; the
+  recorder's header has the same recipe):
+
+  ```bash
+  PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
+  ls -ld "$PIN" && git -C "$PIN" rev-parse HEAD     # 624d0d25c…
+  F=<V5>/apps/web/src/testing/fixtures/conversation-search.oracle.ndjson
+  rm -f "$F"
+  cp <V5>/apps/web/oracle/conversation-search.recorder.ts "$PIN/"
+  cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx conversation-search.recorder.ts > "$F"
+  rm -f "$PIN/conversation-search.recorder.ts"
+  wc -l < "$F"                                   # 94
+  ```
+- **Not in the corpus:** the DOM paint (`chat/search-highlight.ts`, v4
+  `useSearchHighlight`) and the search surfaces (`search/conversation-matches.ts`,
+  the bar, the dialog) — component specs over v4's markup.
