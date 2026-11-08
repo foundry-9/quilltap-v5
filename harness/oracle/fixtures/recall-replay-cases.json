@@ -218,6 +218,20 @@
       }
     },
     {
+      "name": "tuning_resolved_override",
+      "body": {
+        "tuning": {
+          "multipliers": {
+            "resolved": 0.3
+          }
+        }
+      },
+      "distill": {
+        "kind": "json",
+        "text": "{\"keywords\": [\"Gullwing Quay\", \"dawn\", \"visit\"], \"temporal\": \"past\", \"context\": \"history\", \"paraphrase\": \"They remember visiting Gullwing Quay at dawn last week.\", \"retrospective\": true, \"timeRange\": {\"from\": \"2026-06-01\", \"to\": \"2026-06-07\"}, \"entities\": [\"Gullwing Quay\"]}"
+      }
+    },
+    {
       "name": "tuning_inner_circle",
       "body": {
         "tuning": {

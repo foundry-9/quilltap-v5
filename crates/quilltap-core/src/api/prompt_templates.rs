@@ -401,8 +401,10 @@ async fn seed_sample_prompts_if_needed(db: &Db) {
             removed: 0,
         }
     };
+    // The seeder's bare-logger target (v4 logs the prune lines from the
+    // repository, unprefixed, beside the seed INFOs).
     tracing::debug!(
-        target: LOG_TARGET,
+        target: builtin_prompt_templates::LOG_TARGET,
         built_in_count = summary.built_in_count,
         shipped_count = summary.shipped_count,
         removed = summary.removed,
