@@ -202175,3 +202175,140 @@ the baseline reaches the copy's v4 state — §S.8):
 | H6 | P4.D388 | the About Salon blurb — v4 `70d2859d8`'s "Deus Ex Machina established facts that every character knows," — is P4.D388's to port; this lane did not edit About (credit named here) | the About spec on the union |
 
 - **Cleanup.** The pin worktree removed and pruned; the lane's own `target/` deleted; the e2e artifacts (`apps/web/test-results`, `/tmp/p4d385/*.log`, the kept server logs) left for the unifier; nothing pushed to `main`.
+
+
+## Lane record — P4.D388: SPA smalls (branch `claude/p4-d388-spa-smalls-af82fa`, pin `624d0d25c`, 2026-11-08)
+
+### 1. Start, base, probe, pin
+
+- **Session start:** the app-made worktree `.claude/worktrees/p4-d388-spa-smalls-af82fa`, branch `claude/p4-d388-spa-smalls-af82fa`, clean, HEAD `3ed560020`. No move was needed. `3ed560020` is `CSS` (`git log --all --format='%h %s' | grep -E '^[0-9a-f]+ CSS:'` → `3ed560020 CSS: …`), and it is confirmed against P4.D383's branch `claude/p4-d383-css-1b9a5c`, whose status header reads "**`CSS` stacking commit:** **`3ed560020`**". The branch name keeps the app's spelling (`p4-d388`, not `p4.d388`).
+- **§R.2 probe (an observation), 2026-11-07 23:38 CST:** branch `main`, tree CLEAN; `624d0d25c..main` non-empty, so **v4 moved: `b941280d5`** ("feat: Turns mode for the Salon; Paused renamed Manual", 4.12.2 released and merged back); `997657639..bugfix` non-empty (`d67c70a51` "bugfix: started 4.12.2 bug branch" and the 4.12.2 fixes). Recorded and continued, per §R.2. The pin stayed usable: `git show 624d0d25c:package.json` → `"version": "4.13.0-dev.8",`.
+- **Pin:** `/tmp/qt-v4-pin-p4.d388-624d0d25c`, `git rev-parse HEAD` = `624d0d25c6cbb68daa54e08fc57e21e16ce205aa` (checked before the recorder run; never swept). Root `npm ci --offline --ignore-scripts --no-audit --no-fund`: 1075 packages, no `ENOTCACHED`; zod `4.6.7`. No `npm rebuild better-sqlite3`, since the recorder opens no database.
+- **PR-8 measured:** `require.cache` after loading both recorder modules under the pin holds fourteen v4 `lib/` files (`characters/kind.ts`, `llm/connection-profile-utils.ts`, `schemas/profile.types.ts`, `schemas/common.types.ts`, `themes/types.ts`, `logger.ts`, five `logging/transports/*`, `env.ts`, `paths.ts`, `llm/attachment-support.ts`), plus 95 zod files and **zero** plugin-SDK files. No plugin floor install was needed.
+- **SPA env:** `apps/web` `npm ci` before any test (759 packages), and again after the lock moved (item 14).
+- **Handoffs read:** P4.D382's record (`4d839c909`) H2, with the twelve About lines' bytes, and its R-14 / U5 mermaid facts; P4.D365's record (`196234628`) H2 (the SPA croner move) and H4 (About credits).
+
+### 2. Commits (SPA 0.5.972 at `CSS` → 0.5.978; no crate moved, `Cargo.lock` untouched)
+
+| sha | unit | SPA |
+|---|---|---|
+| `06b3b9a4a` | (i) items 2–5: the contract block, `core/character-kind.ts`, the census, the kind card + placements | 0.5.973 |
+| `8319d8054` | (ii) items 6–8: sampling hide, image cap, the tier-1 corpus | 0.5.974 |
+| `1a1b091c9` | (iii) items 9–11 (+ Tier 2 item 16): the inline Brahma select, the settings section, the project card | 0.5.975 |
+| `e7ebb1a10` | (iv) item 12: the presets rewrite + HANDOFF H1 patch | 0.5.976 |
+| `cf10ac2fb` | (v) item 13: About | 0.5.977 |
+| `5ae98671a` | (vi) item 14: croner 11, mermaid 12.3.0 | 0.5.978 |
+| `f0c00e341` | (vii) item 15: `e2e/spa-smalls-flow.spec.ts` + the fenced presets beat in `salon-custom-tools-flow.spec.ts` (e2e-only; SPA not bumped) | 0.5.978 |
+| (this commit) | this record + the order's status header (docs-only) | — |
+
+Item 15's beats were not folded into the feature commits: they ride one e2e commit, (vii).
+
+### 3. Red-first (§R.7; every new case written before its source edit, on the tree of the commit before)
+
+- (i) `character-kind.spec.ts`, `character-kind.census.spec.ts`, `character-kind-card.spec.ts`: the build failed (modules absent). With the module written, the census ran **green with the allowlist**. Its case "the allowlist bites" asserts that with the allowlist EMPTIED the census names exactly the two production lines, `chat/message-list.ts: if (sm.kind !== 'assistant') {` and `core/chat-stream.reducer.ts: m.kind === 'assistant' && m.id === result.messageId`; that case is the census's own mutation proof. **Planted mutant:** a scratch copy of `can-draw-diagrams-card.ts` with `if (c.kind === 'assistant') {}` red 2 census cases naming `screens/characters/zz-kind-mutant.ts:156`; deleted. Card mutants: removing the snap-back red 1 case ("a refused save … snaps the radio back"); a FIXED group name red 1 case ("two instances get DIFFERENT radio-group names"). The two placement cases are in `character-detail.spec.ts` / `character-edit.spec.ts`.
+- (ii) `profile-form.spec.ts` and `profile-modal.spec.ts`: the build failed (`outboundSamplingParameters` / `providerTakesSamplingParameters` absent; `ProfileFormData.maxImagesPerRequest` absent). New `connection-profiles-card.spec.ts`: **1 of 3 red** ("Max Tokens" alone). The other two pin the unchanged three-value arm and Tier 2 item 18 (an unknown provider shows all three). Corpus mutants: `parsed >= CEILING` red exactly the `'50'` row (1 of 41); flipping `DEFAULT_CHARACTER_KIND` red 39 of 46 kind rows. A trim-removal mutant is EQUIVALENT (`Number('   ')` is 0, refused either way), recorded and replaced.
+- (iii) `inline-brahma-profile-select.spec.ts`: the build failed (module absent). Settings + project-card growth: **15 of 17 red**. The two that passed pre-fix are pins of behaviour that must survive: the section is absent while loading, and the budget save carries no `inlineConnectionProfileId`. Removing the select's snap-back red 4 cases across the three specs.
+- (iv) the rewritten `custom-tool-presets.spec.ts` (30 cases) failed to build against the old component (NG8002 unknown inputs `chatId` / `asCharacterId` / `toolKey`; the old 2-arg `customToolsKeys.presets`).
+- (v) the four new `about-page.spec.ts` cases: **4 of 4 red**.
+- (vi) the two croner rows: **2 of 2 red** on 10.0.1 (the gap row ran, not skipped: this machine is America/Chicago).
+
+### 4. The corpus (item 8)
+
+`apps/web/tooling/record-spa-smalls.mts` → `apps/web/src/testing/fixtures/spa-smalls.oracle.ndjson`: **85 rows** (13 `characterKindOrDefault`, 16 `resolveCharacterKind`, 16 `isAssistantCharacter`, 15 `resolveMaxImagesPerRequest`, 25 `parseMaxImagesPerRequest`), sha256 `2aae63da1a24b407f2c8c3beac6c719a829915d0b2637e9d509b1e000563bd42`. The file is non-empty and its row counts match the README section, which is appended to `src/testing/fixtures/README.md`. **Two replay specs, one beside each twin:** `core/character-kind.corpus.spec.ts` and `screens/settings/providers/max-images-per-request.corpus.spec.ts`; each pins the total and its own per-kind counts. **A surprising coercion:** `'0b11'` → 3 (`Number()` reads binary literals), alongside the expected `'0x10'` → 16 and `'1e1'` → 10; `[7]` → null (not a string, so not coerced). Regen: `cd <pin> && QT_V4_ROOT=$PWD PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx <V5>/apps/web/tooling/record-spa-smalls.mts > <V5>/apps/web/src/testing/fixtures/spa-smalls.oracle.ndjson`.
+
+### 5. The PR-* calls and every "record which"
+
+- **PR-1 TAKEN:** declaration merging in the one appended block. `ProviderSamplingCapability` is read through ONE cast in `profile-form.ts` `providerTakesSamplingParameters`. (§R.10 (s) also permits a fenced in-place insert; the order chose the accessor, and so did this lane. H5 offers the fold.) The `CoreRequest` union's terminating `;` moved from `| InventoryRequest;` (P4.D330's fence) onto `| ChatCustomToolPresetsRequest;` inside the new `// === P4.D388 ===` fence.
+- **PR-2 TAKEN:** the select is controlled (emit, then `target.value = selected()`).
+- **PR-3 TAKEN, and extended:** `linkedSignal` seeded from `kind`. **The snap-back also writes the DOM** (`viewChildren('radio')`): with no render between the optimistic `set` and the failure `set`, the `[checked]` binding sees no change, which is dogfood #143's class, measured red without it.
+- **PR-4 TAKEN:** `STREAM_MESSAGE_KIND_SITES` (2 entries, matched by trimmed text, with a stale check).
+- **PR-5 TAKEN:** no policy types (Tier 3 item 30).
+- **PR-6 TAKEN:** `chatId` / `asCharacterId` default `null`; the query is `enabled` only with both; with either null the section renders and dispatches nothing.
+- **PR-7 TAKEN:** `screens/prospero/project-detail.ts` is not edited; the survey's S8 row retires.
+- **PR-8 TAKEN** (measured, §1). **PR-9 TAKEN:** one own-instance file plus the fenced presets region. **PR-10 / PR-11 TAKEN.**
+- **Kind card success path:** NO invalidate on success (v4 does not refetch). The sibling's `finally` invalidate is NOT kept. The invalidate runs on FAILURE only (v4's re-fetch); the edit tab's copy follows through the shared detail query when that refetch lands.
+- **Inline section shape:** an `@if` block in the same component, sharing the card's ONE load. v4's two hooks read one query key, and v4 returns `null` while loading, so the section is hidden until `loading()` settles.
+- **Model Behavior card save:** its own `onBrahmaProfile` method, not `save(...)`. The controlled select snaps back itself, so the helper's #143 `select.value = saved()` has nothing to do, and v4 logs `console.error('useProjectDetail: save inline Brahma profile error', msg)` where the helper's handlers log nothing.
+- **The `&` in the subtitle:** a raw `&` in the `description` attribute literal (`…inline Brahma & tool defaults`), as the existing text already wrote it. Angular renders it as `&`, and the spec asserts the rendered text.
+- **`qt-pf-*` vs v4's ids:** the cap field keeps v4's `maxImagesPerRequest` / `maxImagesPerRequest-hint`. Those are what `aria-describedby` names and what beat (E) selects; the modal's other fields keep `qt-pf-*`.
+- **Host class:** `qt-can-draw-diagrams-card` is handled with a rule in `src/styles/qt-components/_content.css:947` (P4.D383's file, so not editable here). The kind card, therefore, carries NO `qt-*` host class (`check-qt-classes` reds a host class with no rule) and a host style, `styles: [':host { display: block; }']`, the `custom-tool-presets.ts` precedent; the select does the same.
+- **Order corrections measured (the hunk wins):** the About tech-stack comment is `AboutView.tsx:242-276` at the pin (the order suggested `:245-266`); the acknowledgments are `:371-380` (as the order said). **Angular's `[class]` string binding REORDERS tokens:** `'flex items-center gap-2 text-sm cursor-pointer'` rendered as `'flex gap-2 items-center …'`, and `'grid grid-cols-3 gap-4'` as `'gap-4 grid grid-cols-3'`. v4's bytes are kept with static classes plus `[class.x]` toggles (the kind card's labels) and with `[attr.class]` (the modal's grid, the select's class).
+
+### 6. The dependencies (item 14)
+
+- **croner 10.0.1 vs 11.0.0**, measured by a Node probe over both installed copies (`TZ=America/Chicago`):
+  - `0 0 4 * * *`: unchanged (the next 04:00).
+  - `0 0 ? * 5` from Wed 2026-11-04 12:00: **10.0.1 → Thu 2026-11-05 00:00; 11.0.0 → Fri 2026-11-06 00:00.** P4.D365's `?` fix applies to the JS library too.
+  - `30 2 * * *` from 2027-03-13 12:00 (spring-forward 2027-03-14): **10.0.1 → 03:30 CDT; 11.0.0 → 03:00 CDT.**
+  - `0 0 30 2 *`: `null` on both. The existing row is unmoved.
+  - `0 4 * *` and `nonsense`: throw on both, with the same message.
+
+  The gap row runs only where the runner's zone has that gap (`it.skipIf(new Date(2027, 2, 14, 2, 30).getHours() === 2)`, named). vitest cannot pin a zone per test, because the SPA previews in the local zone. It RAN here.
+- **Install:** `npm install croner@11.0.0 --offline` (wrote `^11.0.0`), then `npm install mermaid@12.3.0 --save-exact --offline`. Both resolved from the cache, and both integrities equal v4's pin lock (croner `sha512-T17ADj…`, mermaid `sha512-4113Td…`). **Lock moves (package entries):** `node_modules/croner` 10.0.1 → 11.0.0; `node_modules/mermaid` 12.2.0 → 12.3.0; `node_modules/elkjs` 0.9.3 → 0.12.1 (mermaid's dependency range moved `^0.9.3` → `^0.12.0`); `node_modules/uuid` 14.0.3 REMOVED (mermaid 12.3.0 dropped it; no SPA source imports `uuid`). Diffstat: `apps/web/package-lock.json | 44 +++++++++++++++-----------------------------` (15+ / 29−), plus the two version lines. `npm ci` after: the lock is byte-stable.
+- **Build:** the initial bundle is 1.09 MB before and after, with no budget warning. Mermaid chunks (the files carrying mermaid's diagram code): **11 / 2,698,758 B → 11 / 2,737,206 B** (+38,448 B); the version banner is `12.2.0` → `12.3.0`; `dist/quilltap/browser` 28,568 → 28,644 KB.
+- `diagrams-flow` by file: **11 passed** under mermaid 12.3.0. Every `chat/diagrams/**` vitest spec is green in the full runs (641 files).
+
+### 7. Survey corrections confirmed
+
+- **`94f041764` ProfileCard drag handle: NO-COUNTERPART** (v5's `connection-profiles-card.ts` reorders with up / down buttons; `grep "hover:bg-accent\|Drag to reorder" src/app/screens/settings/` is empty). The SPA survey's §3.2 row and §7.2's W1 "ProfileCard → S8" retire.
+- **`project-detail.ts`: no edit** (PR-7).
+- **The Scriptorium blurb is `70d2859d8`'s**, not `c34986421`'s (P4.D382 H2's `git log -S` attribution agrees).
+- **`STREAM_MESSAGE_KIND_SITES`:** the planner's three hits, re-measured. Two production lines, now allowlisted; the third (`chat-stream.reducer.spec.ts:22`) is excluded by the spec-file rule.
+- **Tier 3 item 34:** v4's `CanDrawDiagramsToggle.tsx:76` at the pin ALSO writes the fixed `name="diagram-style"`, so v5's identical card is **v4-faithful**: v4 shares the defect (the two style groups merge with the view and edit tabs both mounted). It is a candidate v4 GitHub issue, not filed (outward-facing; the human's call). The class is "a fixed radio name in a component the workspace mounts twice". The file is not this round's.
+
+### 8. e2e (item 15), by file, one at a time (§R.9)
+
+Run with the worktree's release bins (`cargo build --release -p quilltap-web -p quilltap-cli`, 10 m 22 s, from main's cloned `target/`), each file in its own `npx playwright test e2e/<file> --reporter=line` invocation, queued behind sibling lanes' runners by PID. No red in any file:
+
+| File | Result |
+|---|---|
+| `spa-smalls-flow` | 2 passed / 6 skipped (the gated (C)–(H), each with its named reason) |
+| `salon-custom-tools-flow` | 4 passed / 1 skipped (the gated presets beat) |
+| `settings-provider-options-flow` | 8 passed |
+| `settings-brahma-console-flow` | 1 passed |
+| `projects-flow` | 7 passed |
+| `characters-flow` | 7 passed |
+| `diagrams-flow` | 11 passed |
+| `settings-autonomous-flow` | 4 passed |
+| `salon-autonomous-entry` | 3 passed |
+
+Measured along the way:
+- (B) needs BOTH tabs mounted. The e2e fixture forces route mode (`quilltap.workspace.tabs = '0'`), so the beat opts in through `addInitScript` and splits the edit tab into the other pane (Ctrl+Alt+\\); only visible workspace tabs mount.
+- A first run of (B) timed out in `beforeAll` while three sibling lanes' Playwright runs were live. It was contention, not a defect, and the beat was green 1/1 alone. The lane was then paused twice by the round lead (a full disk, then a machine shutdown); the nine files above ran after the reboot.
+
+### 9. HANDOFFs
+
+| # | To | Item | Measurable close |
+|---|---|---|---|
+| H1 | P4.D385 | `docs/developer/porting/work-orders/handoffs/p4.d388-custom-tools-popup-presets.patch`: the popup's gate `paramNames().length > 0 && tool.asCharacterId`; `[chatId]="chatId()" [asCharacterId]="tool.asCharacterId" [toolKey]="keyOf(tool)" [vaultMountPointId]="tool.vaultMountPointId ?? null"`; v4's `:634-636` comment. `git apply --check` is green on `CSS`. With the patch applied, a scratch popup-level spec ran 2/2 (a vaultless character tool walks as that character and shows "Save into"; an entry with no `asCharacterId` gets no section); the patch was then reverted, and the popup is byte-identical to `CSS`. | `git apply --check` on P4.D385's tip; on the union `grep -c 'tool.asCharacterId' chat/custom-tools-popup.ts` ≥ 1 and beat (H) LIVE |
+| H2 | the unifier | flip `P4D369_SERVER_LANDED`, `P4D362_SERVER_LANDED`, `P4D374_SERVER_LANDED`, `P4D379_SERVER_LANDED`, `P4D385_POPUP_H1_LANDED` in `e2e/spa-smalls-flow.spec.ts`, and `P4D379_SERVER_LANDED` + `P4D385_POPUP_H1_LANDED` in `salon-custom-tools-flow.spec.ts`'s fenced region; run both files alone, then the full suite. The gated beats were written blind against unlanded wires (the "gated beats fail on premises" class), so expect premise fixes. | every beat LIVE and green |
+| H3 | the unifier | the kind census's `STREAM_MESSAGE_KIND_SITES` re-measured on the union (P4.D384 rewrites `chat-stream.reducer.ts`) | `character-kind.census.spec.ts` green on the union, no stale entry |
+| H4 | the unifier | the About blurbs true on the union: Salon (#1: Deus — P4.D372 + P4.D384 + P4.D385; conversation-first search — P4.D384 + P4.D375), Scriptorium (#3: the shared folder browser + read-only viewers — P4.D386 + P4.D387), Brahma (#5: the lookups + the engine — P4.D374 + this lane). On this branch alone, #1, #3 and #5 describe features that are not yet here. | each feature present on the union, else flagged to the human |
+| H5 | the unifier | optional: fold the block's merged members into their interfaces and `ProviderSamplingCapability` into `ProviderInfo.capabilities`, then drop `providerTakesSamplingParameters`'s cast | `npm run build` green; one `samplingParameters?: boolean` in `ProviderInfo` |
+| H6 | P4.D382 | `help/connection-profiles.md`, `help/brahma-console.md`, `help/project-settings.md`, `help/character-editing.md`, `help/custom-tools.md` describe this lane's UI | P4.D382's record names them |
+| H7 | P4.D365 | its H2 (the SPA croner move + the `0 0 ? * 5` row) and H4 (the About credits: rows 4 / 7 / 9) are DONE here (`5ae98671a`, `cf10ac2fb`) | P4.D365's record cites this lane |
+| H8 | the unifier | the e2e `diagrams-flow` beats under mermaid 12.3.0 on the union build | `diagrams-flow` by file green on the union |
+
+### 10. Tier 3 records (never silent)
+
+- **30:** v4's `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy`, `kindPolicy` and `characterKindPolicy` are NOT ported to the SPA (PR-5).
+- **31:** the `94f041764` ProfileCard drag handle is NO-COUNTERPART (§7).
+- **32:** v4's `useConnectionProfiles` hook is not ported as a module. Its coercions (`name || ''`, `provider || ''`, `modelName || ''`, `isDefault === true`, `allowToolUse !== false`) live in `brahma/inline-brahma-profile-select.ts`'s exported `toInlineBrahmaProfileOption`, and are pinned by its spec.
+- **33:** five help pages → P4.D382 (H6).
+- **34:** v4-faithful (§7).
+- **35:** the `.qtap` / backup carriers of `kind`, `maxImagesPerRequest` and `brahmaConnectionProfileId` are server lanes' work; there is no SPA surface.
+- **Tier 2:** 16 (stale-id rows in the select spec and the settings spec), 17 (the provider-change case), 18 (the card's unknown-provider line) and 19 (`check-a11y-names` green: the kind radios are named by their labels, the cap input by `for`, the engine select by `for="brahma-inline-profile"` / `aria-labelledby` = the heading, `Save into` by `for`; nothing added to its allowlist) all LANDED. 20 is the 💸 rows below.
+
+### 11. 💸 for the owed dogfood pass (waits for the union, §S.8 / the 2026-11-04 ruling)
+
+- Mark Friday's research aide an Assistant on the view tab. Check that the edit tab follows and that `properties.json` carries `"kind": "assistant"`; then run a turn with Agent Mode on (P4.D370's flavour).
+- Open an Anthropic profile: no Temperature / Top P, v4's note, and the card's lone "Max Tokens". Save it and check that the stored `parameters` lack both.
+- Set a vision profile's cap to 2 and send a turn with three images (P4.D367 describes the oldest in words).
+- Name a global inline-Brahma engine and a project override. Ask `@Brahma?` in a project chat and outside it, and check the LLM Inspector's profile for each. Delete the overriding profile and see "(a profile that has since left the building)".
+- Save a Pascal preset into a group store, shadow it with a vault preset of the same name, and read the `title`.
+- Read the About page's twelve lines.
+- Preview an Autonomous Room with `0 0 ? * 5`: it shows a Friday.
+
+### 12. Close
+
+Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed and pruned; the lane's `target/` is deleted whole; nothing is pushed to `main`.
