@@ -1055,6 +1055,12 @@ _Docs-only change._
 
 The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
 
+#### 2026-11-08 — test(salon): the stream-frames chokepoint census
+
+_Versions: SPA 0.5.976._
+
+P4.D384 Tier 2 item 13. New `core/stream-frames.census.spec.ts` scans the SPA source. The Salon fold is the only caller of `reduceChatFrame`, and it parses with `parseFrameValue` first. The Brahma console is the only caller of `reduceLegacyChatFrame`. Every Salon frame reader (the fold, Document Mode, the swipe) goes through `parseFrameValue`. The legacy bag's keys are read only below the legacy fence in the reducer module. The order expected Help's reducer to read them too; measured, it reads none of the five keys.
+
 #### 2026-11-08 — feat(salon): the compact header breadcrumb, the in-chat search source, the `?msg=` reveal (v4 3c41cf3da, 4f5047241)
 
 _Versions: SPA 0.5.975._
