@@ -241,6 +241,8 @@ fn fresh_fixture(tag: &str) -> Scratch {
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
         // [P4.D327] the two Inventory columns (the oracle's `plantInventoryColumns`).
         quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
+        // [P4.D362] the two 4.12 columns (the oracle's `plant412Columns`).
+        quilltap_core::test_support::ensure_4_12_columns_on(w.connection());
         let touched = w
             .connection()
             .execute(
@@ -1848,7 +1850,41 @@ fn system_import_execute_state_equivalence() {
     // = 92).
     // …+ P4.D351's `execute_novel_template` and `execute_template_refusals`
     // (92 + 2 = 94).
-    assert_eq!(ran, 94, "expected 94 cases, ran {ran}");
+    // …+ P4.D362's `execute_p4d362_carriers` (94 + 1 = 95).
+    assert_eq!(ran, 95, "expected 95 cases, ran {ran}");
+    // [P4.D362] Non-vacuity: v4 imported the two sound profiles (the
+    // capless one seeded to 4, the Anthropic one stripped), named-and-skipped
+    // the five bad caps with its ZodError, and landed both flagged messages.
+    // The whole-state diff above compares v5 with exactly this.
+    {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == "execute_p4d362_carriers")
+            .expect("the oracle is missing `execute_p4d362_carriers` — regenerate it");
+        let result = &case["result"];
+        assert_eq!(result["imported"]["connectionProfiles"], 2, "{result}");
+        assert_eq!(result["imported"]["messages"], 2, "{result}");
+        let warnings: Vec<&str> = result["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        for name in [
+            "P4.D362 Cap Zero",
+            "P4.D362 Cap Fifty One",
+            "P4.D362 Cap Fraction",
+            "P4.D362 Cap String",
+            "P4.D362 Cap Null",
+        ] {
+            let prefix = format!("Failed to import connection profile \"{name}\": [");
+            assert!(
+                warnings.iter().any(|w| w.starts_with(&prefix)),
+                "v4 no longer refuses `{name}` with a ZodError: {warnings:?}"
+            );
+        }
+        assert_eq!(warnings.len(), 5, "{warnings:?}");
+    }
     // [P4.167 chat record columns] Non-vacuity: v4 REFUSED the planted chats
     // with its `expected record` ZodError (the whole-state diff above compares
     // v5's warnings and rows with these), and the remint's null-out of a

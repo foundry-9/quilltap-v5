@@ -45,6 +45,8 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
+// [P4.D362] the two 4.12 columns, through v4's REAL migrations.
+import { plant412Columns } from '../lib/v4-migrations';
 import { processSingleton } from '@/lib/utils/process-singleton';
 
 interface Spec {
@@ -113,6 +115,36 @@ function applyMocks(userId: string): void {
     ...jest.requireActual('@/lib/auth/session'),
     getServerSession: async () => ({ user: { id: userId } }),
   }));
+  // === P4.D362 ===
+  // v4 `544c7ab1e`'s repository strip calls `acceptsSamplingParameters`, which
+  // jest.setup's provider-validation mock (three functions) does not carry: at
+  // the pin EVERY profile create threw `acceptsSamplingParameters is not a
+  // function` (measured: `Local Mock` in `execute_overwrite_all`, the
+  // vacuity guard). Keep the setup's three mocks and add the REAL function, over
+  // a provider registry holding the real Anthropic plugin (the one plugin that
+  // declares `samplingParameters: false`), registered the runtime way —
+  // production loads every bundled plugin, and v5's manifests always know it.
+  jest.doMock('@/lib/plugins/provider-registry', () => {
+    const actual = jest.requireActual('@/lib/plugins/provider-registry');
+    const rpath = require('node:path');
+    const m = require(rpath.join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-anthropic', 'index.js'));
+    const plugin = m.plugin || m.default?.plugin || m.default;
+    if (!actual.getProvider('ANTHROPIC')) actual.registerProvider(plugin);
+    if (actual.getProvider('ANTHROPIC')?.capabilities?.samplingParameters !== false) {
+      throw new Error('the Anthropic plugin did not register with samplingParameters: false');
+    }
+    return actual;
+  });
+  jest.doMock('@/lib/plugins/provider-validation', () => {
+    const actual = jest.requireActual('@/lib/plugins/provider-validation');
+    return {
+      validateProviderConfig: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+      acceptsApiKey: jest.fn(() => true),
+      requiresApiKey: jest.fn(() => true),
+      acceptsSamplingParameters: actual.acceptsSamplingParameters,
+    };
+  });
+  // === end P4.D362 ===
   jest.doMock('@/lib/startup/startup-state', () => {
     const actual = jest.requireActual('@/lib/startup/startup-state');
     return {
@@ -1541,6 +1573,12 @@ async function runCase(
   // reports `not needed`; it stays so a rebuilt or vintage pair cannot go
   // vacuous. `ledger: false` — no `migrations_state` row the v5 side lacks.
   await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64, ledger: false });
+  // [P4.D362] The 4.12 columns (`chat_messages.isEstablishedFact`,
+  // `connection_profiles.maxImagesPerRequest`) through v4's REAL migrations'
+  // direct arm (no ledger rows), on every copy: a booted v4 / v5 instance
+  // carries them, and v4's profile insert names the cap on every create. The
+  // Rust side runs `ensure_4_12_columns_on` (the same two clauses).
+  await plant412Columns(mainWork, spec.testPepperBase64);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
@@ -4666,6 +4704,12 @@ async function main(): Promise<void> {
       },
       true,
     ),
+    // [P4.D362] The 4.12 carriers — see `p4d362CarriersPayload`.
+    executeCase('execute_p4d362_carriers', () => p4d362CarriersPayload(chatsInformsPayload), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    }),
   ];
 
   const outLines: string[] = [
@@ -4791,5 +4835,77 @@ function preservedNumericIdPayload(merged: { manifest: unknown; data: Record<str
     mk({ id: true, summary: 'Boolean id memory' }),
     keep,
   ];
+  return p;
+}
+
+// === P4.D362 the 4.12 carriers (append-only) ===
+
+/**
+ * [P4.D362] The `.qtap` import of the two 4.12 columns and the sampling strip:
+ * - a pre-4.12 profile with NO `maxImagesPerRequest` (seeded to 4);
+ * - an Anthropic profile carrying `temperature` / `top_p` beside `max_tokens`
+ *   and a cap of 8 (the repository strip keeps only `max_tokens`);
+ * - five profiles with a bad cap (`0`, `51`, `4.5`, `"6"`, `null`), each
+ *   named-and-skipped with v4's ZodError text;
+ * - one chat with two USER messages, `isEstablishedFact` `true` and `false`.
+ *   The flag is carried by serde.
+ * The chat is `conciergeBogusPayload`'s template with the ids overridden.
+ */
+function p4d362CarriersPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const id = (n: string) => `d3620000-0000-4000-8000-000000000${n}`;
+  const p = conciergeBogusPayload(base, []) as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const src = JSON.parse(JSON.stringify(rewriteIds(base))) as {
+    data: Record<string, Array<Record<string, unknown>>>;
+  };
+  const tmpl = JSON.parse(JSON.stringify(src.data.chats[0])) as Record<string, unknown>;
+  const msgs = ((tmpl.messages ?? []) as Array<Record<string, unknown>>).filter(
+    (m) => m.type === 'message',
+  );
+  if (msgs.length === 0) throw new Error('p4d362CarriersPayload needs a message in the template chat');
+  delete tmpl.conciergeMode;
+  delete tmpl.conciergeModeSetBy;
+  delete tmpl.conciergeModeReason;
+  delete tmpl.conciergeOverride;
+  tmpl.isDangerousChat = false;
+  tmpl.id = id('c01');
+  tmpl.title = 'P4.D362 Established Fact';
+  const msg = (n: string, flag: boolean, content: string) => ({
+    ...msgs[0],
+    id: id(n),
+    role: 'USER',
+    content,
+    isEstablishedFact: flag,
+  });
+  tmpl.messages = [
+    msg('e01', true, 'P4.D362: the door was left unlocked.'),
+    msg('e02', false, 'P4.D362: an explicit false flag.'),
+  ];
+  const profile = (n: string, name: string, extra: Record<string, unknown> = {}) => ({
+    id: id(n),
+    name,
+    provider: 'OPENAI',
+    modelName: 'gpt-4',
+    ...extra,
+  });
+  p.data = {
+    connectionProfiles: [
+      profile('a01', 'P4.D362 No Cap'),
+      profile('a02', 'P4.D362 Anthropic Sampling', {
+        provider: 'ANTHROPIC',
+        modelName: 'claude-sonnet-4-5',
+        parameters: { temperature: 0.7, top_p: 0.9, max_tokens: 512 },
+        maxImagesPerRequest: 8,
+      }),
+      profile('a03', 'P4.D362 Cap Zero', { maxImagesPerRequest: 0 }),
+      profile('a04', 'P4.D362 Cap Fifty One', { maxImagesPerRequest: 51 }),
+      profile('a05', 'P4.D362 Cap Fraction', { maxImagesPerRequest: 4.5 }),
+      profile('a06', 'P4.D362 Cap String', { maxImagesPerRequest: '6' }),
+      profile('a07', 'P4.D362 Cap Null', { maxImagesPerRequest: null }),
+    ],
+    chats: [tmpl],
+  };
   return p;
 }

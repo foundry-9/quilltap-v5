@@ -24,6 +24,12 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — P4.D362: the 4.12 carrier rows — flagged messages on the read / write / continuation corpora, the import carriers, and the jest provider-validation mock
+
+_No crate versions bumped._
+
+Oracle and harness rows only. `isEstablishedFact` rows join `chats-messages-read-tier2.json`, `chats-messages-tier2.json` and `chat-continuation-tier2.json`; all three families are green from the pin, and v4 reads a fresh-shape `'0.0'` back as true. `system-import-execute` now plants the two 4.12 columns on every copy (both sides) and adds `execute_p4d362_carriers`: a capless profile is seeded to 4, an Anthropic profile is stripped to `max_tokens`, five bad caps are named-and-skipped with v4's ZodError, and two flagged messages land. A Rust non-vacuity pin guards the case. Also a v4 jest.setup gap at the pin: its provider-validation mock lacks `acceptsSamplingParameters`, so every profile create threw. The case keeps the setup's three mocks and adds the real function over a registry holding the real Anthropic plugin. The remaining `system_import_state` reds are the vault `kind` key (P4.D369).
+
 #### 2026-11-08 — docs(porting): P4.D362 Status — SCHEMA landed as 4e3a1584e, C2 final spellings
 
 _Docs-only change._

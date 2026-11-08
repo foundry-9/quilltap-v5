@@ -207,6 +207,23 @@
       "createdAt": "2026-02-01T00:00:09.500Z"
     },
     {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-0000000362f1",
+      "role": "USER",
+      "content": "P4.D362: posted as established fact.",
+      "isEstablishedFact": true,
+      "createdAt": "2026-02-01T00:00:09.600Z"
+    },
+    {
+      "type": "message",
+      "id": "e1000001-0000-4000-8000-0000000362f0",
+      "role": "USER",
+      "content": "P4.D362: an explicit false flag (a fresh-shape TEXT cell; v4 reads it back true).",
+      "isEstablishedFact": false,
+      "isSilentMessage": false,
+      "createdAt": "2026-02-01T00:00:09.700Z"
+    },
+    {
       "type": "context-summary",
       "id": "e1000001-0000-4000-8000-00000000000a",
       "context": "A summary of the conversation so far.",

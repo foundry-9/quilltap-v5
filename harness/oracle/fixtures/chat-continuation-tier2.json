@@ -26,6 +26,13 @@
      "participantId": null
     },
     {
+     "id": "51d00001-0000-4000-8000-0000000362f1",
+     "role": "USER",
+     "content": "P4.D362: the door was left unlocked (posted as established fact).",
+     "participantId": null,
+     "isEstablishedFact": true
+    },
+    {
      "id": "51d00002-0000-4000-8000-000000000102",
      "role": "ASSISTANT",
      "content": "At the archive door.",

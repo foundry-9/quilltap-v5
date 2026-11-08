@@ -389,6 +389,22 @@
           "participantId": "fc000001-0000-4000-8000-000000000001",
           "isSilentMessage": false,
           "createdAt": "2026-02-02T00:00:07.000Z"
+        },
+        {
+          "type": "message",
+          "id": "ed000001-0000-4000-8000-0000000362f1",
+          "role": "USER",
+          "content": "P4.D362: posted as established fact.",
+          "isEstablishedFact": true,
+          "createdAt": "2026-02-02T00:00:07.100Z"
+        },
+        {
+          "type": "message",
+          "id": "ed000001-0000-4000-8000-0000000362f0",
+          "role": "USER",
+          "content": "P4.D362: an explicit false flag.",
+          "isEstablishedFact": false,
+          "createdAt": "2026-02-02T00:00:07.200Z"
         }
       ]
     },
