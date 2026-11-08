@@ -1231,6 +1231,12 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — docs(porting): P4.D386 — the `BROWSER` sha in the status header
+
+_Docs-only change._
+
+Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
+
 #### 2026-11-08 — BROWSER: the shared item-browser shell — fixed menu, ⋮ menu, folder view + state + shell, destination picker, folder field, container catalogue + select (v4 624d0d25c)
 
 _Versions: SPA 0.5.973._
