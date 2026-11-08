@@ -19,6 +19,10 @@
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/recall-tuning.ts \
  *     > /tmp/oracle-recall-tuning.ndjson
+ *
+ * P4.D373 (v4 `ba6c8fe0f`): `RECALL_MULTIPLIERS.resolved` (0.6) is the 13th
+ * table key — the default echo grows it LAST and the strict override shape
+ * accepts it (`resolved-*` rows).
  */
 
 import {
@@ -131,6 +135,11 @@ const resolveCases: Array<[string, unknown]> = [
   // P4.D342 (v4 `a5efdbb97`): the inner circle's two knobs. `describe` compares
   // the allowance by its JOINED text, so a restated default reads `defaults`
   // and a longer table with the same head does not.
+  // P4.D373 (v4 `ba6c8fe0f`): the 13th multiplier key, `resolved`, derived
+  // from `RECALL_MULTIPLIERS` by the strict override shape.
+  ['resolved-override', { multipliers: { resolved: 0.5 } }],
+  ['resolved-equal-default', { multipliers: { resolved: 0.6 } }],
+  ['resolved-with-fresh', { multipliers: { freshEvent24h: 1.45, resolved: 0.3 } }],
   ['inner-circle-half', { innerCircleShare: 0.5 }],
   ['inner-circle-allowance', { innerCircleAllowance: [2] }],
   ['inner-circle-default-restated', { innerCircleShare: 1 / 3, innerCircleAllowance: [3, 2, 1] }],
@@ -223,6 +232,15 @@ const tuningParseCases: Array<[string, unknown]> = [
   ['root-array', []],
   ['root-string', 'x'],
   ['root-bool', true],
+  // P4.D373 (v4 `ba6c8fe0f`): `multipliers.resolved` bounds.
+  ['resolved-ok', { multipliers: { resolved: 0.5 } }],
+  ['resolved-zero', { multipliers: { resolved: 0 } }],
+  ['resolved-ten', { multipliers: { resolved: 10 } }],
+  ['resolved-high', { multipliers: { resolved: 11 } }],
+  ['resolved-negative', { multipliers: { resolved: -1 } }],
+  ['resolved-string', { multipliers: { resolved: 'x' } }],
+  ['resolved-null', { multipliers: { resolved: null } }],
+  ['resolved-scrambled', { multipliers: { resolved: 0.4, contextMatch: 1.2 } }],
   // P4.D342 (v4 `a5efdbb97`): the two inner-circle knobs' bounds.
   ['inner-circle-ok', { innerCircleShare: 0.5, innerCircleAllowance: [3, 0, 1] }],
   ['share-over', { innerCircleShare: 1.5 }],

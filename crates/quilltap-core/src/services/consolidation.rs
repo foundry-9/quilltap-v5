@@ -859,8 +859,15 @@ async fn execute_plan(
         .iter()
         .map(|r| (r.id.clone(), r.related_memory_ids.clone()))
         .collect();
+    let marks: Vec<(String, Vec<String>)> = plan
+        .resolved_marks
+        .iter()
+        .map(|m| (m.id.clone(), m.keywords.clone()))
+        .collect();
+    let mark_count = marks.len();
     let character_id = character_id.to_string();
     let now_iso = now_iso.to_string();
+    let log_character_id = character_id.clone();
 
     db.write(move |writers| {
         let main = writers.main();
@@ -953,9 +960,32 @@ async fn execute_plan(
             main.memories()
                 .update_for_character(&character_id, id, &patch)?;
         }
+
+        // v4 `ba6c8fe0f`: "Keywords are not embedded (embeddingTextFor), so
+        // this is a plain field write." The repository's ordinary update —
+        // it stamps `updatedAt`, as v4's `updateForCharacter` does.
+        for (id, keywords) in &marks {
+            let patch = MemUpdate {
+                keywords: Some(keywords.clone()),
+                ..Default::default()
+            };
+            main.memories()
+                .update_for_character(&character_id, id, &patch)?;
+        }
         Ok(())
     })
-    .await
+    .await?;
+    // Logged on the CALLER thread, after the write returns (the capture rig
+    // never sees the writer thread).
+    if mark_count > 0 {
+        tracing::debug!(
+            module = MODULE,
+            characterId = %log_character_id,
+            count = mark_count,
+            "Resolved grievances marked"
+        );
+    }
+    Ok(())
 }
 
 fn clone_mem_create(d: &crate::db::memories::MemCreate) -> crate::db::memories::MemCreate {
@@ -1492,6 +1522,7 @@ pub async fn consolidate<C: CompletionProvider, E: EmbeddingProvider>(
                         note: c.note.clone(),
                     })
                     .collect(),
+                resolved_ids: Some(validated.resolved_ids.iter().map(to_id).collect()),
                 embeddings: validated.digests.iter().map(|_| None).collect(),
             };
             {
@@ -1510,6 +1541,7 @@ pub async fn consolidate<C: CompletionProvider, E: EmbeddingProvider>(
                 standalone = outcome.keep_standalone.len(),
                 unlisted = validated.unlisted.len(),
                 contradictions = outcome.contradictions.len(),
+                resolved = outcome.resolved_ids.as_ref().map_or(0, Vec::len),
                 policyChatId = %or_null(routed.policy_chat_id.as_deref()),
                 "Cluster consolidated"
             );

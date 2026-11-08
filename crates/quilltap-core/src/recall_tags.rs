@@ -207,6 +207,11 @@ pub struct RecallMultiplierTable {
     /// than overriding the ranking.
     pub fresh_event_24h: f64,
     pub fresh_event_48h: f64,
+    /// v4 `ba6c8fe0f`: the memory records a hurt that a later repair settled —
+    /// consolidation marked it [`RESOLVED_KEYWORD`]. Still remembered and
+    /// still reachable by a turn about it, just no longer first in line; the
+    /// repair itself carries the thread (prompt-trust-the-probation.md §9.6).
+    pub resolved: f64,
 }
 
 /// v4 `RECALL_MULTIPLIERS` (`recall-tags.ts:167-220` at `01a83539d`).
@@ -223,10 +228,18 @@ pub const RECALL_MULTIPLIERS: RecallMultiplierTable = RecallMultiplierTable {
     occurred_within_window: 1.3,
     fresh_event_24h: 1.3,
     fresh_event_48h: 1.15,
+    resolved: 0.6,
 };
 
+/// v4 `RESOLVED_KEYWORD` (`ba6c8fe0f`): the free keyword consolidation adds to
+/// a memory whose hurt a repair settled. Not a targeting tag:
+/// `parse_targeting_tags` ignores it, and only [`resolved_multiplier`] reads
+/// it. Written only by the consolidation plan's `resolved_marks`
+/// (`consolidation_plan.rs`).
+pub const RESOLVED_KEYWORD: &str = "resolved";
+
 /// v4's `Object.keys(RECALL_MULTIPLIERS)`, in v4's key order.
-pub const RECALL_MULTIPLIER_KEYS: [&str; 12] = [
+pub const RECALL_MULTIPLIER_KEYS: [&str; 13] = [
     "scopeNarrowSameProject",
     "scopeNarrowCrossProjectDownWeight",
     "temporalPast",
@@ -239,6 +252,7 @@ pub const RECALL_MULTIPLIER_KEYS: [&str; 12] = [
     "occurredWithinWindow",
     "freshEvent24h",
     "freshEvent48h",
+    "resolved",
 ];
 
 impl RecallMultiplierTable {
@@ -256,6 +270,7 @@ impl RecallMultiplierTable {
             "occurredWithinWindow" => &mut self.occurred_within_window,
             "freshEvent24h" => &mut self.fresh_event_24h,
             "freshEvent48h" => &mut self.fresh_event_48h,
+            "resolved" => &mut self.resolved,
             _ => return None,
         })
     }
@@ -691,6 +706,32 @@ pub fn occurred_within_multiplier(
 ///
 /// No clock, no parsable event time, or an event time in the future → pass
 /// through (never penalize on missing data — house rule).
+/// v4 `resolvedMultiplier` (`ba6c8fe0f`): a hurt a repair settled ranks below
+/// the repair; never an exclude. The keyword matches TRIMMED (JS
+/// `String.prototype.trim`, [`crate::jsstr::js_trim`] — U+FEFF yes, U+0085
+/// no, the reverse of Rust's `str::trim`) and lowercased. v4's
+/// `typeof k === 'string'` guard is the slice's element type here. Note the
+/// consolidation plan's skip is v4's EXACT `includes('resolved')`, so the two
+/// matchers disagree on `"Resolved "` on purpose; this one is a `some`, so a
+/// memory carrying both is ×0.6 once.
+pub fn resolved_multiplier(
+    memory: &MemoryTagView,
+    multipliers: &RecallMultiplierTable,
+) -> RecallMultiplier {
+    if memory
+        .keywords
+        .iter()
+        .any(|k| crate::jsstr::js_trim(k).to_lowercase() == RESOLVED_KEYWORD)
+    {
+        return RecallMultiplier {
+            multiplier: multipliers.resolved,
+            fired: vec!["resolved↓"],
+            exclude: false,
+        };
+    }
+    RecallMultiplier::pass()
+}
+
 pub fn fresh_event_multiplier(
     memory: &MemoryTagView,
     now_ms: Option<f64>,
@@ -818,7 +859,8 @@ pub fn recently_whispered_multiplier(
 /// only the gate needs it — so every caller's stacked boosts are capped.
 ///
 /// The float multiplication order (scope · temporal · context · participant ·
-/// recent · window · fresh, left-associative — fresh LAST) is preserved exactly
+/// recent · window · fresh · resolved, left-associative — resolved LAST since
+/// v4 `ba6c8fe0f`) is preserved exactly
 /// so the f64 result is bit-equal to the TS oracle; the boost / penalty
 /// products run in the same parts order.
 pub fn combine_recall_multipliers(
@@ -857,6 +899,10 @@ pub fn combine_recall_multipliers(
     );
     let window = occurred_within_multiplier(memory, ctx.occurred_within, multipliers);
     let fresh = fresh_event_multiplier(memory, ctx.now_ms, ctx.current_chat_id, multipliers);
+    // v4 `ba6c8fe0f`: appended LAST to the parts (so `resolved↓` is the last
+    // fired label and the boost / penalty loop multiplies it last) and LAST
+    // into the product.
+    let resolved = resolved_multiplier(memory, multipliers);
 
     let parts = [
         &scope,
@@ -866,6 +912,7 @@ pub fn combine_recall_multipliers(
         &recent,
         &window,
         &fresh,
+        &resolved,
     ];
     let mut fired: Vec<String> = parts
         .iter()
@@ -877,7 +924,8 @@ pub fn combine_recall_multipliers(
         * participant.multiplier
         * recent.multiplier
         * window.multiplier
-        * fresh.multiplier;
+        * fresh.multiplier
+        * resolved.multiplier;
 
     let mut boost = 1.0;
     let mut penalty = 1.0;
@@ -926,6 +974,79 @@ pub fn combine_recall_multipliers(
         ),
         fired,
         exclude: false,
+    }
+}
+
+#[cfg(test)]
+mod resolved_tests {
+    //! P4.D373 — v4 `recall-tags.test.ts`'s `resolvedMultiplier` describe
+    //! (`ba6c8fe0f`, +28).
+    use super::*;
+
+    fn kw(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+    fn view(keywords: &[String]) -> MemoryTagView<'_> {
+        MemoryTagView {
+            id: None,
+            project_id: Some("proj-a"),
+            keywords,
+            about_character_id: None,
+            occurred_at: None,
+            created_at: None,
+            chat_id: None,
+        }
+    }
+
+    #[test]
+    fn ranks_a_settled_hurt_down_without_excluding_it_case_insensitively() {
+        let k = kw(&["brad", "Resolved", "past", "scope: wide", "relationships"]);
+        let r = resolved_multiplier(&view(&k), &RECALL_MULTIPLIERS);
+        assert_eq!(r.multiplier, RECALL_MULTIPLIERS.resolved);
+        assert_eq!(r.fired, ["resolved↓"]);
+        let k = kw(&["present", "scope: wide", "information"]);
+        assert_eq!(
+            resolved_multiplier(&view(&k), &RECALL_MULTIPLIERS).multiplier,
+            1.0
+        );
+        assert_eq!(
+            resolved_multiplier(&view(&[]), &RECALL_MULTIPLIERS).multiplier,
+            1.0
+        );
+        // JS trim, not Rust's: U+FEFF strips, U+0085 does not.
+        let k = kw(&["\u{feff}resolved"]);
+        assert_eq!(
+            resolved_multiplier(&view(&k), &RECALL_MULTIPLIERS).multiplier,
+            0.6
+        );
+        let k = kw(&["\u{85}resolved"]);
+        assert_eq!(
+            resolved_multiplier(&view(&k), &RECALL_MULTIPLIERS).multiplier,
+            1.0
+        );
+    }
+
+    #[test]
+    fn is_not_a_targeting_tag() {
+        let k = kw(&[RESOLVED_KEYWORD]);
+        assert_eq!(parse_targeting_tags(&k), parse_targeting_tags(&[]));
+    }
+
+    #[test]
+    fn folds_into_the_combined_multiplier_and_stays_a_penalty_never_an_exclude() {
+        let k = kw(&["past", "scope: wide", "relationships", RESOLVED_KEYWORD]);
+        let ctx = RecallContext {
+            current_project_id: Some("proj-a"),
+            ..Default::default()
+        };
+        let r = combine_recall_multipliers(&view(&k), &ctx, None);
+        assert!(!r.exclude);
+        assert!(
+            (r.multiplier - RECALL_MULTIPLIERS.temporal_past * RECALL_MULTIPLIERS.resolved).abs()
+                < 1e-5
+        );
+        assert!(r.fired.iter().any(|f| f == "resolved↓"));
+        assert_eq!(r.fired.last().map(String::as_str), Some("resolved↓"));
     }
 }
 

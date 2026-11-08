@@ -352,4 +352,9 @@ pub fn apply_consolidation_to_corpus(
             &object([("relatedMemoryIds", json!(rewrite.related_memory_ids))]),
         );
     }
+    // v4 `ba6c8fe0f`: a resolved grievance's keywords gain `resolved` in the
+    // in-memory corpus too, so later passes rank it as the write would.
+    for mark in &plan.resolved_marks {
+        corpus.patch(&mark.id, &object([("keywords", json!(mark.keywords))]));
+    }
 }

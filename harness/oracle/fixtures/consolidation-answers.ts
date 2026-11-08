@@ -107,6 +107,15 @@ export const ANSWER_SETS: Record<string, Record<string, Answer>> = {
     G: { digests: [{ ...(VALID.G as any).digests[0], content: '(topic G) The harbour bell FAILEMBED sounds at noon.' }] },
   },
   handler_dry: { ...VALID, B: { fail: 'provider exploded' } },
+  // P4.D373 (v4 `ba6c8fe0f`): the probation's `resolvedIds` — topic A names
+  // its standalone note (`m3`, a hurt the repair settles) and an unknown
+  // handle (`m9`, dropped with the root WARN); topic C names a note bound
+  // into its digest (`m1` — allowed: the list may repeat either side).
+  resolved: {
+    ...VALID,
+    A: { ...(VALID.A as Record<string, unknown>), resolvedIds: ['m3', 'm9', 'm3'] },
+    C: { ...(VALID.C as Record<string, unknown>), resolvedIds: ['m1'] },
+  },
   // P4.D297 (bug 246): an empty / whitespace answer is its own verdict.
   empty: { ...VALID, A: '', B: '   \n ' },
   rerun: {

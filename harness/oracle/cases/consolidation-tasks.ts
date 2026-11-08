@@ -14,6 +14,15 @@
  * Zod first-issue shape, code fences, prose-wrapped JSON, a non-object root and
  * unparseable text.
  *
+ * P4.D373 (v4 `ba6c8fe0f`, the probation): `resolvedIds` rows — absent, `[]`,
+ * known / repeated / unknown / padded / empty / non-string handles, a handle
+ * that is also a digest member, the schema-first-issue order against
+ * `digests` / `contradictions`, and an Invalid answer naming an unknown
+ * handle (no WARN). Every `parse` / `validate` row carries `lines`: the WARN
+ * `Consolidation answer named unknown resolvedIds; dropped` lines v4 logged
+ * for it (captured by splicing `logger.transports`, rendered `LEVEL message
+ * k=<JSON>`, `service` / `environment` dropped; only that ported line).
+ *
  * Output: one NDJSON line per case `{case, …}`.
  *
  * Run (Node 24, from the v4 checkout or the round's pin):
@@ -31,6 +40,28 @@ import {
   validateConsolidationOutput,
   type ConsolidationCallInput,
 } from '@/lib/memory/cheap-llm-tasks/consolidation-tasks';
+import { logger } from '@/lib/logger';
+
+// P4.D373: capture the ported WARN (and only it) per row.
+const PORTED_LINE = 'Consolidation answer named unknown resolvedIds; dropped';
+let captured: string[] = [];
+const internalLogger = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+internalLogger.transports.splice(0, internalLogger.transports.length, {
+  write: (d: unknown) => {
+    const data = d as { level: string; message: string; context?: Record<string, unknown> };
+    if (data.message !== PORTED_LINE) return;
+    const { service: _s, environment: _e, ...fields } = data.context ?? {};
+    const rendered = Object.entries(fields)
+      .map(([k, v]) => ` ${k}=${JSON.stringify(v)}`)
+      .join('');
+    captured.push(`${data.level.toUpperCase()} ${data.message}${rendered}`);
+  },
+});
+function takeLines(): string[] {
+  const out = captured;
+  captured = [];
+  return out;
+}
 
 function emit(obj: unknown): void {
   process.stdout.write(JSON.stringify(obj) + '\n');
@@ -196,15 +227,47 @@ function main(): void {
     { digests: [d(['m1'])], contradictions: [{ olderId: 'm1', newerId: 'm2', note: 4 }] },
     { digests: [d(['m1'])], contradictions: ['x'] },
     { digests: 'nope', keepStandalone: 5 },
+    // ── P4.D373: resolvedIds (v4 `ba6c8fe0f`) ──
+    { digests: [d(['m1'])], resolvedIds: [] },
+    { digests: [d(['m1', 'm2'])], keepStandalone: ['m3'], resolvedIds: ['m3'] },
+    { digests: [d(['m1', 'm2'])], resolvedIds: ['m1'] },
+    { digests: [d(['m1'])], resolvedIds: ['m2', 'm2'] },
+    { digests: [d(['m1'])], resolvedIds: ['mX'] },
+    { digests: [d(['m1'])], resolvedIds: ['mX', 'mX', 'm1'] },
+    { digests: [d(['m1'])], resolvedIds: ['m4', 'mY', 'm2', 'm4', 'mX'] },
+    { digests: [d(['m1'])], resolvedIds: [' m1 ', '\tm3\n'] },
+    { digests: [d(['m1'])], resolvedIds: [''] },
+    { digests: [d(['m1'])], resolvedIds: ['  '] },
+    { digests: [d(['m1'])], resolvedIds: ['m1', ''] },
+    { digests: [d(['m1'])], resolvedIds: 'm1' },
+    { digests: [d(['m1'])], resolvedIds: [5] },
+    { digests: [d(['m1'])], resolvedIds: null },
+    { digests: [d(['m1'])], resolvedIds: {} },
+    { digests: [d(['m1'], { content: '' })], resolvedIds: 5 },
+    { digests: [d(['m1'])], contradictions: {}, resolvedIds: 5 },
+    { digests: [d(['m1'])], keepStandalone: [''], resolvedIds: 5 },
+    { digests: [d(['m9'])], resolvedIds: ['mX'] },
+    { digests: [d(['m1'])], keepStandalone: ['m1'], resolvedIds: ['mX'] },
   ];
   for (const raw of values) {
     // Text round trip: what a model would send.
     const text = JSON.stringify(raw);
-    emit({ case: 'parse', handles: h, content: text, out: parseConsolidationResponse(text, h) });
+    const out = parseConsolidationResponse(text, h);
+    emit({ case: 'parse', handles: h, content: text, out, lines: takeLines() });
   }
   // Raw roots JSON objects cannot express through parseLLMJsonObject.
-  for (const raw of [null, [], 'str', 5, true, [{ digests: [] }]]) {
-    emit({ case: 'validate', handles: h, raw, out: validateConsolidationOutput(raw, h) });
+  for (const raw of [
+    null,
+    [],
+    'str',
+    5,
+    true,
+    [{ digests: [] }],
+    // P4.D373: raw values JSON text cannot carry.
+    { digests: [], resolvedIds: undefined },
+  ]) {
+    const out = validateConsolidationOutput(raw, h);
+    emit({ case: 'validate', handles: h, raw, out, lines: takeLines() });
   }
   // Text-level shapes.
   const texts = [
@@ -229,9 +292,12 @@ function main(): void {
     '```json\n```',
     '{"digests": [{"content": "\\q"}]}',
     '{"digests": [], "contradictions": [{"olderId": "m1", "newerId": "m2", "note": "\\u00e9"}]}',
+    // P4.D373: a resolvedIds list in model text, with a fence and an unknown handle.
+    '```json\n{"digests": [], "keepStandalone": ["m1"], "resolvedIds": ["m1", "m7"]}\n```',
   ];
   for (const t of texts) {
-    emit({ case: 'parse', handles: h, content: t, out: parseConsolidationResponse(t, h) });
+    const out = parseConsolidationResponse(t, h);
+    emit({ case: 'parse', handles: h, content: t, out, lines: takeLines() });
   }
   process.exit(0);
 }

@@ -137,6 +137,11 @@ pub struct ValidatedConsolidation {
     pub contradictions: Vec<ConsolidationContradiction>,
     /// Inputs the model listed nowhere (already folded into `keep_standalone`).
     pub unlisted: Vec<String>,
+    /// v4 `ba6c8fe0f` (the probation): handles recording a hurt that a repair
+    /// among these notes settles — known inputs only, de-duplicated in
+    /// first-occurrence order. May repeat handles from `digests` or
+    /// `keep_standalone` (the prompt's parenthesis).
+    pub resolved_ids: Vec<String>,
 }
 
 /// v4 `ConsolidationValidation`.
@@ -157,6 +162,7 @@ impl ConsolidationValidation {
                     "keepStandalone": v.keep_standalone,
                     "contradictions": v.contradictions.iter().map(ConsolidationContradiction::to_json).collect::<Vec<_>>(),
                     "unlisted": v.unlisted,
+                    "resolvedIds": v.resolved_ids,
                 }
             }),
             ConsolidationValidation::Invalid { reason } => json!({ "ok": false, "reason": reason }),
@@ -169,6 +175,7 @@ struct ParsedOutput {
     digests: Vec<ConsolidationDigestOutput>,
     keep_standalone: Vec<String>,
     contradictions: Vec<ConsolidationContradiction>,
+    resolved_ids: Vec<String>,
 }
 
 type Path = Vec<Value>;
@@ -361,10 +368,17 @@ fn parse_output(raw: &Value) -> Result<ParsedOutput, Box<ZodIssue>> {
             )
         }
     };
+    // v4 `ba6c8fe0f`: `resolvedIds: z.array(z.string().trim().min(1)).default([])`,
+    // the LAST shape key — the same element shape as `keepStandalone`.
+    let resolved_ids = match o.get("resolvedIds") {
+        None => Vec::new(),
+        Some(v) => handle_array(v, &vec![key("resolvedIds")], false)?,
+    };
     Ok(ParsedOutput {
         digests,
         keep_standalone,
         contradictions,
+        resolved_ids,
     })
 }
 
@@ -446,6 +460,30 @@ pub fn validate_consolidation_output(
         })
         .collect();
 
+    // v4 `ba6c8fe0f`: `Array.from(new Set(resolvedIds.filter(known)))` — the
+    // filter first, then the de-dupe in first-occurrence order; the dropped
+    // list is NOT de-duplicated (an unknown handle named twice reads twice).
+    // The WARN fires only here, on the OK path: every Invalid return above
+    // precedes it.
+    let mut resolved_ids: Vec<String> = Vec::new();
+    let mut dropped_resolved: Vec<String> = Vec::new();
+    for handle in output.resolved_ids {
+        if inputs.contains(handle.as_str()) {
+            if !resolved_ids.contains(&handle) {
+                resolved_ids.push(handle);
+            }
+        } else {
+            dropped_resolved.push(handle);
+        }
+    }
+    if !dropped_resolved.is_empty() {
+        // v4's ROOT logger (no module child).
+        tracing::warn!(
+            droppedJson = %serde_json::Value::from(dropped_resolved.clone()),
+            "Consolidation answer named unknown resolvedIds; dropped"
+        );
+    }
+
     let mut keep_standalone = standalone;
     keep_standalone.extend(unlisted.iter().cloned());
     ConsolidationValidation::Ok(ValidatedConsolidation {
@@ -453,6 +491,7 @@ pub fn validate_consolidation_output(
         keep_standalone,
         contradictions,
         unlisted,
+        resolved_ids,
     })
 }
 
@@ -695,6 +734,50 @@ pub async fn consolidate_memory_cluster<C: CompletionProvider>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D373 — v4 `consolidation-tasks.test.ts` (`ba6c8fe0f`, +30).
+    #[test]
+    fn resolved_ids_keep_known_handles_deduped_and_default_empty() {
+        let handles: Vec<String> = ["m1", "m2", "m3"].iter().map(|s| s.to_string()).collect();
+        let digest = |ids: &[&str]| json!({"content": "c", "summary": "s", "importance": 0.5, "memberIds": ids});
+        let raw = json!({"digests": [digest(&["m1", "m2"])], "keepStandalone": ["m3"], "resolvedIds": ["m1", "m3", "m1"]});
+        let ConsolidationValidation::Ok(v) = validate_consolidation_output(&raw, &handles) else {
+            panic!("ok expected");
+        };
+        assert_eq!(v.resolved_ids, ["m1", "m3"]);
+        let raw = json!({"digests": [digest(&["m1"])]});
+        let ConsolidationValidation::Ok(v) = validate_consolidation_output(&raw, &handles) else {
+            panic!("ok expected");
+        };
+        assert!(v.resolved_ids.is_empty());
+        let raw = json!({"digests": [digest(&["m1", "m2"])], "resolvedIds": ["m2", "m9"]});
+        let (out, lines) =
+            crate::test_support::captured_with(|| validate_consolidation_output(&raw, &handles));
+        let ConsolidationValidation::Ok(v) = out else {
+            panic!("ok expected");
+        };
+        assert_eq!(v.resolved_ids, ["m2"]);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("WARN "));
+        assert!(
+            lines[0].ends_with(
+                r#"Consolidation answer named unknown resolvedIds; dropped droppedJson=["m9"]"#
+            ),
+            "{}",
+            lines[0]
+        );
+    }
+
+    #[test]
+    fn the_binder_is_told_to_bind_an_offense_with_its_repair() {
+        assert!(
+            CONSOLIDATION_SYSTEM_PROMPT.contains("An offense and its later repair are one thread")
+        );
+        assert!(CONSOLIDATION_SYSTEM_PROMPT.contains("leads with the resolution"));
+        assert!(CONSOLIDATION_SYSTEM_PROMPT
+            .contains("If no repair appears\n  in the notes, do not imply one"));
+        assert!(CONSOLIDATION_SYSTEM_PROMPT.contains("\"resolvedIds\""));
+    }
 
     #[test]
     fn collapse_keeps_runs_without_newlines() {

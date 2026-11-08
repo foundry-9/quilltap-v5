@@ -84,6 +84,8 @@ fn cluster(v: &Value) -> ResolvedClusterOutcome {
                 note: c["note"].as_str().unwrap_or_default().to_string(),
             })
             .collect(),
+        // P4.D373: absent (v4's `undefined`) stays `None`, distinct from `[]`.
+        resolved_ids: v.get("resolvedIds").map(strs),
         embeddings: v["embeddings"]
             .as_array()
             .unwrap()
@@ -126,6 +128,7 @@ fn consolidation_plan_matches_oracle() {
     let mut failures = Vec::new();
     let (mut plans, mut helpers, mut creates, mut updates, mut moves, mut rewrites) =
         (0, 0, 0, 0, 0, 0);
+    let mut marks = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let c: Value = serde_json::from_str(line).expect("oracle line");
         match c["case"].as_str().unwrap() {
@@ -170,12 +173,14 @@ fn consolidation_plan_matches_oracle() {
                 updates += plan.updates.len();
                 moves += plan.tier_moves.len();
                 rewrites += plan.link_rewrites.len();
+                marks += plan.resolved_marks.len();
                 let got = json!({
                     "creates": plan.creates.iter().map(|p| json!({"digest": p.digest.to_json(), "data": p.data_json()})).collect::<Vec<_>>(),
                     "updates": plan.updates.iter().map(|p| json!({"digest": p.digest.to_json(), "patch": p.patch_json})).collect::<Vec<_>>(),
                     "tierMoves": plan.tier_moves.iter().map(|m| json!({"supersededById": m.superseded_by_id, "ids": m.ids})).collect::<Vec<_>>(),
                     "considered": plan.considered,
                     "linkRewrites": plan.link_rewrites.iter().map(|r| json!({"id": r.id, "relatedMemoryIds": r.related_memory_ids})).collect::<Vec<_>>(),
+                    "resolvedMarks": plan.resolved_marks.iter().map(|m| json!({"id": m.id, "keywords": m.keywords})).collect::<Vec<_>>(),
                     "supersededBy": plan.superseded_by.iter().map(|(k, v)| json!([k, v])).collect::<Vec<_>>(),
                     "digestsByCluster": plan.digests_by_cluster.iter().map(|ds| ds.iter().map(|d| d.to_json()).collect::<Vec<_>>()).collect::<Vec<_>>(),
                 });
@@ -252,7 +257,9 @@ fn consolidation_plan_matches_oracle() {
         creates >= 12 && updates >= 1 && moves >= 10 && rewrites >= 5,
         "c {creates} u {updates} m {moves} r {rewrites}"
     );
+    // P4.D373: the four `resolved-*` plans mark 7 rows in all (4 + 0 + 2 + 1).
+    assert!(marks >= 7 && plans >= 20, "resolved marks {marks}");
     eprintln!(
-        "OK: consolidation plan matched oracle ({plans} plans: {creates} creates, {updates} updates, {moves} tier moves, {rewrites} link rewrites; {helpers} helper rows)."
+        "OK: consolidation plan matched oracle ({plans} plans: {creates} creates, {updates} updates, {moves} tier moves, {rewrites} link rewrites, {marks} resolved marks; {helpers} helper rows)."
     );
 }

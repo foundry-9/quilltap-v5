@@ -29,6 +29,7 @@ use quilltap_core::consolidation_tasks::{
     ConsolidationBucketKind, ConsolidationCallInput, ConsolidationMemberInput,
     CONSOLIDATION_SYSTEM_PROMPT, CONSOLIDATION_TASK_TYPE,
 };
+use quilltap_core::test_support::captured_with;
 use serde_json::Value;
 
 fn opt_str(v: &Value) -> Option<String> {
@@ -60,6 +61,34 @@ fn call_input(v: &Value) -> ConsolidationCallInput {
             })
             .collect(),
     }
+}
+
+/// P4.D373: the ONE ported line this family captures — v4 `ba6c8fe0f`'s
+/// `Consolidation answer named unknown resolvedIds; dropped` WARN, rendered as
+/// the oracle renders it (`LEVEL message k=<JSON>`): v5's `LEVEL target
+/// message droppedJson=…` with the target dropped and the `…Json` field
+/// convention (§R.5) mapped back to v4's key.
+const PORTED_LINE: &str = "Consolidation answer named unknown resolvedIds; dropped";
+
+fn v4_shape_lines(logged: &[String]) -> Vec<String> {
+    logged
+        .iter()
+        .filter(|l| l.contains(PORTED_LINE))
+        .map(|l| {
+            let (level, rest) = l.split_once(' ').unwrap();
+            let (_target, rest) = rest.split_once(' ').unwrap();
+            format!("{level} {}", rest.replace(" droppedJson=", " dropped="))
+        })
+        .collect()
+}
+
+fn oracle_lines(c: &Value) -> Vec<String> {
+    c["lines"]
+        .as_array()
+        .expect("every parse / validate row carries `lines` (P4.D373)")
+        .iter()
+        .map(|l| l.as_str().unwrap().to_string())
+        .collect()
 }
 
 fn handles(v: &Value) -> Vec<String> {
@@ -94,6 +123,7 @@ fn consolidation_tasks_match_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read oracle {path}: {e}"));
     let mut failures = Vec::new();
     let mut empty_answers = 0usize;
+    let mut warn_rows = 0usize;
     let (mut messages, mut parses, mut validates, mut lossy, mut invalid, mut unparseable) =
         (0, 0, 0, 0, 0, 0);
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -125,11 +155,22 @@ fn consolidation_tasks_match_oracle() {
             }
             "parse" => {
                 parses += 1;
-                let got = parse_consolidation_response(
-                    c["content"].as_str().unwrap(),
-                    &handles(&c["handles"]),
-                )
-                .to_json();
+                let (got, logged) = captured_with(|| {
+                    parse_consolidation_response(
+                        c["content"].as_str().unwrap(),
+                        &handles(&c["handles"]),
+                    )
+                });
+                let got = got.to_json();
+                let lines = v4_shape_lines(&logged);
+                warn_rows += usize::from(!lines.is_empty());
+                if lines != oracle_lines(&c) {
+                    failures.push(format!(
+                        "parse {:?} lines:\n  v5 {lines:?}\n  v4 {:?}",
+                        c["content"],
+                        oracle_lines(&c)
+                    ));
+                }
                 if c["out"]["ok"] == false {
                     invalid += 1;
                     let reason = c["out"]["reason"].as_str().unwrap();
@@ -154,8 +195,18 @@ fn consolidation_tasks_match_oracle() {
             }
             "validate" => {
                 validates += 1;
-                let got =
-                    validate_consolidation_output(&c["raw"], &handles(&c["handles"])).to_json();
+                let (got, logged) = captured_with(|| {
+                    validate_consolidation_output(&c["raw"], &handles(&c["handles"]))
+                });
+                let got = got.to_json();
+                let lines = v4_shape_lines(&logged);
+                if lines != oracle_lines(&c) {
+                    failures.push(format!(
+                        "validate {} lines:\n  v5 {lines:?}\n  v4 {:?}",
+                        c["raw"],
+                        oracle_lines(&c)
+                    ));
+                }
                 if serde_json::to_string(&got).unwrap() != serde_json::to_string(&c["out"]).unwrap()
                 {
                     failures.push(format!(
@@ -187,6 +238,10 @@ fn consolidation_tasks_match_oracle() {
         invalid >= 50 && unparseable >= 11 && empty_answers >= 2,
         "invalid {invalid} unparseable {unparseable} empty answers {empty_answers}"
     );
+    // P4.D373: four answers name an unknown resolvedIds handle (three object
+    // rows + the fenced text row) — the WARN's capture pin; every other row
+    // is its silence leg (incl. the Invalid answers naming one).
+    assert!(warn_rows >= 4, "resolvedIds WARN rows {warn_rows}");
     eprintln!(
         "OK: consolidation tasks matched oracle ({messages} user messages incl. {lossy} lossy, {parses} parses ({invalid} invalid, {unparseable} unparseable), {validates} raw validations)."
     );

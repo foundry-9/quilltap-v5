@@ -123,6 +123,10 @@ pub struct ResolvedClusterOutcome {
     pub keep_standalone: Vec<String>,
     /// Contradictions in id space.
     pub contradictions: Vec<ConsolidationContradiction>,
+    /// v4 `ba6c8fe0f`: member ids recording a hurt that a repair in this
+    /// cluster settles (prompt-trust-the-probation.md §9.6). `None` (v4's
+    /// absent) means none — and differs from `Some(vec![])` only in shape.
+    pub resolved_ids: Option<Vec<String>>,
     /// One embedding per digest, same order; `None` entries in a dry run.
     pub embeddings: Vec<Option<Vec<f32>>>,
 }
@@ -263,6 +267,15 @@ pub struct LinkRewrite {
     pub related_memory_ids: Vec<String>,
 }
 
+/// v4 `ba6c8fe0f`: one row whose hurt a repair settles, with its keywords
+/// gaining [`crate::recall_tags::RESOLVED_KEYWORD`]; recall ranks it
+/// down.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedMark {
+    pub id: String,
+    pub keywords: Vec<String>,
+}
+
 /// v4 `ConsolidationWritePlan`.
 pub struct ConsolidationWritePlan {
     pub creates: Vec<PlannedDigestCreate>,
@@ -273,6 +286,9 @@ pub struct ConsolidationWritePlan {
     pub considered: Vec<String>,
     /// Surviving rows whose links are re-aimed at digests.
     pub link_rewrites: Vec<LinkRewrite>,
+    /// Rows whose hurt a repair settles, with their keywords gaining
+    /// `RESOLVED_KEYWORD`; recall ranks them down (`recall_tags.rs`).
+    pub resolved_marks: Vec<ResolvedMark>,
     /// Every superseded row → the row that supersedes it.
     pub superseded_by: OrderedMap<String>,
     /// Planned digests per input cluster, in cluster order (for the report).
@@ -923,12 +939,57 @@ pub fn plan_consolidation_writes(input: PlanInput<'_>) -> ConsolidationWritePlan
         });
     }
 
+    // Resolved grievances: keep the row (history stays), mark it so recall ranks
+    // it below the repair. Only this cluster's own members, never a digest.
+    // (v4 `ba6c8fe0f`.) `marked` is set BEFORE the keyword check, so a member
+    // already carrying the exact keyword still blocks a later cluster. The
+    // match is v4's exact, case-sensitive `includes` — recall's matcher is
+    // trimmed-lowercase, so `"Resolved "` gains a second, exact `resolved`.
+    let mut resolved_marks: Vec<ResolvedMark> = Vec::new();
+    let mut marked: HashSet<String> = HashSet::new();
+    for cluster in clusters {
+        let members_by_id: HashMap<String, &Value> =
+            cluster.members.iter().map(|m| (row_id(m), m)).collect();
+        for id in cluster.resolved_ids.as_deref().unwrap_or(&[]) {
+            let Some(member) = members_by_id.get(id) else {
+                continue;
+            };
+            if marked.contains(id) || planned_digest_ids.contains(id) {
+                continue;
+            }
+            marked.insert(id.clone());
+            // `member.keywords ?? []`; a stored memory's keywords are strings.
+            let keywords: Vec<String> = member
+                .get("keywords")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|k| k.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if keywords
+                .iter()
+                .any(|k| k == crate::recall_tags::RESOLVED_KEYWORD)
+            {
+                continue;
+            }
+            let mut keywords = keywords;
+            keywords.push(crate::recall_tags::RESOLVED_KEYWORD.to_string());
+            resolved_marks.push(ResolvedMark {
+                id: id.clone(),
+                keywords,
+            });
+        }
+    }
+
     ConsolidationWritePlan {
         creates,
         updates,
         tier_moves,
         considered,
         link_rewrites,
+        resolved_marks,
         superseded_by,
         digests_by_cluster,
     }

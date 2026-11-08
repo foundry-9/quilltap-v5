@@ -34,6 +34,8 @@ import {
   recentlyWhisperedMultiplier,
   occurredWithinMultiplier,
   freshEventMultiplier,
+  resolvedMultiplier,
+  RESOLVED_KEYWORD,
   combineRecallMultipliers,
   boostGateThreshold,
   boostGateStrength,
@@ -709,6 +711,66 @@ const combineTCases: Array<[string, J, J, unknown, { cosine: number; bestCosine:
   ],
 ];
 for (const [id, mem, c, tuningInput, relevance] of combineTCases) {
+  const r = combineRecallMultipliers(mem as never, toCtx(c, tuningInput), relevance);
+  const row: Extra = { kind: 'combineT', id, memory: mem, ctx: c, multiplier: r.multiplier, fired: r.fired, exclude: r.exclude };
+  if (tuningInput !== undefined) row.tuningInput = tuningInput;
+  if (relevance !== undefined) row.relevance = relevance;
+  extra.push(row);
+}
+
+// ---- P4.D373: the `resolved` ×0.6 multiplier (v4 `ba6c8fe0f`) ----
+// Data-driven like the rows above. `resolvedMultiplier` matches the keyword
+// trimmed (JS `String.prototype.trim` — NBSP / EM SPACE / U+FEFF yes, NEL no)
+// and lowercased; `combineRecallMultipliers` appends it LAST to the parts
+// and the product, so `resolved↓` is the last fired label and the 0.6 rides
+// the penalty factor (the cap / gate arm keeps it in full).
+if (RESOLVED_KEYWORD !== 'resolved') throw new Error(`RESOLVED_KEYWORD moved: ${RESOLVED_KEYWORD}`);
+const resolvedMem = (keywords: string[], o: J = {}): J => ({ id: 'm-res', keywords, ...o });
+const resolvedMultCases: Array<[string, J, unknown]> = [
+  ['resolved-exact', resolvedMem(['resolved']), undefined],
+  ['resolved-padded-cap', resolvedMem(['Resolved ']), undefined],
+  ['resolved-nbsp-em-upper', resolvedMem(['\u00a0RESOLVED\u2003']), undefined],
+  ['resolved-bom', resolvedMem(['\ufeffresolved']), undefined],
+  ['resolved-nel-not', resolvedMem(['\u0085resolved']), undefined],
+  ['resolved-unresolved-not', resolvedMem(['unresolved']), undefined],
+  ['resolved-empty-keywords', resolvedMem([]), undefined],
+  ['resolved-null-keywords', { id: 'm-res', keywords: null }, undefined],
+  ['resolved-absent-keywords', { id: 'm-res' }, undefined],
+  ['resolved-override-0.45', resolvedMem(['resolved']), { multipliers: { resolved: 0.45 } }],
+  ['resolved-override-1', resolvedMem(['resolved']), { multipliers: { resolved: 1 } }],
+];
+for (const [id, mem, tuningInput] of resolvedMultCases) {
+  const ctx = toCtx(baseCtx, tuningInput);
+  const m = ctx.tuning ? ctx.tuning.multipliers : undefined;
+  const r = resolvedMultiplier(mem as never, m);
+  const row: Extra = { kind: 'multT', id, fn: 'resolved', memory: mem, ctx: baseCtx, tuningInput, multiplier: r.multiplier, fired: r.fired };
+  if (tuningInput === undefined) delete (row as J).tuningInput;
+  extra.push(row);
+}
+const resolvedCombineCases: Array<[string, J, J, unknown, { cosine: number; bestCosine: number } | undefined]> = [
+  ['resolved-combine-plain', resolvedMem(['resolved']), baseCtx, undefined, undefined],
+  ['resolved-combine-twice', resolvedMem(['resolved', 'resolved']), baseCtx, undefined, undefined],
+  ['resolved-combine-padded-and-exact', resolvedMem(['Resolved ', 'resolved']), baseCtx, undefined, undefined],
+  ['resolved-combine-bom', resolvedMem(['\ufeffresolved']), baseCtx, undefined, undefined],
+  ['resolved-combine-nel', resolvedMem(['\u0085resolved']), baseCtx, undefined, undefined],
+  ['resolved-combine-fresh-past-cap', { ...boosted, keywords: ['scope: narrow', 'information', 'present', 'resolved'] }, baseCtx, undefined, undefined],
+  ['resolved-combine-gated', { ...boosted, keywords: ['scope: narrow', 'information', 'present', 'resolved'] }, baseCtx, GATE, { cosine: 0.4, bestCosine: 0.511 }],
+  ['resolved-combine-below-gate', { ...boosted, keywords: ['scope: narrow', 'information', 'present', 'resolved'] }, baseCtx, GATE, { cosine: 0.33, bestCosine: 0.511 }],
+  ['resolved-combine-exclude', { ...boosted, projectId: 'proj-b', keywords: ['scope: narrow', 'resolved'] }, { ...baseCtx, scopePolicy: 'exclude' }, undefined, undefined],
+  ['resolved-combine-past-retro', resolvedMem(['past', 'resolved']), { ...baseCtx, turnRetrospective: true }, undefined, undefined],
+  ['resolved-combine-penalties', { ...past, keywords: ['scope: narrow', 'information', 'past', 'resolved'] }, baseCtx, GATE, { cosine: 0.2, bestCosine: 0.6 }],
+  ['resolved-combine-override-1', resolvedMem(['resolved']), baseCtx, { multipliers: { resolved: 1 } }, undefined],
+  ['resolved-combine-override-0.3', resolvedMem(['resolved']), baseCtx, { multipliers: { resolved: 0.3 } }, undefined],
+  ['resolved-combine-override-all-with-resolved', { ...boosted, keywords: ['scope: narrow', 'information', 'present', 'resolved'] }, baseCtx, { ...OVERRIDE_ALL, multipliers: { ...OVERRIDE_ALL.multipliers, resolved: 0.7 } }, { cosine: 0.42, bestCosine: 0.7 }],
+  [
+    'resolved-combine-maximal-stack',
+    { id: 'M1', projectId: 'P1', chatId: 'chat-other', aboutCharacterId: 'C1', keywords: ['past', 'scope: narrow', 'history', ' Resolved'], occurredAt: freshAt(3 * FRESH_HOUR) },
+    { currentProjectId: 'P1', scopePolicy: 'down-weight', currentChatId: FRESH_CHAT, nowMs: FRESH_NOW, turnRetrospective: true, turnContext: 'history', presentAboutCharacterIds: ['C1'], recentlyWhisperedIds: ['M1'], occurredWithin: { from: freshAt(24 * FRESH_HOUR), to: freshAt(0) } },
+    undefined,
+    { cosine: 0.41, bestCosine: 0.55 },
+  ],
+];
+for (const [id, mem, c, tuningInput, relevance] of resolvedCombineCases) {
   const r = combineRecallMultipliers(mem as never, toCtx(c, tuningInput), relevance);
   const row: Extra = { kind: 'combineT', id, memory: mem, ctx: c, multiplier: r.multiplier, fired: r.fired, exclude: r.exclude };
   if (tuningInput !== undefined) row.tuningInput = tuningInput;

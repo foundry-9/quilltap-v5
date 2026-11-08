@@ -17,6 +17,14 @@
  * `localeCompare` ties over mixed ISO shapes; `sharedValue` / witnessed arms;
  * the reinforcement cap; the `lastReinforcedAt` reference time arms.
  *
+ * P4.D373 (v4 `ba6c8fe0f`): `resolvedMarks` — a mark; a member already
+ * carrying the exact `resolved` keyword (no mark, still "marked"); one
+ * carrying `"Resolved "` (MARKED — the plan's matcher is the exact
+ * `includes`, recall's is trimmed-lowercase); `keywords` absent / `null`; the
+ * cluster's existing digest named (a planned digest — skipped); a non-member
+ * id; the same id in two clusters (first wins); a duplicate inside one
+ * cluster; `resolvedIds` absent vs `[]`.
+ *
  * Output: one NDJSON line per case `{case, …}`.
  *
  * Run (Node 24, from the v4 checkout or the round's pin):
@@ -129,6 +137,7 @@ function planJson(plan: ReturnType<typeof planConsolidationWrites>) {
     tierMoves: plan.tierMoves,
     considered: plan.considered,
     linkRewrites: plan.linkRewrites,
+    resolvedMarks: plan.resolvedMarks,
     supersededBy: Array.from(plan.supersededBy.entries()),
     digestsByCluster: plan.digestsByCluster.map((ds) => ds.map(digestJson)),
   };
@@ -143,6 +152,7 @@ function clusterJson(c: ResolvedClusterOutcome) {
     digests: c.digests,
     keepStandalone: c.keepStandalone,
     contradictions: c.contradictions,
+    ...(c.resolvedIds !== undefined ? { resolvedIds: c.resolvedIds } : {}),
     embeddings: c.embeddings.map((e) => (e ? Array.from(e) : null)),
   };
 }
@@ -364,6 +374,63 @@ function main(): void {
     const t4 = mem('t4', { createdAt: 'not a date', lastReinforcedAt: '2026-01-01T00:00:00.000Z' as any });
     planCase('reference-times', [outcome({ members: [t1, t2, t3, t4], digests: [dg(['t1', 't2', 't3', 't4'])] })], idx(t1, t2, t3, t4));
     planCase('reference-unparsable-only', [outcome({ members: [t4], digests: [dg(['t4'])] })], idx(t4));
+  }
+
+  // ── P4.D373: resolved grievances (v4 `ba6c8fe0f`) ────────────────────────
+  {
+    const hurt = mem('hurt', { keywords: ['past', 'scope: wide', 'relationship'] });
+    const repair = mem('repair');
+    const done = mem('done', { keywords: ['past', 'resolved', 'scope: wide'] });
+    const padded = mem('padded', { keywords: ['Resolved ', 'past'] });
+    const bare = mem('bare', { keywords: undefined as any });
+    const nul = mem('nul', { keywords: null as any });
+    planCase(
+      'resolved-marks',
+      [
+        outcome({
+          members: [hurt, repair, done, padded, bare, nul],
+          digests: [dg(['hurt', 'repair'])],
+          keepStandalone: ['done', 'padded', 'bare', 'nul'],
+          resolvedIds: ['hurt', 'done', 'padded', 'ghost', 'bare', 'hurt', 'nul'],
+        }),
+      ],
+      idx(hurt, repair, done, padded, bare, nul),
+    );
+    planCase(
+      'resolved-absent-vs-empty',
+      [
+        outcome({ members: [hurt], keepStandalone: ['hurt'] }),
+        outcome({ members: [repair], keepStandalone: ['repair'], resolvedIds: [] }),
+      ],
+      idx(hurt, repair),
+    );
+    // The same member in two clusters: the first cluster's mark wins, the
+    // second is skipped (already `marked`); a duplicate after an exact
+    // `resolved` member is skipped too.
+    planCase(
+      'resolved-two-clusters',
+      [
+        outcome({ members: [hurt, done], keepStandalone: ['hurt', 'done'], resolvedIds: ['done', 'hurt'] }),
+        outcome({ members: [hurt, done, padded], keepStandalone: ['hurt', 'padded'], resolvedIds: ['hurt', 'done', 'padded'] }),
+      ],
+      idx(hurt, done, padded),
+    );
+    // An existing digest named (also listed as a member): planned digest ids
+    // are never marked; a new digest's minted id is unreachable (`d1`
+    // names no member).
+    const digest = mem('olddig', { source: 'CONSOLIDATED', keywords: ['past', 'scope: wide', 'history'] });
+    planCase(
+      'resolved-planned-digest',
+      [
+        outcome({
+          existingDigest: digest,
+          members: [digest, hurt, repair],
+          digests: [dg(['hurt', 'repair'])],
+          resolvedIds: ['olddig', 'd1', 'hurt'],
+        }),
+      ],
+      idx(digest, hurt, repair),
+    );
   }
 
   // ── an empty run and a dry-run shape (no embeddings) ──────────────────────

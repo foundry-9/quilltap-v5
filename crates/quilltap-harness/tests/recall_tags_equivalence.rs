@@ -31,10 +31,10 @@ use std::collections::{HashMap, HashSet};
 use quilltap_core::recall_tags::{
     boost_gate_strength, boost_gate_threshold, combine_recall_multipliers, context_multiplier,
     fresh_event_multiplier, occurred_within_multiplier, parse_targeting_tags,
-    participant_multiplier, recently_whispered_multiplier, scope_project_multiplier,
-    temporal_multiplier, BoostGate, ContextTag, MemoryTagView, RecallContext, RecallMultiplier,
-    RecallRelevance, ScopePolicy, ScopeTag, TargetingTags, TemporalTag, TimeWindow,
-    RECALL_MULTIPLIERS,
+    participant_multiplier, recently_whispered_multiplier, resolved_multiplier,
+    scope_project_multiplier, temporal_multiplier, BoostGate, ContextTag, MemoryTagView,
+    RecallContext, RecallMultiplier, RecallRelevance, ScopePolicy, ScopeTag, TargetingTags,
+    TemporalTag, TimeWindow, RECALL_MULTIPLIERS, RESOLVED_KEYWORD,
 };
 use quilltap_core::recall_tuning::{resolve_recall_tuning, validate_recall_tuning_input};
 use serde::Deserialize;
@@ -1104,6 +1104,8 @@ fn retuning_rows_match_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
     let (mut n_gate, mut n_mult, mut n_combine) = (0, 0, 0);
+    let mut n_resolved = 0usize;
+    assert_eq!(RESOLVED_KEYWORD, "resolved");
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let id = row["id"].as_str().unwrap_or("");
@@ -1136,9 +1138,18 @@ fn retuning_rows_match_oracle() {
                 let mem = tag_view(&row["memory"], &keywords);
                 let parts = ctx_parts(&row["ctx"], row.get("tuningInput"));
                 let ctx = recall_ctx(&row["ctx"], &parts);
-                let m = &parts.tuning.as_ref().unwrap().multipliers;
+                // P4.D373: a `resolved` row may carry no tuning input (v4's
+                // default table argument).
+                let m = parts
+                    .tuning
+                    .as_ref()
+                    .map_or(&RECALL_MULTIPLIERS, |t| &t.multipliers);
                 let t = parse_targeting_tags(&keywords);
                 let got = match row["fn"].as_str().unwrap() {
+                    "resolved" => {
+                        n_resolved += 1;
+                        resolved_multiplier(&mem, m)
+                    }
                     "scope" => scope_project_multiplier(
                         t,
                         mem.project_id,
@@ -1166,6 +1177,9 @@ fn retuning_rows_match_oracle() {
                     "multT '{id}': rust={} oracle={wm}",
                     got.multiplier
                 );
+                if id.starts_with("resolved") {
+                    assert_eq!(got.multiplier.to_bits(), wm.to_bits(), "multT '{id}' bits");
+                }
                 let fired: Vec<String> = got.fired.iter().map(|f| f.to_string()).collect();
                 assert_eq!(fired, want_fired(&row), "multT '{id}' fired");
                 assert_eq!(got.exclude, row["exclude"] == true, "multT '{id}' exclude");
@@ -1187,6 +1201,17 @@ fn retuning_rows_match_oracle() {
                     "combineT '{id}': rust={} oracle={wm}",
                     got.multiplier
                 );
+                // P4.D373: the `resolved` rows pin the float ORDER (the 0.6
+                // last into the product and the penalty) bit-for-bit.
+                if id.starts_with("resolved") {
+                    n_resolved += 1;
+                    assert_eq!(
+                        got.multiplier.to_bits(),
+                        wm.to_bits(),
+                        "combineT '{id}' bits: rust={} oracle={wm}",
+                        got.multiplier
+                    );
+                }
                 assert_eq!(got.fired, want_fired(&row), "combineT '{id}' fired");
                 assert_eq!(
                     got.exclude,
@@ -1201,6 +1226,11 @@ fn retuning_rows_match_oracle() {
     assert!(
         n_gate > 0 && n_mult > 0 && n_combine > 0,
         "retuning rows missing — regenerate the oracle"
+    );
+    // P4.D373: 11 `resolved` multT rows + 15 `resolved-combine-*` rows.
+    assert!(
+        n_resolved >= 26,
+        "resolved rows {n_resolved} — regenerate the oracle"
     );
     eprintln!("OK: recall-tags retuning rows matched oracle ({n_gate} gate, {n_mult} multT, {n_combine} combineT).");
 }

@@ -51,6 +51,8 @@
       "request": { "reason": "manual", "phases": ["consolidate"], "dryRun": true },
       "now": "2026-10-08T12:00:00.000Z",
       "answers": "valid"
-    }
+    },
+    { "name": "resolved_dry", "characterId": "0c010000-0000-4000-8000-000000000001", "plantSql": ["UPDATE memories SET content = content || ' Laura said she had forgiven the slight.' WHERE characterId = '0c010000-0000-4000-8000-000000000001' AND (content LIKE '%[A2]%' OR content LIKE '%[C1]%')"], "request": { "reason": "manual", "phases": ["consolidate", "mirror"], "dryRun": true }, "now": "2026-10-08T12:00:00.000Z", "answers": "resolved" },
+    { "name": "resolved_real", "characterId": "0c010000-0000-4000-8000-000000000001", "request": { "reason": "manual", "phases": ["consolidate", "mirror"] }, "now": "2026-10-08T12:00:00.000Z", "answers": "resolved" }
   ]
 }
