@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import { CoreDispatchError, type ResolvedInventoryItem } from '../core/core-contract';
 import { ToastService } from '../ui/toast.service';
 import { BOW, LAMP, PROJECT, RING, SWORD, obj } from './__fixtures__/inventory-ui.fixture';
@@ -10,7 +11,7 @@ import type { InventoryContainer } from './inventory-container';
 import { InventoryFolderPickerDialog } from './inventory-folder-picker-dialog';
 import { InventoryInstantiateDialog } from './inventory-instantiate-dialog';
 import type { InventoryItemActions } from './inventory-item-actions';
-import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
+import { InventoryTransferDialog, type InventoryCatalogue } from './inventory-transfer-dialog';
 
 /**
  * v4's three small Inventory dialogs (`322a5488e`): the folder picker wrapper
@@ -36,6 +37,8 @@ function configure(host: unknown): void {
   TestBed.configureTestingModule({
     imports: [host as never],
     providers: [
+      // `refreshUnlessRealtime` reads the socket (P4.D386, v4 600c2906f): down here.
+      { provide: RealtimeService, useValue: { connected: signal(false), onTopic: () => undefined } },
       {
         provide: CoreClient,
         useValue: {
@@ -66,18 +69,10 @@ const choose = (select: HTMLSelectElement, value: string) => {
   select.dispatchEvent(new Event('change'));
 };
 
-describe('catalogueGroups', () => {
-  it('characters, General, projects, groups — empty groups dropped bar General; the source omitted', () => {
-    expect(catalogueGroups(CATALOGUE, 'character:c-viv')).toEqual([
-      { label: 'Characters', options: [{ value: 'character:c-bert', name: 'Bertie' }] },
-      { label: 'General', options: [{ value: 'general:', name: 'Quilltap General' }] },
-      { label: 'Projects', options: [{ value: 'project:p-1', name: 'The Quest' }] },
-    ]);
-    expect(catalogueGroups({ characters: [], projects: [], groups: [] }, 'general:')).toEqual([
-      { label: 'General', options: [] },
-    ]);
-  });
-});
+// `catalogueGroups` is the instantiate dialog's private helper now (P4.D386):
+// the transfer dialog lists through the shared `qt-container-select`
+// (`item-browser/container-select.spec.ts` pins the groups, the exclusion and
+// the dropped empty group).
 
 @Component({
   imports: [InventoryFolderPickerDialog],

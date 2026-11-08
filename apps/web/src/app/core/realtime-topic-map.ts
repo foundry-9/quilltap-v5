@@ -167,6 +167,21 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // unchanged (v4's reconnect sweep adds all four).
       return [];
 
+    // === P4.D386 ===
+    case 'wardrobe':
+      // ⚠ NO v5 TARGET (the P4.D330 R-2 precedent). v4 `600c2906f`
+      // (`topic-map.ts:150-156` at the pin): "A wardrobe file or folder was
+      // written — through any wardrobe location (the operator's dialog, a
+      // character's wardrobe_* tool, a Pascal effect), or by a job child's
+      // buffered write; an open browser's lists and folder trees re-read",
+      // returning `[queryKeys.wardrobe.lists, queryKeys.wardrobe.folderLists]`.
+      // v5's wardrobe stores are signal-held, so the Wardrobe dialog and the
+      // Prospero Wardrobe card subscribe through `RealtimeService.onTopic`
+      // and re-read their list and folder tree. Nothing to sweep on
+      // reconnect, so `ALL_REALTIME_PREFIXES` is unchanged.
+      return [];
+    // === end P4.D386 ===
+
     // === P4.D344: Storyteller mode ===
     case 'storytellerRounds':
       // v4 `topic-map.ts:101-103` byte for byte (`queryKeys.chats.all` ↔

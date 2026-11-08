@@ -1231,6 +1231,19 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — feat(spa): Duplicate through `?action=duplicate`, the `wardrobe` realtime topic, one dialog-service base, the shared transfer footer, and the Inventory dialogs on the container catalogue (v4 624d0d25c)
+
+_Versions: SPA 0.5.975._
+
+P4.D386 commit 3 (items 10–12, part of 9, and the Inventory half of item 7's C12).
+
+- **Duplicate (C12, L-4).** `duplicateWardrobeItem` dispatches `wardrobeItemDuplicate { scope, containerId?, itemId }` and returns the server's `wardrobeItem`. The client no longer computes the "(copy)" title or reads the list; `listItems` leaves `WardrobeItemActionsOptions`, so the Prospero Wardrobe card and the Wardrobe dialog drop it (v4 `useWardrobeItemActions.ts` −78). The request lives in a fenced `core-contract.ts` block plus one union member. `nextCopyTitle` has no SPA caller left, so it is retired with its spec rows and vendored fixture (the server twin stays).
+- **The `wardrobe` topic.** `'wardrobe'` follows `'inventory'` in `REALTIME_TOPICS`; the topic map's arm returns `[]` (the R-2 precedent). The Wardrobe dialog and the Prospero Wardrobe card subscribe through `RealtimeService.onTopic` and re-read their lists and folder trees. The positional topic-list assert is now length-agnostic (§R.10 (t)).
+- **`refreshUnlessRealtime`** (NEW `item-browser/refresh-unless-realtime.ts`, v4 `lib/query/refresh-unless-realtime.ts`). The Inventory's folder writes adopt it now. The wardrobe kind keeps its unconditional reload until P4.D377 publishes `wardrobe` (H-U1).
+- **One dialog-service shape** (NEW `item-browser/item-dialog.service.ts`, v4 `item-dialog-provider.tsx`): `WardrobeDialogService` and `InventoryDialogService` extend `ItemDialogState`, with their APIs and `remountKey`s unchanged.
+- **`qt-item-transfer-footer`** (v4 `ItemTransferFooter.tsx`) under both transfer dialogs.
+- **The Inventory on the container catalogue.** The control dialog reads `injectContainerCatalogue()` and picks its container through `qt-container-select`. The transfer dialog lists destinations through `qt-container-select` with the source excluded. `catalogueGroups` is now the instantiate dialog's private helper (v4's instantiate dialog keeps its own select).
+
 #### 2026-11-08 — feat(spa): the Wardrobe and the Inventory on the shared item browser — every row menu on `qt-item-action-menu`, `aria-pressed`, the Folder fields, the transfer dialog on the container catalogue (C12) (v4 624d0d25c)
 
 _Versions: SPA 0.5.974._

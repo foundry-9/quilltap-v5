@@ -7232,6 +7232,9 @@ export type MemoryRequest =
   | WardrobeItemsMoveRequest
   | WardrobeItemImageLinkRequest
   // === end P4.D285 ===
+  // === P4.D386: item browser (C12, append-only) ===
+  | WardrobeItemDuplicateRequest
+  // === end P4.D386 ===
   // === P4.D309: wardrobe copy-to-folder (owned) ===
   | WardrobeItemsCopyRequest
   // === end P4.D309 ===
@@ -8962,6 +8965,21 @@ export interface ChatWardrobeRollbackRequest {
 // The transfer-destinations request (v4 `GET /api/v1/wardrobe/transfers`) is
 // REMOVED: v4 `b2b783b47` retired the route and the transfer dialog reads
 // the container catalogue instead; P4.D378 un-routes the server verb.
+
+/**
+ * v4 `POST <tier>/wardrobe?action=duplicate` `{ itemId }` (`600c2906f`) →
+ * 201 `{ wardrobeItem }`. The SERVER picks the "(copy)" title against the
+ * tier's titles, archived included (`nextCopyTitle`); the client sends no
+ * title. Mirrors P4.D377's `CoreRequest::WardrobeItemDuplicate { scope,
+ * container_id, #[serde(flatten)] body }` name-for-name (L-4, H-377) — the
+ * wardrobe folder-ops idiom: `containerId` absent for General.
+ */
+export interface WardrobeItemDuplicateRequest {
+  type: 'wardrobeItemDuplicate';
+  scope: WardrobeOriginScope;
+  containerId?: string;
+  itemId: string;
+}
 // === end P4.D386 ===
 
 /** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */

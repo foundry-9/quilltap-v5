@@ -96,7 +96,6 @@ function render(container: WardrobeContainer) {
     core: {} as CoreClient,
     toasts: { showError: vi.fn(), showSuccess: vi.fn() },
     container: () => container,
-    listItems: () => [],
     confirm: () => true,
     reloadLists,
   });

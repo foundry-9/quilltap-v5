@@ -144,9 +144,13 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
 
   // `storytellerRounds` ninth (P4.D344), `customToolInterventions` tenth
   // (P4.D346) — v4's declaration order, restored positionally at the union.
-  it('carries all ten topics and nine sweep prefixes (mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
-    expect(REALTIME_TOPICS).toHaveLength(10);
-    expect(REALTIME_TOPICS.slice(7)).toEqual(['inventory', 'storytellerRounds', 'customToolInterventions']);
+  it('carries every topic and nine sweep prefixes (mountPoints, inventory and wardrobe have none — v5 sweeps `memories` twice over)', () => {
+    // §R.10 (t) / L-9: length-agnostic on the lane (P4.D386 adds `wardrobe`
+    // after `inventory`); the unifier restores the positional assert (§S.4).
+    expect(REALTIME_TOPICS).toContain('wardrobe');
+    expect(REALTIME_TOPICS.indexOf('inventory')).toBeLessThan(REALTIME_TOPICS.indexOf('wardrobe'));
+    expect(REALTIME_TOPICS.indexOf('wardrobe')).toBeLessThan(REALTIME_TOPICS.indexOf('storytellerRounds'));
+    expect(REALTIME_TOPICS.slice(-2)).toEqual(['storytellerRounds', 'customToolInterventions']);
     expect(ALL_REALTIME_PREFIXES).toHaveLength(9);
     // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
     expect(ALL_REALTIME_PREFIXES).toContainEqual(['memories']);
@@ -252,6 +256,14 @@ describe('the outfit timelines (P4.D318 — v4 8d8618819 topic-map.ts row, as an
     expect(queryKeysForTopic('customToolInterventions')).toEqual([['customTools']]);
     expect(ALL_REALTIME_PREFIXES).toContainEqual(['customTools']);
   });
+
+  // === P4.D386 ===
+  it('resolves wardrobe to no query key — the lists and folder trees are signal-held and subscribe directly (v4 600c2906f; R-2)', () => {
+    expect(REALTIME_TOPICS).toContain('wardrobe');
+    expect(queryKeysForTopic('wardrobe')).toEqual([]);
+    expect(queryKeysForTopic('wardrobe', 'item-1')).toEqual([]);
+  });
+  // === end P4.D386 ===
 
   it('resolves inventory to no query key — the lists are signal-held and subscribe directly (P4.D330 R-2)', () => {
     expect(REALTIME_TOPICS).toContain('inventory');

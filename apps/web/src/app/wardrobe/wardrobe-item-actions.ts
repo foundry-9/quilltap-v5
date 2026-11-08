@@ -45,7 +45,6 @@ import { computed, signal, type Signal } from '@angular/core';
 import type { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto } from '../core/core-contract';
 import type { ToastService } from '../ui/toast.service';
-import { nextCopyTitle } from './equipped-slots';
 import { generateWardrobeItemImage } from './item-images.api';
 import { containerForListedItem, type WardrobeContainer } from './wardrobe-container';
 import {
@@ -92,8 +91,6 @@ export interface WardrobeItemActionsOptions {
   toasts: Pick<ToastService, 'showError' | 'showSuccess'>;
   /** The wardrobe being browsed (null while nothing is selected). */
   container: () => WardrobeContainer | null;
-  /** The list on display — Duplicate picks a title not already in it. */
-  listItems: () => readonly WardrobeItemDto[];
   /** Ask the operator to confirm (v4 `requestConfirmation`). */
   confirm: (message: string) => boolean | Promise<boolean>;
   /** Re-read the lists on display (v4's `wardrobe.lists` invalidation). */
@@ -221,19 +218,16 @@ export function createWardrobeItemActions(opts: WardrobeItemActionsOptions): War
 
   /**
    * Duplicate is offered only for manageable items, so the copy stays where
-   * the original lives. Composite references are copied verbatim — member
-   * items are not cloned. (The body's `folder` — v4's `draftToPayload({
-   * ...draftFromItem(item), title })` — is the HANDOFF to the unifier,
-   * §R.10(l): `duplicateWardrobeItem` routes through P4.D286's draft.)
+   * the original lives (and into the same folder). The server's
+   * `?action=duplicate` picks the "(copy)" title and copies composite
+   * references verbatim — member items are not cloned (v4 pin
+   * `useWardrobeItemActions.ts:180-197`, `600c2906f`: the client no longer
+   * computes the title nor reads the list).
    */
   const duplicate = async (item: WardrobeItemDto): Promise<void> => {
     const home = addressOf(item);
     if (!home) return;
-    const title = nextCopyTitle(
-      item.title,
-      opts.listItems().map((i) => i.title),
-    );
-    if (await send(() => duplicateWardrobeItem(core, home, item, title), 'Failed to duplicate item')) {
+    if (await send(() => duplicateWardrobeItem(core, home, item.id), 'Failed to duplicate item')) {
       toasts.showSuccess(`Duplicated "${item.title}"`);
     }
   };

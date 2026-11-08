@@ -1,4 +1,6 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed } from '@angular/core';
+
+import { ItemDialogState } from '../item-browser/item-dialog.service';
 
 /**
  * The optional context passed to `open()` (v4 `components/providers/
@@ -29,27 +31,10 @@ export interface InventoryDialogContext {
  * always present.
  */
 @Injectable({ providedIn: 'root' })
-export class InventoryDialogService {
-  private readonly _isOpen = signal(false);
-  private readonly _context = signal<InventoryDialogContext | null>(null);
-
-  readonly isOpen = this._isOpen.asReadonly();
-  readonly context = this._context.asReadonly();
-
+export class InventoryDialogService extends ItemDialogState<InventoryDialogContext> {
   /** v4 `inventory-control-dialog.tsx:86` — the inner remount key. */
   readonly remountKey = computed(() => {
-    const ctx = this._context();
+    const ctx = this.context();
     return `${ctx?.characterId ?? ''}|${ctx?.chatId ?? ''}|${ctx?.projectId ?? ''}|${ctx?.groupId ?? ''}`;
   });
-
-  /** v4 `inventory-dialog-provider.tsx:38-41`. */
-  open(ctx?: InventoryDialogContext): void {
-    this._context.set(ctx ?? null);
-    this._isOpen.set(true);
-  }
-
-  /** v4 `:42-44` — close keeps the last context, exactly as v4's `close` only flips `isOpen`. */
-  close(): void {
-    this._isOpen.set(false);
-  }
 }

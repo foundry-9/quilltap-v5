@@ -1,4 +1,6 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed } from '@angular/core';
+
+import { ItemDialogState } from '../item-browser/item-dialog.service';
 
 /**
  * Shape of the optional context passed to `open()` so the dialog can preselect
@@ -32,27 +34,9 @@ export interface WardrobeDialogContext {
  * present, so the optional accessor and the disabled arm collapse.
  */
 @Injectable({ providedIn: 'root' })
-export class WardrobeDialogService {
-  private readonly _isOpen = signal(false);
-  private readonly _context = signal<WardrobeDialogContext | null>(null);
-
-  readonly isOpen = this._isOpen.asReadonly();
-  readonly context = this._context.asReadonly();
-
+export class WardrobeDialogService extends ItemDialogState<WardrobeDialogContext> {
   /** v4 `wardrobe-control-dialog.tsx:92` — the inner remount key. */
   readonly remountKey = computed(
-    () => `${this._context()?.characterId ?? 'auto'}|${this._context()?.chatId ?? 'no-chat'}`,
+    () => `${this.context()?.characterId ?? 'auto'}|${this.context()?.chatId ?? 'no-chat'}`,
   );
-
-  /** v4 `wardrobe-dialog-provider.tsx:43-46`. */
-  open(ctx?: WardrobeDialogContext): void {
-    this._context.set(ctx ?? null);
-    this._isOpen.set(true);
-  }
-
-  /** v4 `wardrobe-dialog-provider.tsx:48-50` — close keeps the last context,
-   *  exactly as v4's `close` only flips `isOpen`. */
-  close(): void {
-    this._isOpen.set(false);
-  }
 }

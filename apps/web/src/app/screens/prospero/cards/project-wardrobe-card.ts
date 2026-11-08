@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
+import { RealtimeService } from '../../../core/realtime.service';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
 import { ToastService } from '../../../ui/toast.service';
 import { WardrobeBrowser } from '../../../wardrobe/wardrobe-browser';
@@ -88,8 +89,13 @@ export class ProjectWardrobeCard {
     core: this.core,
     toasts: inject(ToastService),
     container: () => this.container(),
-    listItems: () => this.data.listItems(),
     confirm: (message) => window.confirm(message),
     reloadLists: () => this.data.reload(),
   });
+
+  constructor() {
+    // v4 `600c2906f`: the `wardrobe` topic re-reads the card's list and folder
+    // tree (the `project-inventory-card.ts` precedent — signal-held, R-2).
+    inject(RealtimeService).onTopic('wardrobe', () => void this.actions.refreshLists());
+  }
 }

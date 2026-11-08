@@ -505,7 +505,6 @@ export class WardrobeControlDialogInner {
     core: this.core,
     toasts: this.toasts,
     container: () => this.selectedContainer(),
-    listItems: () => this.data.listItems(),
     confirm: (message) => window.confirm(message),
     reloadLists: () => this.data.reload(),
     reloadOutfit: () => this.reloadOutfit(),
@@ -694,6 +693,12 @@ export class WardrobeControlDialogInner {
       () => void this.reloadOutfit(),
       () => this.chatId(),
     );
+    // === P4.D386 ===
+    // v4 `600c2906f`: every write through a wardrobe location publishes the
+    // `wardrobe` topic (lists + folder trees); the signal-held lists and the
+    // browser's folder tree (which watches `refreshTick`) re-read.
+    realtime.onTopic('wardrobe', () => void this.actions.refreshLists());
+    // === end P4.D386 ===
   }
 
   /** v4's `wardrobe.outfit(chatId)` invalidation — chat-only. */

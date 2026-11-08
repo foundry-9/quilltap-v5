@@ -531,8 +531,9 @@ describe('the wardrobe container selector (v4 :1061-1135)', () => {
     await settle(fixture);
     await c.handleDuplicate(PROJECT_ITEM);
     await settle(fixture);
-    const create = seen.filter((r) => (r.type as string).endsWith('WardrobeCreate'));
-    expect(create.at(-1)).toMatchObject({ type: 'projectWardrobeCreate', projectId: 'p1' });
+    // v4 600c2906f: `?action=duplicate` at THAT container — the item id only.
+    const dup = seen.filter((r) => (r.type as string) === 'wardrobeItemDuplicate');
+    expect(dup.at(-1)).toEqual({ type: 'wardrobeItemDuplicate', scope: 'project', containerId: 'p1', itemId: PROJECT_ITEM.id });
   });
 
   it('the star and Delete in a shared container target THAT container (v4 :495-518)', async () => {

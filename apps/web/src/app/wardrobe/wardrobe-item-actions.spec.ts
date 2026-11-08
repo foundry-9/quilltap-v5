@@ -43,7 +43,6 @@ function harness(over: Partial<WardrobeItemActionsOptions> & { fail?: string | E
     core,
     toasts,
     container: () => ALICE,
-    listItems: () => [item('Greatcoat'), item('Greatcoat (copy)')],
     confirm,
     reloadLists,
     reloadOutfit,
@@ -157,13 +156,16 @@ describe('the row writes', () => {
     expect(bare.toasts.showSuccess).not.toHaveBeenCalled();
   });
 
-  it('duplicate picks a title not in the list, posts at the home and toasts — and logs nothing (v4 `01f508d4e`)', async () => {
+  it('duplicate sends the server’s `?action=duplicate` at the home — the item id only, no title — and toasts; logs nothing (v4 600c2906f / `01f508d4e`)', async () => {
     const debug = vi.spyOn(console, 'debug').mockImplementation(() => undefined);
     const { actions, seen, toasts } = harness();
     await actions.duplicate(item('Greatcoat', { characterId: 'alice', componentItemIds: [] }));
     expect(seen).toHaveLength(1);
-    expect(seen[0]['type']).toBe('characterWardrobeCreate');
-    expect((seen[0]['item'] as Record<string, unknown>)['title']).toBe('Greatcoat (copy 2)');
+    // v4 pin `useWardrobeItemActions.ts:187-197`: body `{ itemId }`; the
+    // server picks the "(copy)" title against the tier's titles.
+    expect(seen[0]).toEqual({ type: 'wardrobeItemDuplicate', scope: 'character', containerId: 'alice', itemId: 'Greatcoat' });
+    expect(seen[0]).not.toHaveProperty('title');
+    expect(seen[0]).not.toHaveProperty('item');
     // v4's `01f508d4e` pruned the `[useWardrobeItemActions] Duplicating
     // wardrobe item` debug line; the duplicate is silent now.
     expect(debug).not.toHaveBeenCalled();
@@ -232,5 +234,20 @@ describe('the editor request + the two refreshes', () => {
     await actions.refresh();
     expect(reloadOutfit).toHaveBeenCalledTimes(1);
     expect(actions.refreshTick()).toBe(2);
+  });
+});
+
+describe('duplicate — the refusal fallback (v4 pin `useWardrobeItemActions.ts:192`)', () => {
+  it('an unworded refusal toasts `Failed to duplicate item`', async () => {
+    const { actions, toasts } = harness({ fail: new Error('') });
+    await actions.duplicate(item('Greatcoat', { characterId: 'alice' }));
+    expect(toasts.showError).toHaveBeenCalledWith('Failed to duplicate item');
+    expect(toasts.showSuccess).not.toHaveBeenCalled();
+  });
+
+  it('General is addressed with NO containerId key', async () => {
+    const { actions, seen } = harness({ container: () => GENERAL_CONTAINER });
+    await actions.duplicate(item('Watch'));
+    expect(seen[0]).toEqual({ type: 'wardrobeItemDuplicate', scope: 'general', itemId: 'Watch' });
   });
 });

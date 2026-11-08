@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
+import { refreshUnlessRealtime } from '../item-browser/refresh-unless-realtime';
 import type { CarriedEntry, ResolvedInventoryItem } from '../core/core-contract';
 import { BrowserTogglesBefore, FolderBrowserShell, type BrowserFolderFiling, type BrowserToggles } from '../item-browser/folder-browser-shell';
 import {
@@ -140,6 +142,7 @@ function tierOfItem(item: ResolvedInventoryItem, manageable: boolean): string {
 })
 export class InventoryBrowser {
   private readonly core = inject(CoreClient);
+  private readonly realtime = inject(RealtimeService);
 
   readonly container = input.required<InventoryContainer | null>();
   readonly data = input.required<InventoryListData>();
@@ -226,7 +229,11 @@ export class InventoryBrowser {
     ops: () => {
       const container = this.container();
       if (!container) return null;
-      const settled = <T>(p: Promise<T>): Promise<T> => p.finally(() => void this.actions().refresh());
+      // v4 `600c2906f` (`use-item-folders.ts` `onSettled: refreshUnlessRealtime`):
+      // the server publishes `inventory` from every location write (P4.D324),
+      // so while the socket is up that publish does the re-read.
+      const settled = <T>(p: Promise<T>): Promise<T> =>
+        p.finally(() => void refreshUnlessRealtime(this.realtime, [() => this.actions().refresh()]));
       const ops: ItemFolderOps = {
         create: (path) => settled(createInventoryFolder(this.core, container, path)),
         rename: (path, name) => settled(renameInventoryFolder(this.core, container, path, name)),

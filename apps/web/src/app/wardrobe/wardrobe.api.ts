@@ -51,11 +51,11 @@ import type {
   WardrobePreviewAvatarRequest,
   WardrobeTransferApplyRequest,
   WardrobeUpdateRequest,
+  WardrobeItemDuplicateRequest,
   WardrobeItemDto,
 } from '../core/core-contract';
 import type { ComponentMode } from './wardrobe-component-mode-fieldset';
 import type { EquippedSlots } from './equipped-slots';
-import { draftFromItem, draftToPayload } from './item-draft';
 import type { WardrobeContainer } from './wardrobe-container';
 // === P4.D318: outfit history (append-only) ===
 import type { OutfitHistoryResponse, WardrobeRollbackResponse } from '../core/core-contract';
@@ -214,7 +214,9 @@ export type WardrobeContainerRequest =
   | WardrobeListRequest
   | WardrobeCreateRequest
   | WardrobeUpdateRequest
-  | WardrobeDeleteRequest;
+  | WardrobeDeleteRequest
+  // === P4.D386: v4 `?action=duplicate` (C12) ===
+  | WardrobeItemDuplicateRequest;
 
 /**
  * v4 `wardrobeCollectionUrl(container, { includeArchived })` read with GET.
@@ -569,29 +571,21 @@ export async function deleteWardrobeItem(
 }
 
 /**
- * Duplicate a manageable item (v4 `handleDuplicate`,
- * `wardrobe-control-dialog.tsx:521-590` at `d7263f39`). Duplicate is only
- * offered for manageable items (kebab gating), so the copy stays where the
- * original lives: the selected character's vault in the character view, or the
- * browsed shared container itself.
- *
- * The payload carries `imagePrompt` since `d7263f39` — the Portrait Cue used to
- * be dropped on every duplicate, so a copied garment came back describing
- * nothing. Composite references are copied verbatim; member items are not
- * cloned (v4's own debug note).
- *
- * The body is v4 `4a38222e6`'s `draftToPayload({ ...draftFromItem(item), title })`
- * (`useWardrobeItemActions.ts:206`, §R.10(l)), so it carries the original's
- * `folder` and the duplicate files beside it.
+ * v4 `POST <tier>/wardrobe?action=duplicate` `{ itemId }` (`600c2906f`) — the
+ * server copies the item in its own tier and folder and picks the "(copy)"
+ * title against that tier's titles, archived included. Answers the new
+ * `wardrobeItem` (201). The dispatched body carries NO title and NO item
+ * (C12, L-4: `wardrobeItemDuplicate`, mirroring P4.D377's variant).
  */
 export async function duplicateWardrobeItem(
   core: CoreClient,
   target: WardrobeContainer,
-  item: WardrobeItemDto,
-  newTitle: string,
-): Promise<void> {
-  await dispatchWardrobe(
-    core,
-    containerCreateRequest(target, { ...draftToPayload({ ...draftFromItem(item), title: newTitle }) }),
-  );
+  itemId: string,
+): Promise<WardrobeItemDto> {
+  const data = await dispatchWardrobe(core, {
+    type: 'wardrobeItemDuplicate',
+    ...(target.id ? { scope: target.scope, containerId: target.id } : { scope: target.scope }),
+    itemId,
+  });
+  return data['wardrobeItem'] as WardrobeItemDto;
 }

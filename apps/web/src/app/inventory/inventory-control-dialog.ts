@@ -37,7 +37,9 @@ import { createInventoryItemActions, type InventoryInstantiateRequest } from './
 import { InventoryItemEditor } from './inventory-item-editor';
 import { createInventoryListData } from './inventory-list-data';
 import { describeInventoryRefusal } from './inventory-refusal';
-import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
+import { InventoryTransferDialog, type InventoryCatalogue } from './inventory-transfer-dialog';
+import { injectContainerCatalogue } from '../item-browser/container-catalogue';
+import { ContainerSelect } from '../item-browser/container-select';
 import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
@@ -54,9 +56,6 @@ export const P4D350_PUBLISH_LANDED = true;
 function sameContainer(a: InventoryContainer | null, b: InventoryContainer | null): boolean {
   return a === b || (!!a && !!b && encodeInventoryContainer(a) === encodeInventoryContainer(b));
 }
-
-/** v4 `:49` — the catalogue's sort (default `localeCompare`, no options). */
-const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name);
 
 /**
  * The Inventory dialog's inner body — a port of v4
@@ -100,6 +99,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
     InventoryFolderPickerDialog,
     InventoryTransferDialog,
     InventoryInstantiateDialog,
+    ContainerSelect,
   ],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
@@ -124,25 +124,16 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
         <div class="flex flex-col gap-2 mb-3">
           <div class="flex items-center gap-2">
             <label for="inventory-container-select" class="text-sm qt-text-secondary">Inventory:</label>
-            <!-- [selected] per option, not [value] on the select: the options
-                 arrive after the value (the LIST reads), and a select bound by
-                 value keeps whatever the browser picked meanwhile. -->
-            <select
+            <!-- v4 600c2906f (ItemControlDialogShell): the shared container select. -->
+            <qt-container-select
               id="inventory-container-select"
-              class="qt-select flex-1 max-w-md"
-              (change)="choose($any($event.target).value)"
-            >
-              @if (!container()) {
-                <option value="" disabled [selected]="true">Select an inventory</option>
-              }
-              @for (group of selectGroups(); track group.label) {
-                <optgroup [label]="group.label">
-                  @for (option of group.options; track option.value) {
-                    <option [value]="option.value" [selected]="option.value === containerValue()">{{ option.name }}</option>
-                  }
-                </optgroup>
-              }
-            </select>
+              selectClass="qt-select flex-1 max-w-md"
+              [value]="containerValue()"
+              (valueChange)="choose($event)"
+              [catalogue]="catalogue()"
+              [generalName]="generalName"
+              placeholder="Select an inventory"
+            />
           </div>
           @if (container(); as c) {
             @if (c.scope !== 'character') {
@@ -255,16 +246,18 @@ export class InventoryControlDialogInner {
   readonly closed = output<void>();
 
   // ---- the catalogue (v4 `useInventoryCatalogue`, `:52-77`) ----
-  protected readonly characters = signal<Array<{ id: string; name: string }>>([]);
-  protected readonly charactersSettled = signal(false);
-  private readonly projects = signal<Array<{ id: string; name: string }>>([]);
-  private readonly groups = signal<Array<{ id: string; name: string }>>([]);
+  // v4 `b2b783b47`: the shared container catalogue (`useContainerCatalogue`).
+  private readonly containerCatalogue = injectContainerCatalogue();
+  protected readonly characters = this.containerCatalogue.characters;
+  protected readonly charactersSettled = this.containerCatalogue.charactersSettled;
+  private readonly projects = this.containerCatalogue.projects;
+  private readonly groups = this.containerCatalogue.groups;
   protected readonly catalogue = computed<InventoryCatalogue>(() => ({
     characters: this.characters(),
     projects: this.projects(),
     groups: this.groups(),
   }));
-  protected readonly selectGroups = computed(() => catalogueGroups(this.catalogue()));
+  protected readonly generalName = GENERAL_INVENTORY_NAME;
 
   // ---- which tier (v4 `:146-152`) ----
   private readonly chosen = signal<InventoryContainer | null>(null);
@@ -356,7 +349,6 @@ export class InventoryControlDialogInner {
       const container = this.container();
       untracked(() => void this.folders.load(container));
     });
-    void this.loadCatalogue();
     // v4 `useOnTabActivated(() => invalidate(inventory.all))` (trap 9).
     onTabActivated(() => {
       void this.reloadAll();
@@ -391,21 +383,6 @@ export class InventoryControlDialogInner {
   private async refreshUnlessRealtime(): Promise<void> {
     if (this.ownWritesPublished && this.realtime.connected()) return;
     await this.reloadAll();
-  }
-
-  /** v4 `:52-77` — three LIST reads, each failing soft; characters settle the fallback. */
-  private async loadCatalogue(): Promise<void> {
-    const [characters, projects, groups] = await Promise.all([
-      this.core.dispatchData({ type: 'characterList' }).catch(() => null),
-      this.core.dispatchData({ type: 'projectList' }).catch(() => null),
-      this.core.dispatchData({ type: 'groupList' }).catch(() => null),
-    ]);
-    const list = (data: Record<string, unknown> | null, key: string) =>
-      ((data?.[key] as Array<{ id: string; name: string }> | undefined) ?? []);
-    this.characters.set([...list(characters, 'characters')].map((c) => ({ id: c.id, name: c.name })).sort(byName));
-    this.projects.set(list(projects, 'projects').map((p) => ({ id: p.id, name: p.name || 'Untitled project' })).sort(byName));
-    this.groups.set(list(groups, 'groups').map((g) => ({ id: g.id, name: g.name || 'Untitled group' })).sort(byName));
-    this.charactersSettled.set(true);
   }
 
   protected choose(value: string): void {

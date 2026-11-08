@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
+import { refreshUnlessRealtime } from '../item-browser/refresh-unless-realtime';
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import { DestinationPickerDialog } from '../item-browser/destination-picker-dialog';
 import { ToastService } from '../ui/toast.service';
@@ -43,6 +45,7 @@ import { createInventoryFolder, fileInventoryItems } from './inventory.api';
 export class InventoryFolderPickerDialog {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
+  private readonly realtime = inject(RealtimeService);
 
   readonly container = input.required<InventoryContainer>();
   readonly items = input.required<ResolvedInventoryItem[]>();
@@ -74,7 +77,7 @@ export class InventoryFolderPickerDialog {
       return await createInventoryFolder(this.core, this.container(), path);
     } finally {
       void this.folders.reload();
-      void this.actions().refresh();
+      void refreshUnlessRealtime(this.realtime, [() => this.actions().refresh()]);
     }
   };
 
@@ -105,7 +108,7 @@ export class InventoryFolderPickerDialog {
       this.toasts.showError(describeInventoryRefusal(error, `The objects would not be ${copying ? 'copied' : 'moved'}`));
     } finally {
       this.working.set(false);
-      void this.actions().refresh();
+      void refreshUnlessRealtime(this.realtime, [() => this.actions().refresh()]);
     }
   }
 }

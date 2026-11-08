@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import { ToastService } from '../ui/toast.service';
 import { BOW, KIT, LAMP, OWN, PROJECT, RING, SWORD, obj } from './__fixtures__/inventory-ui.fixture';
@@ -82,6 +83,8 @@ class Host {
 }
 
 const seen: Array<Record<string, unknown>> = [];
+/** The socket state `refreshUnlessRealtime` reads (P4.D386 — v4 600c2906f). */
+const socketUp = signal(false);
 let folderAnswer: (req: Record<string, unknown>) => unknown = () => ({});
 
 function render(setup: (host: Host) => void = () => {}) {
@@ -94,7 +97,13 @@ function render(setup: (host: Host) => void = () => {}) {
       return out;
     }),
   } as unknown as CoreClient;
-  TestBed.configureTestingModule({ imports: [Host], providers: [{ provide: CoreClient, useValue: core }] });
+  TestBed.configureTestingModule({
+    imports: [Host],
+    providers: [
+      { provide: CoreClient, useValue: core },
+      { provide: RealtimeService, useValue: { connected: socketUp, onTopic: () => undefined } },
+    ],
+  });
   const fixture = TestBed.createComponent(Host);
   fixture.componentInstance.folders = createInventoryFoldersStore(core);
   setup(fixture.componentInstance);
@@ -347,5 +356,41 @@ describe('InventoryBrowser', () => {
     fixture.detectChanges();
     expect(copy().disabled).toBe(true);
     expect(copy().getAttribute('title')).toBe('Some of these objects cannot be copied');
+  });
+
+  // ---- v4 `use-item-folders.test.tsx` (600c2906f), the Inventory kind ------
+
+  it('creates a folder and leaves the refresh to the realtime publish while the socket is up', async () => {
+    socketUp.set(true);
+    folderAnswer = (req) => (req['type'] === 'inventoryFolderCreate' ? { folder: { path: 'Arms', name: 'Arms', itemCount: 0 } } : {});
+    const { fixture, el, host } = render();
+    ([...el.querySelectorAll('[data-testid="inventory-folder-bar"] button')].find((b) => b.textContent!.trim() === 'New folder') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const input = el.querySelector('input[aria-label="New folder name"]') as HTMLInputElement;
+    input.value = 'Arms';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await fixture.whenStable();
+    expect(seen.some((r) => r['type'] === 'inventoryFolderCreate')).toBe(true);
+    expect(host.actions.refresh).not.toHaveBeenCalled();
+    socketUp.set(false);
+    folderAnswer = () => ({});
+  });
+
+  it('refreshes the kind\'s lists and folders itself while the socket is down', async () => {
+    socketUp.set(false);
+    folderAnswer = (req) => (req['type'] === 'inventoryFolderCreate' ? { folder: { path: 'Arms', name: 'Arms', itemCount: 0 } } : {});
+    const { fixture, el, host } = render();
+    ([...el.querySelectorAll('[data-testid="inventory-folder-bar"] button')].find((b) => b.textContent!.trim() === 'New folder') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const input = el.querySelector('input[aria-label="New folder name"]') as HTMLInputElement;
+    input.value = 'Arms';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await fixture.whenStable();
+    expect(host.actions.refresh).toHaveBeenCalled();
+    folderAnswer = () => ({});
   });
 });

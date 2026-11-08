@@ -4,6 +4,7 @@ import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto } from '../core/core-contract';
 import { injectContainerCatalogue } from '../item-browser/container-catalogue';
 import { ContainerSelect } from '../item-browser/container-select';
+import { ItemTransferFooter } from '../item-browser/item-transfer-footer';
 import { Modal } from '../ui/modal';
 import { WardrobeComponentModeFieldset, defaultComponentMode } from './wardrobe-component-mode-fieldset';
 import { dispatchWardrobe, type WardrobeTransferComponentMode } from './wardrobe.api';
@@ -39,7 +40,7 @@ export type TransferMode = 'move' | 'copy';
 @Component({
   selector: 'qt-wardrobe-transfer-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ContainerSelect, Modal, WardrobeComponentModeFieldset],
+  imports: [ContainerSelect, ItemTransferFooter, Modal, WardrobeComponentModeFieldset],
   template: `
     <qt-modal
       [title]="title()"
@@ -95,24 +96,16 @@ export type TransferMode = 'move' | 'copy';
         </p>
       </div>
 
-      <div qt-modal-footer class="flex justify-end gap-2">
-        <button
-          type="button"
-          (click)="closed.emit()"
-          class="qt-button-secondary qt-button-sm"
-          [disabled]="working()"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          (click)="handleSubmit()"
-          class="qt-button-primary qt-button-sm"
-          [disabled]="working() || catalogue.loading() || !selection()"
-        >
-          {{ working() ? (mode() === 'move' ? 'Moving…' : 'Copying…') : submitLabel() }}
-        </button>
-      </div>
+      <!-- v4 600c2906f: the shared transfer footer. -->
+      <qt-item-transfer-footer
+        qt-modal-footer
+        [mode]="mode()"
+        [working]="working()"
+        [submitLabel]="submitLabel()"
+        [submitDisabled]="catalogue.loading() || !selection()"
+        (cancelled)="closed.emit()"
+        (submitted)="handleSubmit()"
+      />
     </qt-modal>
   `,
 })

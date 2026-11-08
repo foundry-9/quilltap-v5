@@ -59,6 +59,16 @@ export const REALTIME_TOPICS = [
    * `chats` topic's. (v4 `e1872c94f`, appended after `memories`; P4.D330.)
    */
   'inventory',
+  // === P4.D386 ===
+  /**
+   * Wardrobe items and folders: a file created, edited, archived, deleted or
+   * filed, or a folder made, renamed or removed — published by every write
+   * through a wardrobe location (`lib/wardrobe/location.ts`). Collection-wide:
+   * the browsers' lists and folder trees. What a chat's cast is *wearing* is
+   * the `chats` topic's. (v4 `600c2906f`, after `inventory`; P4.D386.)
+   */
+  'wardrobe',
+  // === end P4.D386 ===
   // === P4.D344: Storyteller mode ===
   /**
    * A storyteller round opened, a bid landed, the round ran or closed — the

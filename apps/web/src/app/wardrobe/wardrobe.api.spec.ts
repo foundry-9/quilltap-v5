@@ -492,67 +492,21 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
     ]);
   });
 
-  it('duplicateWardrobeItem POSTs into the target container, PRESERVES the Portrait Cue and files beside the original (v4 4a38222e6 useWardrobeItemActions.ts:206)', async () => {
-    const { core, seen } = stubCore(() => ({}));
-    const item = dto({
-      id: 'i1',
-      description: 'desc',
-      imagePrompt: 'cue',
-      types: ['top', 'bottom'],
-      appropriateness: 'formal',
-      isDefault: true,
-      componentItemIds: ['x'],
-      replace: true,
-      folder: 'Formal/Evening',
-    });
-    await duplicateWardrobeItem(core, CHAR_CONTAINER, item, 'Suit (copy)');
-    await duplicateWardrobeItem(core, GROUP_CONTAINER, item, 'Suit (copy 2)');
+  it('duplicateWardrobeItem dispatches `wardrobeItemDuplicate` {scope, containerId?, itemId} — no item, no title (v4 600c2906f, C12 / L-4)', async () => {
+    const { core, seen } = stubCore(() => ({ wardrobeItem: dto({ id: 'i1-copy', title: 'Suit (copy)' }) }));
+    const made = await duplicateWardrobeItem(core, CHAR_CONTAINER, 'i1');
+    await duplicateWardrobeItem(core, GROUP_CONTAINER, 'i1');
+    await duplicateWardrobeItem(core, GENERAL_CONTAINER, 'i1');
     expect(seen).toEqual([
-      {
-        type: 'characterWardrobeCreate',
-        characterId: 'c1',
-        item: {
-          title: 'Suit (copy)',
-          description: 'desc',
-          imagePrompt: 'cue',
-          types: ['top', 'bottom'],
-          appropriateness: 'formal',
-          isDefault: true,
-          componentItemIds: ['x'],
-          replace: true,
-          // v4 `eb90d9ed8`: the copy carries the original's guidance.
-          pronounGuidance: [],
-          folder: 'Formal/Evening',
-        },
-      },
-      {
-        type: 'groupWardrobeCreate',
-        groupId: 'g1',
-        item: {
-          title: 'Suit (copy 2)',
-          description: 'desc',
-          imagePrompt: 'cue',
-          types: ['top', 'bottom'],
-          appropriateness: 'formal',
-          isDefault: true,
-          componentItemIds: ['x'],
-          replace: true,
-          // v4 `eb90d9ed8`: the copy carries the original's guidance.
-          pronounGuidance: [],
-          folder: 'Formal/Evening',
-        },
-      },
+      { type: 'wardrobeItemDuplicate', scope: 'character', containerId: 'c1', itemId: 'i1' },
+      { type: 'wardrobeItemDuplicate', scope: 'group', containerId: 'g1', itemId: 'i1' },
+      { type: 'wardrobeItemDuplicate', scope: 'general', itemId: 'i1' },
     ]);
-  });
-
-  it('a missing Portrait Cue duplicates as an explicit null, never an absent key', async () => {
-    const { core, seen } = stubCore(() => ({}));
-    await duplicateWardrobeItem(core, GENERAL_CONTAINER, dto({ id: 'i1' }), 'x (copy)');
-    expect(seen[0]).toMatchObject({ type: 'wardrobeCreate' });
-    expect((seen[0] as { item: Record<string, unknown> }).item).toHaveProperty(
-      'imagePrompt',
-      null,
-    );
+    for (const body of seen) {
+      expect(body).not.toHaveProperty('item');
+      expect(body).not.toHaveProperty('title');
+    }
+    expect(made).toMatchObject({ id: 'i1-copy', title: 'Suit (copy)' });
   });
 });
 

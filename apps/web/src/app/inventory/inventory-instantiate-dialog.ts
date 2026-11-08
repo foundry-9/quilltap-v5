@@ -14,12 +14,53 @@ import { CoreClient } from '../core/core-client';
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
-import { decodeInventoryContainer, encodeInventoryContainer, type InventoryContainer } from './inventory-container';
+import {
+  GENERAL_INVENTORY_CONTAINER,
+  GENERAL_INVENTORY_NAME,
+  decodeInventoryContainer,
+  encodeInventoryContainer,
+  type InventoryContainer,
+} from './inventory-container';
 import { InventoryPicture } from './inventory-glyph';
 import type { InventoryItemActions } from './inventory-item-actions';
 import { describeInventoryRefusal } from './inventory-refusal';
-import { catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
+import type { InventoryCatalogue } from './inventory-transfer-dialog';
 import { instantiateInventoryItem, listInventoryArchetypes, type InventoryInstantiateBody } from './inventory.api';
+
+/** One `<option>` of a catalogue select. */
+interface CatalogueOption {
+  value: string;
+  name: string;
+}
+
+/**
+ * The catalogue as the instantiate dialog's own select lists it (v4 pin
+ * `InventoryInstantiateDialog.tsx:105-130` — it keeps its own markup, not the
+ * shared `ContainerSelect`): characters, General, projects, groups — each
+ * group present only when it has a member (General always).
+ */
+function catalogueGroups(
+  catalogue: InventoryCatalogue,
+  omit: string | null = null,
+): Array<{ label: string; options: CatalogueOption[] }> {
+  const option = (container: InventoryContainer, name: string): CatalogueOption[] => {
+    const value = encodeInventoryContainer(container);
+    return value === omit ? [] : [{ value, name }];
+  };
+  return [
+    ...(catalogue.characters.length > 0
+      ? [{ label: 'Characters', options: catalogue.characters.flatMap((c) => option({ scope: 'character', id: c.id }, c.name)) }]
+      : []),
+    { label: 'General', options: option(GENERAL_INVENTORY_CONTAINER, GENERAL_INVENTORY_NAME) },
+    ...(catalogue.projects.length > 0
+      ? [{ label: 'Projects', options: catalogue.projects.flatMap((p) => option({ scope: 'project', id: p.id }, p.name)) }]
+      : []),
+    ...(catalogue.groups.length > 0
+      ? [{ label: 'Groups', options: catalogue.groups.flatMap((g) => option({ scope: 'group', id: g.id }, g.name)) }]
+      : []),
+  ];
+}
+
 
 /**
  * Make an instance of an archetype — a port of v4

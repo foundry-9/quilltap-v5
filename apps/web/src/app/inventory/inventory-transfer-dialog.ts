@@ -4,8 +4,10 @@ import { CoreClient } from '../core/core-client';
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
+import type { CatalogueEntry } from '../item-browser/container-catalogue';
+import { ContainerSelect } from '../item-browser/container-select';
+import { ItemTransferFooter } from '../item-browser/item-transfer-footer';
 import {
-  GENERAL_INVENTORY_CONTAINER,
   GENERAL_INVENTORY_NAME,
   decodeInventoryContainer,
   encodeInventoryContainer,
@@ -15,45 +17,15 @@ import type { InventoryItemActions } from './inventory-item-actions';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { transferInventoryItem } from './inventory.api';
 
-/** v4 `InventoryCatalogue` (`InventoryTransferDialog.tsx:25-29`) — the select's three LIST reads. */
-export interface InventoryCatalogue {
-  characters: Array<{ id: string; name: string }>;
-  projects: Array<{ id: string; name: string }>;
-  groups: Array<{ id: string; name: string }>;
-}
-
-/** One `<option>` of a catalogue select. */
-interface CatalogueOption {
-  value: string;
-  name: string;
-}
-
 /**
- * The catalogue as the destination selects list it (v4 `:96-110` / the
- * instantiate dialog's `:115-138`): characters, General, projects, groups —
- * each group present only when it has a member (General always), and the
- * container `omit` names left out (the transfer's source).
+ * Where an object can go: the shared container catalogue's three lists (v4
+ * pin `InventoryTransferDialog.tsx:30` —
+ * `Pick<ContainerCatalogue, 'characters' | 'projects' | 'groups'>`).
  */
-export function catalogueGroups(
-  catalogue: InventoryCatalogue,
-  omit: string | null = null,
-): Array<{ label: string; options: CatalogueOption[] }> {
-  const option = (container: InventoryContainer, name: string): CatalogueOption[] => {
-    const value = encodeInventoryContainer(container);
-    return value === omit ? [] : [{ value, name }];
-  };
-  return [
-    ...(catalogue.characters.length > 0
-      ? [{ label: 'Characters', options: catalogue.characters.flatMap((c) => option({ scope: 'character', id: c.id }, c.name)) }]
-      : []),
-    { label: 'General', options: option(GENERAL_INVENTORY_CONTAINER, GENERAL_INVENTORY_NAME) },
-    ...(catalogue.projects.length > 0
-      ? [{ label: 'Projects', options: catalogue.projects.flatMap((p) => option({ scope: 'project', id: p.id }, p.name)) }]
-      : []),
-    ...(catalogue.groups.length > 0
-      ? [{ label: 'Groups', options: catalogue.groups.flatMap((g) => option({ scope: 'group', id: g.id }, g.name)) }]
-      : []),
-  ];
+export interface InventoryCatalogue {
+  characters: ReadonlyArray<CatalogueEntry>;
+  projects: ReadonlyArray<CatalogueEntry>;
+  groups: ReadonlyArray<CatalogueEntry>;
 }
 
 /**
@@ -62,11 +34,14 @@ export function catalogueGroups(
  * keeps the object's id (every chat that carries it, every kit that names it,
  * still does); a copy is a new object, offered only when the object can be
  * copied. The folder path comes along. The source tier is not offered.
+ * At the pin `624d0d25c` the destination is the shared `qt-container-select`
+ * over the container catalogue and the footer is `qt-item-transfer-footer`
+ * (v4 `b2b783b47` / `600c2906f`).
  */
 @Component({
   selector: 'qt-inventory-transfer-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal],
+  imports: [ContainerSelect, ItemTransferFooter, Modal],
   template: `
     <qt-modal
       [title]="verb() + ' &quot;' + label() + '&quot; to another inventory'"
@@ -77,31 +52,27 @@ export function catalogueGroups(
       (close)="closed.emit()"
     >
       <p class="qt-text-xs qt-text-secondary mb-2">{{ note() }}</p>
-      <label class="text-sm text-foreground" for="inventory-transfer-target">Destination</label>
-      <select
+      <label class="text-sm text-foreground" id="inventory-transfer-target-label" for="inventory-transfer-target">Destination</label>
+      <qt-container-select
         id="inventory-transfer-target"
-        class="qt-select w-full mt-1"
+        labelledBy="inventory-transfer-target-label"
+        selectClass="qt-select w-full mt-1"
         [value]="target()"
-        (change)="target.set($any($event.target).value)"
-      >
-        <option value="" disabled>Choose an inventory</option>
-        @for (group of groups(); track group.label) {
-          <optgroup [label]="group.label">
-            @for (option of group.options; track option.value) {
-              <option [value]="option.value">{{ option.name }}</option>
-            }
-          </optgroup>
-        }
-      </select>
+        (valueChange)="target.set($event)"
+        [catalogue]="catalogue()"
+        [generalName]="generalName"
+        placeholder="Choose an inventory"
+        [exclude]="exclude()"
+      />
 
-      <div qt-modal-footer class="flex justify-end gap-2 w-full">
-        <button type="button" class="qt-button-secondary qt-button-sm" (click)="closed.emit()" [disabled]="working()">
-          Cancel
-        </button>
-        <button type="button" class="qt-button-primary qt-button-sm" (click)="submit()" [disabled]="!target() || working()">
-          {{ working() ? (verb() === 'Move' ? 'Moving' : 'Copying') + '…' : verb() }}
-        </button>
-      </div>
+      <qt-item-transfer-footer
+        qt-modal-footer
+        [mode]="mode()"
+        [working]="working()"
+        [submitDisabled]="!target()"
+        (cancelled)="closed.emit()"
+        (submitted)="submit()"
+      />
     </qt-modal>
   `,
 })
@@ -120,7 +91,9 @@ export class InventoryTransferDialog {
   protected readonly working = signal(false);
   protected readonly verb = computed(() => (this.mode() === 'move' ? 'Move' : 'Copy'));
   protected readonly label = computed(() => this.item().title || this.item().name);
-  protected readonly groups = computed(() => catalogueGroups(this.catalogue(), encodeInventoryContainer(this.from())));
+  protected readonly generalName = GENERAL_INVENTORY_NAME;
+  /** v4 pin `exclude={[fromKey]}` — the source tier is not offered. */
+  protected readonly exclude = computed(() => [encodeInventoryContainer(this.from())]);
   /** v4 `:88-93`. */
   protected readonly note = computed(
     () =>

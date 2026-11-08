@@ -8,7 +8,6 @@
  *    `breakApartBundleInSlots`)
  *  - `lib/wardrobe/default-outfit.ts` (`buildDefaultOutfit`)
  *  - `lib/wardrobe/group-equipped.ts` (`groupEquippedSlots`)
- *  - `lib/wardrobe/next-copy-title.ts` (`nextCopyTitle`)
  *  - `lib/wardrobe/composite-types.ts` (`unionTypes`)
  *
  * The slot vocabulary is the registry's (`slot-meta.ts`, P4.D88) —
@@ -452,26 +451,6 @@ export function computeDisplacedSlots(
 // ---------------------------------------------------------------------------
 // Titles + type unions
 // ---------------------------------------------------------------------------
-
-/** Matches a trailing ` (copy)` or ` (copy <N>)` suffix, case-insensitive
- *  (v4 `next-copy-title.ts:13`). */
-const COPY_SUFFIX = /\s*\(copy(?:\s+\d+)?\)\s*$/i;
-
-/**
- * Pick the next free `(copy)` / `(copy N)` title for a duplicated item
- * (v4 `next-copy-title.ts:21-29`). Any trailing copy suffix on the source is
- * stripped first, so duplicating `Shirt (copy)` yields `Shirt (copy 2)`;
- * collision is case-insensitive.
- */
-export function nextCopyTitle(sourceTitle: string, existingTitles: string[]): string {
-  const base = sourceTitle.replace(COPY_SUFFIX, '').trim() || sourceTitle.trim();
-  const taken = new Set(existingTitles.map((t) => t.trim().toLowerCase()));
-
-  for (let n = 1; ; n++) {
-    const candidate = n === 1 ? `${base} (copy)` : `${base} (copy ${n})`;
-    if (!taken.has(candidate.toLowerCase())) return candidate;
-  }
-}
 
 /**
  * Compute the union of slot types across a list of components, in canonical

@@ -174,7 +174,6 @@ async function renderBrowser(
     core,
     toasts,
     container: () => container,
-    listItems: () => data.listItems(),
     confirm,
     reloadLists,
   });
