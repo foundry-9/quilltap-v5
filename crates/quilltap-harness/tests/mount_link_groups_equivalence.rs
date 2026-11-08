@@ -124,7 +124,10 @@ fn link_binds_a_group_and_copy_does_not() {
     };
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let want: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    // === P4.D381 === the FIRST line is this test's; `p4d381-links` follows.
+    let want: Value = serde_json::from_str(oracle_text.lines().next().unwrap_or("").trim())
+        .expect("parse oracle dump");
+    // === /P4.D381 ===
 
     let scratch = std::env::temp_dir().join(format!("qt-mlg-rust-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&scratch);
@@ -368,3 +371,183 @@ fn link_binds_a_group_and_copy_does_not() {
         got_contents.len()
     );
 }
+
+// === P4.D381 (v4 `aec626eff`): `?action=links` + `unlink-file` over three
+// database stores named for ICU order, against v4's REAL routes (the oracle's
+// `p4d381-links` line). Bodies are compared as BYTES (`serde_json::to_string`,
+// key order included) with the minted ids (`linkId`, `linkGroupId`,
+// `groupId`) remapped by first sight. ===
+
+fn p4d381_remap(v: &mut Value, ids: &mut HashMap<String, String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, val) in m.iter_mut() {
+                if matches!(k.as_str(), "linkId" | "linkGroupId" | "groupId") {
+                    if let Value::String(s) = val {
+                        let n = ids.len();
+                        *val = Value::String(
+                            ids.entry(s.clone())
+                                .or_insert_with(|| format!("<id{n}>"))
+                                .clone(),
+                        );
+                    }
+                } else {
+                    p4d381_remap(val, ids);
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| p4d381_remap(x, ids)),
+        _ => {}
+    }
+}
+
+#[test]
+fn p4d381_links_and_unlink_match_oracle() {
+    use quilltap_core::api::mount_files as mf;
+    let (Ok(oracle_path), Ok(fixture)) = (
+        std::env::var("QT_ORACLE_MOUNT_LINK_GROUPS"),
+        std::env::var("QT_FIXTURE_MOUNT_LINK_GROUPS"),
+    ) else {
+        eprintln!("SKIP: set QT_ORACLE_MOUNT_LINK_GROUPS + QT_FIXTURE_MOUNT_LINK_GROUPS.");
+        return;
+    };
+    let text = std::fs::read_to_string(&oracle_path).unwrap();
+    let want: Value = text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["case"] == "p4d381-links")
+        .expect("no p4d381-links line (regenerate the oracle)");
+
+    const ZETA: &str = "5700000e-0000-4000-8000-0000000d3811";
+    const ECLAIR_ACCENT: &str = "5700000e-0000-4000-8000-0000000d3812";
+    const ECLAIR: &str = "5700000e-0000-4000-8000-0000000d3813";
+    const GONE: &str = "5700000e-0000-4000-8000-0000000d3814";
+    let dir = tempfile::Builder::new()
+        .prefix("qt-p4d381-mlg-")
+        .tempdir()
+        .unwrap();
+    let work = dir.path().join("mount.db");
+    let main = dir.path().join("main.db");
+    std::fs::copy(&fixture, &work).unwrap();
+    {
+        let _ = Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        let w = Writer::open_writable(&work, TEST_PEPPER).unwrap();
+        let conn = w.connection();
+        for (id, name) in [
+            (ZETA, "Zeta"),
+            (ECLAIR_ACCENT, "Éclair"),
+            (ECLAIR, "eclair"),
+            (GONE, "P4D381 Gone"),
+        ] {
+            conn.execute_batch(&format!(
+                "CREATE TEMP TABLE IF NOT EXISTS p4d381_mp AS SELECT * FROM doc_mount_points WHERE 0; \
+                 DELETE FROM p4d381_mp; \
+                 INSERT INTO p4d381_mp SELECT * FROM doc_mount_points WHERE id = '{STORE_ID}'; \
+                 UPDATE p4d381_mp SET id = '{id}', name = '{name}'; \
+                 INSERT INTO doc_mount_points SELECT * FROM p4d381_mp;"
+            ))
+            .unwrap();
+        }
+        let links = w.doc_mount_file_links();
+        let ex = RefusingTextExtractor;
+        links
+            .write_database_document(ZETA, "B.md", "# B\n\nP4D381 shared across stores.\n")
+            .unwrap();
+        for (dst, path) in [(ZETA, "a.md"), (ECLAIR_ACCENT, "x.md"), (ECLAIR, "x.md")] {
+            link_file(conn, ZETA, "B.md", dst, path, &ex).unwrap();
+        }
+        links
+            .write_database_document(ZETA, "d1.md", "# D\n\nP4D381 dedup only.\n")
+            .unwrap();
+        links
+            .write_database_document(ZETA, "d2.md", "# D\n\nP4D381 dedup only.\n")
+            .unwrap();
+        links
+            .write_database_document(ZETA, "g.md", "# G\n\nP4D381 orphaned store.\n")
+            .unwrap();
+        link_file(conn, ZETA, "g.md", GONE, "g.md", &ex).unwrap();
+        conn.execute("DELETE FROM doc_mount_points WHERE id = ?1", [GONE])
+            .unwrap();
+    }
+    let db = quilltap_core::db::runtime::Db::open(
+        quilltap_core::db::runtime::DbPaths {
+            main,
+            mount_index: Some(work),
+            llm_logs: None,
+        },
+        TEST_PEPPER,
+    )
+    .unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let body = |r: quilltap_core::api::types::Response| match r {
+        quilltap_core::api::types::Response::MountFile(v) => (200, v),
+        quilltap_core::api::types::Response::Error(e) => {
+            let status = match e.kind {
+                quilltap_core::api::types::ErrorKind::NotFound => 404,
+                quilltap_core::api::types::ErrorKind::BadRequest => 400,
+                _ => 500,
+            };
+            (status, json!({ "error": e.message }))
+        }
+        other => panic!("{other:?}"),
+    };
+    let rows: Vec<(&str, (i64, Value))> = vec![
+        (
+            "links_grouped_three_stores",
+            body(mf::mount_file_links(&db, ECLAIR_ACCENT, "x.md")),
+        ),
+        (
+            "links_grouped_self_first",
+            body(mf::mount_file_links(&db, ZETA, "B.md")),
+        ),
+        (
+            "links_dedup_ungrouped",
+            body(mf::mount_file_links(&db, ZETA, "d1.md")),
+        ),
+        (
+            "links_unknown_store",
+            body(mf::mount_file_links(&db, ZETA, "g.md")),
+        ),
+        (
+            "links_missing",
+            body(mf::mount_file_links(&db, ZETA, "nope.md")),
+        ),
+        (
+            "unlink_from_three_store_group",
+            body(rt.block_on(mf::mount_file_unlink(
+                &db,
+                ECLAIR_ACCENT,
+                Some(json!("x.md")),
+                "u-1",
+            ))),
+        ),
+        (
+            "links_after_unlink",
+            body(mf::mount_file_links(&db, ZETA, "B.md")),
+        ),
+    ];
+    let mut got = json!({
+        "case": "p4d381-links",
+        "rows": rows
+            .into_iter()
+            .map(|(name, (status, body))| json!({ "case": name, "status": status, "body": body }))
+            .collect::<Vec<_>>(),
+    });
+    let mut want = want;
+    p4d381_remap(&mut got, &mut HashMap::new());
+    p4d381_remap(&mut want, &mut HashMap::new());
+    let (g, w) = (
+        serde_json::to_string_pretty(&got).unwrap(),
+        serde_json::to_string_pretty(&want).unwrap(),
+    );
+    assert_eq!(g, w, "?action=links / unlink-file diverge");
+    assert!(
+        g.contains("Unknown store") && g.contains("\"grouped\": false"),
+        "{g}"
+    );
+    eprintln!("OK: p4d381 links + unlink matched oracle (7 rows).");
+}
+// === /P4.D381 ===

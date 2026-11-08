@@ -3007,7 +3007,13 @@ fn is_route_identifier(field: &str) -> bool {
 // JSON type. Measured red at 525 against 523 first; the unifier recounts the
 // constant by NUMBER on the union (H3).
 // === end P4.D379 ===
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 526;
+// **P4.D381 (+6): 523 → 529** — `MountFolderCopy.mount_point_id`,
+// `MountFileUnlink.mount_point_id`, and `MountFileLinks` / `MountFileRenderHtml`'s
+// `mount_point_id` + `path` — the `[id]` / `[...path]` URL segments of
+// `mount-points/[id]` and `mount-points/[id]/files/[...path]` (never body keys).
+// Their body keys are raw (`MOUNT_FOLDER_RAW`). Measured red at 529 against 523;
+// the unifier re-measures on the union.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 532;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus
@@ -3858,3 +3864,136 @@ fn mount_sync_six_decode_raw_and_keep_null_apart() {
 }
 
 // === end P4.D210 ===
+
+// === P4.D381 (v4 `aec626eff`): the folder family's and unlink's RAW keys ===
+
+/// The six raw keys P4.D381 adds (the P4.D57 idiom: the field decodes ANY
+/// JSON type so the HANDLER refuses with v4's own sentence on both
+/// transports). The handler sentences are cross-compared against v4's real
+/// route in `mount_ops_equivalence` (`folder_delete_recursive_wrong_type`,
+/// `folder_delete_recursive_null`, `folder_copy_missing_to`,
+/// `folder_move_dest_empty`, `unlink_no_path`).
+const MOUNT_FOLDER_RAW: &[Row] = &[
+    Row {
+        variant: "MountFolderDelete",
+        field: "recursive",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — v4 `deleteFolderSchema.recursive: z.boolean().optional()` \
+               → 400 `Delete folder requires a non-empty path` for `null` or a \
+               non-bool; absent is the empty-folder delete.",
+    },
+    Row {
+        variant: "MountFolderMove",
+        field: "dest_mount_point_id",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — v4 `moveFolderSchema.destMountPointId: \
+               z.string().min(1).optional()` → 400 `Move folder requires fromPath \
+               and toPath` for `null`, `\"\"` or a non-string.",
+    },
+    Row {
+        variant: "MountFolderCopy",
+        field: "from_path",
+        rust_type: "Option<Value>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — `handleCopyFolder` parses with `moveFolderSchema` \
+               (`fromPath: z.string().min(1)`) → 400 `Copy folder requires \
+               fromPath and toPath`.",
+    },
+    Row {
+        variant: "MountFolderCopy",
+        field: "to_path",
+        rust_type: "Option<Value>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — as `fromPath`.",
+    },
+    Row {
+        variant: "MountFolderCopy",
+        field: "dest_mount_point_id",
+        rust_type: "Option<Option<Value>>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — as `MountFolderMove.destMountPointId`, with the \
+               copy's sentence.",
+    },
+    Row {
+        variant: "MountFileUnlink",
+        field: "path",
+        rust_type: "Option<Value>",
+        v4: V4::BodySafeParse,
+        note: "RAW(P4.D381) — v4 `unlinkFileSchema.path: z.string().min(1)` → 400 \
+               `Unlink requires a non-empty path`.",
+    },
+];
+
+/// The list names exactly the raw fields the four variants carry, WITH their
+/// declared shapes — a seventh raw key, a dropped row or a shape drifting
+/// back to a typed field is a red.
+#[test]
+fn the_mount_folder_raw_list_covers_every_raw_field_on_the_variants() {
+    for variant in [
+        "MountFolderDelete",
+        "MountFolderMove",
+        "MountFolderCopy",
+        "MountFileUnlink",
+    ] {
+        let mut have: Vec<(String, String)> = MOUNT_FOLDER_RAW
+            .iter()
+            .filter(|r| r.variant == variant)
+            .map(|r| (r.field.to_string(), r.rust_type.replace(' ', "")))
+            .collect();
+        have.sort();
+        assert_eq!(have, raw_value_fields_of(variant), "{variant}'s raw fields");
+    }
+    assert_eq!(MOUNT_FOLDER_RAW.len(), 6);
+}
+
+/// Every wrong type DECODES (the handler refuses), and absent stays apart from
+/// an explicit `null` on the tri-state keys.
+#[test]
+fn mount_folder_raw_keys_decode_any_type() {
+    use quilltap_core::api::types::Request;
+    let base = |variant: &str| match variant {
+        "MountFolderDelete" => {
+            json!({ "type": "mountFolderDelete", "mountPointId": "mp-1", "path": "notes" })
+        }
+        "MountFolderMove" => {
+            json!({ "type": "mountFolderMove", "mountPointId": "mp-1", "fromPath": "a", "toPath": "b" })
+        }
+        "MountFolderCopy" => json!({ "type": "mountFolderCopy", "mountPointId": "mp-1" }),
+        _ => json!({ "type": "mountFileUnlink", "mountPointId": "mp-1" }),
+    };
+    for row in MOUNT_FOLDER_RAW {
+        for wrong in [
+            json!(42),
+            json!(true),
+            Value::Null,
+            json!([1]),
+            json!({"a": 1}),
+            json!(""),
+        ] {
+            let mut body = base(row.variant);
+            body.as_object_mut()
+                .unwrap()
+                .insert(camel(row.field), wrong.clone());
+            assert!(
+                serde_json::from_value::<Request>(body).is_ok(),
+                "{}.{} refused {wrong} at the dispatch decode",
+                row.variant,
+                row.field
+            );
+        }
+    }
+    let decoded = |body: Value| format!("{:?}", serde_json::from_value::<Request>(body).unwrap());
+    let mut with_null = base("MountFolderDelete");
+    with_null
+        .as_object_mut()
+        .unwrap()
+        .insert("recursive".into(), Value::Null);
+    assert_ne!(
+        decoded(base("MountFolderDelete")),
+        decoded(with_null),
+        "absent and null `recursive` must stay apart"
+    );
+}
+// === /P4.D381 ===

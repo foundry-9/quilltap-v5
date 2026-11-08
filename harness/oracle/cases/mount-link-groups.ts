@@ -217,12 +217,133 @@ async function main(): Promise<void> {
       content: c.content,
     }));
 
+  // === P4.D381 (v4 `aec626eff`): `?action=links` + `?action=unlink-file`,
+  // through v4's REAL routes (the per-file GET and the action POST), on three
+  // database stores cloned from the fixture store's row and named to exercise
+  // ICU `localeCompare` (`eclair` < `Éclair` < `Zeta`; `a.md` < `B.md`). The
+  // routes' middleware reads `startupState` + `getServerSession()`: v4 runs as
+  // CommonJS under tsx, so the cached exports are swapped (the mount-read
+  // recipe) and self-checked before the routes load.
+  const { createRequire } = await import('node:module');
+  const v4Require = createRequire(process.cwd() + '/');
+  const swapExports = (specifier: string, patch: (real: Record<string, unknown>) => Record<string, unknown>): void => {
+    const real = v4Require(specifier) as Record<string, unknown>;
+    const entry = v4Require.cache[v4Require.resolve(specifier)];
+    if (!entry) throw new Error(`p4d381: ${specifier} is not in require.cache`);
+    entry.exports = { ...real, ...patch(real) };
+  };
+  const P4D381_USER = 'e18e05bc-63e8-4539-8a85-719b7a508850';
+  swapExports('@/lib/auth/session', () => ({ getServerSession: async () => ({ user: { id: P4D381_USER } }) }));
+  swapExports('@/lib/startup/startup-state', (real) => ({
+    startupState: Object.assign(Object.create(real.startupState as object), {
+      isReady: () => true,
+      waitForReady: async () => true,
+      isPepperResolved: () => true,
+      getPepperState: () => 'resolved',
+      getPhase: () => 'ready',
+      isLockedMode: () => false,
+    }),
+  }));
+  if (!(v4Require('@/lib/startup/startup-state') as { startupState: { isReady: () => boolean } }).startupState.isReady()) {
+    throw new Error('p4d381: the startupState stub did not take');
+  }
+  const P4D381_ZETA = '5700000e-0000-4000-8000-0000000d3811';
+  const P4D381_ECLAIR_ACCENT = '5700000e-0000-4000-8000-0000000d3812';
+  const P4D381_ECLAIR = '5700000e-0000-4000-8000-0000000d3813';
+  const P4D381_GONE = '5700000e-0000-4000-8000-0000000d3814';
+  const p4d381Midb = getRawMountIndexDatabase();
+  if (!p4d381Midb) throw new Error('p4d381: mount-index DB handle unavailable');
+  for (const [id, name] of [
+    [P4D381_ZETA, 'Zeta'],
+    [P4D381_ECLAIR_ACCENT, 'Éclair'],
+    [P4D381_ECLAIR, 'eclair'],
+    [P4D381_GONE, 'P4D381 Gone'],
+  ]) {
+    p4d381Midb.exec(
+      `CREATE TEMP TABLE IF NOT EXISTS p4d381_mp AS SELECT * FROM doc_mount_points WHERE 0;
+       DELETE FROM p4d381_mp;
+       INSERT INTO p4d381_mp SELECT * FROM doc_mount_points WHERE id = '${STORE_ID}';
+       UPDATE p4d381_mp SET id = '${id}', name = '${name}';
+       INSERT INTO doc_mount_points SELECT * FROM p4d381_mp;`
+    );
+  }
+  const linkAt = (src: string, srcPath: string, dst: string, dstPath: string) =>
+    linkFile({ sourceMountPointId: src, sourcePath: srcPath, destMountPointId: dst, destPath: dstPath });
+  // A three-store group: Zeta/B.md (the source), Zeta/a.md, Éclair/x.md, eclair/x.md.
+  await writeDatabaseDocument(P4D381_ZETA, 'B.md', '# B\n\nP4D381 shared across stores.\n');
+  await linkAt(P4D381_ZETA, 'B.md', P4D381_ZETA, 'a.md');
+  await linkAt(P4D381_ZETA, 'B.md', P4D381_ECLAIR_ACCENT, 'x.md');
+  await linkAt(P4D381_ZETA, 'B.md', P4D381_ECLAIR, 'x.md');
+  // A dedup share with no group: two byte-identical docs in Zeta.
+  await writeDatabaseDocument(P4D381_ZETA, 'd1.md', '# D\n\nP4D381 dedup only.\n');
+  await writeDatabaseDocument(P4D381_ZETA, 'd2.md', '# D\n\nP4D381 dedup only.\n');
+  // A link whose store row is gone: Zeta/g.md linked into GONE, then GONE's row deleted.
+  await writeDatabaseDocument(P4D381_ZETA, 'g.md', '# G\n\nP4D381 orphaned store.\n');
+  await linkAt(P4D381_ZETA, 'g.md', P4D381_GONE, 'g.md');
+  p4d381Midb.prepare('DELETE FROM doc_mount_points WHERE id = ?').run(P4D381_GONE);
+
+  // The routes' context middleware loads the session user from main (this
+  // case's main is an empty scratch): seed it.
+  {
+    const { ensureCollection } = await import('@/lib/database/manager');
+    const { UserSchema } = await import('@/lib/schemas/auth.types');
+    await ensureCollection('users', UserSchema as never);
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().users.create(
+      { username: 'p4d381' } as never,
+      { id: P4D381_USER, createdAt: '2026-02-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' } as never,
+    );
+  }
+  const { GET: itemGet } = await import('@/app/api/v1/mount-points/[id]/files/[...path]/route');
+  const { POST: actionPost } = await import('@/app/api/v1/mount-points/[id]/route');
+  const base = 'http://localhost/api/v1/mount-points';
+  const links_ = async (mp: string, path: string) => {
+    const url = `${base}/${mp}/files/${path}?action=links`;
+    const r = await itemGet(
+      { method: 'GET', url, headers: new Headers(), nextUrl: new URL(url) } as never,
+      { params: Promise.resolve({ id: mp, path: path.split('/') }) } as never,
+    );
+    return { status: r.status, body: await r.json() };
+  };
+  const unlink_ = async (mp: string, path: string) => {
+    const url = `${base}/${mp}?action=unlink-file`;
+    const body = { path };
+    const r = await actionPost(
+      {
+        method: 'POST',
+        url,
+        nextUrl: new URL(url),
+        headers: new Headers({ 'Content-Type': 'application/json' }),
+        json: async () => body,
+        text: async () => JSON.stringify(body),
+      } as never,
+      { params: Promise.resolve({ id: mp }) } as never,
+    );
+    return { status: r.status, body: await r.json() };
+  };
+  const p4d381Rows: Array<{ case: string; status: number; body: unknown }> = [];
+  const row = async (name: string, run: () => Promise<{ status: number; body: unknown }>) => {
+    const out = await run();
+    p4d381Rows.push({ case: name, ...out });
+  };
+  await row('links_grouped_three_stores', () => links_(P4D381_ECLAIR_ACCENT, 'x.md'));
+  await row('links_grouped_self_first', () => links_(P4D381_ZETA, 'B.md'));
+  await row('links_dedup_ungrouped', () => links_(P4D381_ZETA, 'd1.md'));
+  await row('links_unknown_store', () => links_(P4D381_ZETA, 'g.md'));
+  await row('links_missing', () => links_(P4D381_ZETA, 'nope.md'));
+  await row('unlink_from_three_store_group', () => unlink_(P4D381_ECLAIR_ACCENT, 'x.md'));
+  await row('links_after_unlink', () => links_(P4D381_ZETA, 'B.md'));
+  // === /P4.D381 ===
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
   process.stdout.write(
     JSON.stringify({ case: 'mount-link-groups', links, contents }) + '\n'
   );
+  // === P4.D381 ===
+  process.stdout.write(JSON.stringify({ case: 'p4d381-links', rows: p4d381Rows }) + '\n');
+  // === /P4.D381 ===
   process.exit(0);
 }
 

@@ -440,6 +440,34 @@ pub async fn mount_file_get(
     Query(pairs): Query<crate::query::QueryPairs>,
     headers: HeaderMap,
 ) -> AxumResponse {
+    // === P4.D381 (v4 `aec626eff`): `GET = dispatchAction(req, {links,
+    // 'render-html'}, () => handleRead(…))` — the action is read FIRST, so
+    // `?action=links&raw=1` is the links answer, and an unknown or bare
+    // `?action=` is v4's `Unknown action` 400 (never the bytes).
+    const GET_ACTIONS: &[&str] = &["links", "render-html"];
+    const GET_PATH: &str = "/api/v1/mount-points/[id]/files/[...path]";
+    match crate::query::dispatch_action(&pairs, GET_ACTIONS, "GET", GET_PATH) {
+        Err(r) => return *r,
+        Ok(Some(action)) => {
+            let req = if action == "links" {
+                CoreRequest::MountFileLinks {
+                    mount_point_id: id,
+                    path,
+                }
+            } else {
+                CoreRequest::MountFileRenderHtml {
+                    mount_point_id: id,
+                    path,
+                }
+            };
+            return match dispatch_core(&state, req).await {
+                Ok(resp) => core_response_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            };
+        }
+        Ok(None) => {}
+    }
+    // === /P4.D381 ===
     // Every query key this route reads is a v4 `searchParams.get` — FIRST wins,
     // so the pair list collapses to the map the rest of the handler expects.
     let query = crate::query::first_map(&pairs);
@@ -902,10 +930,16 @@ pub async fn mount_point_action_post(
         "move-file",
         "copy-file",
         "link-file",
+        // === P4.D381 (v4 `aec626eff`): 13 → 15, in v4's literal order ===
+        "unlink-file",
+        // === /P4.D381 ===
         "write-file",
         "delete-file",
         "delete-folder",
         "move-folder",
+        // === P4.D381 ===
+        "copy-folder",
+        // === /P4.D381 ===
         "reindex",
         "embed",
     ];

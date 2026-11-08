@@ -373,6 +373,18 @@ const ENDPOINTS: Endpoint[] = [
     known: 'equip',
     body: {},
   },
+  // === P4.D381 (v4 `aec626eff`): the per-file GET — `dispatchAction(req,
+  // {links, 'render-html'}, () => handleRead(…))`. The action is read FIRST: an
+  // unknown or bare `?action=` is the envelope, never the read. ===
+  {
+    key: 'mount_file_get',
+    mod: '@/app/api/v1/mount-points/[id]/files/[...path]/route',
+    method: 'GET',
+    path: `/api/v1/mount-points/${ITEM}/files/notes/a.md`,
+    params: { id: ITEM, path: ['notes', 'a.md'] },
+    known: 'links',
+  },
+  // === /P4.D381 ===
 ];
 
 /** The query string each probe appends. */

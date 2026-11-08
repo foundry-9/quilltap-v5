@@ -376,6 +376,14 @@ fn endpoints() -> Vec<Endpoint> {
             "equip",
             json!({}),
         ),
+        // === P4.D381 (v4 `aec626eff`): the per-file GET's action-first dispatch ===
+        ep(
+            "mount_file_get",
+            "GET",
+            format!("/api/v1/mount-points/{ITEM}/files/notes/a.md"),
+            "links",
+        ),
+        // === /P4.D381 ===
     ]
 }
 
@@ -475,6 +483,18 @@ const RECORDED_DIVERGENCES: &[(&str, u16, &str)] = &[
         400,
         "Only the get-background and cost actions are served on this route; the chat GET rides POST /api/dispatch",
     ),
+    // === P4.D381 === `GET …/files/<path>` with no action: v4's fallback is
+    // `handleRead` (the JSON read envelope — here its MOUNT_NOT_FOUND refusal);
+    // v5's item route serves only the raw byte form (the pre-existing P4.4
+    // narrowing). The `empty` / `unknown` / `empty_then_known` rows — which,
+    // before P4.D381, v5 answered with this same sentence or the BYTES — are
+    // v4's `Unknown action` envelope now and cross-compared.
+    (
+        "mount_file_get__bare",
+        400,
+        "Only the raw byte form is available",
+    ),
+    // === /P4.D381 ===
 ];
 
 /// v4-KNOWN actions this edge does NOT serve (they ride `/api/dispatch`): v4
