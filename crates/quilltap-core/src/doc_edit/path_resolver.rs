@@ -1493,17 +1493,24 @@ mod tests {
             collect_accessible_mount_point_ids(&main, &mount, &off)
         });
         assert!(!ids.contains(&"r-1".to_string()), "withheld: {ids:?}");
+        // === P4.D376 === (v4 `0c47f4539`): the gate and its DEBUG moved INSIDE
+        // the pool (`roster: 'gated'`) — the resolver's own line is gone.
         let dbg = lines
             .iter()
-            .find(|l| {
-                l.contains("Path resolver: character off project roster — project tier withheld")
-            })
-            .unwrap_or_else(|| panic!("no collector DEBUG: {lines:?}"));
+            .find(|l| l.contains("Character off project roster — project tier withheld"))
+            .unwrap_or_else(|| panic!("no pool DEBUG: {lines:?}"));
         assert!(
-            dbg.starts_with("DEBUG quilltap_core::doc_edit::path_resolver"),
+            dbg.starts_with("DEBUG quilltap_core::db::tiered_mount_pool "),
             "{dbg}"
         );
         assert!(dbg.contains("projectId=p-1 characterId=c-off"), "{dbg}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Path resolver: character off project roster")),
+            "the resolver's own line is retired: {lines:?}"
+        );
+        // === end P4.D376 ===
 
         let on = PathResolutionContext {
             project_id: Some("p-1".to_string()),
