@@ -869,36 +869,35 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(copyDialog.locator('input[name="wardrobe-transfer-components"]')).toHaveCount(2);
     await expect(copyDialog.getByText('Copy the components along with it')).toBeVisible();
     await expect(copyDialog.getByText('Move the components along with it')).toHaveCount(0);
-    // The item's known home — Aria's own vault — is dropped from the list, but
-    // every OTHER character's vault is on offer.
+    // The item's known home — Aria's own vault — is dropped from the list, and
+    // every OTHER character the container catalogue lists is on offer.
     //
     // P4.69: this asserted 0 and was vacuously green — the (since retired) destinations verb
     // died whole on the missing `projects`/`groups` tables, so the select had no
-    // options of any kind and "no character option" measured nothing. With both
-    // tables materialized in `beforeAll` the enumerator returns the real answer:
-    // the fixture's five characters minus Aria herself, whose vault is this
-    // item's known home. Asserting the NAMES, not just the count, is what makes
-    // the omission the thing under test rather than an arithmetic coincidence.
+    // options of any kind and "no character option" measured nothing.
+    //
+    // RE-PINNED by P4.D386 (C12, v4 `624d0d25c`): the dialog no longer asks a
+    // destinations verb; it lists v4's `useContainerCatalogue` — the three
+    // LIST reads (`characterList` / `projectList` / `groupList`) — and drops
+    // the item's own home. Measured on this fixture: `characterList` answers
+    // Aria, Bram, Cleo and Dax, so the offer is Bram, Cleo and Dax. Echo is
+    // absent (its broken-by-construction row never reaches the list read) and
+    // so is Fenn, the archive extension's ARCHIVED character — `characterList`
+    // lists live characters only, so the archived vault the retired verb used
+    // to offer is no longer a destination (v4's catalogue reads the same list).
+    // Asserting the NAMES, not just the count, is what makes the omission the
+    // thing under test rather than an arithmetic coincidence (the §3 review:
+    // a renderer that stopped labelling the options would leave blank rows).
     const characterOptions = copyDialog.locator('option[value^="character:"]');
-    await expect(characterOptions).toHaveCount(4);
+    await expect(characterOptions).toHaveCount(3);
     const optionText = (await characterOptions.allTextContents()).join(' | ');
     expect(optionText, `character destinations offered: ${optionText}`).not.toContain('Aria');
-    // The §3 unification review: the omission alone is a NEGATIVE pin — a
-    // renderer that stopped labelling the options would leave four blank rows
-    // and both lines above green. The fixture's live siblings with a working
-    // vault (Bram, Cleo, Dax — `build-characters-fixture.ts`) must be on offer
-    // by name; Echo's vault is BROKEN by construction (its mount rows are
-    // dropped for the `findByIdRaw` path) and cannot be a destination. The
-    // fourth option is Fenn, the archive extension's ARCHIVED character with a
-    // real vault — measured at the follow-ups unification; whether v4 offers
-    // an archived vault as a destination at all is a recorded measurement
-    // owed, not asserted here.
     for (const name of ['Bram', 'Cleo', 'Dax']) {
-      expect(optionText, `${name}'s vault must be offered as a copy destination`).toContain(name);
+      expect(optionText, `${name} must be offered as a copy destination`).toContain(name);
     }
-    expect(optionText, "Echo's vault is broken by construction and must not be offered").not.toContain(
-      'Echo',
-    );
+    for (const name of ['Echo', 'Fenn']) {
+      expect(optionText, `${name} is not in the container catalogue and must not be offered`).not.toContain(name);
+    }
     await copyDialog.getByRole('button', { name: 'Cancel' }).click();
 
     // Move: three choices, defaulting to moving them along.

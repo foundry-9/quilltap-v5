@@ -1231,6 +1231,16 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — test(e2e): `wardrobe-flow`'s composite-copy beat re-pinned to the container catalogue (C12)
+
+_No crate versions bumped._
+
+P4.D386 commit 5.
+
+- The beat "a composite outfit prompts for its components" (`:883`) asserted the retired destinations verb's four character options. The copy dialog now lists v4's container catalogue (`characterList` / `projectList` / `groupList`) minus the item's home, so the offer is Bram, Cleo and Dax. Echo and Fenn are asserted absent; Fenn is archived and `characterList` lists live characters only.
+- Measured on the current server: `wardrobe-flow` 21 / 0. Its other six reds were the worker-restart cascade from this beat.
+- The lane's earlier e2e reds came from stale cloned `target/release` binaries (Oct 28, older than the base). e2e's `webBinary()` prefers them, and their server never published `inventory`. All ten owed files are green on the current build.
+
 #### 2026-11-08 — docs(porting): P4.D386 lane record and status header
 
 _Docs-only change._
