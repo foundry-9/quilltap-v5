@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-08 — fix(reach): the path resolver's roster unit test reads the pool's DEBUG (REACH follow-up)
+
+_Versions: core 0.0.1429._
+
+`REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
+
 #### 2026-11-08 — REACH: the tier walk keystone — db/reach.rs, required roster/enabled, official store first (v4 624d0d25c)
 
 _Versions: core 0.0.1428._
