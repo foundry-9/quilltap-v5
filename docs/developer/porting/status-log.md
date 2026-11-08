@@ -200608,3 +200608,128 @@ As the order lists (Salon send / continue / nudge / chain; swipe + "Try uncensor
 - 💸 A five-seat group on one profile: four stream at once, and the fifth starts when one finishes.
 - A `.qtap` import of a chat with `"turnMode": "bogus"`: the chat is refused with v4's ZodError (no spend).
 - An outfit change while a portrait job is PROCESSING queues a SECOND job.
+
+## P4.D376 — REACH: the tier-walk keystone (lane record, 2026-11-08)
+
+**Branch:** `claude/p4-d376-reach-0c81c7`, worktree `.claude/worktrees/p4-d376-reach-0c81c7`. The session started on that branch, already sitting on `REAIM` `0eaa5d4fb` (`round-624/reaim`, confirmed); no move needed. Pin `/tmp/qt-v4-pin-p4.d376-624d0d25c` (HEAD `624d0d25c`, `4.13.0-dev.8`; `npm ci --offline` → better-sqlite3 13.0.3 / zod 4.6.7; plugin floors by `.claude/pin-plugin-sdks.sh`). It survived the round's machine reboot.
+
+**§2 probe (2026-11-07 23:38 CST, lane start):** v4 on `main`, tree clean, **v4 moved: 27 commits past `624d0d25c`** (HEAD `b941280d5` "feat: Turns mode for the Salon…"); bugfix tip `d67c70a51`. Observation only (§R.2); the work followed the pin.
+
+**Commits:**
+- `07b68e7c3` **REACH:** the tier walk keystone — `db/reach.rs`, required roster/enabled, official store first (v4 624d0d25c). Core 0.0.1428.
+- `9f7522095` docs: the REACH sha in the status header.
+- `428e0d7e7` fix(reach): the path resolver's roster unit test reads the pool's DEBUG (a REACH follow-up, test-only). Core 0.0.1429. **Amendment after the children could branch** — §R.14: recorded here and in the status header; P4.D377–P4.D380 cherry-pick it.
+- `918650d80` feat(reach): Tier 2 — the scenario GETs never provision (v4 #136); the scenario location, the Builder pool and the knowledge injector on reach. Core 0.0.1430.
+
+**Versions at close:** core **0.0.1430** (nothing else bumped; the `quilltap-host/tests` edit is test-only).
+
+**Red-first, on `REAIM` before any edit:**
+- `tiered_mount_pool_equivalence` from the pin: 0 red. The fixture had no project row, so official-first moved nothing there; the new rows are red by ABSENCE. A mutation (dropping the official push and the roster DEBUG) reddens `official_unlinked`, `official_linked_late` and `roster_gated_off`.
+- `project_roster_access_equivalence`: 7 ops red.
+- `reach_equivalence`: red by absence (no `db::reach`).
+- From the blast batch on `REACH`, the Tier 2 families were red: `scenarios_routes` (`ensure=true` vs v4's `false`), `scenario_location`, `scenario_builder_mount_pool`.
+
+**Differentials at close (all from fresh pin NDJSON, non-empty, by name with `--nocapture`; no SKIP):**
+- `reach_equivalence` (NEW): 65 arms green, two RECORDED divergences pinned both ways (below).
+- `tiered_mount_pool_equivalence`: 19 matrix rows (the 9 old rows now state `open`/`ignore`), 8 helper arms, 8 grouped arms, 7 project-tier arms; the pool's own lines are compared per row.
+- `project_roster_access_equivalence`: the pool line was added to `ROOT_MESSAGES` / `ROOT_TARGETS` on both sides. Reds went 7 → 2. The 2 are `open_blank_closed_{ada,bea}` (v4 now answers `scope: general` for a new blank document — document core → **P4.D380**; red on REAIM too).
+- `documents_routes_equivalence`: the two fenced P4.D376 rows are green (`p4d376_accessible_stores_cast_pool` — the comparand is `stores` minus General plus `projectLibrary`, with the tier order byte-compared; `p4d376_group_stores_persona` plus its DEBUG and the persona-less zero-count leg). The family's other 4 reds are **P4.D380's**: `chat_accessible_stores_{all,default}` (v4's handler now reads `user.id`; the case context carries none), `standalone_stores` (`generalLibrary`), and the `chat_delete_document` message.
+- `scenarios_routes_equivalence`: green, with 5 new rows and a store census. `project_list_folder_failure_500` now answers 200 at the pin (a list never heals), id kept.
+- `scenario_location_equivalence`: green (captures `[Reach] Failed to ensure Scenarios folder` / `[Reach] Archived character refused`).
+- `scenario_builder_mount_pool_equivalence`: green (the oracle records reach's ROOT-logger lines; the Rust `TARGETS` gains `quilltap_core::db::reach`).
+- `knowledge_injector_equivalence`: green (new row `p4d376_colliding_character_project`).
+- `doc_edit_path_resolver_equivalence` and `doc_opacity_equivalence`: green.
+
+**Shift table, final:**
+- (a) official first — owned here. Green in `tiered_mount_pool` / `reach` / `documents_routes`. Blast batch below.
+- (l) roster inside the pool — green; the H1 union obligation stands.
+- (m) / (n) accessible / persona stores — green.
+- (o) #136 — green.
+- (p) — green.
+- (q) — green: `union_*` are unchanged, and `p4d376_union_storeless_group` is green.
+- (r) — green; `namedGroupCount` is raw.
+- (s) — the new row is green.
+- (t) — `project_ids_official_survives_links_unreadable` is green.
+- (b)–(k): none reddened on REACH from shift (a) alone. `pascal_roster` reddened on (e) (same-tier `aaa`/`zzz`) → **P4.D379**.
+
+**Item 9 — the blast-radius batch (23 families from the pin on the REACH tree):**
+- Green (17):
+  - `doc_edit_path_resolver`, `doc_opacity`, `wearable_pool`, `wearable_pool_tier2`;
+  - `story_background_job_tier3`, `avatar_job_tier3`, `wardrobe_announcement_job_tier3`;
+  - `image_generation_tier3`, `tool_image_generation`, `wardrobe_item_image_generation_tier3`, `inventory_item_image_generation_tier3`;
+  - `character_avatar_write_tier2`, `self_inventory`, `core_whisper`, `knowledge_injector`.
+
+  Their fixtures mint projects through v4's `create`, which links the official store first, so official-first is order-neutral there.
+- Red, attributed by the failing rows:
+  - `chat_create_capstone`: `outfit_llm_choose_shared_composite`, the Green Room spread → **P4.D373**. The same case was red on P4.D365's base.
+  - `pascal_roster`: (e) → **P4.D379**.
+  - `build_context_tier3`: the `[Recall]` gather gains `window`/`windowAdded` → **P4.D375**.
+  - `search_tools`: the new empty-result text → **P4.D375**.
+  - `scenario_builder_tier3`: 87 canned-key misses. v4 at the pin sends no Anthropic `temperature` (the sampling strip), and no `lib/scenario-builder` prompt moves in the span → **P4.D362 / P4.D364**. It stays red after Tier 2 for the same reason.
+  - `scenarios_routes`, `scenario_location`, `scenario_builder_mount_pool`: this lane's Tier 2, now green.
+
+**T3.3 — the reachability verdicts.** Each was measured with planted failing reads on both sides; all are UNREACHABLE and pinned NEGATIVE by name:
+- `Project official store lookup failed` and `Project mount lookup failed`. `tiered_mount_pool`: a BLOB-named project row logs `Data validation failed` + `Error finding entity by ID {projects}`; a renamed links column logs `Error finding entities by filter`. Both positive.
+- `Mount lookup failed; store left out of the pool`.
+- `[Reach] Cast vault lookup failed; tier dropped for this character` and `[Reach] Quilltap General lookup failed; global tier dropped` (`reach`).
+
+**R-F, the corrupt-row reads each way.** The RAW reads that reach uses (`projects` / `groups::find_by_id_raw_or_none`) AGREE with v4's `findByIdRaw`: null after the two repository lines, so `resolve_owner_store` answers `None` with and without `ensure`. Recorded both ways in `reach_equivalence` (`RECORDED_DIVERGENCES`), pre-existing and outside reach, as follow-ups:
+- `HYDRATED_OWNER_ROW_UNVALIDATED`: v5's hydrated `ProjectsRepository::find_by_id` reads a BLOB-named row (found) and `GroupsRepository::find_by_id` fails it (`Err`), both silently, where v4's `findById` is null after the lines.
+- `RAW_CHARACTER_ROW_UNVALIDATED`: a `userId: ''` character fails v4's `CharacterSchema`, so v4's "userless member ADMITTED" branch of `resolveCastPool` is unreachable. v5's raw character read does not validate, so v5 admits her.
+
+**Rulings and calls:**
+- L-1: as ordered (`TierResolveOptions::new`, no `Default`).
+- L-2: as ordered (`wardrobe_shared` re-exports).
+- L-3: as ordered; the `HashSet` walk is fixed.
+- L-4: both `use` edits were made (fenced).
+- L-5: as ordered.
+
+Lane-local calls:
+1. `include_empty` is a sibling fn, `resolve_group_mounts_for_character_with(.., GroupMountsOptions)`, so the five callers in sibling files stay untouched.
+2. `OwnerStore.character` / `MountOwnerInfo.character` are the raw `Value` row.
+3. `order_mounts` answers `Vec<OrderedMount>`.
+4. `group_origin_map` answers an `IndexMap`.
+5. The accessible stores' `userId` is the chat row's `userId` (v4's session user owns the chat), so no boundary edit was needed.
+6. The cast-pool call site in `accessible_stores_body` (one fenced line just outside the `:1150-1170` carve) passes the pool → **HANDOFF to P4.D380**.
+7. The vault label reads v4's HYDRATED `characters_read::find_by_id` with `?` (v4's overlay throws).
+8. The reach case runs over its own copies of the tiered builder's pair, with its own plants (`fixtures/reach.json`).
+9. Tier 2 is one commit (one gate).
+
+**HANDOFFs and union obligations for the unifier:**
+- H1: the `search_tools` pool DEBUG on `search_closed_offroster` (`Roster::Gated` in the pool region) — the union clears it.
+- H2: P4.D380 owns `documents_routes`' other rows and its regen; mine are fenced, with the `plants` hook in `runCase` and `fixtures/documents-reach.json`.
+- H3 / T3.2: `build_knowledge_tiers` → `reach::bucket_mounts` (byte-equal output) — a §S.5 row.
+- H4: the C6 names are final in `REACH`, plus the `428e0d7e7` cherry-pick.
+- T3.4: `600c2906f`'s `ItemRouteConfigBase` is NO-PORT (for P4.D382's list).
+- T3.5: help is P4.D382's.
+- The round-block corrections in the order (§R.10 (e2) / (e3) / (e), the five call sites, §R.13, §S.5) stand as written.
+
+**Gate:**
+- `cargo fmt --all --check`, clippy (both feature sets) and `cargo build --release -p quilltap-core`: clean on the final tree.
+- `cargo test --workspace --no-fail-fast` (lane env vars set, CARGO_INCREMENTAL=0) on the Tier 2 tree before the last three test-only fixes: 6,018 passed / 9 failed / 3 ignored, zero SKIP lines.
+  - Three of the nine were this lane's: `path_resolver::tests::the_collector_withholds…` (REACH's), `scenario_builder::tests::the_service_forwards…` and the host's `a_failed_general_heal_logs_l2_then_l37`. All three were fixed and are green by name, along with every `db::reach` / `tiered_mount_pool` / `mount_pool` unit test.
+  - The six others read the LIVE v4 checkout past the pin: `builtin_prompt_templates_guard` (P4.D373), `provider_sdk_version_guard` (P4.D364), `qtap_schema_embed_guard` (P4.D362), `public_schemas_vendor_guard`, `custom_tool_schema_embed_guard`; and `spelling_guard` is the base's known red (fixed on main `a11fbe767`).
+  - The full gate was NOT re-run after those test-only fixes; the unifier's union gate covers them.
+- `cargo test -p quilltap-harness` with no env: `now_constant_matches_iso` green inside the workspace run.
+- `git diff 0eaa5d4fb..HEAD -- apps/web`: empty. No SPA or e2e work.
+
+**Regen recipes (pin = `/tmp/qt-v4-pin-p4.d376-624d0d25c`):**
+- tiered + reach, from the pin:
+  - `QT_FIXTURE_TMP_MAIN=/tmp/qt-p4d376-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-p4d376-tmp-mount.db node --import tsx $V5/harness/oracle/fixtures/build-tiered-mount-pool-fixture.ts`
+  - then `node --import tsx $V5/harness/oracle/cases/tiered-mount-pool.ts > /tmp/oracle-p4d376-tmp.ndjson`, then `… cases/reach.ts > /tmp/oracle-p4d376-reach.ndjson`, all against that SAME build.
+  - Run with `QT_ORACLE_TMP` / `QT_ORACLE_REACH` plus the two fixture vars.
+- Every other family: through the sweep driver (`--v5w ~/source/quilltap-v5/.claude/worktrees/<lane> --v4 <pin> --run-all --families …`).
+
+**Fixtures changed (the dependents re-run):**
+- `fixtures/tiered-mount-pool.json` + `build-tiered-mount-pool-fixture.ts` (read by `tiered-mount-pool.ts` and now `reach.ts`).
+- NEW `fixtures/reach.json` and `fixtures/documents-reach.json`.
+- `fixtures/knowledge-injector.json` (one appended query).
+- No committed `.db` moved.
+
+**💸 dogfood rows (§S.8, after the round, on a Friday COPY):**
+- Open a store-less project's and group's scenario list: no `Project Files:` / `Group Files:` store appears.
+- A project whose linked stores predate its official store: the Scriptorium picker and the doc tools list the official store first.
+- A chat with an archived participant: the accessible-stores picker shows neither its vault nor its groups.
+- Two group stores: stable order across reloads.
+- An off-roster character's `doc_list_files` and `search_scriptorium`: no project store, and the pool's line once per call.
+- The Scenario Builder launched from a group page still reaches the group's stores.
