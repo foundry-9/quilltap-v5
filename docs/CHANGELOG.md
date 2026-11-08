@@ -1055,6 +1055,22 @@ _Docs-only change._
 
 The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
 
+#### 2026-11-08 — test(salon): the "This conversation" search, `?msg=` reveal and breadcrumb e2e
+
+_Versions: SPA 0.5.977._
+
+P4.D384's e2e. The new `e2e/salon-conversation-search-flow.spec.ts` runs on its own instance (4361 / 45359) over 60 planted rows, an announcement and a whisper in "Group Expedition", moved into a project with a long title. LIVE beats:
+
+- S1: the header search groups `This conversation` above `Everywhere`.
+- S2 / S3: a far match lands at the top and flashes; the query stays; Escape clears it.
+- S4: a collapsed-announcement hit.
+- S5: a fresh `?msg=` link.
+- S6: a whisper's toast.
+- S7: the breadcrumb walks full → abbreviations → avatars as the header narrows, with the compact tooltips.
+- S8: the story-background thumbnail opens the picture viewer.
+
+G1 (the raised-hand chip) and G2 (the `/deus` fact send) stay gated until P4.D385 and P4.D372 land. The lane record is appended to `status-log.md`; the remaining e2e files are listed there.
+
 #### 2026-11-08 — test(salon): the stream-frames chokepoint census
 
 _Versions: SPA 0.5.976._

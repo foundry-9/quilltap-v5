@@ -201897,3 +201897,224 @@ SPA 0.5.974. No crate bumped; harness frozen.
 - **The tab strip by keyboard:** Tab lands on the active tab only; arrows move and select with wrap; Home / End jump; Delete closes; the cross works by mouse; a screen reader announces "tab, selected, n of m" with no stray "Close".
 - **The characters list:** the toggles announce "Favorite <name>, toggle button, pressed / not pressed".
 - **Madman's Box:** the Deus Ex Machina toggle shows the triangle glyph (once P4.D385 lands); every other pack shows the proscenium.
+
+## Lane record — P4.D384: the SPA Salon spine (branch `claude/p4-d384-spa-spine-f4f419`, pin `624d0d25c`, 2026-11-08)
+
+**Where it ran.** The session started in the worktree
+`.claude/worktrees/p4-d384-spa-spine-f4f419` on `claude/p4-d384-spa-spine-f4f419`,
+sitting on `CSS` = `3ed560020` (P4.D383's Tier-1 commit). The base was
+confirmed against P4.D383's status header (`git merge-base --is-ancestor
+3ed560020 HEAD`), so the session did not move. `apps/web` got its own `npm ci`.
+Builds were paused once while `/Volumes/External 1` was full (the
+coordinator's PAUSE BUILDS order, 2026-11-08). On GO, the lane's 2.1 GB
+`target/release` was deleted and the e2e ran on lane debug bins.
+
+**§R.2 probe (an observation; the lane continued):** v4 moved: `main` at
+`b941280d5`, observed 2026-11-07 23:38 CST; tree dirty: none (clean).
+`bugfix` at `d67c70a51…a528f7946`. **Pin:** `/tmp/qt-v4-pin-p4d384-624d0d25c`.
+- `rev-parse HEAD` = `624d0d25c6cb…`.
+- `package.json` reads `4.13.0-dev.8`.
+- zod 4.6.7, better-sqlite3 13.0.3.
+- `npm ci --offline` succeeded, with no ENOTCACHED.
+
+**Item 1, red-first, on the `CSS` parent:**
+- `core/stream-frames.census.spec.ts`: 5 / 5 red. One was the seat-tagged
+  `handAnswered` swallowed by the reducer's early return; four were modules
+  missing.
+- `salon-conversation.spec.ts`: the "no carried-on-regardless toast" case
+  was 1 / 1 red.
+
+All are green after the lane.
+
+**Commits (SPA only; no crate bumped, the harness never bumped):**
+
+| commit | items | SPA |
+|---|---|---|
+| `a0bb413d6` | 2–7: the C3 frame union + `LegacyStreamBag`, `core/stream-frames.ts`, the two-switch reducer, `reduceLegacyChatFrame` for Brahma (P-2), the swipe + Document Mode on frames, the `RaisedHandStatus` machine (decline toast deleted), the C4 H1 `isEstablishedFact` send | 0.5.973 |
+| `8d0945fc9` | 9, search side: `chat/conversation-search.ts`, `chat/search-highlight.ts`, the toolbar `conversationSearch` slot (owner-only clear), `search/conversation-matches.ts`, the bar / dialog / results edits | 0.5.974 |
+| `a03ba1a4f` | 8 + 10 + the Salon side of 9: the breadcrumb, `MessageList.revealMessage`, the `?msg=` plumbing, `fetchChatBackground` | 0.5.975 |
+| `82d187624` | Tier 2 item 13: the `parseFrameValue` chokepoint census | 0.5.976 |
+| (this commit) | the new `salon-conversation-search-flow.spec.ts` (S1–S8 LIVE, G1 / G2 gated); this record (e2e step in progress) | 0.5.977 |
+
+**The four corpora.** Each recorder imports v4's real module from the pin
+with tsx and writes committed NDJSON, and each `*.oracle.spec.ts` replays its
+corpus. The fixture README has a section per corpus.
+
+| corpus | recorder | rows |
+|---|---|---|
+| `stream-frames.oracle.ndjson` | `oracle/stream-frames.recorder.ts` | 179 (null 11, valid 66, drop 46, golden 51, `doneLeavesNoReply` 5) |
+| `breadcrumb-density.oracle.ndjson` | `oracle/breadcrumb-density.recorder.ts` | 78 |
+| `conversation-search.oracle.ndjson` | `oracle/conversation-search.recorder.ts` | 94 |
+| `message-navigation.oracle.ndjson` | `oracle/message-navigation.recorder.ts` | 42 |
+
+For each corpus: `cd /tmp/qt-v4-pin-p4d384-624d0d25c && PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx <worktree>/apps/web/oracle/<name>.recorder.ts > <worktree>/apps/web/src/testing/fixtures/<name>.oracle.ndjson`.
+The pin needs its own `npm ci`. Run one recorder per invocation.
+
+**Tier 2 item 17: no `STREAM_FRAME_WARN_ISSUE_TEXT` rows.** Every refused
+row's WARN `issues` text matched v4's Zod 4.6.7 text byte for byte. The
+twin's combinators produce the texts themselves; `pascal/zod-shim.ts` is used
+only for `isPlainObject`.
+
+**Measurements the order asked for:**
+- **Focused-tab accessor for the search slot:**
+  `WorkspaceService.state().panes[focusedPane].activeTabId === workspaceTabId`.
+  In routed (non-workspace) mode it is always true.
+- **Helpers reused:**
+  - avatar: `normalizeAvatarSrc` (`ui/avatar-stack`);
+  - announcement sender: `getAnnouncementSenderName` with `announcerNamesOf`;
+  - otherwise the speaker: `resolveMessageAuthor`.
+- **`shrink-[1000]`:** `check-qt-classes` accepted it, because it checks only
+  `qt-*` classes.
+- **`story-background.api.ts`:** a new `fetchChatBackground` returns
+  `{cssVar, src, fileId, filename} | null`, and `fetchChatBackgroundVar`
+  delegates to it, so the CSS value is unchanged. Its spec proves both.
+- **Astral snippet:** v4 splits a surrogate pair at both snippet edges (UTF-16
+  `slice`), and the corpus pins v5 reproducing it.
+- **Quick-hide cover:** v5's Salon has no quick-hide chat cover, so that arm
+  of v4's reveal is vacuous here.
+- **Breadcrumb layout:**
+  - Below `md` the whole breadcrumb row (title included) is hidden, per v4's
+    `hidden md:flex`.
+  - The copy-ID button moved into that row.
+  - CONVERGED BY CONSTRUCTION: `604a082c4`'s "concurrent empty bubble" fix
+    (v5's signal fold never had React's updater race), noted in the reducer
+    doc.
+
+**Censuses (at close):**
+- `grep -rn 'LANE-REMOVE (C4 H' apps/web/src`: **4 fences** — three H1
+  blocks in `screens/salon/salon-conversation.ts` (`ComposerSendH1`,
+  `InterceptArgsH1`, `MessageDtoH1`) and one H2 block in
+  `chat/raised-hand-status.ts`.
+- The legacy-key grep (non-spec): **one file**, `core/chat-stream.reducer.ts`
+  (14 lines), all below the `// === P4.D384 === the legacy bag fold` fence.
+  The order expected the Help reducer too; measured, `help/help-stream.ts`
+  reads none of the five keys. Its type is renamed to `LegacyStreamBag`.
+- `grep -rni 'quil[t]tap'` over `apps/web/src`, `e2e`, `oracle` and the
+  order: **0**.
+- `TODO` / `FIXME` across every new file: **0**.
+
+**Gate:**
+- `npm run lint` clean; `npm run build` clean.
+- Initial total: 1.10 MB / **235.21 kB** transfer, up from 234.68 kB at
+  `CSS`. The +0.53 kB is the frame parser and the breadcrumb.
+- Full `npm test`: **647 files / 16,243 passed**.
+- Rust sanity: `CARGO_INCREMENTAL=0 cargo build --workspace` with
+  `apps/web/dist` present, green (2 m 47 s). No `cargo test --workspace`
+  slot was taken.
+
+**e2e, each file alone (§R.9):**
+
+⚠ **The e2e step is IN PROGRESS.** The coordinator paused the lane for a
+machine shutdown on 2026-11-08. This record covers the runs completed so far.
+
+**Ran green, alone, on lane debug bins** (`CSS` base server; global setup
+about 7 m per file on a debug server):
+
+| file | result |
+|---|---|
+| `salon-conversation-search-flow` (new; own instance 4361 / 45359) | 7 passed / 2 skipped by name (G1 `P4D385_CHIP_LANDED`, G2 `P4D372_DEUS_LANDED`) (9.1 m) |
+| `page-toolbar-flow` | 8 passed |
+| `new-chat-flow` | 5 passed |
+| `generate-image-flow` | 3 passed |
+| `salon-autonomous-entry` | 3 passed |
+| `settings-brahma-console-flow` | 1 passed (P-2: the console streams as before) |
+| `workspace-brahma-console-flow` | 5 passed (every beat) |
+| `workspace-help-ask-flow` | 4 passed (Help stays legacy) |
+
+**Red at first run: each a spec premise this lane moved, fixed, re-run
+OWED.** The fixes are in the worktree, uncommitted.
+- `workspace-search-documents-flow`: 1 failed / 2 passed. Line 113 selects
+  `Search... (⌘K)`, but with a Salon focused the bar now reads v4's
+  `Search this chat & all… (⌘K)`. The order named this selector. The
+  locator is now a regex over both.
+- `salon-concierge-three-state-flow`: 1 failed (`one badge`, received 4).
+  `concierge-marks-flow`: 1 failed / 4 passed (same count). The Concierge
+  badge is stamped into the visible row AND the three inert measuring
+  copies. The locators now read `.qt-danger-badge:not([inert] *)`.
+
+**STILL TO RUN (after GO), each alone:**
+1. On lane bins: the three re-runs above, `workspace-search-documents-flow`,
+   `salon-concierge-three-state-flow` and `concierge-marks-flow`.
+2. **Tier 2 item 12** — `FRAMES` (`1fd8481ce`) WAS recorded before the e2e
+   step. Release `quilltap-web` + `quilltap` are built at that sha in the
+   detached scratch worktree `.claude/worktrees/p4d384-frames-bins/`, and are
+   to be copied into the lane's `target/release/` (never committed). Run
+   against those bins:
+   - `salon-interrupt-flow` (edited: the gated `P4D385_CHIP_LANDED`
+     aria-live assertion);
+   - `salon-chain-pause-toast-flow` (edited: `kind === 'chainComplete'`);
+   - `salon-streaming-avatar-flow` (edited: the `kind`-tagged `WireFrame`);
+   - `salon-regenerate-stream-flow`;
+   - `salon-try-uncensored-flow` (also the header);
+   - `salon-documents-flow`;
+   - `salon-conversation-search-flow` again (the G1 premise on the frames
+     server).
+
+   The three edited streaming specs are uncommitted until they run green.
+
+**HANDOFFs:**
+
+| id | state at close |
+|---|---|
+| H1b (P4.D385) | OPEN on this side by design: three fenced `LANE-REMOVE (C4 H1)` shims stand in for `ComposerSend.establishedFact` / `InterceptArgs.establishedFact` / `MessageDto.isEstablishedFact`. The union deletes them, and G2 flips LIVE. |
+| H2 (P4.D385) | OPEN by design: the `LANE-REMOVE (C4 H2)` type block in `chat/raised-hand-status.ts`. P4.D385's `chat/raised-hand.ts` also exports `isHandUp`, so at the union `raised-hand-status.ts` should import the type and delegate `isHandUp` (one copy). That note is in the shared notes folder (`p4d384-progress.md`). |
+| H3 (P4.D385) | OPEN: the Salon's `revealMessage` does not expand a collapsed announcement chip. `MessageList.revealMessage` scrolls to and flashes the group row; S4 asserts that row. The union wires `[revealExpand]`. |
+| H4 (P4.D366) | Partly measured: the Salon streaming files ran against `FRAMES` bins (above). The zero-WARN close needs the union. |
+| H5 (P4.D388) | Credit: the About Salon blurb's "indexed message search that looks in the open conversation first" (`70d2859d8`) describes THIS lane's feature (items 9 + 10). P4.D388 lands the words. |
+
+**Union obligations:**
+- **U1:** add `[handStatus]="handStatus()"` and
+  `(dismissHandStatus)="dismissHandStatus()"` on `<qt-chat-composer>`. The
+  Salon computes both now.
+- **U2:** H3, plus beat S4's expanded-words assertion.
+- **U3:** `salon-interrupt-flow`'s `'Expand The Host turn yield message'`
+  name, which must be re-selected by visible text after P4.D385 drops the
+  `Expand/Collapse …` labels.
+- **U4:** the gated beats flip LIVE:
+  - G1 (`P4D385_CHIP_LANDED`, the chip's raised → asked → yields / carried
+    on → unasked walk);
+  - G2 (`P4D372_DEUS_LANDED`, a `/deus` send carrying
+    `isEstablishedFact: true`);
+  - the interrupt spec's `P4D385_CHIP_LANDED` aria-live assertion;
+  - `P4D366_FRAMES_LANDED` in the new spec.
+
+**Versions so far:** SPA **0.5.977**. No crate was touched.
+
+**Gotchas met (memory-note candidates):**
+- A planted message id that is not a UUID is silently dropped from the
+  transcript, so plants must use UUIDs.
+- The `Ridge Reunion` fixture chat's characters have no vault
+  (`properties.json missing`), so `chatGet` answers 500 on it. The new spec
+  uses `Group Expedition`.
+- 62 separate CLI `--write` calls blew `beforeAll`'s budget, so the plants
+  are batched into ONE `INSERT … VALUES`.
+- The global-setup server's shared port 4319 collides with a sibling lane's
+  Playwright run. The lane queued every run behind sibling Playwright PIDs,
+  re-counted after each wait. Two runs still overlapped a sibling (P4.D385
+  once early on, P4.D386 once), and both passed.
+- A viewport sweep cannot test the breadcrumb's densities: the participant
+  sidebar auto-collapses in a narrow pane and hands the header its room back
+  mid-sweep. S7 narrows the header element instead.
+
+💸 **For the owed dogfood pass** (after the union, on the Friday copy, once
+the baseline reaches the copy's v4 state — §S.8):
+- **Salon streaming:**
+  - A send, continue, nudge and chain with ZERO `[StreamFrames]` console
+    WARNs.
+  - A swipe and a "Try uncensored": the status strip, the live text, and the
+    new variant selected.
+- **Raised hands:**
+  - Raise a hand mid-chain: raised → "X is weighing your raised hand…" →
+    "yields the floor — it is yours" or "carried on regardless; your hand is
+    lowered", with NO toast.
+  - A hand raised on the last speaker shows "The room fell quiet…".
+- **Unchanged streams:** the Brahma console and Help chat stream exactly as
+  before.
+- **Established fact:** a `/deus` line sent as fact (the request carries
+  `isEstablishedFact: true`).
+- **Search:**
+  - The header search in a long chat: the group, a whisper hit's toast, a
+    collapsed announcement hit, and Escape twice clearing the paint.
+  - A global Message result opening `?msg=` in a fresh tab.
+- **Breadcrumb:** 6+ characters at 1024 px through all three densities, the
+  tooltips, and the story-background thumbnail opening the viewer.
