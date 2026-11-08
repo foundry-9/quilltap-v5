@@ -330,7 +330,9 @@ pub fn resolve_project_tier_for_chat(
         );
         return Vec::new();
     };
-    resolve_project_mount_point_ids(mount, Some(&gated))
+    // === P4.D376 ===
+    resolve_project_mount_point_ids(main, mount, Some(&gated))
+    // === end P4.D376 ===
 }
 
 /// v4 `LoadWearablePoolOptions`.
@@ -581,7 +583,9 @@ pub fn load_cast_pools(
     project_id: Option<&str>,
     character_ids: &[String],
 ) -> Vec<(String, WearablePool)> {
-    let project_mount_point_ids = resolve_project_mount_point_ids(mount, project_id);
+    // === P4.D376 ===
+    let project_mount_point_ids = resolve_project_mount_point_ids(main, mount, project_id);
+    // === end P4.D376 ===
     let shared = SharedTierLoader::new(&project_mount_point_ids);
     character_ids
         .iter()

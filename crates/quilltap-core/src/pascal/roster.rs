@@ -32,7 +32,15 @@ use serde_json::{Map, Value};
 use crate::db::database_store::{list_database_files, DbStoreErrorCode};
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::tiered_mount_pool::{
-    resolve_tiered_mount_pool, MountTier, TierContext, TierResolveOptions, TieredMountPool,
+    // === P4.D376 ===
+    resolve_tiered_mount_pool,
+    Enabled,
+    MountTier,
+    Roster,
+    TierContext,
+    TierResolveOptions,
+    TieredMountPool,
+    // === end P4.D376 ===
 };
 use crate::jsstr::js_trim;
 use crate::services::mount_index::file_op_error::FileOpErrorCode;
@@ -1027,7 +1035,11 @@ pub fn resolve_custom_tool_roster(
             character_ids: None,
             project_id: ctx.project_id.clone(),
         },
-        &TierResolveOptions::default(),
+        // === P4.D376 ===
+        // The roster does not gate tools; a disabled store is skipped where each
+        // store is loaded (`load_tools_from_mount`), so the pool keeps it.
+        &TierResolveOptions::new(Roster::Open, Enabled::Ignore),
+        // === end P4.D376 ===
     );
 
     resolve_roster_from_pool(

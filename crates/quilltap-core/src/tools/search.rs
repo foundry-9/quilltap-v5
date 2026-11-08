@@ -27,10 +27,12 @@ use serde_json::{json, Map, Value};
 
 use crate::db::conversation_search::{search_conversation_chunks, ConversationSearchOptions};
 use crate::db::runtime::Db;
+// === P4.D376 ===
 use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, FlattenScope, TierContext,
-    TierResolveOptions, TieredMountPool,
+    flatten_tier_pool, resolve_tiered_mount_pool, Enabled, FlattenOptions, FlattenScope, Roster,
+    TierContext, TierResolveOptions, TieredMountPool,
 };
+// === end P4.D376 ===
 use crate::db::{characters_read, doc_mount_points, js_number_to_json, DbError};
 use crate::doc_edit::uri_producers::DocStoreUriResolver;
 use crate::jsnum::to_fixed;
@@ -40,7 +42,8 @@ use crate::literal_boost::{
 use crate::memory_scoring::{importance_band, ImportanceBand, TOOL_MIN_IMPORTANCE};
 use crate::memory_time::calendar::zoned_day_bounds_iso;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
-use crate::project_roster_access::roster_gated_project_id;
+// === P4.D376 === (`roster_gated_project_id` moved inside the pool — ruling L-4)
+// === end P4.D376 ===
 use crate::services::knowledge_injector::{
     search_document_chunks, DocumentSearchOptions, DocumentSearchResult,
 };
@@ -776,7 +779,9 @@ fn build_pool_context(
                         .map(|r| r.id)
                         .collect();
                 } else {
-                    // The project tier is roster-gated (lib/projects/roster-access.ts).
+                    // === P4.D376 ===
+                    // The project tier is roster-gated (lib/projects/roster-access.ts;
+                    // `roster: 'gated'`, inside the pool since v4 `0c47f4539`).
                     // Only this standard arm — the pre-built-pool and operator arms
                     // above are v4's untouched arms (v4 `9753d0eb2`).
                     pool = resolve_tiered_mount_pool(
@@ -787,18 +792,14 @@ fn build_pool_context(
                             character_id: context.character_id.clone(),
                             character_mount_point_id: None,
                             character_ids: None,
-                            project_id: roster_gated_project_id(
-                                main,
-                                mount,
-                                context.project_id.as_deref(),
-                                context.character_id.as_deref(),
-                            ),
+                            project_id: context.project_id.clone(),
                         },
                         &TierResolveOptions {
                             require_ownership: true,
-                            include_participants: false,
+                            ..TierResolveOptions::new(Roster::Gated, Enabled::Ignore)
                         },
                     );
+                    // === end P4.D376 ===
                     owns_character = pool.character_mount_point_id.is_some();
                 }
             }

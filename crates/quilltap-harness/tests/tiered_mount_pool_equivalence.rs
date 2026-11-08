@@ -34,24 +34,43 @@
 //! (DROPPED), a membership whose group row is absent / unreadable but whose
 //! links survive (`name: ""`). ⚠ PIN REQUIRED at `cc80dc89d` or later.
 //!
-//! Build the fixtures + oracle (Node 24, from the v4 checkout):
+//! **P4.D376 (v4 `0c47f4539`)** — `roster` / `enabled` are REQUIRED options
+//! and the matrix now lives in the spec (`matrix`), each row stating both (the
+//! nine pre-existing rows `open` / `ignore`, v4's old `{}`). The project tier is
+//! the official store FIRST, then every link (`official_unlinked`,
+//! `official_linked_late`, the `project_ids_official_*` helper rows — shift
+//! (a)); a failed links read keeps the official store (shift (t)); the roster
+//! gate runs INSIDE the pool with v4's ROOT DEBUG (`roster_gated_*`, its silence
+//! leg on the on-roster row); `enabled: 'require'` drops a disabled store from
+//! every tier and General, and a mount with no row silently, with v4's DEBUG
+//! once (`enabled_*`); the grouped resolver's `includeEmpty`. Every matrix row
+//! compares the pool's own lines (`POOL_MESSAGES`) too. **Measured dead:**
+//! `Project official store lookup failed`, `Project mount lookup failed` and
+//! `Mount lookup failed; store left out of the pool` — every read under them
+//! is a fallback `safeQuery`; the repository lines are what v4 emits (pinned
+//! positive on `project_ids_*`), and the three WARNs are pinned NEGATIVE by
+//! name below. ⚠ PIN REQUIRED at `624d0d25c`.
+//!
+//! Build the fixtures + oracle (Node 24, from the v4 checkout — a pin at
+//! `624d0d25c`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
-//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-tmp-mount.db \
+//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-p4d376-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-p4d376-tmp-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-tiered-mount-pool-fixture.ts
-//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-tmp-mount.db \
-//!     $N/node --import tsx $V5/harness/oracle/cases/tiered-mount-pool.ts > /tmp/oracle-tmp.ndjson
+//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-p4d376-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-p4d376-tmp-mount.db \
+//!     $N/node --import tsx $V5/harness/oracle/cases/tiered-mount-pool.ts > /tmp/oracle-p4d376-tmp.ndjson
 //! Run:
-//!   QT_ORACLE_TMP=/tmp/oracle-tmp.ndjson \
-//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-tmp-mount.db \
+//!   QT_ORACLE_TMP=/tmp/oracle-p4d376-tmp.ndjson \
+//!   QT_FIXTURE_TMP_MAIN=/tmp/qt-p4d376-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-p4d376-tmp-mount.db \
 //!     cargo test -p quilltap-harness --test tiered_mount_pool_equivalence
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::tiered_mount_pool::{
-    resolve_group_mount_point_ids_for_character, resolve_group_mounts_for_character,
-    resolve_mount_point_ids_for_group, resolve_tiered_mount_pool, TierContext, TierResolveOptions,
+    resolve_group_mount_point_ids_for_character, resolve_group_mounts_for_character_with,
+    resolve_mount_point_ids_for_group, resolve_tiered_mount_pool, Enabled, GroupMountsOptions,
+    Roster, TierContext, TierResolveOptions,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -73,6 +92,10 @@ struct Spec {
     project_id: String,
     #[serde(rename = "fakeMountPointId")]
     fake_mount_point_id: String,
+    #[serde(rename = "charCId")]
+    char_c_id: String,
+    /// P4.D376: the resolution matrix (mirrored from the oracle — one source).
+    matrix: Vec<MatrixRow>,
     #[serde(rename = "helperPlants")]
     helper_plants: Vec<HelperPlant>,
     #[serde(rename = "helperArms")]
@@ -84,6 +107,39 @@ struct Spec {
     #[serde(rename = "projectTierArms")]
     project_tier_arms: Vec<ProjectTierArm>,
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MatrixRow {
+    id: String,
+    ctx: serde_json::Map<String, Value>,
+    roster: String,
+    enabled: String,
+    #[serde(default)]
+    require_ownership: bool,
+    #[serde(default)]
+    include_participants: bool,
+    #[serde(default)]
+    before: Vec<String>,
+    #[serde(default)]
+    after: Vec<String>,
+}
+
+/// The pool's own lines (P4.D376) — the oracle's `POOL_MESSAGES`, the three
+/// unreachable WARNs included so a row would show them.
+const POOL_MESSAGES: &[&str] = &[
+    "Character off project roster — project tier withheld",
+    "Disabled stores left out of the pool",
+    "Mount lookup failed; store left out of the pool",
+    "Project official store lookup failed",
+    "Project mount lookup failed",
+];
+/// The three v4 WARNs measured UNREACHABLE (T3.3) — pinned NEGATIVE by name.
+const DEAD_WARNS: &[&str] = &[
+    "Mount lookup failed; store left out of the pool",
+    "Project official store lookup failed",
+    "Project mount lookup failed",
+];
 
 #[derive(Deserialize)]
 struct ProjectTierArm {
@@ -133,6 +189,9 @@ struct GroupedArm {
     id: String,
     #[serde(rename = "characterId")]
     character_id: String,
+    /// P4.D376: v4's `{ includeEmpty: true }`.
+    #[serde(default, rename = "includeEmpty")]
+    include_empty: bool,
 }
 
 /// A matrix row carries `pool`; a P4.D231 helper row carries `ids`; a P4.149
@@ -194,7 +253,7 @@ fn tiered_mount_pool_matches_oracle() {
     )
     .expect("parse spec");
 
-    let mut oracle: HashMap<String, Value> = HashMap::new();
+    let mut oracle: HashMap<String, (Value, Vec<ArmLog>)> = HashMap::new();
     let mut helper_oracle: HashMap<String, Value> = HashMap::new();
     let mut project_tier_oracle: HashMap<String, (Value, Vec<ArmLog>)> = HashMap::new();
     let mut grouped_oracle: HashMap<String, (Value, Value)> = HashMap::new();
@@ -226,7 +285,7 @@ fn tiered_mount_pool_matches_oracle() {
         }
         match (row.pool, row.ids) {
             (Some(pool), None) => {
-                oracle.insert(row.id, pool);
+                oracle.insert(row.id, (pool, row.logs.unwrap_or_default()));
             }
             (None, Some(ids)) => {
                 helper_oracle.insert(row.id, ids);
@@ -262,120 +321,114 @@ fn tiered_mount_pool_matches_oracle() {
             .unwrap_or_else(|e| panic!("plant `{}`: {e}", p.sql));
     }
 
-    let a = spec.char_a_id.clone();
-    let b = spec.char_b_id.clone();
-    let p = spec.project_id.clone();
-
-    // The matrix — MUST mirror harness/oracle/cases/tiered-mount-pool.ts exactly.
-    type Case = (&'static str, TierContext, TierResolveOptions);
-    let cases: Vec<Case> = vec![
-        (
-            "basic",
-            TierContext {
-                character_id: Some(a.clone()),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions::default(),
-        ),
-        (
-            "ownership_pass",
-            TierContext {
-                user_id: Some(spec.user_id.clone()),
-                character_id: Some(a.clone()),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions {
-                require_ownership: true,
-                include_participants: false,
-            },
-        ),
-        (
-            "ownership_fail",
-            TierContext {
-                user_id: Some(spec.wrong_user_id.clone()),
-                character_id: Some(a.clone()),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions {
-                require_ownership: true,
-                include_participants: false,
-            },
-        ),
-        (
-            "fast_path_wins",
-            TierContext {
-                character_mount_point_id: Some(spec.fake_mount_point_id.clone()),
-                character_id: Some(a.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions::default(),
-        ),
-        (
-            "participants",
-            TierContext {
-                character_id: Some(a.clone()),
-                character_ids: Some(vec![b.clone()]),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions {
-                require_ownership: false,
-                include_participants: true,
-            },
-        ),
-        (
-            "participant_excludes_self",
-            TierContext {
-                character_id: Some(a.clone()),
-                character_ids: Some(vec![a.clone(), b.clone()]),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions {
-                require_ownership: false,
-                include_participants: true,
-            },
-        ),
-        (
-            "no_character",
-            TierContext {
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions::default(),
-        ),
-        (
-            "group_per_character_B",
-            TierContext {
-                character_id: Some(b.clone()),
-                project_id: Some(p.clone()),
-                ..Default::default()
-            },
-            TierResolveOptions::default(),
-        ),
-        (
-            "participants_flag_off",
-            TierContext {
-                character_id: Some(a.clone()),
-                character_ids: Some(vec![b.clone()]),
-                ..Default::default()
-            },
-            TierResolveOptions::default(),
-        ),
-    ];
-
-    for (id, ctx, opts) in &cases {
-        let pool = resolve_tiered_mount_pool(main, mount, ctx, opts);
+    // The matrix — read from the spec, the oracle's own source (P4.D376).
+    let subst = |v: &str| -> String {
+        match v {
+            "$A" => spec.char_a_id.clone(),
+            "$B" => spec.char_b_id.clone(),
+            "$C" => spec.char_c_id.clone(),
+            "$P" => spec.project_id.clone(),
+            "$U" => spec.user_id.clone(),
+            "$WU" => spec.wrong_user_id.clone(),
+            "$FAKE" => spec.fake_mount_point_id.clone(),
+            other => other.to_string(),
+        }
+    };
+    let text = |row: &MatrixRow, k: &str| row.ctx.get(k).and_then(Value::as_str).map(&subst);
+    let mut matrix_failures: Vec<String> = Vec::new();
+    for row in &spec.matrix {
+        let ctx = TierContext {
+            user_id: text(row, "userId"),
+            character_id: text(row, "characterId"),
+            character_mount_point_id: text(row, "characterMountPointId"),
+            character_ids: row
+                .ctx
+                .get("characterIds")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(&subst).collect()),
+            project_id: text(row, "projectId"),
+        };
+        let roster = match row.roster.as_str() {
+            "gated" => Roster::Gated,
+            "open" => Roster::Open,
+            other => panic!("{}: roster {other}", row.id),
+        };
+        let enabled = match row.enabled.as_str() {
+            "require" => Enabled::Require,
+            "ignore" => Enabled::Ignore,
+            other => panic!("{}: enabled {other}", row.id),
+        };
+        let opts = TierResolveOptions {
+            require_ownership: row.require_ownership,
+            include_participants: row.include_participants,
+            ..TierResolveOptions::new(roster, enabled)
+        };
+        for sql in &row.before {
+            mount
+                .execute_batch(sql)
+                .unwrap_or_else(|e| panic!("{}: before: {e}", row.id));
+        }
+        let (pool, lines) = quilltap_core::test_support::captured_with(|| {
+            resolve_tiered_mount_pool(main, mount, &ctx, &opts)
+        });
+        for sql in &row.after {
+            mount
+                .execute_batch(sql)
+                .unwrap_or_else(|e| panic!("{}: after: {e}", row.id));
+        }
         let got = serde_json::to_value(&pool).unwrap();
-        let want = oracle
-            .get(*id)
-            .unwrap_or_else(|| panic!("oracle missing case '{id}'"));
-        assert_eq!(&got, want, "tiered pool mismatch for case '{id}'");
+        let (want, want_logs) = oracle
+            .get(&row.id)
+            .unwrap_or_else(|| panic!("oracle missing case '{}'", row.id));
+        if &got != want {
+            matrix_failures.push(format!("{}: pool\n  v4: {want}\n  v5: {got}", row.id));
+        }
+        let want_lines: Vec<String> = want_logs
+            .iter()
+            .map(|l| {
+                let mut line = format!("{} {}", l.level.to_uppercase(), l.message);
+                for (k, v) in &l.fields {
+                    line.push_str(&format!(" {k}={v}"));
+                }
+                line
+            })
+            .collect();
+        // v5's rendered line is `LEVEL target message k=v…`; the target is
+        // dropped (v4's ROOT logger has none) and the `error` field cut.
+        let got_lines: Vec<String> = lines
+            .iter()
+            .filter_map(|l| {
+                let msg = POOL_MESSAGES.iter().find(|m| l.contains(*m))?;
+                let level = l.split(' ').next().unwrap_or_default();
+                let at = l.find(msg).unwrap();
+                let tail = &l[at..];
+                let tail = match tail.find(" error=") {
+                    Some(i) => &tail[..i],
+                    None => tail,
+                };
+                Some(format!("{level} {tail}"))
+            })
+            .collect();
+        if got_lines != want_lines {
+            matrix_failures.push(format!(
+                "{}: lines\n  v4: {want_lines:?}\n  v5: {got_lines:?}",
+                row.id
+            ));
+        }
+        for dead in DEAD_WARNS {
+            assert!(
+                !lines.iter().any(|l| l.contains(dead)),
+                "{}: the unreachable WARN `{dead}` fired on v5",
+                row.id
+            );
+        }
     }
-    assert_eq!(cases.len(), oracle.len(), "case count mismatch");
+    assert!(
+        matrix_failures.is_empty(),
+        "tiered pool mismatches:\n{}",
+        matrix_failures.join("\n")
+    );
+    assert_eq!(spec.matrix.len(), oracle.len(), "case count mismatch");
 
     // P4.D231 — `resolve_mount_point_ids_for_group` (v4 `08c49319d`
     // `resolveMountPointIdsForGroup`), driven directly.
@@ -413,10 +466,13 @@ fn tiered_mount_pool_matches_oracle() {
     );
     let mut grouped_failures: Vec<String> = Vec::new();
     for arm in &spec.grouped_arms {
-        let got_groups = serde_json::to_value(resolve_group_mounts_for_character(
+        let got_groups = serde_json::to_value(resolve_group_mounts_for_character_with(
             main,
             mount,
             &arm.character_id,
+            GroupMountsOptions {
+                include_empty: arm.include_empty,
+            },
         ))
         .unwrap();
         let got_flat = serde_json::to_value(resolve_group_mount_point_ids_for_character(
@@ -492,6 +548,7 @@ fn tiered_mount_pool_matches_oracle() {
             quilltap_core::test_support::captured_with(|| match arm.helper.as_str() {
                 "project" => {
                     quilltap_core::tools::wardrobe_shared::resolve_project_mount_point_ids(
+                        main,
                         mount,
                         Some(&arm.arg),
                     )
@@ -533,6 +590,13 @@ fn tiered_mount_pool_matches_oracle() {
                 None => l.clone(),
             })
             .collect();
+        for dead in DEAD_WARNS {
+            assert!(
+                !lines.iter().any(|l| l.contains(dead)),
+                "{}: the unreachable WARN `{dead}` fired on v5",
+                arm.id
+            );
+        }
         if got_lines != want_lines {
             tier_failures.push(format!(
                 "{}: lines\n  v4: {want_lines:?}\n  v5: {got_lines:?}",
@@ -546,7 +610,10 @@ fn tiered_mount_pool_matches_oracle() {
         tier_failures.join("\n")
     );
     eprintln!(
-        "tiered_mount_pool: {} cases matched the oracle.",
-        cases.len()
+        "tiered_mount_pool: {} matrix rows, {} helper, {} grouped, {} project-tier arms matched the oracle.",
+        spec.matrix.len(),
+        spec.helper_arms.len(),
+        spec.grouped_arms.len(),
+        spec.project_tier_arms.len()
     );
 }

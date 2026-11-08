@@ -482,6 +482,41 @@
         "2026-10-08T00:00:00.000Z",
         "2026-10-08T00:00:00.000Z"
       ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_clone\" AS SELECT * FROM \"projects\" WHERE \"id\" = ?",
+      "params": [
+        "d8376000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_clone\" SET \"id\" = ?, \"name\" = X'00'",
+      "params": [
+        "d8376000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"projects\" SELECT * FROM \"p4d376_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"project_doc_mount_links\" (\"id\", \"projectId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8376000-0000-4000-8000-000000000001",
+        "d8376000-0000-4000-8000-000000000005",
+        "e8000000-0000-4000-8000-0000000000f4",
+        "2026-11-07T00:00:00.000Z",
+        "2026-11-07T00:00:00.000Z"
+      ]
     }
   ],
   "helperArms": [
@@ -554,6 +589,36 @@
         "from": "id",
         "to": "id_x"
       }
+    },
+    {
+      "id": "project_ids_official_unlinked",
+      "helper": "project",
+      "arg": "d8376000-0000-4000-8000-000000000002",
+      "note": "P4.D376: the official store first, though not linked"
+    },
+    {
+      "id": "project_ids_official_linked_late",
+      "helper": "project",
+      "arg": "d8376000-0000-4000-8000-000000000003",
+      "note": "P4.D376: the official store first, though linked late"
+    },
+    {
+      "id": "project_ids_official_survives_links_unreadable",
+      "helper": "project",
+      "arg": "d8376000-0000-4000-8000-000000000002",
+      "plant": {
+        "db": "mount",
+        "table": "project_doc_mount_links",
+        "from": "projectId",
+        "to": "projectId_x"
+      },
+      "note": "P4.D376 shift (t): the official store survives a failed links read"
+    },
+    {
+      "id": "project_ids_unreadable_project_row",
+      "helper": "project",
+      "arg": "d8376000-0000-4000-8000-000000000005",
+      "note": "P4.D376: a BLOB-named row — findByIdRaw validates, logs, answers null; the links survive"
     }
   ],
   "$groupedComment": "P4.D256 (v4 `cc80dc89d`): `groupedArms` drive v4's REAL `resolveGroupMountsForCharacter` beside the flat `resolveGroupMountPointIdsForCharacter` (flatten == flat is a comparand). The `p4d256` plants give character C memberships in X, Y, Z, W and the BLOB-named group, in that order: X and Y both link store c9 (FIRST-group credit to X); Z's only store is X's official c1 (Z DROPPED); W has a link but no row (name \"\"); the BLOB group's row is unreadable (name \"\", its official lost, its link kept). Character E's one group has no row and no stores (dropped -> []). PIN REQUIRED at `cc80dc89d`+ (the export does not exist earlier).",
@@ -587,6 +652,285 @@
       "id": "grouped_empty_id",
       "characterId": "",
       "note": "`if (!characterId) return []`"
+    },
+    {
+      "id": "grouped_first_credit_include_empty",
+      "characterId": "c8256000-0000-4000-8000-000000000001",
+      "includeEmpty": true,
+      "note": "P4.D376: Z (all claimed) KEPT with []"
+    },
+    {
+      "id": "grouped_only_group_empty_include_empty",
+      "characterId": "c8256000-0000-4000-8000-000000000002",
+      "includeEmpty": true,
+      "note": "P4.D376: the one store-less group KEPT with []"
+    }
+  ],
+  "$p4d376Comment": "P4.D376 (v4 `0c47f4539`, pin `624d0d25c`): the builder bakes four projects through v4's REAL `repos.projects.create` (each mints + links its official store): Roster Hall (allowAnyCharacter false, roster [charA], plus projectStoreA linked), Unlinked Official (its official link DELETED, projectStoreB linked — the official store is NOT linked), Late Official (the official link deleted, projectStoreA linked, then the official re-linked — linked AFTER another store), Disabled Links (a disabled store and a mount id with NO row linked). Character C (Cora) is baked with her vault DISABLED and is the one member of group G-DIS (official store disabled, one enabled linked store). Every `matrix` row states `roster` / `enabled` explicitly (the pre-existing nine `open` / `ignore` — what v4's `{}` meant at the baseline; at the pin an `{}` would leave both `undefined`, which is neither `gated` nor `require`, so the output is the same), may carry `before` / `after` SQL on the mount index (the disabled-General row), and records the pool's own log lines (`logs`, `poolLog` messages only). `groupedArms` gain `includeEmpty`; `projectTierArms` gain the official-first rows.",
+  "rosterProjectId": "d8376000-0000-4000-8000-000000000001",
+  "unlinkedProjectId": "d8376000-0000-4000-8000-000000000002",
+  "lateProjectId": "d8376000-0000-4000-8000-000000000003",
+  "disabledProjectId": "d8376000-0000-4000-8000-000000000004",
+  "badProjectId": "d8376000-0000-4000-8000-000000000005",
+  "charCId": "c8376000-0000-4000-8000-00000000000c",
+  "disabledGroupId": "d8376000-0000-4000-8000-0000000000e1",
+  "disabledGroupOfficial": "e8376000-0000-4000-8000-0000000000d3",
+  "disabledGroupLinked": "e8376000-0000-4000-8000-0000000000d4",
+  "disabledStoreId": "e8376000-0000-4000-8000-0000000000d1",
+  "missingStoreId": "e8376000-0000-4000-8000-0000000000d2",
+  "characterC": {
+    "id": "c8376000-0000-4000-8000-00000000000c",
+    "userId": "a0000000-0000-4000-8000-000000000001",
+    "name": "Cora Disabled",
+    "identity": "A character whose vault is disabled.",
+    "description": "",
+    "manifesto": "",
+    "personality": "",
+    "exampleDialogues": "",
+    "title": "",
+    "firstMessage": "",
+    "talkativeness": 0.5,
+    "pronouns": {
+      "subject": "he",
+      "object": "him",
+      "possessive": "his"
+    },
+    "aliases": [],
+    "physicalDescription": null,
+    "systemPrompts": [],
+    "scenarios": [],
+    "controlledBy": "llm",
+    "isFavorite": false,
+    "npc": false,
+    "defaultImageId": null,
+    "defaultConnectionProfileId": null,
+    "defaultPartnerId": null,
+    "defaultRoleplayTemplateId": null,
+    "defaultImageProfileId": null,
+    "sillyTavernData": null,
+    "defaultAgentModeEnabled": null,
+    "defaultHelpToolsEnabled": null,
+    "defaultTimestampConfig": null,
+    "defaultScenarioId": null,
+    "defaultSystemPromptId": null,
+    "characterDocumentMountPointId": null,
+    "canDressThemselves": null,
+    "canCreateOutfits": null,
+    "systemTransparency": null,
+    "coreWhisperEnabled": null,
+    "canBeCarina": null,
+    "partnerLinks": [],
+    "tags": [],
+    "avatarOverrides": []
+  },
+  "matrix": [
+    {
+      "id": "basic",
+      "ctx": {
+        "characterId": "$A",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore"
+    },
+    {
+      "id": "ownership_pass",
+      "ctx": {
+        "userId": "$U",
+        "characterId": "$A",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "requireOwnership": true
+    },
+    {
+      "id": "ownership_fail",
+      "ctx": {
+        "userId": "$WU",
+        "characterId": "$A",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "requireOwnership": true
+    },
+    {
+      "id": "fast_path_wins",
+      "ctx": {
+        "characterMountPointId": "$FAKE",
+        "characterId": "$A"
+      },
+      "roster": "open",
+      "enabled": "ignore"
+    },
+    {
+      "id": "participants",
+      "ctx": {
+        "characterId": "$A",
+        "characterIds": [
+          "$B"
+        ],
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "includeParticipants": true
+    },
+    {
+      "id": "participant_excludes_self",
+      "ctx": {
+        "characterId": "$A",
+        "characterIds": [
+          "$A",
+          "$B"
+        ],
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "includeParticipants": true
+    },
+    {
+      "id": "no_character",
+      "ctx": {
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore"
+    },
+    {
+      "id": "group_per_character_B",
+      "ctx": {
+        "characterId": "$B",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "ignore"
+    },
+    {
+      "id": "participants_flag_off",
+      "ctx": {
+        "characterId": "$A",
+        "characterIds": [
+          "$B"
+        ]
+      },
+      "roster": "open",
+      "enabled": "ignore"
+    },
+    {
+      "id": "official_unlinked",
+      "ctx": {
+        "characterId": "$B",
+        "projectId": "d8376000-0000-4000-8000-000000000002"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "note": "shift (a): the official store first though NOT linked"
+    },
+    {
+      "id": "official_linked_late",
+      "ctx": {
+        "characterId": "$B",
+        "projectId": "d8376000-0000-4000-8000-000000000003"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "note": "shift (a): the official store first though linked after projectStoreA"
+    },
+    {
+      "id": "roster_gated_off",
+      "ctx": {
+        "characterId": "$B",
+        "projectId": "d8376000-0000-4000-8000-000000000001"
+      },
+      "roster": "gated",
+      "enabled": "ignore",
+      "note": "Bram is off the roster: no project tier + the pool DEBUG"
+    },
+    {
+      "id": "roster_gated_on",
+      "ctx": {
+        "characterId": "$A",
+        "projectId": "d8376000-0000-4000-8000-000000000001"
+      },
+      "roster": "gated",
+      "enabled": "ignore",
+      "note": "Ada is on the roster: the tier, and no DEBUG (silence leg)"
+    },
+    {
+      "id": "roster_gated_no_character",
+      "ctx": {
+        "projectId": "d8376000-0000-4000-8000-000000000001"
+      },
+      "roster": "gated",
+      "enabled": "ignore",
+      "note": "no character: withheld, characterId logged as null"
+    },
+    {
+      "id": "roster_open_off",
+      "ctx": {
+        "characterId": "$B",
+        "projectId": "d8376000-0000-4000-8000-000000000001"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "note": "open: the roster does not apply"
+    },
+    {
+      "id": "enabled_require_each_tier",
+      "ctx": {
+        "characterId": "$C",
+        "characterIds": [
+          "$A"
+        ],
+        "projectId": "d8376000-0000-4000-8000-000000000004"
+      },
+      "roster": "open",
+      "enabled": "require",
+      "includeParticipants": true,
+      "note": "disabled vault / group official / project link dropped, the missing mount row dropped silently, the DEBUG once"
+    },
+    {
+      "id": "enabled_ignore_each_tier",
+      "ctx": {
+        "characterId": "$C",
+        "characterIds": [
+          "$A"
+        ],
+        "projectId": "d8376000-0000-4000-8000-000000000004"
+      },
+      "roster": "open",
+      "enabled": "ignore",
+      "includeParticipants": true,
+      "note": "ignore keeps every one (the DEBUG silence leg)"
+    },
+    {
+      "id": "enabled_require_general_disabled",
+      "ctx": {
+        "characterId": "$A",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "require",
+      "before": [
+        "UPDATE \"doc_mount_points\" SET \"enabled\" = 0 WHERE \"id\" = 'e8000000-0000-4000-8000-0000000000a1'"
+      ],
+      "after": [
+        "UPDATE \"doc_mount_points\" SET \"enabled\" = 1 WHERE \"id\" = 'e8000000-0000-4000-8000-0000000000a1'"
+      ],
+      "note": "a disabled General is nulled"
+    },
+    {
+      "id": "enabled_require_all_enabled",
+      "ctx": {
+        "characterId": "$A",
+        "projectId": "$P"
+      },
+      "roster": "open",
+      "enabled": "require",
+      "note": "nothing to drop: no DEBUG"
     }
   ]
 }

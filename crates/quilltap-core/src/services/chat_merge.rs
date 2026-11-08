@@ -245,15 +245,20 @@ pub async fn apply_chat_merge(
         .map(str::to_string);
     let project_mount_point_ids: Vec<String> = {
         let pid = target_project_id.clone();
-        db.read_mount_index(move |mount| {
-            Ok(
-                crate::tools::wardrobe_shared::resolve_project_mount_point_ids(
-                    mount,
-                    pid.as_deref(),
-                ),
-            )
+        // === P4.D376 === (the official store first needs the MAIN connection)
+        db.read_main(move |main| {
+            db.read_mount_index(move |mount| {
+                Ok(
+                    crate::tools::wardrobe_shared::resolve_project_mount_point_ids(
+                        main,
+                        mount,
+                        pid.as_deref(),
+                    ),
+                )
+            })
         })
         .unwrap_or_default()
+        // === end P4.D376 ===
     };
 
     // Character tags to fold into the chat's tag set, mirroring the

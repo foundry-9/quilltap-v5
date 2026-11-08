@@ -13,6 +13,16 @@
  *   - Project P1 links: the two project stores PLUS colliding links to
  *     charA-vault / G1-official / the General store (so the dedup drops them).
  *
+ * P4.D376 (v4 `0c47f4539`, pin `624d0d25c`) adds, all through v4's REAL
+ * repositories: four projects (`repos.projects.create` mints + links each
+ * official store) — Roster Hall (roster [charA] + projectStoreA), Unlinked
+ * Official (official link deleted, projectStoreB linked), Late Official
+ * (official linked AFTER projectStoreA), Disabled Links (a disabled store + a
+ * mount id with no row) — character C with a DISABLED vault, and group G-DIS
+ * (C a member; a disabled official store + one enabled linked store). The
+ * project official stores are minted (read back by both sides off the shared
+ * fixture — every pool compares with zero normalization).
+ *
  * All non-vault ids pinned; the char-vault ids are minted then echoed to stderr
  * (the oracle re-reads them, and the Rust port reads the same fixture).
  *
@@ -42,6 +52,18 @@ interface Spec {
   charBId: string;
   characterA: Record<string, unknown>;
   characterB: Record<string, unknown>;
+  // P4.D376
+  rosterProjectId: string;
+  unlinkedProjectId: string;
+  lateProjectId: string;
+  disabledProjectId: string;
+  charCId: string;
+  characterC: Record<string, unknown>;
+  disabledGroupId: string;
+  disabledGroupOfficial: string;
+  disabledGroupLinked: string;
+  disabledStoreId: string;
+  missingStoreId: string;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -81,6 +103,7 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   const { CharacterSchema, GroupSchema } = await import('@/lib/schemas/types');
+  const { ProjectSchema } = await import('@/lib/schemas/project.types');
   const { generateDDL } = await import('@/lib/database/schema-translator');
   const {
     DocMountPointSchema,
@@ -98,6 +121,7 @@ async function main(): Promise<void> {
 
   await ensureCollection('characters', CharacterSchema);
   await ensureCollection('groups', GroupSchema);
+  await ensureCollection('projects', ProjectSchema);
 
   const midb = getRawMountIndexDatabase();
   if (!midb) throw new Error('mount-index DB handle unavailable');
@@ -159,7 +183,7 @@ async function main(): Promise<void> {
   if (!charAVault || !charBVault) throw new Error('character vault(s) not minted');
 
   // 2. Provision the standalone stores (General + group + project), pinned ids.
-  const provisionStore = async (id: string, name: string): Promise<void> => {
+  const provisionStore = async (id: string, name: string, enabled = true): Promise<void> => {
     await repos.docMountPoints.create(
       {
         name,
@@ -168,7 +192,7 @@ async function main(): Promise<void> {
         storeType: 'documents',
         includePatterns: [],
         excludePatterns: [],
-        enabled: true,
+        enabled,
         lastScannedAt: null,
         scanStatus: 'idle',
         lastScanError: null,
@@ -213,6 +237,58 @@ async function main(): Promise<void> {
   await repos.projectDocMountLinks.link(spec.projectId, charAVault);
   await repos.projectDocMountLinks.link(spec.projectId, spec.groupOfficialMountPointId);
   await repos.projectDocMountLinks.link(spec.projectId, spec.generalMountPointId);
+
+  // 7. P4.D376 — the official-first / roster / enabled plants.
+  await repos.characters.create(spec.characterC as never, {
+    id: spec.charCId,
+    createdAt: PINNED_TS,
+    updatedAt: PINNED_TS,
+  } as never);
+  const charC = await repos.characters.findByIdRaw(spec.charCId);
+  const charCVault = charC?.characterDocumentMountPointId as string | null;
+  if (!charCVault) throw new Error('character C vault not minted');
+  midb.prepare('UPDATE "doc_mount_points" SET "enabled" = 0 WHERE "id" = ?').run(charCVault);
+
+  await provisionStore(spec.disabledGroupOfficial, 'G-DIS Official', false);
+  await provisionStore(spec.disabledGroupLinked, 'G-DIS Linked');
+  await provisionStore(spec.disabledStoreId, 'Disabled Project Store', false);
+  await rawQuery(
+    'INSERT INTO "groups" ("id", "name", "officialMountPointId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?)',
+    [spec.disabledGroupId, 'G-DIS', spec.disabledGroupOfficial, PINNED_TS, PINNED_TS],
+  );
+  await repos.groupCharacterMembers.addMember(spec.disabledGroupId, spec.charCId);
+  await repos.groupDocMountLinks.link(spec.disabledGroupId, spec.disabledGroupLinked);
+
+  const makeProject = async (id: string, name: string, extra: Record<string, unknown> = {}) => {
+    await repos.projects.create(
+      { name, allowAnyCharacter: true, characterRoster: [], ...extra } as never,
+      { id, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
+    );
+    const row = await repos.projects.findByIdRaw(id);
+    const official = row?.officialMountPointId as string | null;
+    if (!official) throw new Error(`project ${name} official store not minted`);
+    return official;
+  };
+  const unlinkOfficial = (projectId: string, official: string): void => {
+    midb
+      .prepare('DELETE FROM "project_doc_mount_links" WHERE "projectId" = ? AND "mountPointId" = ?')
+      .run(projectId, official);
+  };
+  await makeProject(spec.rosterProjectId, 'Roster Hall', {
+    allowAnyCharacter: false,
+    characterRoster: [spec.charAId],
+  });
+  await repos.projectDocMountLinks.link(spec.rosterProjectId, spec.projectStoreA);
+  const unlinkedOfficial = await makeProject(spec.unlinkedProjectId, 'Unlinked Official');
+  unlinkOfficial(spec.unlinkedProjectId, unlinkedOfficial);
+  await repos.projectDocMountLinks.link(spec.unlinkedProjectId, spec.projectStoreB);
+  const lateOfficial = await makeProject(spec.lateProjectId, 'Late Official');
+  unlinkOfficial(spec.lateProjectId, lateOfficial);
+  await repos.projectDocMountLinks.link(spec.lateProjectId, spec.projectStoreA);
+  await repos.projectDocMountLinks.link(spec.lateProjectId, lateOfficial);
+  await makeProject(spec.disabledProjectId, 'Disabled Links');
+  await repos.projectDocMountLinks.link(spec.disabledProjectId, spec.disabledStoreId);
+  await repos.projectDocMountLinks.link(spec.disabledProjectId, spec.missingStoreId);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

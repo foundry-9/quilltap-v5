@@ -1148,27 +1148,49 @@ fn accessible_stores_body(
         }
     }
 
-    // Group stores reachable from this chat (union across CHARACTER participants).
-    let mut group_mount_ids: HashSet<String> = HashSet::new();
-    if let Some(parts) = chat.get("participants").and_then(Value::as_array) {
-        for p in parts {
-            if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-                continue;
-            }
-            if p.get("status").and_then(Value::as_str) == Some("removed") {
-                continue;
-            }
-            let Some(cid) = p.get("characterId").and_then(Value::as_str) else {
-                continue;
-            };
-            let ids = crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
-                main, mount, cid,
-            );
-            for id in ids {
-                group_mount_ids.insert(id);
-            }
-        }
-    }
+    // === P4.D376 ===
+    // The chat's reach as a cast (v4 `0c47f4539`): every live character
+    // participant's vault, the union of their groups' stores, the project's
+    // stores and General — one walk (`resolve_cast_pool`). The group tier is
+    // surfaced as its own "Group Files" bucket in both default and
+    // look-everywhere modes. An archived participant, or another user's
+    // character, contributes neither its vault nor its groups.
+    //
+    // `userId` is v4's session `user.id`; the route reached this chat through
+    // the user's own repositories, so it is the chat's owner — read off the row
+    // (P4.D376's lane-local call: no boundary edit).
+    let cast_ids: Vec<String> = chat
+        .get("participants")
+        .and_then(Value::as_array)
+        .map(|parts| {
+            parts
+                .iter()
+                .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+                .filter(|p| p.get("status").and_then(Value::as_str) != Some("removed"))
+                .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+                .filter(|c| !c.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let user_id = chat
+        .get("userId")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let reach = crate::db::reach::resolve_cast_pool(
+        main,
+        mount,
+        &crate::db::reach::CastPoolOptions {
+            user_id: &user_id,
+            project_id: chat.get("projectId").and_then(Value::as_str),
+            character_ids: &cast_ids,
+            group_ids: &[],
+        },
+    );
+    let group_mount_ids: HashSet<String> =
+        reach.pool.group_mount_point_ids.iter().cloned().collect();
+    // === end P4.D376 ===
 
     let stores: Vec<Value> = if all {
         // Look-everywhere: every enabled store (holding back the project mount).
@@ -1177,20 +1199,29 @@ fn accessible_stores_body(
             .map(|s| serde_json::to_value(s).unwrap_or(Value::Null))
             .collect()
     } else {
-        chat_reachable_stores(main, mount, chat, &mut seen, &group_mount_ids)?
+        // === P4.D376 === (the cast pool, in tier order — no `HashSet` walk)
+        chat_reachable_stores(main, mount, &mut seen, &reach)?
+        // === end P4.D376 ===
     };
 
     Ok(json!({ "stores": stores, "projectLibrary": project_library }))
 }
 
+// === P4.D376 ===
 /// The default (chat-reach) accessible-store set: participant vaults, group
-/// stores, project-linked stores, then Quilltap General.
+/// stores, project stores, then Quilltap General — v4's walk over
+/// `resolveCastPool`'s answer (`0c47f4539`), nearest tier first. The vaults are
+/// the pool's `castVaults` (a vault that is also a scoped-tier store is
+/// surfaced in that tier instead), each labelled with the owner's name from v4's
+/// HYDRATED `characters.findById` (the store's name when the row is gone); the
+/// group stores walk the pool's ARRAY in tier order (v5 had iterated a
+/// `HashSet` — a random order whenever a chat reached two group stores), and
+/// the project stores are the pool's, the official store first.
 fn chat_reachable_stores(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
-    chat: &Value,
     seen: &mut HashSet<String>,
-    group_mount_ids: &HashSet<String>,
+    reach: &crate::db::reach::CastPool,
 ) -> Result<Vec<Value>, DbError> {
     use crate::db::characters_read;
     use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -1198,48 +1229,39 @@ fn chat_reachable_stores(
     let mut stores: Vec<Value> = Vec::new();
 
     // 1. Participant character vaults.
-    if let Some(parts) = chat.get("participants").and_then(Value::as_array) {
-        for p in parts {
-            if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-                continue;
-            }
-            if p.get("status").and_then(Value::as_str) == Some("removed") {
-                continue;
-            }
-            let Some(cid) = p.get("characterId").and_then(Value::as_str) else {
-                continue;
-            };
-            // getCharacterVaultStore → the character's characterDocumentMountPointId.
-            let vault_id = characters_read::find_by_id_raw(main, cid)?.and_then(|c| {
-                c.get("characterDocumentMountPointId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
-            let Some(vault_id) = vault_id else { continue };
-            if seen.contains(&vault_id) {
-                continue;
-            }
-            let Some(mp) = mp_repo.find_full_json_by_id(&vault_id)? else {
-                continue;
-            };
-            let character = characters_read::find_by_id_raw(main, cid)?;
-            let label = character
-                .as_ref()
-                .and_then(|c| c.get("name").and_then(Value::as_str))
-                .map(str::to_string)
-                .unwrap_or_else(|| {
-                    mp.get("name")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string()
-                });
-            stores.push(store_entry(&mp, &label, "character", Some(cid), false));
-            seen.insert(vault_id);
+    for vault in &reach.cast_vaults {
+        if seen.contains(&vault.mount_point_id) {
+            continue;
         }
+        let Some(mp) = mp_repo.find_full_json_by_id(&vault.mount_point_id)? else {
+            continue;
+        };
+        // v4's hydrated `findById` — a broken vault overlay THROWS (the
+        // route's 500), so the read propagates.
+        let character = characters_read::find_by_id(main, mount, &vault.character_id)?;
+        let label = character
+            .as_ref()
+            .and_then(|c| c.get("name").and_then(Value::as_str))
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                mp.get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            });
+        stores.push(store_entry(
+            &mp,
+            &label,
+            "character",
+            Some(&vault.character_id),
+            false,
+        ));
+        seen.insert(vault.mount_point_id.clone());
     }
 
-    // 2. Group stores (official + linked of every group a participant belongs to).
-    for id in group_mount_ids {
+    // 2. Group stores — official + linked stores of every group a live
+    //    character participant belongs to, in tier order.
+    for id in &reach.pool.group_mount_point_ids {
         if seen.contains(id) {
             continue;
         }
@@ -1258,26 +1280,24 @@ fn chat_reachable_stores(
         seen.insert(id.clone());
     }
 
-    // 3. Document stores linked to the chat's project.
-    if let Some(project_id) = chat.get("projectId").and_then(Value::as_str) {
-        let links = crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(mount)
-            .find_by_project_id(project_id)?;
-        for mount_point_id in links {
-            if seen.contains(&mount_point_id) {
-                continue;
-            }
-            let Some(mp) = mp_repo.find_full_json_by_id(&mount_point_id)? else {
-                continue;
-            };
-            let name = mp
-                .get("name")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            stores.push(store_entry(&mp, &name, "document-store", None, false));
-            seen.insert(mount_point_id);
+    // 3. The chat's project's stores — the official store first, then every
+    //    linked store.
+    for mount_point_id in &reach.pool.project_mount_point_ids {
+        if seen.contains(mount_point_id) {
+            continue;
         }
+        let Some(mp) = mp_repo.find_full_json_by_id(mount_point_id)? else {
+            continue;
+        };
+        let name = mp
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        stores.push(store_entry(&mp, &name, "document-store", None, false));
+        seen.insert(mount_point_id.clone());
     }
+    // === end P4.D376 ===
 
     // 4. Quilltap General — always accessible.
     if let Some(general_id) = crate::db::instance_settings::get_general_mount_point_id(main)? {

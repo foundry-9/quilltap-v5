@@ -1429,9 +1429,11 @@ fn build_recent_window_query(
 /// v4 `resolveTieredMountPool` for buildContext's call (no ownership gate, no
 /// participant tier). Reads across both DBs; degrades gracefully.
 fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
+    // === P4.D376 ===
     use crate::db::tiered_mount_pool::{
-        resolve_tiered_mount_pool, TierContext, TierResolveOptions,
+        resolve_tiered_mount_pool, Enabled, Roster, TierContext, TierResolveOptions,
     };
+    // === end P4.D376 ===
     let ctx = TierContext {
         user_id: Some(input.user_id.clone()),
         character_id: if input.character.id.is_empty() {
@@ -1443,10 +1445,10 @@ fn resolve_mount_pool(db: &Db, input: &BuildContextInput) -> MountPool {
         character_ids: None,
         project_id: input.chat.project_id.clone(),
     };
-    let opts = TierResolveOptions {
-        require_ownership: false,
-        include_participants: false,
-    };
+    // === P4.D376 === (v4 `0c47f4539`: the per-turn build is roster-open and
+    // carries disabled stores — the knowledge searches skip them)
+    let opts = TierResolveOptions::new(Roster::Open, Enabled::Ignore);
+    // === end P4.D376 ===
     let resolved = db
         .read_main(|main| {
             db.read_mount_index(|mount| Ok(resolve_tiered_mount_pool(main, mount, &ctx, &opts)))

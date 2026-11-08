@@ -24,11 +24,21 @@
  * resolver beside it), over the `p4d256` plants in `helperPlants`. PIN
  * REQUIRED at `cc80dc89d` or later.
  *
- * Run (Node 24, from the v4 checkout):
+ * P4.D376 (v4 `0c47f4539`, PIN REQUIRED at `624d0d25c`): the matrix moved into
+ * the spec (`matrix`), every row stating `roster` / `enabled` EXPLICITLY. The
+ * nine pre-existing rows say `open` / `ignore` — what v4's `{}` meant at
+ * `236c04e35`; at the pin an unchanged `{}` row leaves both `undefined`, which
+ * is neither `'gated'` nor `'require'`, so its output equals the explicit
+ * `open` / `ignore` row's. A row may carry `before` / `after` SQL on the mount
+ * index (run around it on the raw handle), and records `logs`: every line whose
+ * message is in `POOL_MESSAGES` (the pool's own lines), `{level, message,
+ * fields}` with `error` omitted. Grouped arms may pass `includeEmpty`.
+ *
+ * Run (Node 24, from the v4 checkout — a pin at `624d0d25c`):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
  *   cd ~/source/quilltap-server
- *   QT_FIXTURE_TMP_MAIN=/tmp/qt-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-tmp-mount.db \
- *     $N/node --import tsx $V5/harness/oracle/cases/tiered-mount-pool.ts > /tmp/oracle-tmp.ndjson
+ *   QT_FIXTURE_TMP_MAIN=/tmp/qt-p4d376-tmp-main.db QT_FIXTURE_TMP_MOUNT=/tmp/qt-p4d376-tmp-mount.db \
+ *     $N/node --import tsx $V5/harness/oracle/cases/tiered-mount-pool.ts > /tmp/oracle-p4d376-tmp.ndjson
  */
 
 import { fileURLToPath } from 'node:url';
@@ -52,8 +62,20 @@ interface Spec {
   fakeMountPointId: string;
   helperPlants: Array<{ db: 'main' | 'mount'; sql: string; params: Array<string | null> }>;
   helperArms: Array<{ id: string; groupId: string }>;
-  /** P4.D256 (v4 `cc80dc89d`): the grouped resolver's arms. */
-  groupedArms: Array<{ id: string; characterId: string }>;
+  /** P4.D256 (v4 `cc80dc89d`): the grouped resolver's arms (P4.D376: `includeEmpty`). */
+  groupedArms: Array<{ id: string; characterId: string; includeEmpty?: boolean }>;
+  /** P4.D376: the resolution matrix, `$A`/`$B`/`$C`/`$P`/`$U`/`$WU`/`$FAKE` substituted. */
+  matrix: Array<{
+    id: string;
+    ctx: Record<string, unknown>;
+    roster: 'gated' | 'open';
+    enabled: 'require' | 'ignore';
+    requireOwnership?: boolean;
+    includeParticipants?: boolean;
+    before?: string[];
+    after?: string[];
+  }>;
+  charCId: string;
   /** P4.149: the two project-tier helpers, each arm optionally over a RENAME. */
   projectTierArms: Array<{
     id: string;
@@ -115,7 +137,7 @@ async function main(): Promise<void> {
     | ((groupId: string) => Promise<string[]>)
     | undefined;
   const resolveGroupMountsForCharacter = tieredModule.resolveGroupMountsForCharacter as
-    | ((characterId: string) => Promise<unknown[]>)
+    | ((characterId: string, opts?: { includeEmpty?: boolean }) => Promise<unknown[]>)
     | undefined;
   const resolveGroupMountPointIdsForCharacter =
     tieredModule.resolveGroupMountPointIdsForCharacter as (characterId: string) => Promise<string[]>;
@@ -126,30 +148,71 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
 
-  const A = spec.charAId;
-  const B = spec.charBId;
-  const P = spec.projectId;
+  // P4.D376: one recorder over the Logger prototype for the whole run; each
+  // section arms it with its own message filter.
+  const { Logger } = await import('@/lib/logger');
+  type ArmLog = { level: string; message: string; fields: Array<[string, string]> };
+  let armLogs: ArmLog[] | null = null;
+  let armFilter: (level: string, message: string) => boolean = () => false;
+  for (const level of ['error', 'warn', 'debug'] as const) {
+    const original = Logger.prototype[level];
+    Logger.prototype[level] = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (armLogs && armFilter(level, message)) {
+        const fields: Array<[string, string]> = [];
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'error') continue;
+          fields.push([k, v === null ? 'null' : String(v)]);
+        }
+        armLogs.push({ level, message, fields });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
 
-  const matrix: Array<{
-    id: string;
-    ctx: Record<string, unknown>;
-    opts: Record<string, unknown>;
-  }> = [
-    { id: 'basic', ctx: { characterId: A, projectId: P }, opts: {} },
-    { id: 'ownership_pass', ctx: { userId: spec.userId, characterId: A, projectId: P }, opts: { requireOwnership: true } },
-    { id: 'ownership_fail', ctx: { userId: spec.wrongUserId, characterId: A, projectId: P }, opts: { requireOwnership: true } },
-    { id: 'fast_path_wins', ctx: { characterMountPointId: spec.fakeMountPointId, characterId: A }, opts: {} },
-    { id: 'participants', ctx: { characterId: A, characterIds: [B], projectId: P }, opts: { includeParticipants: true } },
-    { id: 'participant_excludes_self', ctx: { characterId: A, characterIds: [A, B], projectId: P }, opts: { includeParticipants: true } },
-    { id: 'no_character', ctx: { projectId: P }, opts: {} },
-    { id: 'group_per_character_B', ctx: { characterId: B, projectId: P }, opts: {} },
-    { id: 'participants_flag_off', ctx: { characterId: A, characterIds: [B] }, opts: {} },
-  ];
+  /** The pool's own lines (P4.D376) — the dead WARNs included, so a row would show them. */
+  const POOL_MESSAGES = new Set([
+    'Character off project roster — project tier withheld',
+    'Disabled stores left out of the pool',
+    'Mount lookup failed; store left out of the pool',
+    'Project official store lookup failed',
+    'Project mount lookup failed',
+  ]);
+  const subst: Record<string, unknown> = {
+    $A: spec.charAId,
+    $B: spec.charBId,
+    $C: spec.charCId,
+    $P: spec.projectId,
+    $U: spec.userId,
+    $WU: spec.wrongUserId,
+    $FAKE: spec.fakeMountPointId,
+  };
+  const sub = (v: unknown): unknown =>
+    Array.isArray(v) ? v.map(sub) : typeof v === 'string' && v in subst ? subst[v] : v;
 
   const rows: unknown[] = [];
-  for (const c of matrix) {
-    const pool = await resolveTieredMountPool(c.ctx as never, c.opts as never);
-    rows.push({ id: c.id, pool });
+  for (const c of spec.matrix) {
+    const ctx: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(c.ctx)) ctx[k] = sub(v);
+    const opts: Record<string, unknown> = { roster: c.roster, enabled: c.enabled };
+    if (c.requireOwnership) opts.requireOwnership = true;
+    if (c.includeParticipants) opts.includeParticipants = true;
+    const raw = getRawMountIndexDatabase();
+    for (const sql of c.before ?? []) raw!.exec(sql);
+    armLogs = [];
+    armFilter = (_level, message) => POOL_MESSAGES.has(message);
+    const pool = await resolveTieredMountPool(ctx as never, opts as never);
+    rows.push({ id: c.id, pool, logs: armLogs });
+    armLogs = null;
+    for (const sql of c.after ?? []) raw!.exec(sql);
   }
   if (resolveMountPointIdsForGroup) {
     for (const h of spec.helperArms) {
@@ -164,7 +227,10 @@ async function main(): Promise<void> {
       rows.push({
         id: g.id,
         grouped: true,
-        groups: await resolveGroupMountsForCharacter(g.characterId),
+        groups: await resolveGroupMountsForCharacter(
+          g.characterId,
+          g.includeEmpty ? { includeEmpty: true } : undefined,
+        ),
         flat: await resolveGroupMountPointIdsForCharacter(g.characterId),
       });
     }
@@ -175,32 +241,6 @@ async function main(): Promise<void> {
   // read under test), every ERROR/WARN recorded off the `Logger` prototype —
   // `{level, message, fields}`, `error` omitted (each driver's own sentence).
   {
-    const { Logger } = await import('@/lib/logger');
-    let armLogs: Array<{ level: string; message: string; fields: Array<[string, string]> }> | null =
-      null;
-    for (const level of ['error', 'warn'] as const) {
-      const original = Logger.prototype[level];
-      Logger.prototype[level] = function (
-        this: unknown,
-        message: string,
-        context?: Record<string, unknown>,
-        ...rest: unknown[]
-      ) {
-        if (armLogs) {
-          const fields: Array<[string, string]> = [];
-          for (const [k, v] of Object.entries(context ?? {})) {
-            if (k === 'error') continue;
-            fields.push([k, String(v)]);
-          }
-          armLogs.push({ level, message, fields });
-        }
-        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
-      } as never;
-    }
-    const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
-    const { getRawMountIndexDatabase } = await import(
-      '@/lib/database/backends/sqlite/mount-index-client'
-    );
     // The fixture carries no `chats` table: v4's chats repository creates it
     // lazily (`ensureCollection`, generateDDL) on its first access — a miss read
     // here, BEFORE the spy arms, so the chat arm's rename trips only its read.
@@ -214,6 +254,7 @@ async function main(): Promise<void> {
         raw.exec(`ALTER TABLE "${arm.plant.table}" RENAME COLUMN "${arm.plant.from}" TO "${arm.plant.to}"`);
       }
       armLogs = [];
+      armFilter = (level) => level === 'error' || level === 'warn';
       const ids =
         arm.helper === 'project'
           ? await resolveProjectMountPointIds(arm.arg)

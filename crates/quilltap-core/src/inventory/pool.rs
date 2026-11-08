@@ -394,7 +394,10 @@ pub fn load_inventory_pool(
         .filter(|s| !s.is_empty())
         .map(str::to_string);
     let groups = resolve_group_mounts_for_character(main, mount, character_id);
-    let project_mount_point_ids = resolve_project_mount_point_ids(mount, project_id.as_deref());
+    // === P4.D376 ===
+    let project_mount_point_ids =
+        resolve_project_mount_point_ids(main, mount, project_id.as_deref());
+    // === end P4.D376 ===
     let general_mount_point_id = instance_settings::get_general_mount_point_id(main)?;
     let project_name = project_name_of(main, mount, project_id.as_deref());
 

@@ -1,0 +1,989 @@
+{
+  "$comment": "P4.D376 — the reach differential (v4 `lib/mount-index/reach.ts`, NEW in `0c47f4539`, pin `624d0d25c`). Runs over its OWN copies of the tiered-mount-pool baked pair (the shared builder), after applying `plants` (pre-init, `@vault:<characterId>` params resolved off the main copy first), so the tiered matrix is untouched. `pure` = tier-1 exact (orderMounts / bucketMounts / groupOriginMap over literal pools). The rest is tier-2 over the real DB, in order (an ensure arm mints state the later arms see): resolveOwnerStore (every scope x ensure off / swallow / throw, a planted folder failure via a BEFORE INSERT trigger, archived allow / refuse, R-F's corrupt project + group rows), the R-F read-each-way arms, classifyMount, castGroupMounts, resolveCastPool. A minted store id is masked `<minted>`; the store row, its folders and the owner pointer are dumped. `character` rows are projected to v4's `ReachCharacterRow` keys. Every `[Reach]` line is compared (`error` omitted).",
+  "plants": [
+    {
+      "db": "main",
+      "sql": "UPDATE \"characters\" SET \"archivedAt\" = ? WHERE \"id\" = ?",
+      "params": [
+        "2026-11-07T00:00:00.000Z",
+        "c8000000-0000-4000-8000-00000000000b"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+      "params": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = 'Vaultless Vi', \"characterDocumentMountPointId\" = NULL",
+      "params": [
+        "c8376000-0000-4000-8000-0000000000d0"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+      "params": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = 'Other Otto', \"userId\" = 'a0000000-0000-4000-8000-0000000000ff', \"characterDocumentMountPointId\" = NULL",
+      "params": [
+        "c8376000-0000-4000-8000-0000000000d1"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"characters\" WHERE \"id\" = ?",
+      "params": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = 'Userless Uma', \"userId\" = '', \"characterDocumentMountPointId\" = NULL",
+      "params": [
+        "c8376000-0000-4000-8000-0000000000d2"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"characters\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"projects\" WHERE \"id\" = ?",
+      "params": [
+        "d8376000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = 'No Store Yet', \"officialMountPointId\" = NULL",
+      "params": [
+        "d8376000-0000-4000-8000-000000000006"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"projects\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"projects\" WHERE \"id\" = ?",
+      "params": [
+        "d8376000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = X'00'",
+      "params": [
+        "d8376000-0000-4000-8000-000000000007"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"projects\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = 'Storeless Guild', \"officialMountPointId\" = NULL",
+      "params": [
+        "d8376000-0000-4000-8000-0000000000e3"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "CREATE TEMP TABLE \"p4d376_reach_clone\" AS SELECT * FROM \"groups\" WHERE \"id\" = ?",
+      "params": [
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "UPDATE \"p4d376_reach_clone\" SET \"id\" = ?, \"name\" = X'00'",
+      "params": [
+        "d8376000-0000-4000-8000-0000000000e4"
+      ]
+    },
+    {
+      "db": "main",
+      "sql": "INSERT INTO \"groups\" SELECT * FROM \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "main",
+      "sql": "DROP TABLE \"p4d376_reach_clone\"",
+      "params": []
+    },
+    {
+      "db": "mount",
+      "sql": "INSERT INTO \"group_doc_mount_links\" (\"id\", \"groupId\", \"mountPointId\", \"createdAt\", \"updatedAt\") VALUES (?, ?, ?, ?, ?)",
+      "params": [
+        "f8376000-0000-4000-8000-0000000000a1",
+        "d8376000-0000-4000-8000-0000000000e1",
+        "@vault:c8376000-0000-4000-8000-00000000000c",
+        "2026-11-07T00:00:00.000Z",
+        "2026-11-07T00:00:00.000Z"
+      ]
+    }
+  ],
+  "pure": {
+    "orderArms": [
+      {
+        "id": "order_with_participants",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "includeParticipants": true
+      },
+      {
+        "id": "order_without_participants",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "includeParticipants": false
+      },
+      {
+        "id": "order_empty",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [],
+          "groupMountPointIds": [],
+          "projectMountPointIds": [],
+          "globalMountPointId": null
+        },
+        "includeParticipants": true
+      },
+      {
+        "id": "order_cast_pool",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [
+            "v1",
+            "v2"
+          ],
+          "groupMountPointIds": [
+            "g1"
+          ],
+          "projectMountPointIds": [
+            "po"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "includeParticipants": true
+      }
+    ],
+    "bucketArms": [
+      {
+        "id": "bucket_all",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "all",
+        "participantsAsCharacter": false
+      },
+      {
+        "id": "bucket_all_pac",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [
+            "v1",
+            "v2"
+          ],
+          "groupMountPointIds": [
+            "g1"
+          ],
+          "projectMountPointIds": [
+            "po"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "all",
+        "participantsAsCharacter": true
+      },
+      {
+        "id": "bucket_character",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "character",
+        "participantsAsCharacter": false
+      },
+      {
+        "id": "bucket_character_pac",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [
+            "v1",
+            "v2"
+          ],
+          "groupMountPointIds": [
+            "g1"
+          ],
+          "projectMountPointIds": [
+            "po"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "character",
+        "participantsAsCharacter": true
+      },
+      {
+        "id": "bucket_group",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "group",
+        "participantsAsCharacter": false
+      },
+      {
+        "id": "bucket_group_pac",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [
+            "v1",
+            "v2"
+          ],
+          "groupMountPointIds": [
+            "g1"
+          ],
+          "projectMountPointIds": [
+            "po"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "group",
+        "participantsAsCharacter": true
+      },
+      {
+        "id": "bucket_project",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "project",
+        "participantsAsCharacter": false
+      },
+      {
+        "id": "bucket_project_pac",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [
+            "v1",
+            "v2"
+          ],
+          "groupMountPointIds": [
+            "g1"
+          ],
+          "projectMountPointIds": [
+            "po"
+          ],
+          "globalMountPointId": "gen"
+        },
+        "scope": "project",
+        "participantsAsCharacter": true
+      },
+      {
+        "id": "bucket_empty_participants_pac",
+        "pool": {
+          "characterMountPointId": null,
+          "participantMountPointIds": [],
+          "groupMountPointIds": [],
+          "projectMountPointIds": [],
+          "globalMountPointId": null
+        },
+        "scope": "all",
+        "participantsAsCharacter": true
+      },
+      {
+        "id": "bucket_default_scope",
+        "pool": {
+          "characterMountPointId": "c",
+          "participantMountPointIds": [
+            "p1",
+            "c",
+            "p2"
+          ],
+          "groupMountPointIds": [
+            "g2",
+            "g1",
+            "p1"
+          ],
+          "projectMountPointIds": [
+            "po",
+            "pl",
+            "g1"
+          ],
+          "globalMountPointId": "gen"
+        }
+      }
+    ],
+    "originArms": [
+      {
+        "id": "origin_shared_store",
+        "groups": [
+          {
+            "group": {
+              "id": "ga",
+              "name": "A"
+            },
+            "mountPointIds": [
+              "m1",
+              "m2"
+            ]
+          },
+          {
+            "group": {
+              "id": "gb",
+              "name": "B"
+            },
+            "mountPointIds": [
+              "m2",
+              "m3"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "origin_empty",
+        "groups": []
+      }
+    ]
+  },
+  "ownerArms": [
+    {
+      "id": "general_read",
+      "scope": "general",
+      "ownerId": null,
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "General, no ensure"
+    },
+    {
+      "id": "general_ensure_swallow",
+      "scope": "general",
+      "ownerId": null,
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Scenarios",
+        "onFolderFailure": "swallow"
+      },
+      "context": "scenarios",
+      "note": "heals Scenarios/"
+    },
+    {
+      "id": "general_folder_failure_swallow",
+      "scope": "general",
+      "ownerId": null,
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Planted",
+        "onFolderFailure": "swallow"
+      },
+      "context": "scenarios",
+      "before": [
+        {
+          "db": "mount",
+          "sql": "CREATE TRIGGER \"p4d376_folder_fail\" BEFORE INSERT ON \"doc_mount_folders\" BEGIN SELECT RAISE(ABORT, 'planted folder failure'); END"
+        }
+      ],
+      "after": [
+        {
+          "db": "mount",
+          "sql": "DROP TRIGGER \"p4d376_folder_fail\""
+        }
+      ],
+      "note": "the WARN; the store answered"
+    },
+    {
+      "id": "general_folder_failure_throw",
+      "scope": "general",
+      "ownerId": null,
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Planted",
+        "onFolderFailure": "throw"
+      },
+      "before": [
+        {
+          "db": "mount",
+          "sql": "CREATE TRIGGER \"p4d376_folder_fail\" BEFORE INSERT ON \"doc_mount_folders\" BEGIN SELECT RAISE(ABORT, 'planted folder failure'); END"
+        }
+      ],
+      "after": [
+        {
+          "db": "mount",
+          "sql": "DROP TRIGGER \"p4d376_folder_fail\""
+        }
+      ],
+      "note": "the WARN without context; rethrown"
+    },
+    {
+      "id": "general_unprovisioned",
+      "scope": "general",
+      "ownerId": null,
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "before": [
+        {
+          "db": "main",
+          "sql": "DELETE FROM \"instance_settings\" WHERE \"key\" = 'generalMountPointId'"
+        }
+      ],
+      "after": [
+        {
+          "db": "main",
+          "sql": "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('generalMountPointId', 'e8000000-0000-4000-8000-0000000000a1')"
+        }
+      ],
+      "note": "null"
+    },
+    {
+      "id": "general_ignores_id",
+      "scope": "general",
+      "ownerId": "anything",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "an id is ignored"
+    },
+    {
+      "id": "character_live",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000a",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "the vault, the raw row"
+    },
+    {
+      "id": "character_empty_id",
+      "scope": "character",
+      "ownerId": "",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null"
+    },
+    {
+      "id": "character_wrong_user",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000a",
+      "userId": "a0000000-0000-4000-8000-0000000000ff",
+      "archived": "allow",
+      "note": "null"
+    },
+    {
+      "id": "character_archived_allow",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000b",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "an archived vault still resolves"
+    },
+    {
+      "id": "character_archived_refuse",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000b",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "refuse",
+      "context": "scenarios",
+      "note": "null + DEBUG"
+    },
+    {
+      "id": "character_archived_refuse_no_context",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000b",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "refuse",
+      "note": "the DEBUG without context"
+    },
+    {
+      "id": "character_vaultless",
+      "scope": "character",
+      "ownerId": "c8376000-0000-4000-8000-0000000000d0",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null"
+    },
+    {
+      "id": "character_missing",
+      "scope": "character",
+      "ownerId": "c8376000-0000-4000-8000-0000000000ff",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null"
+    },
+    {
+      "id": "character_ensure_ignored",
+      "scope": "character",
+      "ownerId": "c8000000-0000-4000-8000-00000000000a",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Scenarios",
+        "onFolderFailure": "throw"
+      },
+      "note": "ensure never provisions a vault; nor heals"
+    },
+    {
+      "id": "project_official",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000001",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "the official store, the raw name"
+    },
+    {
+      "id": "project_no_store_read",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000006",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null without ensure — a read never provisions"
+    },
+    {
+      "id": "project_no_store_ensure",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000006",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Scenarios",
+        "onFolderFailure": "throw"
+      },
+      "context": "scenarios",
+      "note": "minted store + folder"
+    },
+    {
+      "id": "project_no_store_after_ensure",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000006",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "now resolves without ensure"
+    },
+    {
+      "id": "project_missing",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-0000000000ff",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null"
+    },
+    {
+      "id": "project_corrupt_row",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000007",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "R-F: raw read refuses the BLOB name → null"
+    },
+    {
+      "id": "project_corrupt_row_ensure",
+      "scope": "project",
+      "ownerId": "d8376000-0000-4000-8000-000000000007",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Scenarios",
+        "onFolderFailure": "swallow"
+      },
+      "note": "R-F: still null"
+    },
+    {
+      "id": "group_official",
+      "scope": "group",
+      "ownerId": "d8000000-0000-4000-8000-000000000001",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "the official store"
+    },
+    {
+      "id": "group_no_store_read",
+      "scope": "group",
+      "ownerId": "d8376000-0000-4000-8000-0000000000e3",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "null — a read never provisions"
+    },
+    {
+      "id": "group_no_store_ensure",
+      "scope": "group",
+      "ownerId": "d8376000-0000-4000-8000-0000000000e3",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Knowledge",
+        "onFolderFailure": "swallow"
+      },
+      "note": "minted 'Group Files: Storeless Guild' + Knowledge/"
+    },
+    {
+      "id": "group_corrupt_row",
+      "scope": "group",
+      "ownerId": "d8376000-0000-4000-8000-0000000000e4",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "note": "R-F: null"
+    },
+    {
+      "id": "group_folder_failure_throw",
+      "scope": "group",
+      "ownerId": "d8000000-0000-4000-8000-000000000001",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "archived": "allow",
+      "ensure": {
+        "folder": "Planted",
+        "onFolderFailure": "throw"
+      },
+      "context": "wardrobe",
+      "before": [
+        {
+          "db": "mount",
+          "sql": "CREATE TRIGGER \"p4d376_folder_fail\" BEFORE INSERT ON \"doc_mount_folders\" BEGIN SELECT RAISE(ABORT, 'planted folder failure'); END"
+        }
+      ],
+      "after": [
+        {
+          "db": "mount",
+          "sql": "DROP TRIGGER \"p4d376_folder_fail\""
+        }
+      ],
+      "note": "the existing store; the folder WARN; rethrown"
+    }
+  ],
+  "readWayArms": [
+    {
+      "id": "rf_project_raw",
+      "collection": "projects",
+      "way": "raw",
+      "ownerId": "d8376000-0000-4000-8000-000000000007"
+    },
+    {
+      "id": "rf_project_hydrated",
+      "collection": "projects",
+      "way": "hydrated",
+      "ownerId": "d8376000-0000-4000-8000-000000000007",
+      "note": "RECORDED (HYDRATED_OWNER_ROW_UNVALIDATED): v4 findById = _findById + overlay, null after the two repository lines; v5 hydrated repositories do not hold the slim row to the schema"
+    },
+    {
+      "id": "rf_group_raw",
+      "collection": "groups",
+      "way": "raw",
+      "ownerId": "d8376000-0000-4000-8000-0000000000e4"
+    },
+    {
+      "id": "rf_group_hydrated",
+      "collection": "groups",
+      "way": "hydrated",
+      "ownerId": "d8376000-0000-4000-8000-0000000000e4",
+      "note": "RECORDED (HYDRATED_OWNER_ROW_UNVALIDATED): v4 findById = _findById + overlay, null after the two repository lines; v5 hydrated repositories do not hold the slim row to the schema"
+    }
+  ],
+  "classifyArms": [
+    {
+      "id": "classify_general",
+      "mountPointId": "e8000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "id": "classify_live_vault",
+      "mountPointId": "@vault:c8000000-0000-4000-8000-00000000000a"
+    },
+    {
+      "id": "classify_archived_vault",
+      "mountPointId": "@vault:c8000000-0000-4000-8000-00000000000b"
+    },
+    {
+      "id": "classify_project_official",
+      "mountPointId": "@projectOfficial:d8376000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "classify_group_official",
+      "mountPointId": "e8000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "id": "classify_group_linked_only",
+      "mountPointId": "e8000000-0000-4000-8000-0000000000f2"
+    },
+    {
+      "id": "classify_project_linked_only",
+      "mountPointId": "e8000000-0000-4000-8000-0000000000f3"
+    },
+    {
+      "id": "classify_unknown",
+      "mountPointId": "e8376000-0000-4000-8000-0000000000ff"
+    }
+  ],
+  "castGroupArms": [
+    {
+      "id": "cast_groups_named_first",
+      "characterIds": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": [
+        "d8376000-0000-4000-8000-0000000000e1"
+      ]
+    },
+    {
+      "id": "cast_groups_empty_and_duplicate_ids",
+      "characterIds": [
+        "c8000000-0000-4000-8000-00000000000a",
+        "",
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": [
+        "",
+        "d8000000-0000-4000-8000-000000000001",
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "id": "cast_groups_shared_store",
+      "characterIds": [
+        "c8376000-0000-4000-8000-00000000000c",
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": [],
+      "note": "Cora's G-DIS stores (her vault among them), then Ada's G1 — cast order, first claim kept"
+    },
+    {
+      "id": "cast_groups_nothing",
+      "characterIds": [],
+      "groupIds": []
+    }
+  ],
+  "castPoolArms": [
+    {
+      "id": "cast_pool_mixed",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": "d8376000-0000-4000-8000-000000000003",
+      "characterIds": [
+        "c8000000-0000-4000-8000-00000000000a",
+        "c8000000-0000-4000-8000-00000000000b",
+        "c8376000-0000-4000-8000-0000000000d1",
+        "c8376000-0000-4000-8000-0000000000d0"
+      ],
+      "groupIds": [],
+      "note": "Ada live with a vault; Bram archived (DEBUG); Otto another user's; Vi live and vaultless"
+    },
+    {
+      "id": "cast_pool_invalid_userless_row",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": null,
+      "characterIds": [
+        "c8376000-0000-4000-8000-0000000000d2"
+      ],
+      "groupIds": [],
+      "note": "RECORDED (RAW_CHARACTER_ROW_UNVALIDATED): a userId '' row fails v4's CharacterSchema (UUIDSchema), so v4's findByIdRaw answers null and the member is skipped — v4's 'a userless row is ADMITTED' branch is unreachable; v5's raw character read does not validate and admits her"
+    },
+    {
+      "id": "cast_pool_vault_is_group_store",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": null,
+      "characterIds": [
+        "c8376000-0000-4000-8000-00000000000c",
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": []
+    },
+    {
+      "id": "cast_pool_raw_named_group_count",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": "d8376000-0000-4000-8000-000000000001",
+      "characterIds": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": [
+        "d8000000-0000-4000-8000-000000000001",
+        "",
+        "d8000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "id": "cast_pool_general_absent",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": null,
+      "characterIds": [
+        "c8000000-0000-4000-8000-00000000000a"
+      ],
+      "groupIds": [],
+      "before": [
+        {
+          "db": "main",
+          "sql": "DELETE FROM \"instance_settings\" WHERE \"key\" = 'generalMountPointId'"
+        }
+      ],
+      "after": [
+        {
+          "db": "main",
+          "sql": "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('generalMountPointId', 'e8000000-0000-4000-8000-0000000000a1')"
+        }
+      ]
+    },
+    {
+      "id": "cast_pool_empty",
+      "userId": "a0000000-0000-4000-8000-000000000001",
+      "projectId": null,
+      "characterIds": [],
+      "groupIds": []
+    }
+  ]
+}

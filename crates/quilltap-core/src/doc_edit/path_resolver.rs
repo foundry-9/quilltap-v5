@@ -27,13 +27,13 @@ use serde::Serialize;
 
 use super::DocEditScope;
 use crate::db::doc_mount_points::DocMountPointsRepository;
+// === P4.D376 === (`roster_gated_project_id` moved inside the pool — ruling L-4)
 use crate::db::tiered_mount_pool::{
-    flatten_tier_pool, resolve_tiered_mount_pool, FlattenOptions, TierContext, TierResolveOptions,
-    TieredMountPool,
+    flatten_tier_pool, resolve_tiered_mount_pool, Enabled, FlattenOptions, Roster, TierContext,
+    TierResolveOptions, TieredMountPool,
 };
-use crate::project_roster_access::{
-    project_roster_admits, roster_gated_project_id, PROJECT_ROSTER_REFUSAL,
-};
+use crate::project_roster_access::{project_roster_admits, PROJECT_ROSTER_REFUSAL};
+// === end P4.D376 ===
 
 /// Reserved `mount_point` token meaning "the acting character's own vault"
 /// (v4 `SELF_VAULT_TOKEN`).
@@ -457,26 +457,15 @@ pub(crate) fn collect_accessible_mount_point_ids(
     // character still goes INTO the pool so her group stores resolve — that is
     // the whole point of expressing this as a subtraction (v4 bug 152).
     //
-    // The project tier is roster-gated: a character off the project's roster
-    // sees no project-linked stores (see `crate::project_roster_access`; v4
-    // `9753d0eb2`). Neither the operator arm nor the pre-built-pool arm above is
-    // gated — v4 gates only this one.
+    // === P4.D376 ===
+    // The project tier is roster-gated (`roster: 'gated'`): a character off the
+    // project's roster sees no project stores (`crate::project_roster_access`).
+    // Since v4 `0c47f4539` the gate and its DEBUG live inside the pool. Neither
+    // the operator arm nor the pre-built-pool arm above is gated — v4 gates only
+    // this one.
     let vaults_visible = !context.hide_character_vaults;
-    let project_id = roster_gated_project_id(
-        main,
-        mount,
-        context.project_id.as_deref(),
-        context.character_id.as_deref(),
-    );
-    // v4 `if (context.projectId && !projectId)` — JS truthiness on the context's
-    // project (an empty string is no project and logs nothing).
-    if context.project_id.as_deref().is_some_and(|p| !p.is_empty()) && project_id.is_none() {
-        tracing::debug!(
-            projectId = %context.project_id.as_deref().unwrap_or_default(),
-            characterId = %context.character_id.as_deref().unwrap_or_default(),
-            "Path resolver: character off project roster — project tier withheld"
-        );
-    }
+    let project_id = context.project_id.clone();
+    // === end P4.D376 ===
     let pool = resolve_tiered_mount_pool(
         main,
         mount,
@@ -490,10 +479,12 @@ pub(crate) fn collect_accessible_mount_point_ids(
             project_id,
             ..Default::default()
         },
+        // === P4.D376 ===
         &TierResolveOptions {
-            require_ownership: false,
             include_participants: vaults_visible,
+            ..TierResolveOptions::new(Roster::Gated, Enabled::Ignore)
         },
+        // === end P4.D376 ===
     );
     flatten_tier_pool(
         &pool,

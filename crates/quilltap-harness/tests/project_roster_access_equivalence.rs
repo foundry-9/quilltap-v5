@@ -296,6 +296,8 @@ const ROOT_TARGETS: &[&str] = &[
     "quilltap_core::project_roster_access",
     "quilltap_core::wearable_pool",
     "quilltap::db",
+    // P4.D376: the pool's roster DEBUG (v4's ROOT logger, `0c47f4539`).
+    "quilltap_core::db::tiered_mount_pool",
 ];
 /// The ROOT-logger lines the gate emits (the oracle records exactly these).
 const ROOT_MESSAGES: &[&str] = &[
@@ -304,6 +306,9 @@ const ROOT_MESSAGES: &[&str] = &[
     "[WearablePool] Project lookup for chat failed",
     "Error finding entity by ID",
     "Error checking character participation",
+    // P4.D376 (v4 `0c47f4539`): the roster gate moved INSIDE the pool — this
+    // DEBUG replaces the path resolver's own, and is NEW on the search arm.
+    "Character off project roster — project tier withheld",
 ];
 
 /// `(src, level, message, sorted (field, value) pairs)`.

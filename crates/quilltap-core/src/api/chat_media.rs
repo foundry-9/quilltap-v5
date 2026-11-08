@@ -597,36 +597,34 @@ pub fn chat_group_stores(db: &Db, chat_id: &str) -> Response {
         let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
             return Ok(None);
         };
-        // Insertion-ordered dedupe (v4's Set iterates insertion order).
-        let mut mount_ids: Vec<String> = Vec::new();
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        if let Some(participants) = chat.get("participants").and_then(Value::as_array) {
-            for p in participants {
-                if p.get("type").and_then(Value::as_str) != Some("CHARACTER") {
-                    continue;
-                }
-                let Some(cid) = p
-                    .get("characterId")
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                else {
-                    continue;
-                };
-                if p.get("controlledBy").and_then(Value::as_str) != Some("user") {
-                    continue;
-                }
-                if p.get("status").and_then(Value::as_str) == Some("removed") {
-                    continue;
-                }
-                for id in crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character(
-                    main, mount, cid,
-                ) {
-                    if seen.insert(id.clone()) {
-                        mount_ids.push(id);
-                    }
-                }
-            }
-        }
+        // === P4.D376 ===
+        // The group tier of the cast this picker serves: the user-controlled
+        // character participants (the persona's groups), through the shared
+        // walk (v4 `0c47f4539`: `castGroupMounts`, then its DEBUG, logged
+        // unconditionally — a persona-less chat logs zero counts).
+        let persona_ids: Vec<String> = chat
+            .get("participants")
+            .and_then(Value::as_array)
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+                    .filter(|p| p.get("controlledBy").and_then(Value::as_str) == Some("user"))
+                    .filter(|p| p.get("status").and_then(Value::as_str) != Some("removed"))
+                    .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+                    .filter(|c| !c.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let mount_ids = crate::db::reach::cast_group_mounts(main, mount, &persona_ids, &[]);
+        tracing::debug!(
+            chatId = %chat_id_owned,
+            personaCount = persona_ids.len(),
+            mountCount = mount_ids.len(),
+            "[Chats v1] Resolved persona group stores"
+        );
+        // === end P4.D376 ===
 
         let points = DocMountPointsRepository::new(mount);
         let mut stores: Vec<Value> = Vec::new();

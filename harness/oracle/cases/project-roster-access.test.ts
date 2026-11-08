@@ -95,6 +95,10 @@ const ROOT_MESSAGES = new Set([
   '[WearablePool] Project lookup for chat failed',
   'Error finding entity by ID',
   'Error checking character participation',
+  // P4.D376 (v4 `0c47f4539`): the roster gate moved INSIDE the pool, whose
+  // DEBUG replaces the path resolver's own `Path resolver: character off
+  // project roster — project tier withheld` (and is NEW on the search arm).
+  'Character off project roster — project tier withheld',
 ]);
 
 async function main(): Promise<void> {

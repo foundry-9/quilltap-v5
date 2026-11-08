@@ -19,6 +19,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/documents-routes.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/documents-web.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/documents-reach.json" "$TMPO/fixtures/"   # P4.D376
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_DOC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/documents-main.db \
  *   QT_FIXTURE_DOC_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/documents-mount.db \
@@ -107,6 +108,9 @@ function applyMocks(spec: Spec): void {
 interface CaseSpec {
   name: string;
   run: (ctx: RunCtx) => Promise<{ status: number; body: unknown; tables?: unknown }>;
+  // === P4.D376 === SQL applied to the per-case COPY before the database opens.
+  plants?: Array<{ db: 'main' | 'mount'; sql: string }>;
+  // === end P4.D376 ===
 }
 
 interface RunCtx {
@@ -161,6 +165,20 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  // === P4.D376 ===
+  if (c.plants) {
+    const Database = require(
+      require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+    );
+    const hex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+    for (const [db, path] of [['main', mainWork], ['mount', mountWork]] as const) {
+      const conn = new Database(path);
+      conn.pragma(`key = "x'${hex}'"`);
+      for (const p of c.plants.filter((x) => x.db === db)) conn.exec(p.sql);
+      conn.close();
+    }
+  }
+  // === end P4.D376 ===
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
@@ -219,6 +237,11 @@ async function main(): Promise<void> {
 
   const GEN = 'Quilltap General';
   const SB = 'http://localhost/api/v1/documents';
+  // === P4.D376 ===
+  const reachSpec = JSON.parse(
+    fs.readFileSync(join(here, '..', 'fixtures', 'documents-reach.json'), 'utf8'),
+  ) as { chatId: string; plants: Array<{ db: 'main' | 'mount'; sql: string }> };
+  // === end P4.D376 ===
 
   const cases: CaseSpec[] = [
     // ── Chat-scoped reads ──────────────────────────────────────────────────
@@ -443,6 +466,34 @@ async function main(): Promise<void> {
         return { ...r, tables: await dumpChatDocs(CHAT_A) };
       },
     },
+    // === P4.D376 === (v4 `0c47f4539`): the accessible stores on the cast pool
+    // and the persona group stores on `castGroupMounts`, over the
+    // `documents-reach.json` plants. The comparand (Rust side) is `stores`
+    // minus Quilltap General + `projectLibrary` (General's hold-back is
+    // P4.D380's). The context carries v4's session `user`.
+    {
+      name: 'p4d376_accessible_stores_cast_pool',
+      plants: reachSpec.plants,
+      run: async ({ chatActions, context }) =>
+        respond(
+          await chatActions.handleAccessibleStores(
+            reachSpec.chatId,
+            { ...context, user: { id: spec.userId } },
+            {},
+          ),
+        ),
+    },
+    {
+      name: 'p4d376_group_stores_persona',
+      plants: reachSpec.plants,
+      run: async ({ context }) => {
+        const groupStores = (await import('@/app/api/v1/chats/[id]/actions/group-stores')) as unknown as {
+          handleGetGroupStores: (id: string, ctx: unknown) => Promise<unknown>;
+        };
+        return respond(await groupStores.handleGetGroupStores(reachSpec.chatId, context));
+      },
+    },
+    // === end P4.D376 ===
     // ── Standalone surface ─────────────────────────────────────────────────
     {
       name: 'standalone_stores',

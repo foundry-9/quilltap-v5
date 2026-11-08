@@ -1622,10 +1622,13 @@ where
         .filter(|v| !v.is_null());
     // Shared wardrobe tiers in scope for this chat's project — General is always
     // folded in by the pool read; these add the project stores.
+    // === P4.D376 ===
     let project_mount_point_ids = crate::tools::wardrobe_shared::resolve_project_mount_point_ids(
+        main,
         mount,
         req.project_id.as_deref(),
     );
+    // === end P4.D376 ===
     let outfit_ctx = OutfitContext {
         user_id,
         project_mount_point_ids: &project_mount_point_ids,

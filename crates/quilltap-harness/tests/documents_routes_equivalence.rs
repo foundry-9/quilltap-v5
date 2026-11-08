@@ -14,6 +14,7 @@
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
 //!   cp "$V5W/harness/oracle/cases/documents-routes.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/documents-web.json" "$TMPO/fixtures/"
+//!   cp "$V5W/harness/oracle/fixtures/documents-reach.json" "$TMPO/fixtures/"   # P4.D376
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_DOC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/documents-main.db \
 //!   QT_FIXTURE_DOC_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/documents-mount.db \
@@ -557,6 +558,144 @@ fn documents_routes_match_oracle() {
         ));
         check("standalone_delete", &r, None, &mut failed);
     }
+
+    // === P4.D376 === (v4 `0c47f4539`): the accessible stores on the cast pool
+    // and the persona group stores on `cast_group_mounts`, over the
+    // `documents-reach.json` plants (applied to the per-case COPY before the
+    // database opens, as the oracle does). The accessible-stores comparand is
+    // `stores` MINUS Quilltap General plus `projectLibrary` — General's
+    // hold-back (`generalLibrary`) is P4.D380's, red on both sides until then.
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct ReachSpec {
+            chat_id: String,
+            general_mount_point_id: String,
+            plants: Vec<ReachPlant>,
+        }
+        #[derive(Deserialize)]
+        struct ReachPlant {
+            db: String,
+            sql: String,
+        }
+        let reach: ReachSpec = serde_json::from_str(
+            &std::fs::read_to_string(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../harness/oracle/fixtures/documents-reach.json"),
+            )
+            .unwrap(),
+        )
+        .expect("documents-reach.json");
+        let planted = |tag: &str| -> ScratchDb {
+            let scratch_dir = tempfile::Builder::new()
+                .prefix(&format!("qt-doc-routes-{tag}-"))
+                .tempdir()
+                .expect("tempdir");
+            let main = scratch_dir.path().join("main.db");
+            let mount = scratch_dir.path().join("mount.db");
+            std::fs::copy(fixtures_dir().join("documents-main.db"), &main).unwrap();
+            std::fs::copy(fixtures_dir().join("documents-mount.db"), &mount).unwrap();
+            for (db, path) in [("main", &main), ("mount", &mount)] {
+                let w = quilltap_core::db::Writer::open_writable(path, &spec.test_pepper_base64)
+                    .expect("open plant copy");
+                for p in reach.plants.iter().filter(|p| p.db == db) {
+                    w.connection()
+                        .execute_batch(&p.sql)
+                        .unwrap_or_else(|e| panic!("plant `{}`: {e}", p.sql));
+                }
+            }
+            let db = Db::open(
+                DbPaths {
+                    main,
+                    mount_index: Some(mount),
+                    llm_logs: None,
+                },
+                &spec.test_pepper_base64,
+            )
+            .expect("open db");
+            ScratchDb {
+                db,
+                _dir: scratch_dir,
+            }
+        };
+        let general = reach.general_mount_point_id.clone();
+        let comparand = |body: &Value| -> Value {
+            let stores: Vec<Value> = body["stores"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|s| s["mountPointId"].as_str() != Some(general.as_str()))
+                .collect();
+            json!({ "stores": stores, "projectLibrary": body["projectLibrary"] })
+        };
+        let mut reach_failed: Vec<String> = Vec::new();
+
+        let db = planted("p4d376-acc");
+        let r = documents::chat_accessible_stores(&db, &reach.chat_id, false);
+        let rec = &oracle["p4d376_accessible_stores_cast_pool"];
+        let (got, want) = (comparand(&response_data(&r)), comparand(&rec["body"]));
+        if rec["status"] != json!(200) || norm(&got) != norm(&want) {
+            eprintln!(
+                "[p4d376_accessible_stores_cast_pool] MISMATCH (v4 status {}):\n{}",
+                rec["status"],
+                first_diff(&norm(&got), &norm(&want))
+            );
+            reach_failed.push("p4d376_accessible_stores_cast_pool".into());
+        }
+        // The tier ORDER is the point (v5 had walked a `HashSet`): bytes, not
+        // a sorted compare.
+        if serde_json::to_string(&got["stores"]).unwrap()
+            != serde_json::to_string(&want["stores"]).unwrap()
+        {
+            reach_failed.push("p4d376_accessible_stores_cast_pool (order)".into());
+        }
+
+        let db = planted("p4d376-gs");
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_media::chat_group_stores(&db, &reach.chat_id)
+        });
+        let rec = &oracle["p4d376_group_stores_persona"];
+        let got = serde_json::to_value(&r).unwrap()["data"].clone();
+        if rec["status"] != json!(200)
+            || serde_json::to_string(&got).unwrap() != serde_json::to_string(&rec["body"]).unwrap()
+        {
+            eprintln!(
+                "[p4d376_group_stores_persona] MISMATCH:\n  v4: {}\n  v5: {got}",
+                rec["body"]
+            );
+            reach_failed.push("p4d376_group_stores_persona".into());
+        }
+        // v4's NEW DEBUG (`group-stores.ts:34`), a v5 literal over v4's field
+        // names (the oracle records no lines): one persona, two group stores.
+        let want_line = format!(
+            "DEBUG quilltap_core::api::chat_media [Chats v1] Resolved persona group stores chatId={} personaCount=1 mountCount=2",
+            reach.chat_id
+        );
+        if !lines.iter().any(|l| l == &want_line) {
+            eprintln!("[p4d376_group_stores_persona] DEBUG missing: {lines:#?}");
+            reach_failed.push("p4d376_group_stores_persona (DEBUG)".into());
+        }
+        // The silence leg is NOT silence: v4 logs unconditionally, so a chat
+        // with no user-controlled character logs zero counts (CHAT_A's one
+        // participant is LLM-controlled).
+        let db = fresh_db(&spec, "p4d376-gs0");
+        let (_, lines) = quilltap_core::test_support::captured_with(|| {
+            quilltap_core::api::chat_media::chat_group_stores(&db, CHAT_A)
+        });
+        let want_line = format!(
+            "DEBUG quilltap_core::api::chat_media [Chats v1] Resolved persona group stores chatId={CHAT_A} personaCount=0 mountCount=0"
+        );
+        if !lines.iter().any(|l| l == &want_line) {
+            eprintln!("[p4d376 persona-less DEBUG] missing: {lines:#?}");
+            reach_failed.push("p4d376 persona-less DEBUG".into());
+        }
+        assert!(
+            reach_failed.is_empty(),
+            "P4.D376 accessible / persona store rows differ: {reach_failed:?}"
+        );
+    }
+    // === end P4.D376 ===
 
     assert!(failed.is_empty(), "documents route mismatches: {failed:?}");
 }

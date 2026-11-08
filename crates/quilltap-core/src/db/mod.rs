@@ -150,6 +150,7 @@ pub mod project_store_naming;
 pub mod projects;
 pub mod prompt_templates;
 pub mod provider_models;
+pub mod reach; // P4.D376 — v4 `lib/mount-index/reach.ts`
 pub mod regexp_function; // P4.D331
 pub mod roleplay_templates;
 pub mod runtime;

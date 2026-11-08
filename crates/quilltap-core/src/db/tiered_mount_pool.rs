@@ -10,7 +10,8 @@
 //!   3. **group** — the official + linked stores of every group the RESPONDING
 //!      character is a member of (per-character, NOT per-chat — a character never
 //!      gains a co-participant's group stores)
-//!   4. **project** — every store linked to the active chat's project
+//!   4. **project** — the active chat's project's official store, then every
+//!      store linked to it
 //!   5. **global** — the singleton "Quilltap General" mount
 //!
 //! Knowledge injection, the scriptorium search tool, wardrobe resolution, and the
@@ -46,10 +47,11 @@
 use rusqlite::Connection;
 use serde::Serialize;
 
+use super::doc_mount_points::DocMountPointsRepository;
 use super::group_character_members::GroupCharacterMembersRepository;
 use super::group_doc_mount_links::GroupDocMountLinksRepository;
 use super::project_doc_mount_links::ProjectDocMountLinksRepository;
-use super::{characters_read, groups, instance_settings};
+use super::{characters_read, chats_read, groups, instance_settings, projects};
 
 /// Which tier a given mount point belongs to within a resolved pool (v4
 /// `MountTier`).
@@ -83,14 +85,56 @@ pub struct TierContext {
     pub project_id: Option<String>,
 }
 
-/// Resolution options (v4 `TierResolveOptions`).
-#[derive(Debug, Clone, Copy, Default)]
+/// The project roster (`crate::project_roster_access`; v4 `TierResolveOptions.
+/// roster`, `0c47f4539`). `Gated`: a character off the project's roster gets no
+/// project tier — the character's own reach (doc tools, the scriptorium
+/// search). `Open`: the roster does not apply (the per-turn context build,
+/// custom tools and presets). No default: every caller states which it means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Roster {
+    Gated,
+    Open,
+}
+
+/// Disabled stores (v4 `TierResolveOptions.enabled`, `0c47f4539`). `Require`: a
+/// store whose mount point is disabled (General included) drops out of the
+/// pool. `Ignore`: the pool carries it and the caller decides. No default:
+/// every caller states which it means.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Enabled {
+    Require,
+    Ignore,
+}
+
+/// Resolution options (v4 `TierResolveOptions`). Deliberately NO `Default`
+/// (ruling R-A): `roster` and `enabled` are required, as v4's type makes them,
+/// so the compiler holds every caller to stating which it means. The two bools
+/// keep v4's `= false` destructuring defaults through [`TierResolveOptions::new`];
+/// a caller that needs one sets it by struct update over `new(…)`.
+#[derive(Debug, Clone, Copy)]
 pub struct TierResolveOptions {
+    /// The project roster gate on the project tier.
+    pub roster: Roster,
+    /// Whether disabled stores drop out of the pool.
+    pub enabled: Enabled,
     /// Gate the character vault on ownership: only admit it when the character's
     /// `userId` matches the context `user_id`. Off by default.
     pub require_ownership: bool,
     /// Resolve `character_ids` into the `participant` tier.
     pub include_participants: bool,
+}
+
+impl TierResolveOptions {
+    /// The two required options; `require_ownership` / `include_participants`
+    /// at v4's `false` defaults.
+    pub const fn new(roster: Roster, enabled: Enabled) -> Self {
+        Self {
+            roster,
+            enabled,
+            require_ownership: false,
+            include_participants: false,
+        }
+    }
 }
 
 /// A resolved, deduped pool (v4 `TieredMountPool`). Each mount appears in exactly
@@ -190,6 +234,88 @@ pub fn dedupe_tier_triple(triple: TierTriple) -> DedupedTiers {
         project_mount_point_ids,
         global_mount_point_id,
     }
+}
+
+/// v4 `resolveProjectMountPointIds(projectId)` (`0c47f4539`): just the project
+/// tier — the project's official store FIRST, then every other store linked to
+/// it, deduped. v4's *why*: the ONE definition of the project tier; every reach
+/// walk (the pools, the transfer probe, the picker, the knowledge searches)
+/// reads it from here. `[]` for a missing project id; a failed lookup costs only
+/// the part that failed. `main` reads the project row (RAW — only its
+/// `officialMountPointId` is wanted), `mount` reads `project_doc_mount_links`.
+///
+/// The official store comes first even when it is NOT linked (a restore, a
+/// hand-edited row, a project that linked stores before its official store was
+/// minted) — then it joins the tier it was never linked into (P4.D376 shift
+/// (a)).
+///
+/// **Measured reachability (P4.149, re-measured by P4.D376).** Both reads are
+/// fallback-mode `safeQuery`s in v4, so neither of the helper's two catches —
+/// WARN `Project official store lookup failed {projectId, error}` (NEW in
+/// `0c47f4539`) and WARN `Project mount lookup failed {projectId, error}` — can
+/// fire through v4's real code. The REACHABLE lines are the repository's:
+/// `projects.findByIdRaw` (`_findById`) VALIDATES the row and answers `null`
+/// after `Data validation failed` + `Error finding entity by ID {collection:
+/// projects, id}` (the official store alone is lost), and the base
+/// `findByFilter` answers `[]` after `Error finding entities by filter
+/// {collection: project_doc_mount_links}` (`findByProjectId`'s own
+/// `Error finding links by project ID` wraps that fallback and is unreachable
+/// too) — the official store SURVIVES (shift (t): v4 no longer answers `[]`
+/// on a failed links read). v5 logs exactly those repository lines through
+/// [`super::fallback`]; both WARNs are pinned NEGATIVE in
+/// `tiered_mount_pool_equivalence`.
+pub fn resolve_project_mount_point_ids(
+    main: &Connection,
+    mount: &Connection,
+    project_id: Option<&str>,
+) -> Vec<String> {
+    let Some(project_id) = project_id.filter(|s| !s.is_empty()) else {
+        return Vec::new();
+    };
+    let mut ids: Vec<String> = Vec::new();
+    if let Some(project) = projects::find_by_id_raw_or_none(main, project_id) {
+        if let Some(official) = project
+            .get("officialMountPointId")
+            .and_then(serde_json::Value::as_str)
+            .filter(|o| !o.is_empty())
+        {
+            ids.push(official.to_string());
+        }
+    }
+    for link in super::fallback::find_by_filter_or_empty("project_doc_mount_links", || {
+        ProjectDocMountLinksRepository::new(mount).find_by_project_id(project_id)
+    }) {
+        push_unique(&mut ids, link);
+    }
+    ids
+}
+
+/// v4 `resolveProjectMountPointIdsForChat(chatId)` — the project tier for a chat:
+/// load the chat, then [`resolve_project_mount_point_ids`] on its project. `[]`
+/// for a project-less chat or a failed lookup. `main` reads `chats` and the
+/// project row, `mount` reads `project_doc_mount_links`.
+///
+/// P4.149 (P4.D245 item 18): v4's `repos.chats.findById` is the fallback
+/// `_findById` — a failed read logs `Error finding entity by ID {collection:
+/// chats, id}` and answers `null` → `[]`; the helper's own `Project mount
+/// lookup for chat failed` catch is unreachable. v5 had swallowed the `Err`
+/// silently. (Moved here from `tools::wardrobe_shared` by P4.D376 — v4's home;
+/// that module re-exports both.)
+pub fn resolve_project_mount_point_ids_for_chat(
+    main: &Connection,
+    mount: &Connection,
+    chat_id: &str,
+) -> Vec<String> {
+    let Some(chat) = super::fallback::find_by_id_or_none("chats", chat_id, || {
+        chats_read::find_by_id(main, chat_id)
+    }) else {
+        return Vec::new();
+    };
+    resolve_project_mount_point_ids(
+        main,
+        mount,
+        chat.get("projectId").and_then(serde_json::Value::as_str),
+    )
 }
 
 /// Push `id` onto `list` only if not already present (insertion-ordered set).
@@ -303,7 +429,8 @@ pub struct GroupMounts {
 /// - **First-group credit:** a store linked to two of the character's groups
 ///   is credited to the FIRST only, so every mount appears exactly once across
 ///   the result.
-/// - **Dropped empty group:** a group left with no unclaimed store is dropped.
+/// - **Dropped empty group:** a group left with no unclaimed store is dropped
+///   unless `include_empty` ([`resolve_group_mounts_for_character_with`]).
 /// - `[]` for an empty id or no memberships.
 ///
 /// Both of v4's WARNs here — the per-group `Group store lookup failed
@@ -317,6 +444,32 @@ pub fn resolve_group_mounts_for_character(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
+) -> Vec<GroupMounts> {
+    resolve_group_mounts_for_character_with(
+        main,
+        mount,
+        character_id,
+        GroupMountsOptions::default(),
+    )
+}
+
+/// v4 `resolveGroupMountsForCharacter`'s options bag (`{ includeEmpty?:
+/// boolean } = {}`, `0c47f4539`). [`Default`] is v4's `{}`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct GroupMountsOptions {
+    /// Keep a group left with no unclaimed store (with `mount_point_ids: []`) —
+    /// a listing of the character's groups, not a walk.
+    pub include_empty: bool,
+}
+
+/// [`resolve_group_mounts_for_character`] with v4's options bag. P4.D376's
+/// lane-local call: a sibling fn rather than a new argument, so the five
+/// existing callers (in sibling lanes' files) keep v4's `{}` untouched.
+pub fn resolve_group_mounts_for_character_with(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+    opts: GroupMountsOptions,
 ) -> Vec<GroupMounts> {
     if character_id.is_empty() {
         return Vec::new();
@@ -338,7 +491,7 @@ pub fn resolve_group_mounts_for_character(
         for id in &mount_point_ids {
             claimed.insert(id.clone());
         }
-        if mount_point_ids.is_empty() {
+        if mount_point_ids.is_empty() && !opts.include_empty {
             continue;
         }
         result.push(GroupMounts {
@@ -406,13 +559,30 @@ pub fn resolve_tiered_mount_pool(
         None => Vec::new(),
     };
 
-    // 3. Project-linked stores.
-    let mut project_mount_point_ids: Vec<String> = Vec::new();
-    if let Some(pid) = &ctx.project_id {
-        if let Ok(links) = ProjectDocMountLinksRepository::new(mount).find_by_project_id(pid) {
-            project_mount_point_ids = links;
+    // 3. Project stores — official first, then every linked store. Under
+    //    `Roster::Gated` a character off the project's roster gets none (v4
+    //    `0c47f4539` moved the gate INSIDE the walk; it used to wrap the
+    //    `projectId` at two call sites). The DEBUG is v4's ROOT-logger line,
+    //    `characterId` rendered as v4's `null` when absent; it runs on the
+    //    caller's thread (the pool is a read).
+    let mut project_id: Option<String> = ctx.project_id.clone().filter(|p| !p.is_empty());
+    if project_id.is_some() && opts.roster == Roster::Gated {
+        project_id = crate::project_roster_access::roster_gated_project_id(
+            main,
+            mount,
+            project_id.as_deref(),
+            ctx.character_id.as_deref(),
+        );
+        if project_id.is_none() {
+            tracing::debug!(
+                projectId = ctx.project_id.as_deref().unwrap_or("null"),
+                characterId = ctx.character_id.as_deref().unwrap_or("null"),
+                "Character off project roster — project tier withheld"
+            );
         }
     }
+    let project_mount_point_ids =
+        resolve_project_mount_point_ids(main, mount, project_id.as_deref());
 
     // 4. Quilltap General singleton (null during the pre-provisioning window).
     let global_mount_point_id = instance_settings::get_general_mount_point_id(main)
@@ -462,13 +632,92 @@ pub fn resolve_tiered_mount_pool(
         }
     }
 
-    TieredMountPool {
+    let pool = TieredMountPool {
         character_mount_point_id: deduped.character_mount_point_id,
         participant_mount_point_ids,
         group_mount_point_ids: deduped.group_mount_point_ids,
         project_mount_point_ids: deduped.project_mount_point_ids,
         global_mount_point_id: deduped.global_mount_point_id,
+    };
+    match opts.enabled {
+        Enabled::Require => drop_disabled_mounts(mount, pool),
+        Enabled::Ignore => pool,
     }
+}
+
+/// v4's private `dropDisabledMounts(pool)` (`0c47f4539`): the pool without its
+/// disabled stores (General included). v4's *why*: a mount that cannot be read
+/// is treated as disabled — a store that cannot be looked up cannot be offered.
+///
+/// The SET of every id across the five tiers, each looked up once; `enabled`
+/// truthy keeps it. A missing row drops SILENTLY. v4's WARN `Mount lookup
+/// failed; store left out of the pool {mountPointId, error}` is UNREACHABLE:
+/// `docMountPoints.findById` is a fallback `safeQuery`, so a failed read logs
+/// the repository's `Error finding entity by ID {collection: doc_mount_points,
+/// id}` and answers `null` — which drops the store too. v5 logs that line
+/// through [`super::fallback`] (the WARN is pinned NEGATIVE). The five tiers
+/// are filtered in place (order kept; a disabled singleton is nulled), and
+/// DEBUG `Disabled stores left out of the pool {dropped}` is logged only when
+/// anything dropped.
+fn drop_disabled_mounts(mount: &Connection, pool: TieredMountPool) -> TieredMountPool {
+    // v4 `new Set([...])` — insertion-ordered; the singletons by JS truthiness.
+    let mut all: Vec<String> = Vec::new();
+    for id in pool
+        .character_mount_point_id
+        .iter()
+        .filter(|c| !c.is_empty())
+        .chain(&pool.participant_mount_point_ids)
+        .chain(&pool.group_mount_point_ids)
+        .chain(&pool.project_mount_point_ids)
+        .chain(pool.global_mount_point_id.iter().filter(|g| !g.is_empty()))
+    {
+        push_unique(&mut all, id.clone());
+    }
+    let repo = DocMountPointsRepository::new(mount);
+    let mut enabled: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for id in &all {
+        let row = super::fallback::find_by_id_or_none("doc_mount_points", id, || {
+            repo.find_full_json_by_id(id)
+        });
+        let on = row
+            .as_ref()
+            .and_then(|r| r.get("enabled"))
+            .is_some_and(|v| match v {
+                serde_json::Value::Bool(b) => *b,
+                serde_json::Value::Number(n) => n.as_f64().is_some_and(|f| f != 0.0),
+                serde_json::Value::String(s) => !s.is_empty(),
+                serde_json::Value::Null => false,
+                _ => true,
+            });
+        if on {
+            enabled.insert(id.clone());
+        }
+    }
+    let keep = |id: Option<String>| id.filter(|i| enabled.contains(i));
+    let dropped = all.len() - enabled.len();
+    let result = TieredMountPool {
+        character_mount_point_id: keep(pool.character_mount_point_id),
+        participant_mount_point_ids: pool
+            .participant_mount_point_ids
+            .into_iter()
+            .filter(|i| enabled.contains(i))
+            .collect(),
+        group_mount_point_ids: pool
+            .group_mount_point_ids
+            .into_iter()
+            .filter(|i| enabled.contains(i))
+            .collect(),
+        project_mount_point_ids: pool
+            .project_mount_point_ids
+            .into_iter()
+            .filter(|i| enabled.contains(i))
+            .collect(),
+        global_mount_point_id: keep(pool.global_mount_point_id),
+    };
+    if dropped > 0 {
+        tracing::debug!(dropped, "Disabled stores left out of the pool");
+    }
+    result
 }
 
 /// Which subset a [`flatten_tier_pool`] call selects (v4 `flattenTierPool`'s
