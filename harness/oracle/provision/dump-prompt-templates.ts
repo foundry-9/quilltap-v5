@@ -2,10 +2,10 @@
  * Data-module generator for the built-in prompt templates (P4.83).
  *
  * Emits `crates/quilltap-core/src/services/builtin_prompt_templates.json` — the
- * verbatim 21 "Sample Prompts" v4's `PromptTemplatesRepository.seedSamplePrompts()`
+ * verbatim "Sample Prompts" (22 at plugin 1.1.33, v4 `624d0d25c`) v4's `PromptTemplatesRepository.seedSamplePrompts()`
  * inserts on the first listing. The bytes come from v4's REAL plugin module
  * (`plugins/dist/qtap-plugin-default-system-prompts/index.js`, whose `loadPrompts()`
- * reads the 21 `prompts/*.md` files) fed through v4's REAL
+ * reads the `prompts/*.md` files) fed through v4's REAL
  * `systemPromptRegistry`, so there is no hand transcription of the (large,
  * whitespace-sensitive) prompt bodies — and, crucially, no re-derivation of the
  * registry's DISPLAY NAME, which is what the seeded row's `name` column carries.
@@ -14,9 +14,11 @@
  * `loadPromptsFromPlugin` computes
  *   `displayName = `${modelHint} ${category[0] + category.slice(1).toLowerCase()}``
  * and stores it as `LoadedSystemPrompt.name`; the seeder writes `prompt.name`.
- * So `MODERN_GENERAL.md` becomes the row **`MODERN General`**, and the registry
- * id (`default-system-prompts/MODERN_GENERAL`) is what the seed log's `promptId`
- * field carries. Both are emitted here.
+ * So `MODERN_ROLEPLAY.md` becomes the row **`MODERN Roleplay`**, and the registry
+ * id (`default-system-prompts/MODERN_ROLEPLAY`) is what the seed log's `promptId`
+ * field carried. Both are emitted here. (Until plugin 1.1.32 / v4 `d0201575a`
+ * the example was `MODERN_GENERAL.md` → `MODERN General`, now RETIRED and
+ * pruned by the seeder — P4.D373.)
  *
  * v5 has no plugin system and no `prompts/` directory, so this table IS the
  * catalogue: a v5-only instance seeds from it. A v4 commit that edits, adds or

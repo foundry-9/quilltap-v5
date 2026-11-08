@@ -356,27 +356,58 @@ struct UpdateInput {
 /// v4 wraps the whole seed in `safeQuery(..., 'Error seeding sample prompts',
 /// {}, undefined)` — a failure is logged and SWALLOWED, and the read proceeds.
 /// Reproduced.
+///
+/// P4.D373 (v4 `d0201575a`): the pass ends with `pruneRetiredBuiltIns`, whose
+/// DEBUG `Built-in prompt templates pruned` fires on EVERY template read in
+/// v4. ONE emission site, here, on the caller thread: from the writer's
+/// [`builtin_prompt_templates::PruneSummary`] after a write, or from the
+/// probe (`removed: 0`) when nothing is owed (the planner's R1, §R.11). No
+/// DEBUG when the probe or the write fails — v4's throw before the prune logs
+/// only `Error seeding sample prompts`.
 async fn seed_sample_prompts_if_needed(db: &Db) {
-    let needed = match db.read_main(builtin_prompt_templates::needs_seeding) {
-        Ok(n) => n,
+    let probe = match db.read_main(builtin_prompt_templates::needs_seeding) {
+        Ok(p) => p,
         Err(e) => {
             tracing::error!(target: LOG_TARGET, error = %e, "Error seeding sample prompts");
             return;
         }
     };
-    if !needed {
-        return;
-    }
-    let written = db
-        .write(|w| {
-            builtin_prompt_templates::seed_sample_prompts(w.main().connection(), &mut || {
-                uuid::Uuid::new_v4().to_string()
+    let summary = if probe.needed {
+        let written = db
+            .write(|w| {
+                builtin_prompt_templates::seed_sample_prompts(w.main().connection(), &mut || {
+                    uuid::Uuid::new_v4().to_string()
+                })
             })
-        })
-        .await;
-    if let Err(e) = written {
-        tracing::error!(target: LOG_TARGET, error = %e, "Error seeding sample prompts");
-    }
+            .await;
+        match written {
+            Ok(summary) => summary,
+            Err(e) => {
+                tracing::error!(target: LOG_TARGET, error = %e, "Error seeding sample prompts");
+                return;
+            }
+        }
+    } else {
+        let shipped_count = match builtin_prompt_templates::shipped_names() {
+            Ok(names) => names.len(),
+            Err(e) => {
+                tracing::error!(target: LOG_TARGET, error = %e, "Error seeding sample prompts");
+                return;
+            }
+        };
+        builtin_prompt_templates::PruneSummary {
+            built_in_count: probe.built_in_count,
+            shipped_count,
+            removed: 0,
+        }
+    };
+    tracing::debug!(
+        target: LOG_TARGET,
+        built_in_count = summary.built_in_count,
+        shipped_count = summary.shipped_count,
+        removed = summary.removed,
+        "Built-in prompt templates pruned"
+    );
 }
 
 // ── Wire shaping ────────────────────────────────────────────────────────────
@@ -562,6 +593,14 @@ pub async fn prompt_template_update(db: &Db, user_id: &str, id: &str, body: &Val
         return forbidden("Cannot update built-in templates");
     }
 
+    // P4.D373: v4 seeds inside EVERY `findById`, and the repository's
+    // `update` reads the row again (`findById`) before its write and `_update`
+    // re-reads it after — so a successful PUT runs the seed THREE times, and
+    // since `d0201575a` each run logs `Built-in prompt templates pruned`. The
+    // repository's own lines have no counterpart here (module doc); the seed
+    // passes do, at v4's two points.
+    seed_sample_prompts_if_needed(db).await;
+
     let now = clock::now_iso();
     let db_patch = PtUpdate {
         name: patch.name.clone(),
@@ -591,6 +630,8 @@ pub async fn prompt_template_update(db: &Db, user_id: &str, id: &str, body: &Val
             return internal("Failed to update template");
         }
     }
+    // v4 `_update`'s re-read (`findById`) — the third seed pass.
+    seed_sample_prompts_if_needed(db).await;
 
     tracing::info!(
         target: LOG_TARGET,
@@ -652,6 +693,10 @@ pub async fn prompt_template_delete(db: &Db, user_id: &str, id: &str) -> Respons
         );
         return forbidden("Cannot delete built-in templates");
     }
+
+    // P4.D373: v4's repository `delete` re-reads the row (`findById`, which
+    // seeds) before its write — the second seed pass of a successful DELETE.
+    seed_sample_prompts_if_needed(db).await;
 
     let target = id.to_string();
     let deleted = db

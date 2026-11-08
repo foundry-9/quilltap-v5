@@ -4,7 +4,7 @@
  *
  * A **clean provisioned instance** (v4's `initializeDatabase()` over an empty
  * scratch file: migrations run, no seeded content), because the point of the
- * family is what the FIRST list does — v4's `findAllForUser` lazily seeds the 21
+ * family is what the FIRST list does — v4's `findAllForUser` lazily seeds the 22
  * built-in "Sample Prompts" before it reads. A fixture that already carried them
  * could never measure that.
  *
@@ -56,8 +56,23 @@ const SPEC = {
   userCloneId: '5e800000-0000-4000-8000-00000000b003',
   /** Per-case: a plant that fails `PromptTemplateSchema` (101-code-point name). */
   invalidRowId: '5e800000-0000-4000-8000-00000000b004',
-  /** The catalogue name the stale/clone plants use. */
-  collidingName: 'MODERN General',
+  /**
+   * The catalogue name the stale/clone plants use. `MODERN Roleplay` since
+   * P4.D373 — v4 `d0201575a` RETIRED `MODERN General` (plugin 1.1.32), and the
+   * oracle refuses a colliding name the real registry no longer ships.
+   */
+  collidingName: 'MODERN Roleplay',
+  /**
+   * P4.D373 (v4 `d0201575a` `pruneRetiredBuiltIns`): the RETIRED name and the
+   * per-case built-in plants under it — one alone, one beside a USER copy of
+   * the same name, and a pair (inserted second-id-first, so rowid order is not
+   * id order) whose INFOs pin the prune's rowid order.
+   */
+  retiredName: 'MODERN General',
+  retiredContent: 'RETIRED — the MODERN General text plugin 1.1.31 shipped, before d0201575a retired it.',
+  retiredBuiltInId: '5e800000-0000-4000-8000-00000000b00c',
+  retiredUserCopyId: '5e800000-0000-4000-8000-00000000b00d',
+  retiredPairIds: ['5e800000-0000-4000-8000-00000000b00f', '5e800000-0000-4000-8000-00000000b00e'],
   // Until v4 `c3eefa752` this read "v4 never overwrites a sample prompt already
   // on file" — the seeder now refreshes it (P4.D237).
   staleContent: 'OLD CONTENT — a sample prompt text that predates the shipped one.',

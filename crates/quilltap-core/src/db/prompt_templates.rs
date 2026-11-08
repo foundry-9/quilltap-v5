@@ -260,6 +260,17 @@ impl<'c> PromptTemplatesRepository<'c> {
         Ok(())
     }
 
+    /// v4 `pruneRetiredBuiltIns`'s delete (`d0201575a`) —
+    /// `collection.deleteOne({id})`. A RAW delete, deliberately NOT
+    /// [`Self::delete`]: that one refuses built-in rows (v4's route guard), and
+    /// removing a retired built-in is the whole point. Seeder-only — nothing
+    /// else may call it (the precedent is [`Self::seed_refresh`]).
+    pub fn seed_prune(&self, id: &str) -> Result<(), DbError> {
+        self.conn
+            .execute("DELETE FROM prompt_templates WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     /// True iff the row exists and is not a built-in template — v4's `findById`
     /// + `isBuiltIn` guard, reading only the one column the guard needs.
     fn is_mutable(&self, id: &str) -> Result<bool, DbError> {
@@ -545,6 +556,21 @@ pub struct BuiltInSeedRow {
     pub description: Option<String>,
     pub category: Option<String>,
     pub model_hint: Option<String>,
+}
+
+/// v4 `pruneRetiredBuiltIns`'s listing (`d0201575a`) —
+/// `collection.find({isBuiltIn: true})`: every built-in row's `(id, name)`, in
+/// ROWID order (v4's translator renders `find` with no `ORDER BY`), with the
+/// same `isBuiltIn = 1` predicate [`find_built_in_by_name`] uses. Read AFTER
+/// the seed's upserts, so it counts the rows that pass just inserted.
+pub fn list_built_in_rows(conn: &Connection) -> Result<Vec<(String, String)>, DbError> {
+    let mut stmt = conn.prepare("SELECT id, name FROM prompt_templates WHERE isBuiltIn = 1")?;
+    let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row?);
+    }
+    Ok(out)
 }
 
 /// v4's seeding lookup — `collection.findOne({name, isBuiltIn: true})`

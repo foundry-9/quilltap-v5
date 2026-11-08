@@ -5,15 +5,17 @@ import { E2E_PASSPHRASE } from './support/env';
 /**
  * P4.83 — Import from Template, end to end on BOTH character hosts.
  *
- * The catalogue behind it is v4's 21 built-in "Sample Prompts", which v5 seeds
+ * The catalogue behind it is v4's 22 built-in "Sample Prompts", which v5 seeds
  * LAZILY: the first `GET /api/v1/prompt-templates` on an instance inserts them.
  * The e2e fixture is a copy of the committed chat-send instance, which carries
  * none — so the first open below is what fills the table, and the section
  * appearing at all is that seeding running through the real server.
  *
  * ⚠ The seeded row's name is the registry's DISPLAY name, not the filename:
- * `MODERN_GENERAL.md` is listed as **`MODERN General`**. Anything asserting
- * `MODERN_GENERAL` is asserting a string that never reaches the database.
+ * `MODERN_ROLEPLAY.md` is listed as **`MODERN Roleplay`**. Anything asserting
+ * `MODERN_ROLEPLAY` is asserting a string that never reaches the database.
+ * (P4.D373: until plugin 1.1.32 this beat imported `MODERN General`, which v4
+ * `d0201575a` RETIRED — the seeder now prunes it.)
  *
  * The two beats deliberately differ in gesture because v4's two hosts do: the
  * editor's `openImportModal` ALWAYS refetches, while the new-character host
@@ -26,7 +28,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * are what v4 would have on any instance anyone has ever opened this modal on.
  */
 
-const BUILTIN = 'MODERN General';
+const BUILTIN = 'MODERN Roleplay';
 
 /** Unlock if the instance is still locked; both beats land on the roster first. */
 async function maybeUnlock(page: Page): Promise<void> {
@@ -70,9 +72,9 @@ test.describe('P4.83 — Import from Template', () => {
     const row = modal.locator('button').filter({ hasText: BUILTIN }).first();
     await expect(row).toBeVisible();
     // The row carries v4's badges, built from the seeded category / modelHint.
-    await expect(row).toContainText('GENERAL');
+    await expect(row).toContainText('ROLEPLAY');
     await expect(row).toContainText('MODERN');
-    await expect(row).toContainText('GENERAL prompt optimized for MODERN models');
+    await expect(row).toContainText('ROLEPLAY prompt optimized for MODERN models');
 
     await row.click();
 

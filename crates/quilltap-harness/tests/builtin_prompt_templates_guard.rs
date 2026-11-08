@@ -1,7 +1,8 @@
 //! The vendored built-in prompt-template catalogue guard (P4.83).
 //!
 //! `crates/quilltap-core/src/services/builtin_prompt_templates.json` is a
-//! VENDORED v5 artifact: v5 has no plugin system, so those 21 rows ARE the
+//! VENDORED v5 artifact: v5 has no plugin system, so those 22 rows (plugin
+//! 1.1.33, v4 `624d0d25c` — P4.D373) ARE the
 //! "Sample Prompts" a v5 instance seeds. Their source is v4's
 //! `plugins/dist/qtap-plugin-default-system-prompts/prompts/*.md`, read through
 //! the plugin's `loadPrompts()` and the system-prompt registry's display-name
@@ -166,6 +167,9 @@ fn the_filename_rules_are_v4s() {
         parse_prompt_filename("SOLO"),
         ("SOLO".to_string(), "GENERAL".to_string())
     );
+    // The RULE, not the catalogue (`MODERN_GENERAL.md` itself is retired since
+    // plugin 1.1.32 — P4.D373); its successor beside it.
     assert_eq!(display_name("MODERN", "GENERAL"), "MODERN General");
+    assert_eq!(display_name("MODERN", "ROLEPLAY"), "MODERN Roleplay");
     assert_eq!(display_name("GPT4O", "COMPANION"), "GPT4O Companion");
 }

@@ -100,6 +100,13 @@ impl tracing::field::Visit for EventVisitor {
             self.context.insert(field.name().to_string(), json!(value));
         }
     }
+    // P4.D373: the prune DEBUG's three counts are numbers on both sides.
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.context.insert(field.name().to_string(), json!(value));
+    }
+    fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
+        self.context.insert(field.name().to_string(), json!(value));
+    }
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         let rendered = format!("{value:?}");
         if field.name() == "message" {
@@ -144,13 +151,16 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for GlobalCapture {
 }
 
 /// The families this port owns (the oracle filters identically): the seeder's
-/// two lines (both renamed / added at v4 `c3eefa752`) and the route's
+/// two lines (both renamed / added at v4 `c3eefa752`), the prune's INFO and
+/// its every-read DEBUG (v4 `d0201575a`, P4.D373), and the route's
 /// `[Prompt Templates v1]` lines. The pre-`c3eefa752` seed sentence stays in the
 /// filter so a side still emitting it shows up as a diff rather than vanishing.
 fn is_ported_line(message: &str) -> bool {
     message == "Sample prompt template seeded"
         || message == "Built-in prompt template refreshed from shipped text"
         || message == "Sample prompt template seeded from plugin"
+        || message == "Retired built-in prompt template removed"
+        || message == "Built-in prompt templates pruned"
         || message.starts_with("[Prompt Templates v1] ")
 }
 
@@ -186,7 +196,7 @@ fn rt() -> tokio::runtime::Runtime {
 }
 
 /// Normalize what both sides legitimately mint: UUIDs not in the fixture spec
-/// (the 21 seeded ids, plus a created template's id) and ISO timestamps other
+/// (the 22 seeded ids, plus a created template's id) and ISO timestamps other
 /// than the spec's own pinned `ts` (which `known` carries, so it stays literal).
 fn normalize(v: &mut Value, known: &HashSet<String>, uuid_re: &Regex, ts_re: &Regex) {
     match v {
@@ -420,6 +430,60 @@ fn apply_seeds(rt: &tokio::runtime::Runtime, db: &Db, spec: &Value, seeds: &[Str
                     p.content =
                         format!("{} (the duplicate)", spec["staleContent"].as_str().unwrap())
                 }),
+                // P4.D373: built-ins under the RETIRED name (one, or a pair
+                // inserted in the spec's order) and a USER row of that name.
+                "retiredBuiltIn" | "retiredPair" => {
+                    let ids: Vec<String> = if seed == "retiredBuiltIn" {
+                        vec![spec["retiredBuiltInId"].as_str().unwrap().to_string()]
+                    } else {
+                        spec["retiredPairIds"]
+                            .as_array()
+                            .unwrap()
+                            .iter()
+                            .map(|v| v.as_str().unwrap().to_string())
+                            .collect()
+                    };
+                    let repo = PromptTemplatesRepository::new(conn);
+                    for id in ids {
+                        repo.create(
+                            &PtCreate {
+                                user_id: None,
+                                name: spec["retiredName"].as_str().unwrap().to_string(),
+                                content: spec["retiredContent"].as_str().unwrap().to_string(),
+                                description: Some(
+                                    "GENERAL prompt optimized for MODERN models".to_string(),
+                                ),
+                                is_built_in: true,
+                                category: Some("GENERAL".to_string()),
+                                model_hint: Some("MODERN".to_string()),
+                                tags: Vec::new(),
+                            },
+                            &CreateOptions {
+                                id,
+                                created_at: ts.clone(),
+                                updated_at: ts.clone(),
+                            },
+                        )?;
+                    }
+                    Ok(())
+                }
+                "retiredUserCopy" => PromptTemplatesRepository::new(conn).create(
+                    &PtCreate {
+                        user_id: Some(spec["userA"].as_str().unwrap().to_string()),
+                        name: spec["retiredName"].as_str().unwrap().to_string(),
+                        content: "My copy of the retired prompt.".to_string(),
+                        description: None,
+                        is_built_in: false,
+                        category: None,
+                        model_hint: None,
+                        tags: Vec::new(),
+                    },
+                    &CreateOptions {
+                        id: spec["retiredUserCopyId"].as_str().unwrap().to_string(),
+                        created_at: ts.clone(),
+                        updated_at: ts,
+                    },
+                ),
                 "invalidRow" => {
                     let name: String = "\u{1F600}".repeat(101);
                     conn.execute(
@@ -549,6 +613,8 @@ fn prompt_templates_routes_match_v4() {
         "staleBuiltInId",
         "userCloneId",
         "invalidRowId",
+        "retiredBuiltInId",
+        "retiredUserCopyId",
     ]
     .iter()
     .filter_map(|k| spec[*k].as_str().map(str::to_string))
@@ -557,6 +623,13 @@ fn prompt_templates_routes_match_v4() {
             .as_object()
             .expect("spec.builtinPlantIds — regenerate the fixture")
             .values()
+            .filter_map(|v| v.as_str().map(str::to_string)),
+    )
+    .chain(
+        spec["retiredPairIds"]
+            .as_array()
+            .expect("spec.retiredPairIds — regenerate the fixture (P4.D373)")
+            .iter()
             .filter_map(|v| v.as_str().map(str::to_string)),
     )
     .chain(std::iter::once(
@@ -762,14 +835,26 @@ fn prompt_templates_routes_match_v4() {
         missing.is_empty(),
         "oracle cases never driven by the Rust side: {missing:?}"
     );
-    // A floor that a stale oracle (predating P4.D237's refresh arms) cannot
-    // satisfy: 31 through P4.83 + 9 refresh cases.
+    // A floor that a stale oracle (predating P4.D237's refresh arms, or
+    // P4.D373's prune) cannot satisfy: 31 through P4.83 + 9 refresh cases +
+    // 10 prune cases.
     assert!(
-        n >= 40,
-        "expected >= 40 cases, got {n} — regenerate the oracle"
+        n >= 50,
+        "expected >= 50 cases, got {n} — regenerate the oracle"
     );
     for want in [
-        "list_first_seeds_21",
+        // P4.D373: RENAMED from `list_first_seeds_21` (plugin 1.1.33 ships 22).
+        "list_first_seeds_22",
+        "list_retired_builtin_pruned",
+        "list_second_prunes_nothing",
+        "list_retired_user_copy_survives",
+        "list_retired_pair_pruned_in_rowid_order",
+        "list_only_a_retired_row_owed",
+        "list_catalogue_current_nothing_owed",
+        "list_shipped_duplicate_survives_prune",
+        "get_retired_builtin_404",
+        "put_retired_builtin_404",
+        "delete_retired_builtin_404",
         "list_second_seeds_nothing",
         "list_stale_builtin_refreshed",
         "list_second_refreshes_nothing",

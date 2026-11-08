@@ -15,8 +15,16 @@
  * ⚠ `initializePlugins()` runs per case, because the whole point of the family
  * is v4's LAZY seeding: `findAllForUser` calls `seedSamplePrompts`, which reads
  * `systemPromptRegistry`. An uninitialized registry is v4's "seed nothing" arm
- * and every list case would come back with one row. The 21-row assertion in
- * `list_first_seeds_21` is what refuses that silently-empty registry.
+ * and every list case would come back with one row. The 22-row catalogue in
+ * `list_first_seeds_22` (renamed from `list_first_seeds_21` by P4.D373) is what
+ * refuses that silently-empty registry.
+ *
+ * P4.D373 (v4 `d0201575a`): after the upserts the seeder PRUNES every built-in
+ * whose name the registry no longer ships (`MODERN General`, retired at
+ * plugin 1.1.32), one INFO each, then ALWAYS a DEBUG `Built-in prompt
+ * templates pruned`. Both lines join the capture filter; the colliding name
+ * moved to `MODERN Roleplay` (the oracle dies loud on a name the registry no
+ * longer ships).
  *
  * Ids and timestamps minted by the seeding pass are normalized on the Rust side
  * (`<newid>` / `<ts>`), the `settings-routes` shape; the fixture's own ids AND
@@ -77,6 +85,11 @@ interface Spec {
   staleContent: string;
   builtinPlantIds: Record<string, string>;
   catalogueIdPrefix: string;
+  retiredName: string;
+  retiredContent: string;
+  retiredBuiltInId: string;
+  retiredUserCopyId: string;
+  retiredPairIds: string[];
 }
 
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -97,7 +110,12 @@ type Seed =
   // Every OTHER catalogue entry on file, exactly as shipped — so the names-only
   // question "is anything missing?" answers NO and only the four-field
   // comparison can find the stale row planted beside it.
-  | 'catalogueCurrent';
+  | 'catalogueCurrent'
+  // P4.D373 (v4 `d0201575a`): a built-in under the RETIRED name; a USER row of
+  // that name; two retired built-ins (rowid order ≠ id order).
+  | 'retiredBuiltIn'
+  | 'retiredUserCopy'
+  | 'retiredPair';
 
 interface CaseSpec {
   name: string;
@@ -120,7 +138,8 @@ const ASTRAL_100 = '\u{1F600}'.repeat(100);
 function buildCases(spec: Spec): CaseSpec[] {
   return [
     // ── GET /api/v1/prompt-templates ─────────────────────────────────────────
-    { name: 'list_first_seeds_21', route: 'collection', method: 'GET' },
+    // P4.D373: RENAMED from `list_first_seeds_21` (plugin 1.1.33 ships 22).
+    { name: 'list_first_seeds_22', route: 'collection', method: 'GET' },
     { name: 'list_second_seeds_nothing', route: 'collection', method: 'GET', runTwice: true },
     // v4 `c3eefa752` FLIPPED this case (it was `list_stale_builtin_never_updated`):
     // a built-in already on file is now brought up to the shipped text.
@@ -198,6 +217,53 @@ function buildCases(spec: Spec): CaseSpec[] {
       seeds: ['invalidRow'],
     },
     { name: 'list_user_b_sees_builtins_only', route: 'collection', method: 'GET', user: 'B' },
+    // ── P4.D373: the prune (v4 `d0201575a` `pruneRetiredBuiltIns`) ──────────
+    {
+      name: 'list_retired_builtin_pruned',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['retiredBuiltIn'],
+    },
+    {
+      name: 'list_second_prunes_nothing',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['retiredBuiltIn'],
+      runTwice: true,
+    },
+    {
+      name: 'list_retired_user_copy_survives',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['retiredBuiltIn', 'retiredUserCopy'],
+    },
+    {
+      name: 'list_retired_pair_pruned_in_rowid_order',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['retiredPair'],
+    },
+    {
+      // Every shipped row on file and current — the ONLY work owed is the
+      // prune (the read probe must see a retired row alone).
+      name: 'list_only_a_retired_row_owed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['catalogueCurrent', 'builtinExact', 'retiredBuiltIn'],
+    },
+    {
+      // Nothing owed at all: the DEBUG still fires, `removed: 0`.
+      name: 'list_catalogue_current_nothing_owed',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['catalogueCurrent', 'builtinExact'],
+    },
+    {
+      name: 'list_shipped_duplicate_survives_prune',
+      route: 'collection',
+      method: 'GET',
+      seeds: ['builtinExact', 'builtinDuplicate'],
+    },
 
     // ── POST /api/v1/prompt-templates ────────────────────────────────────────
     {
@@ -284,6 +350,15 @@ function buildCases(spec: Spec): CaseSpec[] {
       seeds: ['staleBuiltIn'],
     },
     { name: 'get_missing_404', route: 'item', method: 'GET', paramId: MISSING_ID },
+    // P4.D373: v4 seeds (and prunes) BEFORE the lookup — the retired row's own
+    // id answers 404 on the read that removed it.
+    {
+      name: 'get_retired_builtin_404',
+      route: 'item',
+      method: 'GET',
+      paramId: spec.retiredBuiltInId,
+      seeds: ['retiredBuiltIn'],
+    },
 
     // ── PUT /api/v1/prompt-templates/[id] ────────────────────────────────────
     {
@@ -309,6 +384,14 @@ function buildCases(spec: Spec): CaseSpec[] {
       seeds: ['staleBuiltIn'],
     },
     { name: 'put_missing_404', route: 'item', method: 'PUT', paramId: MISSING_ID, body: {} },
+    {
+      name: 'put_retired_builtin_404',
+      route: 'item',
+      method: 'PUT',
+      paramId: spec.retiredBuiltInId,
+      body: { name: 'Hijacked' },
+      seeds: ['retiredBuiltIn'],
+    },
     {
       name: 'put_zod_name_empty_400',
       route: 'item',
@@ -346,6 +429,13 @@ function buildCases(spec: Spec): CaseSpec[] {
       seeds: ['staleBuiltIn'],
     },
     { name: 'delete_missing_404', route: 'item', method: 'DELETE', paramId: MISSING_ID },
+    {
+      name: 'delete_retired_builtin_404',
+      route: 'item',
+      method: 'DELETE',
+      paramId: spec.retiredBuiltInId,
+      seeds: ['retiredBuiltIn'],
+    },
   ];
 }
 
@@ -404,6 +494,9 @@ function isPortedLine(message: unknown): boolean {
     (message === 'Sample prompt template seeded' ||
       message === 'Built-in prompt template refreshed from shipped text' ||
       message === 'Sample prompt template seeded from plugin' ||
+      // P4.D373 (v4 `d0201575a`): the prune's INFO and its every-read DEBUG.
+      message === 'Retired built-in prompt template removed' ||
+      message === 'Built-in prompt templates pruned' ||
       message.startsWith('[Prompt Templates v1] '))
   );
 }
@@ -556,6 +649,38 @@ async function runCase(
             } as never,
           );
         }
+      } else if (seed === 'retiredBuiltIn' || seed === 'retiredPair') {
+        const plants =
+          seed === 'retiredBuiltIn' ? [spec.retiredBuiltInId] : spec.retiredPairIds;
+        for (const id of plants) {
+          await repos.promptTemplates.create(
+            {
+              userId: null,
+              name: spec.retiredName,
+              content: spec.retiredContent,
+              description: 'GENERAL prompt optimized for MODERN models',
+              isBuiltIn: true,
+              category: 'GENERAL',
+              modelHint: 'MODERN',
+              tags: [],
+            } as never,
+            { id, createdAt: spec.ts, updatedAt: spec.ts } as never,
+          );
+        }
+      } else if (seed === 'retiredUserCopy') {
+        await repos.promptTemplates.create(
+          {
+            userId: spec.userA,
+            name: spec.retiredName,
+            content: 'My copy of the retired prompt.',
+            description: null,
+            isBuiltIn: false,
+            category: null,
+            modelHint: null,
+            tags: [],
+          } as never,
+          { id: spec.retiredUserCopyId, createdAt: spec.ts, updatedAt: spec.ts } as never,
+        );
       } else if (seed === 'invalidRow') {
         // Deliberately schema-INVALID (a 101-code-point name), so v4's repo
         // `create` cannot write it — the only shape that measures whether the
@@ -652,7 +777,15 @@ async function main(): Promise<void> {
   const scratch = mkdtempSync(join(tmpdir(), 'qt-prompt-templates-oracle-'));
   const lines: string[] = [];
   for (const c of buildCases(spec)) {
-    lines.push(JSON.stringify(await runCase(spec, c, scratch, fixtureMain)));
+    const row = await runCase(spec, c, scratch, fixtureMain);
+    if (c.name === 'list_first_seeds_22') {
+      // P4.D373: refuse a silently-empty (or stale) registry by NUMBER.
+      const builtIns = (row.table as Array<{ isBuiltIn: number }>).filter((r) => r.isBuiltIn === 1);
+      if (builtIns.length !== 22) {
+        throw new Error(`list_first_seeds_22 seeded ${builtIns.length} built-ins, not 22`);
+      }
+    }
+    lines.push(JSON.stringify(row));
   }
   fs.writeFileSync(outPath, lines.join('\n') + '\n');
   rmSync(scratch, { recursive: true, force: true });

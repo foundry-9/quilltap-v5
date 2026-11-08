@@ -8,7 +8,15 @@
   "staleBuiltInId": "5e800000-0000-4000-8000-00000000b002",
   "userCloneId": "5e800000-0000-4000-8000-00000000b003",
   "invalidRowId": "5e800000-0000-4000-8000-00000000b004",
-  "collidingName": "MODERN General",
+  "collidingName": "MODERN Roleplay",
+  "retiredName": "MODERN General",
+  "retiredContent": "RETIRED — the MODERN General text plugin 1.1.31 shipped, before d0201575a retired it.",
+  "retiredBuiltInId": "5e800000-0000-4000-8000-00000000b00c",
+  "retiredUserCopyId": "5e800000-0000-4000-8000-00000000b00d",
+  "retiredPairIds": [
+    "5e800000-0000-4000-8000-00000000b00f",
+    "5e800000-0000-4000-8000-00000000b00e"
+  ],
   "staleContent": "OLD CONTENT — a sample prompt text that predates the shipped one.",
   "builtinPlantIds": {
     "contentOnly": "5e800000-0000-4000-8000-00000000b005",

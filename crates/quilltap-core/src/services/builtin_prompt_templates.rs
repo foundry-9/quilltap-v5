@@ -1,5 +1,6 @@
-//! The built-in **prompt-template** seeder (P4.83; the refresh arm P4.D237) —
-//! v4's 21 "Sample Prompts".
+//! The built-in **prompt-template** seeder (P4.83; the refresh arm P4.D237;
+//! the prune arm P4.D373) — v4's 22 "Sample Prompts" (plugin 1.1.33, v4
+//! `624d0d25c`).
 //!
 //! Ports `PromptTemplatesRepository.seedSamplePrompts()` /
 //! `_doSeedSamplePrompts()` / `upsertBuiltInPrompt()`
@@ -35,6 +36,23 @@
 //!     `Built-in prompt template refreshed from shipped text` at INFO with
 //!     `{templateId, name, source}`.
 //!
+//! After the loop, v4 `pruneRetiredBuiltIns` (`d0201575a`): every built-in row
+//! ([`crate::db::prompt_templates::list_built_in_rows`] — read AFTER the
+//! upserts, rowid order) whose `name` is not a shipped name is DELETED
+//! ([`crate::db::prompt_templates::PromptTemplatesRepository::seed_prune`]) and
+//! logged `Retired built-in prompt template removed` at INFO with
+//! `{templateId, name}`; then, always, DEBUG `Built-in prompt templates
+//! pruned` with `{builtInCount, shippedCount, removed}`. Name-keyed, not
+//! id-keyed: a USER row sharing a retired name survives; two built-ins under
+//! a SHIPPED name both survive. The DEBUG fires on EVERY template read in v4
+//! (the seed runs on every read); v5's read-only probe answers it when there
+//! is nothing to write (the planner's R1, §R.11) — the one emission site is
+//! the api's `seed_sample_prompts_if_needed`, fed by [`SeedProbe`] or
+//! [`PruneSummary`]. v4's docblock: "a retired prompt (e.g. MODERN_GENERAL,
+//! replaced by MODERN_ROLEPLAY in 4.13) would otherwise sit on the shelf as an
+//! untouchable stale copy"; no schema stores a prompt-template id, so the
+//! delete strands nothing.
+//!
 //! Built-ins are read-only through every route (PUT/DELETE → 403), so the only
 //! "edited" built-in a refresh can clobber is a direct-DB edit or an older
 //! shipped text — v4's docblock: "the shipped source is authoritative".
@@ -60,9 +78,11 @@
 //! ⚠ **The row `name` is the registry's DISPLAY name, not the filename.**
 //! `system-prompt-registry.ts`'s `loadPromptsFromPlugin` computes
 //! `` `${modelHint} ${category[0] + category.slice(1).toLowerCase()}` `` and the
-//! seeder writes THAT. `MODERN_GENERAL.md` becomes the row **`MODERN General`**;
-//! the filename survives only inside the registry id
-//! (`default-system-prompts/MODERN_GENERAL`), which the seed log's `promptId`
+//! seeder writes THAT. `MODERN_ROLEPLAY.md` becomes the row **`MODERN
+//! Roleplay`** (until plugin 1.1.32 the example was `MODERN_GENERAL.md` →
+//! `MODERN General`, now retired and pruned); the filename survives only inside
+//! the registry id (`default-system-prompts/MODERN_ROLEPLAY`), which the seed
+//! log's `promptId`
 //! field carried until v4 `c3eefa752` dropped it. This corrects the work order's own "click `MODERN_GENERAL`"
 //! premise, measured 2026-09-07 against v4's real registry.
 //!
@@ -74,8 +94,10 @@
 //!    `c3eefa752` it runs through the same `upsertBuiltInPrompt` with `source:
 //!    'filesystem'`; v5 only ever logs `source=plugin`.
 //! 2. **The registry-EMPTY arm** — a v4 install whose plugin is missing or
-//!    disabled seeds NOTHING. v5 always holds the vendored table, so v5 seeds
-//!    where that v4 would not. A RECORDED divergence in v5's favour, pinned by
+//!    disabled seeds NOTHING — and, since `d0201575a`, PRUNES nothing (v4 runs
+//!    the prune only after a registry seed with at least one prompt, so a
+//!    plugin that failed to load can never empty the shelf). v5 always holds
+//!    the vendored table, so v5 seeds AND prunes where that v4 would not. A RECORDED divergence in v5's favour, pinned by
 //!    this note rather than a tripwire: no committed corpus can express "the
 //!    plugin is absent" on the v5 side, because the catalogue is compiled in.
 //! 3. **`systemPromptRegistry` itself** (plugin discovery, `getAll`, the
@@ -92,8 +114,8 @@ use serde::Deserialize;
 
 use crate::clock;
 use crate::db::prompt_templates::{
-    ensure_prompt_templates_table, find_built_in_by_name, BuiltInSeedRow, CreateOptions,
-    PromptTemplatesRepository, PtCreate, PtSeedRefresh,
+    ensure_prompt_templates_table, find_built_in_by_name, list_built_in_rows, BuiltInSeedRow,
+    CreateOptions, PromptTemplatesRepository, PtCreate, PtSeedRefresh,
 };
 use crate::db::DbError;
 
@@ -102,7 +124,7 @@ pub const LOG_TARGET: &str = "quilltap::db";
 
 /// The verbatim built-in prompt-template catalogue. Regenerate with
 /// `harness/oracle/provision/dump-prompt-templates.ts` (recipe in its header);
-/// held byte-identical to the v4 checkout's 21 `.md` files by
+/// held byte-identical to the v4 checkout's 22 `.md` files by
 /// `crates/quilltap-harness/tests/builtin_prompt_templates_guard.rs`.
 static BUILTIN_PROMPT_TEMPLATES_JSON: &str = include_str!("builtin_prompt_templates.json");
 
@@ -150,8 +172,33 @@ pub fn row_matches_shipped(row: &BuiltInSeedRow, entry: &BuiltInPromptTemplate) 
         && row.model_hint.as_deref() == Some(entry.model_hint.as_str())
 }
 
-/// True when at least one catalogue entry would be INSERTED or REFRESHED on
-/// `conn` — the cheap READ-side probe that keeps a list request off the writer
+/// The read-side probe's answer (P4.D373): whether the writer is owed a turn,
+/// and the built-in row count the no-write DEBUG reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SeedProbe {
+    pub needed: bool,
+    /// `list_built_in_rows(conn).len()` — v4's `builtIns.length` when nothing
+    /// is written (0 when the table does not exist yet).
+    pub built_in_count: usize,
+}
+
+/// The seed pass's prune tally — v4's DEBUG `Built-in prompt templates pruned`
+/// `{builtInCount, shippedCount, removed}`, counted AFTER the upserts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PruneSummary {
+    pub built_in_count: usize,
+    pub shipped_count: usize,
+    pub removed: usize,
+}
+
+/// The catalogue's shipped name set — v4's `new Set(registryPrompts.map(p =>
+/// p.name))`.
+pub fn shipped_names() -> Result<std::collections::HashSet<String>, DbError> {
+    Ok(catalogue()?.into_iter().map(|e| e.name).collect())
+}
+
+/// Whether at least one catalogue entry would be INSERTED or REFRESHED, or a
+/// retired built-in PRUNED, on `conn` — the cheap READ-side probe that keeps a list request off the writer
 /// entirely once the table is current (v4 pays 21 `findOne`s on every single
 /// read; v5 pays the same 21 on the read pool and takes the writer only when
 /// there is something to write). [`seed_sample_prompts`] re-derives every
@@ -159,22 +206,38 @@ pub fn row_matches_shipped(row: &BuiltInSeedRow, entry: &BuiltInPromptTemplate) 
 /// one no-op writer turn and is never acted on.
 ///
 /// ⚠ Until P4.D237 this probe was NAMES-ONLY, which could never let a refresh
-/// fire: once all 21 names were on file it answered `false` forever.
-pub fn needs_seeding(conn: &Connection) -> Result<bool, DbError> {
+/// fire: once all 21 names were on file it answered `false` forever. ⚠ Until
+/// P4.D373 it could not see a RETIRED built-in either — a retired row alone,
+/// beside a current catalogue, would never have reached the writer.
+pub fn needs_seeding(conn: &Connection) -> Result<SeedProbe, DbError> {
     // No table at all means v4 would `ensureCollection` and seed the lot — so
     // this is the MOST work to do, not the least (the e2e beat's first live run
     // caught this arm answering `false` and leaving the catalogue empty).
     if !has_table(conn)? {
-        return Ok(true);
+        return Ok(SeedProbe {
+            needed: true,
+            built_in_count: 0,
+        });
     }
-    for entry in catalogue()? {
-        match find_built_in_by_name(conn, &entry.name)? {
-            None => return Ok(true),
-            Some(row) if !row_matches_shipped(&row, &entry) => return Ok(true),
-            Some(_) => {}
+    let built_ins = list_built_in_rows(conn)?;
+    let shipped = shipped_names()?;
+    let mut needed = built_ins.iter().any(|(_, name)| !shipped.contains(name));
+    if !needed {
+        for entry in catalogue()? {
+            match find_built_in_by_name(conn, &entry.name)? {
+                None => needed = true,
+                Some(row) if !row_matches_shipped(&row, &entry) => needed = true,
+                Some(_) => {}
+            }
+            if needed {
+                break;
+            }
         }
     }
-    Ok(false)
+    Ok(SeedProbe {
+        needed,
+        built_in_count: built_ins.len(),
+    })
 }
 
 fn has_table(conn: &Connection) -> Result<bool, DbError> {
@@ -197,7 +260,7 @@ fn has_table(conn: &Connection) -> Result<bool, DbError> {
 pub fn seed_sample_prompts(
     conn: &Connection,
     mint_id: &mut dyn FnMut() -> String,
-) -> Result<(), DbError> {
+) -> Result<PruneSummary, DbError> {
     // v4's `getCollection()` `ensureCollection`s on first access, so an instance
     // that has never opened the modal HAS no table and gets one here. This is a
     // writable connection (the caller takes the writer).
@@ -261,7 +324,38 @@ pub fn seed_sample_prompts(
             }
         }
     }
-    Ok(())
+    prune_retired_built_ins(conn, &shipped_names()?)
+}
+
+/// v4 `pruneRetiredBuiltIns(shippedNames)` (`d0201575a`): delete every built-in
+/// row (rowid order, listed AFTER the upserts) whose name is not shipped, one
+/// INFO each. Returns the tally the caller's DEBUG reports (the INFOs run here,
+/// on the writer thread; the DEBUG on the caller — one emission site).
+fn prune_retired_built_ins(
+    conn: &Connection,
+    shipped: &std::collections::HashSet<String>,
+) -> Result<PruneSummary, DbError> {
+    let built_ins = list_built_in_rows(conn)?;
+    let repo = PromptTemplatesRepository::new(conn);
+    let mut removed = 0usize;
+    for (id, name) in &built_ins {
+        if shipped.contains(name) {
+            continue;
+        }
+        repo.seed_prune(id)?;
+        removed += 1;
+        tracing::info!(
+            target: LOG_TARGET,
+            template_id = %id,
+            name = %name,
+            "Retired built-in prompt template removed"
+        );
+    }
+    Ok(PruneSummary {
+        built_in_count: built_ins.len(),
+        shipped_count: shipped.len(),
+        removed,
+    })
 }
 
 #[cfg(test)]
@@ -269,20 +363,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_catalogue_parses_and_carries_the_shipped_21() {
+    fn the_catalogue_parses_and_carries_the_shipped_22() {
         let rows = catalogue().expect("catalogue parses");
         assert_eq!(
             rows.len(),
-            21,
-            "the vendored catalogue is v4's 21 sample prompts"
+            22,
+            "the vendored catalogue is v4's 22 sample prompts (plugin 1.1.33)"
         );
         // Seed order is the plugin's sorted filenames; the FIRST and LAST anchor it.
         assert_eq!(rows[0].name, "CLAUDE Companion");
         assert_eq!(rows[0].prompt_id, "default-system-prompts/CLAUDE_COMPANION");
-        assert_eq!(rows[20].name, "OLLAMA Romantic");
-        assert_eq!(rows[20].prompt_id, "default-system-prompts/OLLAMA_ROMANTIC");
+        assert_eq!(rows[21].name, "OLLAMA Romantic");
+        assert_eq!(rows[21].prompt_id, "default-system-prompts/OLLAMA_ROMANTIC");
         // The display-name rule, which is NOT the filename.
-        assert!(rows.iter().any(|r| r.name == "MODERN General"));
+        assert!(rows.iter().any(|r| r.name == "MODERN Roleplay"));
+        assert!(rows.iter().any(|r| r.name == "MODERN Assistant"));
+        // P4.D373 (v4 `d0201575a`): `MODERN_GENERAL.md` is RETIRED.
+        assert!(rows.iter().all(|r| r.name != "MODERN General"));
         assert!(rows.iter().all(|r| !r.name.contains('_')));
         assert!(rows.iter().all(|r| !r.content.is_empty()));
     }
@@ -304,11 +401,11 @@ mod tests {
         c
     }
 
-    fn modern_general() -> BuiltInPromptTemplate {
+    fn modern_roleplay() -> BuiltInPromptTemplate {
         catalogue()
             .unwrap()
             .into_iter()
-            .find(|e| e.name == "MODERN General")
+            .find(|e| e.name == "MODERN Roleplay")
             .unwrap()
     }
 
@@ -344,9 +441,9 @@ mod tests {
     /// An override of a plant's `[content, description, category, modelHint]`.
     type Fields = fn(&mut [Option<String>; 4]);
 
-    /// A MODERN General built-in carrying the shipped values, then `over`.
+    /// A MODERN Roleplay built-in carrying the shipped values, then `over`.
     fn plant_shipped(c: &Connection, id: &str, over: impl FnOnce(&mut [Option<String>; 4])) {
-        let e = modern_general();
+        let e = modern_roleplay();
         let mut f = [
             Some(e.content.clone()),
             Some(seed_description(&e.category, &e.model_hint)),
@@ -411,7 +508,7 @@ mod tests {
 
     fn seed(c: &Connection) -> Vec<String> {
         let mut n = 0;
-        let ((), lines) = captured_with(|| {
+        let (_, lines) = captured_with(|| {
             seed_sample_prompts(c, &mut || {
                 n += 1;
                 format!("minted-{n}")
@@ -424,19 +521,19 @@ mod tests {
     fn refreshed_line(id: &str) -> String {
         format!(
             "INFO quilltap::db Built-in prompt template refreshed from shipped text \
-             template_id={id} name=MODERN General source=plugin"
+             template_id={id} name=MODERN Roleplay source=plugin"
         )
     }
 
     #[test]
     fn an_empty_table_seeds_the_catalogue_under_the_renamed_line() {
         let c = table();
-        assert!(needs_seeding(&c).unwrap());
+        assert!(needs_seeding(&c).unwrap().needed);
         let lines = seed(&c);
-        assert_eq!(count(&c), 21);
+        assert_eq!(count(&c), 22);
         assert_eq!(
             lines.len(),
-            21,
+            22,
             "one seed line per inserted row: {lines:#?}"
         );
         // v4's bag, in v4's order: {templateId, name, source, modelHint,
@@ -465,11 +562,11 @@ mod tests {
     fn a_current_table_probes_false_and_a_second_pass_is_silent() {
         let c = table();
         seed(&c);
-        let before: Vec<Row> = (1..=21).map(|i| row(&c, &format!("minted-{i}"))).collect();
-        assert!(!needs_seeding(&c).unwrap());
+        let before: Vec<Row> = (1..=22).map(|i| row(&c, &format!("minted-{i}"))).collect();
+        assert!(!needs_seeding(&c).unwrap().needed);
         // The silence leg for BOTH lines: nothing inserted, nothing refreshed.
         assert_eq!(seed(&c), Vec::<String>::new());
-        let after: Vec<Row> = (1..=21).map(|i| row(&c, &format!("minted-{i}"))).collect();
+        let after: Vec<Row> = (1..=22).map(|i| row(&c, &format!("minted-{i}"))).collect();
         assert_eq!(
             before, after,
             "an exact row keeps every byte, updatedAt included"
@@ -483,33 +580,33 @@ mod tests {
             f[0] = Some("old text".into());
             f[1] = Some("A stale plant".into());
         });
-        assert!(needs_seeding(&c).unwrap());
+        assert!(needs_seeding(&c).unwrap().needed);
         let lines = seed(&c);
         assert_eq!(
             count(&c),
-            21,
-            "20 inserted + the one refreshed, never a second row"
+            22,
+            "21 inserted + the one refreshed, never a second row"
         );
-        let e = modern_general();
+        let e = modern_roleplay();
         let r = row(&c, "stale");
         assert_eq!(r.3, e.content);
         assert_eq!(r.4, Some(seed_description(&e.category, &e.model_hint)));
         assert_eq!(r.6.as_deref(), Some(e.category.as_str()));
         assert_eq!(r.7.as_deref(), Some(e.model_hint.as_str()));
         // Untouched: name, userId, isBuiltIn, tags, createdAt.
-        assert_eq!(r.2, "MODERN General");
+        assert_eq!(r.2, "MODERN Roleplay");
         assert_eq!(r.1, None);
         assert_eq!(r.5, 1);
         assert_eq!(r.8, "[\"t\"]");
         assert_eq!(r.9, T0);
         assert_ne!(r.10, T0, "updatedAt moves to the per-entry now");
-        // The refresh line — THREE fields — at MODERN General's catalogue slot.
+        // The refresh line — THREE fields — at MODERN Roleplay's catalogue slot.
         let slot = catalogue()
             .unwrap()
             .iter()
-            .position(|x| x.name == "MODERN General")
+            .position(|x| x.name == "MODERN Roleplay")
             .unwrap();
-        assert_eq!(lines.len(), 21);
+        assert_eq!(lines.len(), 22);
         assert_eq!(lines[slot], refreshed_line("stale"));
         assert_eq!(
             lines
@@ -536,7 +633,7 @@ mod tests {
         for (label, over) in cases {
             let c = table();
             plant_shipped(&c, "p", over);
-            // Seed the other 20 so the probe can only be answering for "p".
+            // Seed the other 21 so the probe can only be answering for "p".
             let others = seed(&c);
             assert!(
                 others.iter().any(|l| *l == refreshed_line("p")),
@@ -546,11 +643,14 @@ mod tests {
             c.execute("DELETE FROM prompt_templates WHERE id = 'p'", [])
                 .unwrap();
             assert!(
-                needs_seeding(&c).unwrap(),
+                needs_seeding(&c).unwrap().needed,
                 "{label}: the probe sees the drift"
             );
             assert_eq!(seed(&c), vec![refreshed_line("q")], "{label}");
-            assert!(!needs_seeding(&c).unwrap(), "{label}: current afterwards");
+            assert!(
+                !needs_seeding(&c).unwrap().needed,
+                "{label}: current afterwards"
+            );
         }
     }
 
@@ -560,7 +660,7 @@ mod tests {
         plant_shipped(&c, "exact", |_| {});
         let before = row(&c, "exact");
         let lines = seed(&c);
-        assert_eq!(lines.len(), 20, "20 inserts, no refresh: {lines:#?}");
+        assert_eq!(lines.len(), 21, "21 inserts, no refresh: {lines:#?}");
         assert!(lines.iter().all(|l| !l.contains("refreshed")));
         assert_eq!(row(&c, "exact"), before, "updatedAt stays {T0}");
     }
@@ -574,12 +674,12 @@ mod tests {
         let lines = seed(&c);
         assert!(lines.contains(&refreshed_line("first")));
         assert!(!lines.iter().any(|l| l.contains("template_id=second")));
-        assert_eq!(row(&c, "first").3, modern_general().content);
+        assert_eq!(row(&c, "first").3, modern_roleplay().content);
         assert_eq!(row(&c, "second").3, "old two");
         assert_eq!(row(&c, "second").10, T0);
         // …and since only the first is compared, the table now probes CURRENT
         // even though the second row is still stale.
-        assert!(!needs_seeding(&c).unwrap());
+        assert!(!needs_seeding(&c).unwrap().needed);
     }
 
     #[test]
@@ -598,7 +698,7 @@ mod tests {
         plant(
             &c,
             "user",
-            "MODERN General",
+            "MODERN Roleplay",
             "mine",
             None,
             None,
@@ -607,8 +707,8 @@ mod tests {
         );
         let before = row(&c, "user");
         let lines = seed(&c);
-        assert_eq!(count(&c), 22, "the built-in is still inserted beside it");
-        assert_eq!(lines.len(), 21);
+        assert_eq!(count(&c), 23, "the built-in is still inserted beside it");
+        assert_eq!(lines.len(), 22);
         assert!(lines.iter().all(|l| !l.contains("refreshed")));
         assert_eq!(row(&c, "user"), before);
     }
@@ -621,20 +721,20 @@ mod tests {
         let c = table();
         plant_shipped(&c, "stale", |f| f[0] = Some("old".into()));
         assert!(
-            needs_seeding(&c).unwrap(),
+            needs_seeding(&c).unwrap().needed,
             "the probe answered on the stale state"
         );
         seed(&c);
         // Race: the table moves to current before the writer turn runs.
         let snapshot: Vec<Row> = std::iter::once(row(&c, "stale"))
-            .chain((1..=20).map(|i| row(&c, &format!("minted-{i}"))))
+            .chain((1..=21).map(|i| row(&c, &format!("minted-{i}"))))
             .collect();
         assert_eq!(seed(&c), Vec::<String>::new(), "no insert, no refresh");
         let again: Vec<Row> = std::iter::once(row(&c, "stale"))
-            .chain((1..=20).map(|i| row(&c, &format!("minted-{i}"))))
+            .chain((1..=21).map(|i| row(&c, &format!("minted-{i}"))))
             .collect();
         assert_eq!(snapshot, again);
-        assert_eq!(count(&c), 21);
+        assert_eq!(count(&c), 22);
     }
 
     #[test]
@@ -657,6 +757,177 @@ mod tests {
             )
             .unwrap();
         assert_eq!(copy, "[{\"content\":\"old text\"}]");
+    }
+
+    // ── P4.D373: the prune arm (v4 `d0201575a` `pruneRetiredBuiltIns`) ───────
+    //
+    // v4's `retired built-ins` describe (three `it`s, mocked collection) over
+    // a real table, plus the rowid order, the shipped-name duplicate, and the
+    // DEBUG tally counted after the upserts.
+
+    fn seed_with_summary(c: &Connection) -> (PruneSummary, Vec<String>) {
+        let mut n = 0;
+        captured_with(|| {
+            seed_sample_prompts(c, &mut || {
+                n += 1;
+                format!("minted-{n}")
+            })
+            .unwrap()
+        })
+    }
+
+    fn removed_line(id: &str, name: &str) -> String {
+        format!(
+            "INFO quilltap::db Retired built-in prompt template removed template_id={id} name={name}"
+        )
+    }
+
+    fn exists(c: &Connection, id: &str) -> bool {
+        c.query_row(
+            "SELECT count(*) FROM prompt_templates WHERE id = ?1",
+            [id],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+            == 1
+    }
+
+    #[test]
+    fn removes_a_retired_built_in_and_counts_the_rows_the_pass_just_inserted() {
+        let c = table();
+        plant(
+            &c,
+            "old",
+            "MODERN General",
+            "old shipped text",
+            None,
+            None,
+            None,
+            true,
+        );
+        let (summary, lines) = seed_with_summary(&c);
+        assert!(!exists(&c, "old"));
+        assert_eq!(count(&c), 22);
+        // 22 inserts first, THEN the prune's INFO (v4's order).
+        assert_eq!(lines.len(), 23, "{lines:#?}");
+        assert_eq!(lines[22], removed_line("old", "MODERN General"));
+        assert_eq!(
+            summary,
+            PruneSummary {
+                built_in_count: 23,
+                shipped_count: 22,
+                removed: 1
+            }
+        );
+    }
+
+    #[test]
+    fn keeps_a_user_row_that_shares_a_retired_name() {
+        let c = table();
+        plant(
+            &c,
+            "mine",
+            "MODERN General",
+            "my copy",
+            None,
+            None,
+            None,
+            false,
+        );
+        let (summary, lines) = seed_with_summary(&c);
+        assert!(exists(&c, "mine"));
+        assert!(lines.iter().all(|l| !l.contains("Retired built-in")));
+        assert_eq!(summary.removed, 0);
+        assert_eq!(summary.built_in_count, 22);
+    }
+
+    #[test]
+    fn the_probe_answers_needed_for_a_retired_row_alone() {
+        let c = table();
+        seed(&c);
+        assert_eq!(
+            needs_seeding(&c).unwrap(),
+            SeedProbe {
+                needed: false,
+                built_in_count: 22
+            }
+        );
+        plant(
+            &c,
+            "old",
+            "MODERN General",
+            "old shipped text",
+            None,
+            None,
+            None,
+            true,
+        );
+        assert_eq!(
+            needs_seeding(&c).unwrap(),
+            SeedProbe {
+                needed: true,
+                built_in_count: 23
+            },
+            "a retired built-in beside a CURRENT catalogue is work to do"
+        );
+        let (summary, lines) = seed_with_summary(&c);
+        assert_eq!(lines, vec![removed_line("old", "MODERN General")]);
+        assert_eq!(summary.removed, 1);
+        assert!(!needs_seeding(&c).unwrap().needed);
+    }
+
+    #[test]
+    fn two_retired_rows_are_removed_in_rowid_order() {
+        let c = table();
+        seed(&c);
+        plant(
+            &c,
+            "zz-first",
+            "MODERN General",
+            "a",
+            None,
+            None,
+            None,
+            true,
+        );
+        plant(
+            &c,
+            "aa-second",
+            "Sample ROMANTIC",
+            "b",
+            None,
+            None,
+            None,
+            true,
+        );
+        let (summary, lines) = seed_with_summary(&c);
+        assert_eq!(
+            lines,
+            vec![
+                removed_line("zz-first", "MODERN General"),
+                removed_line("aa-second", "Sample ROMANTIC"),
+            ]
+        );
+        assert_eq!(
+            summary,
+            PruneSummary {
+                built_in_count: 24,
+                shipped_count: 22,
+                removed: 2
+            }
+        );
+    }
+
+    #[test]
+    fn a_duplicate_under_a_shipped_name_survives_the_prune() {
+        let c = table();
+        plant_shipped(&c, "first", |_| {});
+        plant_shipped(&c, "second", |f| f[0] = Some("old two".into()));
+        let (summary, lines) = seed_with_summary(&c);
+        assert!(exists(&c, "first") && exists(&c, "second"));
+        assert!(lines.iter().all(|l| !l.contains("Retired built-in")));
+        assert_eq!(summary.removed, 0);
+        assert_eq!(summary.built_in_count, 23);
     }
 
     #[test]
