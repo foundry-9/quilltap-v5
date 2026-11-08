@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import { ItemFolderPickerDialog } from '../item-browser/item-folder-picker-dialog';
+import { DestinationPickerDialog } from '../item-browser/destination-picker-dialog';
 import type { WardrobeContainer } from './wardrobe-container';
 import {
   WardrobeComponentModeFieldset,
@@ -23,7 +23,7 @@ import { createWardrobeFolder, createWardrobeFoldersStore } from './wardrobe-fol
 /**
  * "Move to folder…" / "Copy to folder…" — pick where in one wardrobe to file
  * one or more items, or copies of them. The picker itself is the shared
- * `qt-item-folder-picker-dialog` since v4 `4fbdad186` (the item-browser lift,
+ * `qt-destination-picker-dialog` (v4's `ItemFolderPickerDialog`, renamed `DestinationPickerDialog` by `c34986421`) since v4 `4fbdad186` (the item-browser lift,
  * P4.D330 R-X); this wrapper adds the wardrobe's folder tree, its two notes and
  * the outfit components choice. A port of v4
  * `components/wardrobe/WardrobeFolderPickerDialog.tsx` (`4a38222e6`;
@@ -62,9 +62,9 @@ import { createWardrobeFolder, createWardrobeFoldersStore } from './wardrobe-fol
 @Component({
   selector: 'qt-wardrobe-folder-picker-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ItemFolderPickerDialog, WardrobeComponentModeFieldset],
+  imports: [DestinationPickerDialog, WardrobeComponentModeFieldset],
   template: `
-    <qt-item-folder-picker-dialog
+    <qt-destination-picker-dialog
       [mode]="mode()"
       [subject]="subject()"
       [folders]="folders.folders()"
@@ -90,7 +90,7 @@ import { createWardrobeFolder, createWardrobeFoldersStore } from './wardrobe-fol
           />
         </div>
       }
-    </qt-item-folder-picker-dialog>
+    </qt-destination-picker-dialog>
   `,
 })
 export class WardrobeFolderPickerDialog {

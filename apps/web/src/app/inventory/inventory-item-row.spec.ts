@@ -7,7 +7,6 @@ import { BOW, KIT, LAMP, PROJECT, RING, SWORD, obj } from './__fixtures__/invent
 import {
   InventoryItemRow,
   MENU_ITEM,
-  menuPlacement,
   type InventoryRowActions,
   type InventoryRowEquip,
 } from './inventory-item-row';
@@ -16,45 +15,10 @@ import {
  * v4 `components/inventory/inventory-item-row.tsx` (`322a5488e`, `102a23648`'s
  * fixed menu): the chips in order, the ⋮ menu's entries IN ORDER for a
  * manageable instance / an archetype / a borrowed row / an archived row, the
- * capture-phase scroll + resize close (trap 14), and `menuPlacement` as pure
- * arithmetic (R-15).
+ * capture-phase scroll + resize close (trap 14). The placement arithmetic
+ * (`menuPlacement`, R-15) moved with the function to `ui/fixed-menu.spec.ts`
+ * (`fixedMenuPlacement`, P4.D386).
  */
-
-describe('menuPlacement (v4 :66-78)', () => {
-  it('opens below with room to spare', () => {
-    expect(menuPlacement({ top: 100, bottom: 120, right: 900 }, 1000, 800)).toEqual({
-      position: 'fixed',
-      right: 100,
-      top: 124,
-      maxHeight: 676,
-      overflowY: 'auto',
-    });
-  });
-
-  it('opens upward when the room below is short and the room above is longer', () => {
-    expect(menuPlacement({ top: 700, bottom: 720, right: 990 }, 1000, 800)).toEqual({
-      position: 'fixed',
-      right: 10,
-      bottom: 104,
-      maxHeight: 696,
-      overflowY: 'auto',
-    });
-  });
-
-  it('stays below when short both ways but below is longer; maxHeight floors at 120', () => {
-    expect(menuPlacement({ top: 50, bottom: 70, right: 500 }, 1000, 150)).toEqual({
-      position: 'fixed',
-      right: 500,
-      top: 74,
-      maxHeight: 120,
-      overflowY: 'auto',
-    });
-  });
-
-  it('right floors at the 4px gap', () => {
-    expect(menuPlacement({ top: 0, bottom: 20, right: 1100 }, 1000, 800).right).toBe(4);
-  });
-});
 
 function actions(): InventoryRowActions {
   return {

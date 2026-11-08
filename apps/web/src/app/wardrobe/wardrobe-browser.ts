@@ -23,10 +23,10 @@ import {
   OWN_TIER,
   tierLabel,
   tierRows,
-  viewTierOf,
   type FolderRowView,
   type TierRowView,
-} from './folder-view';
+} from '../item-browser/folder-view';
+import { viewTierOf } from './folder-view';
 import {
   folderCrumb,
   folderName,

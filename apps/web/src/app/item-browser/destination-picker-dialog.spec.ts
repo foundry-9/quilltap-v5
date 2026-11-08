@@ -3,14 +3,21 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ToastService } from '../ui/toast.service';
-import { ItemFolderPickerDialog } from './item-folder-picker-dialog';
+import { DestinationPickerDialog, type DestinationMode } from './destination-picker-dialog';
 
-/** v4 `components/item-browser/ItemFolderPickerDialog.tsx` (`4fbdad186`). */
+/**
+ * v4 `components/item-browser/DestinationPickerDialog.tsx` at the pin
+ * `624d0d25c` — `236c04e35`'s `ItemFolderPickerDialog.tsx` (`4fbdad186`)
+ * renamed by `c34986421` with `DestinationMode` (`move` | `copy` | `link`),
+ * `VERBS`, a `container` slot above the tree and a key-scoped highlight
+ * (`containerKey`). The file and this spec were `git mv`'d so history
+ * follows; the `c34986421` delta rows are the last four.
+ */
 
 @Component({
-  imports: [ItemFolderPickerDialog],
+  imports: [DestinationPickerDialog],
   template: `
-    <qt-item-folder-picker-dialog
+    <qt-destination-picker-dialog
       [mode]="mode()"
       subject="&quot;lantern&quot;"
       [folders]="folders()"
@@ -21,14 +28,20 @@ import { ItemFolderPickerDialog } from './item-folder-picker-dialog';
       [working]="working()"
       note="Folders are for your browsing; what anyone carries stays exactly as it was."
       (closed)="log.push('close')"
+      [containerKey]="containerKey()"
       (submitted)="log.push('to:' + $event)"
     >
+      @if (withContainer()) {
+        <select qtDestinationContainer class="store-select"><option>Store</option></select>
+      }
       <p class="extra">extra choice</p>
-    </qt-item-folder-picker-dialog>
+    </qt-destination-picker-dialog>
   `,
 })
 class Host {
-  readonly mode = signal<'move' | 'copy'>('move');
+  readonly mode = signal<DestinationMode>('move');
+  readonly containerKey = signal('');
+  readonly withContainer = signal(false);
   readonly folders = signal([{ path: 'Arms' }, { path: 'Arms/Bows' }]);
   readonly loading = signal(false);
   readonly current = signal<string | null>('Arms');
@@ -48,7 +61,7 @@ function render() {
   return { fixture, el, host: fixture.componentInstance, options, footer };
 }
 
-describe('ItemFolderPickerDialog', () => {
+describe('DestinationPickerDialog', () => {
   afterEach(() => TestBed.resetTestingModule());
 
   it('titles itself by verb and subject, notes the caller’s line, lists the root then the indented tree, projects extras', () => {
@@ -135,5 +148,59 @@ describe('ItemFolderPickerDialog', () => {
     host.loading.set(true);
     fixture.detectChanges();
     expect(el.querySelector('.qt-dialog-body')!.textContent).toContain('Loading folders…');
+  });
+
+  // ---- the `c34986421` delta -----------------------------------------------
+
+  it('VERBS: Copy titles and labels Copy / Copying…', () => {
+    const { fixture, el, host, footer } = render();
+    host.mode.set('copy');
+    fixture.detectChanges();
+    expect(el.querySelector('.qt-dialog-title')!.textContent).toBe('Copy "lantern" to a folder');
+    expect(footer('Copy')).toBeDefined();
+    host.working.set(true);
+    fixture.detectChanges();
+    expect(footer('Copying…')).toBeDefined();
+  });
+
+  it('VERBS: a link titles "Hard link …", labels Link / Linking…, and may land beside its original', () => {
+    const { fixture, el, host, options, footer } = render();
+    host.mode.set('link');
+    fixture.detectChanges();
+    expect(el.querySelector('.qt-dialog-title')!.textContent).toBe('Hard link "lantern" to a folder');
+    expect(options()[1].disabled).toBe(false);
+    expect(footer('Link')).toBeDefined();
+    host.working.set(true);
+    fixture.detectChanges();
+    expect(footer('Linking…')).toBeDefined();
+  });
+
+  it('the container slot renders after the note, above the tree', () => {
+    const { fixture, el, host } = render();
+    host.withContainer.set(true);
+    fixture.detectChanges();
+    const body = el.querySelector('.qt-dialog-body')!;
+    const kids = [...body.querySelectorAll('p, select.store-select, [role="listbox"]')];
+    expect(kids.map((k) => k.tagName.toLowerCase() + (k.className ? '.' + k.className.split(' ')[0] : ''))).toEqual([
+      'p.qt-text-xs',
+      'select.store-select',
+      'ul.space-y-0.5',
+      'p.extra',
+    ]);
+  });
+
+  it('a containerKey change clears the highlight (the highlight is key-scoped)', () => {
+    const { fixture, host, options, footer } = render();
+    options()[2].click();
+    fixture.detectChanges();
+    expect(footer('Move').disabled).toBe(false);
+    host.containerKey.set('project:p1');
+    fixture.detectChanges();
+    expect(options()[2].getAttribute('aria-selected')).toBe('false');
+    expect(footer('Move').disabled).toBe(true);
+    // Back in the first container, its highlight reads again (v4 `highlight.key === containerKey`).
+    host.containerKey.set('');
+    fixture.detectChanges();
+    expect(options()[2].getAttribute('aria-selected')).toBe('true');
   });
 });

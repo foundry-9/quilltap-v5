@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 
 import { CoreClient } from '../core/core-client';
 import type { ResolvedInventoryItem } from '../core/core-contract';
-import { ItemFolderPickerDialog } from '../item-browser/item-folder-picker-dialog';
+import { DestinationPickerDialog } from '../item-browser/destination-picker-dialog';
 import { ToastService } from '../ui/toast.service';
 import { folderCrumb, isSameFolder } from '../wardrobe/folders';
 import type { InventoryContainer } from './inventory-container';
@@ -14,16 +14,16 @@ import { createInventoryFolder, fileInventoryItems } from './inventory.api';
 /**
  * "Move to folder…" for Inventory objects — a port of v4
  * `components/inventory/InventoryFolderPickerDialog.tsx` (`322a5488e`): the
- * shared `qt-item-folder-picker-dialog` over one tier's `Inventory/` folders.
+ * shared `qt-destination-picker-dialog` (v4's `ItemFolderPickerDialog`, renamed `DestinationPickerDialog` by `c34986421`) over one tier's `Inventory/` folders.
  * A move only (the Inventory files no copies by folder). The folder create
  * and the move each refresh the host afterwards (v4's mutation `onSettled`).
  */
 @Component({
   selector: 'qt-inventory-folder-picker-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ItemFolderPickerDialog],
+  imports: [DestinationPickerDialog],
   template: `
-    <qt-item-folder-picker-dialog
+    <qt-destination-picker-dialog
       mode="move"
       [subject]="subject()"
       [folders]="folders.folders()"

@@ -186,6 +186,13 @@ export const GUARDED: readonly GuardRow[] = [
   { file: 'screens/files/file-preview-modal.ts', handler: 'onKeydown', kind: 'keydown' }, // +
   // The wardrobe item editor's Escape, NEW at union (H-out-5; v4 `useEscapeKey`, `:196`).
   { file: 'wardrobe/wardrobe-item-editor.ts', handler: 'onEscape', kind: 'escape' },
+  // === P4.D386 ===
+  // The shared ⋮ menu (v4 `ItemActionMenu.tsx` — `useClickOutside`,
+  // `escapeCapture`), the ONE handler pair every item-browser row menu moves
+  // onto (P4.D386 commit 2 removes the per-row pairs it replaces).
+  { file: 'item-browser/item-action-menu.ts', handler: 'onDocumentMousedown', kind: 'mousedown' },
+  { file: 'item-browser/item-action-menu.ts', handler: 'onDocumentKeydown', kind: 'escape' },
+  // === P4.D386 ===
 ];
 
 /**
@@ -247,8 +254,8 @@ describe('the floating-layer guard census (ruling R-4)', () => {
     expect(handlerIsGuarded(arrow, 'onPointerDown')).toBe(false);
   });
 
-  it('carries 61 rows: the 48 of the lane (36 census + 7 keydown misses + 2 chip-card + 3 HANDOFF), less the 9 P4.D358 deleted and model-picker’s 2 (exempt), + 14 P4.D358 hosts + the 9 sites the widened regex found + the wardrobe item editor’s new Escape', () => {
-    expect(GUARDED).toHaveLength(48 - 9 - 2 + 14 + 9 + 1);
+  it('carries 63 rows: the 48 of the lane (36 census + 7 keydown misses + 2 chip-card + 3 HANDOFF), less the 9 P4.D358 deleted and model-picker’s 2 (exempt), + 14 P4.D358 hosts + the 9 sites the widened regex found + the wardrobe item editor’s new Escape + P4.D386’s shared ⋮ pair', () => {
+    expect(GUARDED).toHaveLength(48 - 9 - 2 + 14 + 9 + 1 + 2);
   });
 
   for (const row of GUARDED) {

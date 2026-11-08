@@ -23,6 +23,21 @@
  * @module wardrobe/folders
  */
 
+// The rules-free path helpers live in `item-browser/item-folders.ts` (v4
+// `lib/mount-index/item-folders.ts`'s home role, `b2b783b47`) — one copy,
+// re-exported here so every wardrobe caller keeps its import (L-1).
+import { folderSegments, joinFolder } from '../item-browser/item-folders';
+export {
+  folderCrumb,
+  folderName,
+  folderSegments,
+  isSameFolder,
+  isUnderFolder,
+  joinFolder,
+  parentFolder,
+  rebaseFolder,
+} from '../item-browser/item-folders';
+
 /** The deepest a wardrobe folder may nest. */
 export const WARDROBE_FOLDER_MAX_DEPTH = 8;
 
@@ -234,11 +249,6 @@ export function isValidWardrobeFolderPath(path: string): boolean {
   }
 }
 
-/** Split a folder path into its segments (`''` → `[]`). */
-export function folderSegments(folder: string): string[] {
-  return folder.length === 0 ? [] : folder.split('/');
-}
-
 /**
  * The folder a `Wardrobe/` document lives in: `Wardrobe/A/B/x.md` → `A/B`,
  * `Wardrobe/x.md` → `''`. A path outside `Wardrobe/` reads as the root.
@@ -254,50 +264,4 @@ export function folderOfWardrobePath(relativePath: string): string {
 /** The store path of a wardrobe folder: `''` → `Wardrobe`, `A/B` → `Wardrobe/A/B`. */
 export function wardrobeFolderStorePath(folder: string): string {
   return folder ? `${WARDROBE_ROOT}/${folder}` : WARDROBE_ROOT;
-}
-
-/** The folder above `folder`; the root's parent is the root. */
-export function parentFolder(folder: string): string {
-  const slash = folder.lastIndexOf('/');
-  return slash < 0 ? '' : folder.slice(0, slash);
-}
-
-/** The last segment of `folder`; `''` for the root. */
-export function folderName(folder: string): string {
-  const slash = folder.lastIndexOf('/');
-  return slash < 0 ? folder : folder.slice(slash + 1);
-}
-
-/** Join path pieces, skipping empty ones: `joinFolder('', 'x.md')` → `x.md`. */
-export function joinFolder(...parts: string[]): string {
-  return parts.filter((part) => part.length > 0).join('/');
-}
-
-/** Folder names are case-insensitive: `Formal` and `formal` are one folder. */
-export function isSameFolder(a: string | null | undefined, b: string | null | undefined): boolean {
-  return (a ?? '').toLowerCase() === (b ?? '').toLowerCase();
-}
-
-/** True when `folder` is `ancestor` or nested anywhere beneath it. */
-export function isUnderFolder(folder: string, ancestor: string): boolean {
-  if (ancestor.length === 0) return true;
-  const f = folder.toLowerCase();
-  const a = ancestor.toLowerCase();
-  return f === a || f.startsWith(`${a}/`);
-}
-
-/**
- * Re-root `folder` from under `fromAncestor` to under `toAncestor`
- * (`Formal/Evening`, `Formal` → `Dress` gives `Dress/Evening`). A folder not
- * under `fromAncestor` is returned unchanged.
- */
-export function rebaseFolder(folder: string, fromAncestor: string, toAncestor: string): string {
-  if (!isUnderFolder(folder, fromAncestor)) return folder;
-  const rest = folder.slice(fromAncestor.length).replace(/^\//, '');
-  return joinFolder(toAncestor, rest);
-}
-
-/** The display form of a folder: `Formal › Evening`. */
-export function folderCrumb(folder: string): string {
-  return folderSegments(folder).join(' › ');
 }

@@ -14,6 +14,7 @@ import {
 import type { KitState, ResolvedInventoryItem } from '../core/core-contract';
 import { inventoryOriginLabel } from './inventory-container';
 import { InventoryGlyph } from './inventory-glyph';
+import { fixedMenuPlacement, type FixedMenuPlacement } from '../ui/fixed-menu';
 import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 `InventoryRowActions` — what a row's ⋮ menu reaches. */
@@ -39,44 +40,6 @@ export interface InventoryRowEquip {
 
 /** v4 `:56` — every menu entry's class. */
 export const MENU_ITEM = 'block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted disabled:opacity-50';
-/** Room the ⋮ menu wants below its button before it opens upward instead (v4 `:58`). */
-export const MENU_ROOM = 340;
-/** v4 `:59`. */
-export const MENU_GAP = 4;
-
-/** Where the menu sits, in pixels (the style v4's `menuPlacement` returns). */
-export interface MenuPlacement {
-  position: 'fixed';
-  right: number;
-  top?: number;
-  bottom?: number;
-  maxHeight: number;
-  overflowY: 'auto';
-}
-
-/**
- * Where the ⋮ menu sits: fixed to the viewport beside its button, so the
- * browser's scrolling list cannot clip it, opening upward when the room below
- * is short and the room above is longer (v4 `:66-78`, `102a23648`). DOM-free:
- * the button's rect and the viewport size come in as numbers (spec-pinned, R-15).
- */
-export function menuPlacement(
-  rect: { top: number; bottom: number; right: number },
-  innerWidth: number,
-  innerHeight: number,
-): MenuPlacement {
-  const below = innerHeight - rect.bottom - MENU_GAP;
-  const above = rect.top - MENU_GAP;
-  const up = below < MENU_ROOM && above > below;
-  return {
-    position: 'fixed',
-    right: Math.max(MENU_GAP, innerWidth - rect.right),
-    ...(up ? { bottom: innerHeight - rect.top + MENU_GAP } : { top: rect.bottom + MENU_GAP }),
-    maxHeight: Math.max(120, up ? above : below),
-    overflowY: 'auto',
-  };
-}
-
 /**
  * One object in the Inventory browser — a port of v4
  * `components/inventory/inventory-item-row.tsx` (`322a5488e`, with
@@ -92,8 +55,9 @@ export function menuPlacement(
  * another inventory…, Archive / Restore and Delete; a borrowed row keeps only
  * the cross-tier Copy (and Instantiate for an archetype).
  *
- * The menu is FIXED to the viewport (inline style bindings from
- * {@link menuPlacement}); any capture-phase scroll outside it, or a resize,
+ * The menu is FIXED to the viewport (inline style bindings from the shared
+ * `ui/fixed-menu.ts` {@link fixedMenuPlacement}, v4 `29ba4d3f8`'s
+ * `useFixedMenu`); any capture-phase scroll outside it, or a resize,
  * closes it — a fixed menu would drift from its button (trap 14). A press
  * outside closes it; Escape closes it on the CAPTURE phase and stops there so
  * the dialog behind keeps its own Escape (v4's `useClickOutside` with
@@ -297,7 +261,7 @@ export class InventoryItemRow {
   readonly folderCrumb = input<string | null>(null);
 
   protected readonly menuItem = MENU_ITEM;
-  protected readonly placement = signal<MenuPlacement | null>(null);
+  protected readonly placement = signal<FixedMenuPlacement | null>(null);
   protected readonly menuOpen = computed(() => this.placement() !== null);
 
   private readonly menuHost = viewChild<ElementRef<HTMLElement>>('menuHost');
@@ -368,7 +332,7 @@ export class InventoryItemRow {
     const button = this.menuButton()?.nativeElement;
     const view = button?.ownerDocument.defaultView;
     this.placement.set(
-      button && view ? menuPlacement(button.getBoundingClientRect(), view.innerWidth, view.innerHeight) : null,
+      button && view ? fixedMenuPlacement(button.getBoundingClientRect(), view.innerWidth, view.innerHeight) : null,
     );
   }
 

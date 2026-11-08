@@ -1231,6 +1231,23 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — BROWSER: the shared item-browser shell — fixed menu, ⋮ menu, folder view + state + shell, destination picker, folder field, container catalogue + select (v4 624d0d25c)
+
+_Versions: SPA 0.5.973._
+
+P4.D386's stacking commit (contract C18; P4.D387 branches here). Adds the shared folder-of-items browser shell v4 built in `b2b783b47` / `c34986421` / `29ba4d3f8` / `600c2906f`, at the pin's bytes, under the names P4.D387 imports:
+
+- `item-browser/item-folders.ts` — the rules-free path helpers (v4 `lib/mount-index/item-folders.ts`); `wardrobe/folders.ts` re-exports them (one copy).
+- `item-browser/item-kind.ts`, `item-browser/folder-view.ts` (v4 `lib/folder-browser/view.ts`). `wardrobe/folder-view.ts` keeps only `viewTierOf`. One measured byte shift: a character origin with an empty name now labels `General`, not `Quilltap General`.
+- `ui/fixed-menu.ts` — `fixedMenuPlacement` (DOM-free, now with v4's `room` parameter) and `createFixedMenu`. The Inventory row places through it; its own `menuPlacement` is retired.
+- `item-browser/item-action-menu.ts` — `qt-item-action-menu`, the WAI-ARIA ⋮ menu (fixed, `qt-bg-popover`, focus without scrolling, capture-phase Escape, optional visible `trigger`, optional per-entry `template`). Its two document listeners are new floating-layer census rows.
+- `item-browser/folder-browser-state.ts` (`createFolderBrowserState`, `createItemFolderHandlers`, `pluralize`) and `item-browser/folder-browser-shell.ts` (`qt-folder-browser-shell` with named projection slots).
+- `item-folder-row.ts` moves onto the shared menu (Escape and an outside press now close it; new `extraEntries`).
+- `item-folder-picker-dialog.ts` → `destination-picker-dialog.ts` (`git mv`): `DestinationMode` with `link`, `VERBS`, a `[qtDestinationContainer]` slot, and a key-scoped highlight.
+- `item-browser/item-folder-field.ts`, `item-browser/container-catalogue.ts` (`injectContainerCatalogue` over `characterList` / `projectList` / `groupList`), and `item-browser/container-select.ts`.
+
+New tier-1 SPA differential: `apps/web/oracle/item-browser.recorder.ts` drives v4's real `view.ts`, `useFixedMenu.ts`, `ItemActionMenu.tsx` and `useFolderBrowserState.ts` at the pin. It writes 64 rows to `src/testing/fixtures/item-browser.oracle.ndjson`, which `item-browser.oracle.spec.ts` replays. The Wardrobe and the Inventory still render through their own browsers; they move onto the shell in the next commit.
+
 #### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
 
 _Versions: SPA 0.5.972._

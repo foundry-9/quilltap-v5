@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 
 import { Icon } from '../ui/icon';
 import { QtAutofocus } from '../wardrobe/autofocus.directive';
+import { ItemActionMenu, type MenuEntryLike } from './item-action-menu';
 
 /** v4 `ItemFolderRowView`. */
 export interface ItemFolderRowView {
@@ -16,8 +17,11 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
  * One subfolder in a folder-of-items browser (the wardrobe's, the
  * Inventory's): open it, or — where the browser manages folders — rename or
  * delete it from its ⋮ menu. A port of v4 `components/item-browser/
- * ItemFolderRow.tsx` (`4fbdad186` — the wardrobe's `WardrobeFolderRow`
- * lifted, `testId` / `countNoun` added).
+ * ItemFolderRow.tsx` at the pin `624d0d25c` (`4fbdad186` — the wardrobe's
+ * `WardrobeFolderRow` lifted; `29ba4d3f8` onto the fixed menu; `b2b783b47`
+ * onto the shared `qt-item-action-menu`, so the keyboard, Escape and an
+ * outside press all close it — it used to close only on mouse-leave — with
+ * `extraEntries` between Rename and Delete).
  *
  * Rename: Enter submits, Escape stops the event and restores the name, blur
  * submits; a blank or unchanged name just closes; the input closes only when
@@ -29,7 +33,7 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
   // its DOM (and every wardrobe spec walking it) is unchanged by the lift.
   selector: 'qt-item-folder-row, qt-wardrobe-folder-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, QtAutofocus],
+  imports: [Icon, ItemActionMenu, QtAutofocus],
   template: `
     <div class="qt-card-interactive py-2 px-3 flex items-center gap-2" [attr.data-testid]="testId()">
       <qt-icon name="folder" class="w-4 h-4 qt-text-secondary flex-shrink-0" />
@@ -56,48 +60,12 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
       }
       <span class="qt-text-xs qt-text-secondary flex-shrink-0">{{ plural(row().itemCount, countNoun()) }}</span>
       @if (manageable() && !renaming()) {
-        <div class="relative">
-          <button
-            type="button"
-            class="qt-button-ghost qt-button-sm"
-            [attr.aria-label]="'Folder actions for ' + row().name"
-            aria-haspopup="menu"
-            [attr.aria-expanded]="menuOpen()"
-            (click)="menuOpen.set(!menuOpen())"
-          >
-            ⋮
-          </button>
-          @if (menuOpen()) {
-            <div
-              role="menu"
-              class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] rounded border qt-border-default qt-bg-default shadow-md"
-              (mouseleave)="menuOpen.set(false)"
-            >
-              <ul class="divide-y qt-border-default">
-                <li>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                    (click)="startRename()"
-                  >
-                    Rename
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="block w-full text-left px-3 py-2 text-sm qt-text-destructive hover:qt-bg-muted"
-                    (click)="menuOpen.set(false); deleted.emit()"
-                  >
-                    Delete
-                  </button>
-                </li>
-              </ul>
-            </div>
-          }
-        </div>
+        <qt-item-action-menu
+          [label]="'Folder actions for ' + row().name"
+          [room]="120"
+          minWidthClass="min-w-[10rem]"
+          [entries]="entries()"
+        />
       }
     </div>
   `,
@@ -112,17 +80,23 @@ export class ItemFolderRow {
   readonly testId = input.required<string>();
   /** The noun counted, e.g. `item`. */
   readonly countNoun = input('item');
+  /** More ⋮ entries, between Rename and Delete (Move to…, Copy to…). */
+  readonly extraEntries = input<readonly MenuEntryLike[]>([]);
   readonly opened = output<void>();
   readonly deleted = output<void>();
 
   protected readonly plural = plural;
-  protected readonly menuOpen = signal(false);
+  /** v4 `:91-103` — Rename, the extras, Delete (destructive). */
+  protected readonly entries = computed<readonly MenuEntryLike[]>(() => [
+    { key: 'rename', label: 'Rename', onSelect: () => this.startRename() },
+    ...this.extraEntries(),
+    { key: 'delete', label: 'Delete', destructive: true, onSelect: () => this.deleted.emit() },
+  ]);
   protected readonly renaming = signal(false);
   protected readonly name = signal('');
   private submitting = false;
 
   protected startRename(): void {
-    this.menuOpen.set(false);
     this.name.set(this.row().name);
     this.renaming.set(true);
   }

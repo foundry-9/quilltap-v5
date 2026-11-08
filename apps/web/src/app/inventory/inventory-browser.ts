@@ -22,7 +22,7 @@ import {
   tierRows,
   type FolderRowView,
   type TierRowView,
-} from '../wardrobe/folder-view';
+} from '../item-browser/folder-view';
 import { folderCrumb, folderName, isSameFolder, isUnderFolder, joinFolder, parentFolder } from '../wardrobe/folders';
 import { encodeWardrobeContainer } from '../wardrobe/wardrobe-container';
 import { encodeInventoryContainer, type InventoryContainer } from './inventory-container';

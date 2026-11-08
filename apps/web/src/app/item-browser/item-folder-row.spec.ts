@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type { MenuEntryLike } from './item-action-menu';
 import { ItemFolderRow, type ItemFolderRowView } from './item-folder-row';
 
 /** v4 `components/item-browser/ItemFolderRow.tsx` (`4fbdad186`). */
@@ -15,6 +16,7 @@ import { ItemFolderRow, type ItemFolderRowView } from './item-folder-row';
       [rename]="rename"
       testId="inventory-folder-row"
       countNoun="object"
+      [extraEntries]="extra()"
       (opened)="log.push('open')"
       (deleted)="log.push('delete')"
     />
@@ -23,6 +25,7 @@ import { ItemFolderRow, type ItemFolderRowView } from './item-folder-row';
 class Host {
   readonly row = signal<ItemFolderRowView>({ path: 'Arms', name: 'Arms', itemCount: 1 });
   readonly manageable = signal(true);
+  readonly extra = signal<readonly MenuEntryLike[]>([]);
   readonly rename = vi.fn(async (_name: string) => true);
   readonly log: string[] = [];
 }
@@ -123,5 +126,44 @@ describe('ItemFolderRow', () => {
     input.dispatchEvent(new Event('blur'));
     await fixture.whenStable();
     expect(host.rename).toHaveBeenCalledWith('Blades');
+  });
+
+  // ---- v4 `item-action-menu.test.tsx` "ItemFolderRow" (at the pin) ---------
+
+  it('closes its folder menu on Escape (it used to close only on mouse-leave)', () => {
+    const { fixture, el } = render();
+    document.body.appendChild(fixture.nativeElement);
+    (el.querySelector('[aria-label="Folder actions for Arms"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[role="menu"]')).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+    expect(el.querySelector('[role="menu"]')).toBeNull();
+    fixture.nativeElement.remove();
+  });
+
+  it('puts extra entries between Rename and Delete', () => {
+    const { fixture, el, host } = render();
+    host.extra.set([{ key: 'copy', label: 'Copy to…', onSelect: vi.fn() }]);
+    fixture.detectChanges();
+    (el.querySelector('[aria-label="Folder actions for Arms"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const items = [...el.querySelectorAll('[role="menuitem"]')].map((b) => b.textContent!.trim());
+    expect(items).toEqual(['Rename', 'Copy to…', 'Delete']);
+  });
+
+  it('the folder menu is the shared ⋮ (room 120, min-w-[10rem], qt-bg-popover, data-action)', () => {
+    const { fixture, el } = render();
+    (el.querySelector('[aria-label="Folder actions for Arms"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const menu = el.querySelector('[role="menu"]')!;
+    expect(menu.getAttribute('aria-label')).toBe('Folder actions for Arms');
+    expect(menu.parentElement!.getAttribute('class')).toBe(
+      'z-30 min-w-[10rem] rounded border qt-border-default qt-bg-popover shadow-md',
+    );
+    expect([...el.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((b) => b.dataset['action'])).toEqual([
+      'rename',
+      'delete',
+    ]);
   });
 });
