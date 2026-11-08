@@ -50,12 +50,16 @@ use crate::db::runtime::Db;
 pub const INFORM_BLOCK_SEPARATOR: &str = "\n\n---\n\n";
 
 /// The one line of framing the block carries, ahead of the operator's passages
-/// (v4 `INFORM_BLOCK_HEADER`, `94fbb1ae3`). Second person: it is read inside the
-/// character's own prompt. It vouches for the passages and nothing more — it
-/// neither hides them nor tells the character what to do with them. Pinned
+/// (v4 `INFORM_BLOCK_HEADER`, `94fbb1ae3`; reworded by `c69a08882`). Second
+/// person: it is read inside the character's own prompt. It vouches for the
+/// passages and nothing more — it neither hides them nor tells the character
+/// what to do with them. It vouches for feelings and resolve as well as facts,
+/// and it outranks the character's usual temperament, so an operator who
+/// writes "You are very alarmed" is believed about the alarm. Pinned
 /// byte-for-byte against v4's exported constant by `inform_block_equivalence`.
-pub const INFORM_BLOCK_HEADER: &str = "Things you now know, as of this moment — true in this story, and already known to you. \
-     Where any of it conflicts with an older memory or something in your records, this is the current truth:";
+pub const INFORM_BLOCK_HEADER: &str = "Things now true in this story and in you, as of this moment — what has happened, what you know, \
+     and how you feel or what you have resolved. Where any of it conflicts with an older memory, \
+     your records, or your usual temperament, this is the current truth:";
 
 /// The assembled block plus the rows it carried.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -247,6 +251,29 @@ pub fn assemble_inform_block(
                 .collect()
         },
         passage_count: bodies.len(),
+    }
+}
+
+/// P4.D373 — v4 `inform-block.test.ts`'s `INFORM_BLOCK_HEADER` describe
+/// (`c69a08882`, +15).
+#[cfg(test)]
+mod header_tests {
+    use super::INFORM_BLOCK_HEADER;
+
+    #[test]
+    fn vouches_for_feelings_and_resolve_as_well_as_facts_and_outranks_the_usual_temperament() {
+        assert!(INFORM_BLOCK_HEADER.contains("true in this story and in you"));
+        assert!(INFORM_BLOCK_HEADER.contains("how you feel or what you have resolved"));
+        assert!(INFORM_BLOCK_HEADER.contains("your usual temperament"));
+        assert!(INFORM_BLOCK_HEADER.ends_with("this is the current truth:"));
+    }
+
+    #[test]
+    fn still_tells_the_character_nothing_about_what_to_do_or_whether_to_mention_it() {
+        let lower = INFORM_BLOCK_HEADER.to_lowercase();
+        for banned in ["do not mention", "don't mention", "you must", "you should"] {
+            assert!(!lower.contains(banned), "{banned}");
+        }
     }
 }
 
