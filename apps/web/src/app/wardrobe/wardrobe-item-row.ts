@@ -1,16 +1,13 @@
-import { DOCUMENT } from '@angular/common';
 import {
   booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
-  ElementRef,
-  inject,
   input,
   output,
   signal,
   viewChild,
+  type TemplateRef,
 } from '@angular/core';
 
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
@@ -21,7 +18,7 @@ import { wardrobeOriginLabel } from './wardrobe-container';
 import { formatPronounGuidance } from './pronoun-guidance';
 import { formatWearLine, wearOf } from './wear-display';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
-import { isInFloatingLayer } from '../ui/floating-layer';
+import { ItemActionMenu, type MenuEntry, type MenuEntryLike, type MenuTrigger } from '../item-browser/item-action-menu';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -32,7 +29,8 @@ import { isInFloatingLayer } from '../ui/floating-layer';
  *  - Primary equip button (`Wear` / `Try on`, label depends on which right-
  *    column tab is active).
  *  - `[+]` icon that adds the item to a slot. Single-slot items target their
- *    only slot directly; multi-slot items open a small popover picker.
+ *    only slot directly; multi-slot items open the shared menu as a slot
+ *    picker (each entry the slot's name and badge).
  *  - `⋮` kebab menu with secondary actions: Edit, Generate image, toggle the
  *    default-outfit flag, Duplicate, Archive, Move to folder…, Copy to
  *    folder…, Move to another wardrobe…, Copy to another wardrobe…, and
@@ -64,13 +62,15 @@ import { isInFloatingLayer } from '../ui/floating-layer';
  * and {@link canCopyToFolder} are v4's optional `onMoveToFolder` /
  * `onCopyToFolder` in the same idiom.
  *
- * The popovers close on an outside mousedown or Escape (v4 `useClickOutside`,
- * `:149-167` — the Escape swallowed so the enclosing dialog stays open).
+ * Both menus — the `⋮` and a multi-slot item's `+` slot picker — are the
+ * shared `qt-item-action-menu` (v4 `b2b783b47` / `600c2906f`): fixed to the
+ * viewport, keyboard-operable, closed by an outside press or Escape (the
+ * Escape swallowed so the enclosing dialog stays open).
  */
 @Component({
   selector: 'qt-wardrobe-item-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [WardrobeItemThumbnail, SlotBadge],
+  imports: [ItemActionMenu, WardrobeItemThumbnail, SlotBadge],
   // The host needs a BOX: it is a direct child of a `space-y-*` stack, and a
   // vertical margin never applies to a non-replaced inline box — see
   // `_surfaces.css`'s rule for this class (P4.75, measured).
@@ -191,12 +191,14 @@ import { isInFloatingLayer } from '../ui/floating-layer';
               {{ equipLabel() }}
             </button>
 
-            <!-- Single-icon add button: single-typed adds directly, multi-typed
-                 opens the slot picker (v4 :143-150). -->
-            <div class="relative">
+            <!-- Single-icon add button. For single-typed items it adds
+                 directly; for multi-typed it opens a slot picker — the shared
+                 menu, fixed to the viewport so the dialog's scrolling list
+                 cannot clip it (v4 pin :298-314). -->
+            @if (item().types.length === 1) {
               <button
                 type="button"
-                (click)="handleAddClick()"
+                (click)="addToSlot.emit({ item: item(), slot: item().types[0] })"
                 [disabled]="selectMode()"
                 class="qt-button-ghost qt-button-sm"
                 [title]="addTooltip()"
@@ -204,174 +206,29 @@ import { isInFloatingLayer } from '../ui/floating-layer';
               >
                 +
               </button>
-              @if (slotPickerOpen() && item().types.length > 1) {
-                <div
-                  #slotPicker
-                  class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] rounded border qt-border-default qt-bg-default shadow-md"
-                >
-                  <ul class="divide-y qt-border-default">
-                    @for (slot of item().types; track slot) {
-                      <li>
-                        <button
-                          type="button"
-                          (click)="pickSlot(slot)"
-                          class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:qt-bg-muted"
-                        >
-                          <span>{{ slotMeta[slot].label }}</span>
-                          <qt-slot-badge [slot]="slot" />
-                        </button>
-                      </li>
-                    }
-                  </ul>
-                </div>
-              }
-            </div>
+            } @else {
+              <qt-item-action-menu
+                [label]="addTooltip()"
+                [trigger]="addTrigger()"
+                [disabled]="selectMode()"
+                [room]="240"
+                minWidthClass="min-w-[10rem]"
+                [entries]="slotEntries()"
+              />
+            }
           }
 
-          <!-- Kebab menu — item actions (v4 :271-380). -->
-          <div class="relative" #kebab>
-            <button
-              type="button"
-              (click)="kebabOpen.set(!kebabOpen())"
-              [disabled]="selectMode()"
-              class="qt-button-ghost qt-button-sm"
-              aria-label="More actions"
-              title="More actions"
-              aria-haspopup="menu"
-              [attr.aria-expanded]="kebabOpen()"
-            >
-              ⋮
-            </button>
-            @if (kebabOpen()) {
-              <div
-                role="menu"
-                class="absolute right-0 top-full mt-1 z-30 min-w-[14rem] rounded border qt-border-default qt-bg-default shadow-md"
-              >
-                <ul class="divide-y qt-border-default">
-                  @if (manageable()) {
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        (click)="menuAction(edit)"
-                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                      >
-                        Edit
-                      </button>
-                    </li>
-                    @if (canGenerateImage()) {
-                      <li>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          [disabled]="isGeneratingImage()"
-                          (click)="menuAction(generateImage)"
-                          class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted disabled:opacity-50"
-                        >
-                          {{ isGeneratingImage() ? 'Generating image…' : 'Generate image' }}
-                        </button>
-                      </li>
-                    }
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        [disabled]="isUpdatingDefault()"
-                        (click)="menuAction(toggleDefault)"
-                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted disabled:opacity-50"
-                      >
-                        {{
-                          item().isDefault
-                            ? '☆ Unmark as default'
-                            : '★ Mark as default outfit item'
-                        }}
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        (click)="menuAction(duplicate)"
-                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                      >
-                        Duplicate
-                      </button>
-                    </li>
-                    @if (canArchive()) {
-                      <li>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          (click)="menuAction(toggleArchived)"
-                          class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                        >
-                          {{ item().archivedAt ? 'Restore from archive' : 'Archive' }}
-                        </button>
-                      </li>
-                    }
-                  }
-                  @if (manageable() && canMoveToFolder()) {
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        (click)="menuAction(moveToFolder)"
-                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                      >
-                        Move to folder…
-                      </button>
-                    </li>
-                  }
-                  @if (manageable() && canCopyToFolder()) {
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        (click)="menuAction(copyToFolder)"
-                        class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                      >
-                        Copy to folder…
-                      </button>
-                    </li>
-                  }
-                  <li>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      (click)="menuAction(move)"
-                      class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                    >
-                      Move to another wardrobe…
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      (click)="menuAction(copyItem)"
-                      class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                    >
-                      Copy to another wardrobe…
-                    </button>
-                  </li>
-                  @if (manageable()) {
-                    <li>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        (click)="menuAction(delete)"
-                        class="block w-full text-left px-3 py-2 text-sm qt-text-destructive hover:qt-bg-muted"
-                      >
-                        Delete
-                      </button>
-                    </li>
-                  }
-                </ul>
-              </div>
-            }
-          </div>
+          <!-- Kebab menu — item actions (v4 pin :319-…). -->
+          <qt-item-action-menu [disabled]="selectMode()" [entries]="kebabEntries()" />
         </div>
       </div>
+
+      <ng-template #slotLabel let-entry>
+        <span class="flex items-center justify-between gap-2">
+          <span>{{ entry.label }}</span>
+          <qt-slot-badge [slot]="slotOf(entry)" />
+        </span>
+      </ng-template>
 
       <!-- Nested components (read-only here; click Edit to change). A nested
            row cannot be filed, selected or archived from its parent: none of
@@ -516,8 +373,6 @@ export class WardrobeItemRow {
   protected readonly slotMeta = WARDROBE_SLOT_META;
 
   protected readonly expanded = signal(false);
-  protected readonly slotPickerOpen = signal(false);
-  protected readonly kebabOpen = signal(false);
 
   protected readonly isGeneratingImage = computed(() =>
     this.generatingImageIds().has(this.item().id),
@@ -527,8 +382,7 @@ export class WardrobeItemRow {
   /** v4 `:147` — `selection !== undefined`. */
   protected readonly selectMode = computed(() => this.selection() !== undefined);
 
-  private readonly kebabRef = viewChild<ElementRef<HTMLElement>>('kebab');
-  private readonly slotPickerRef = viewChild<ElementRef<HTMLElement>>('slotPicker');
+  private readonly slotLabel = viewChild.required<TemplateRef<unknown>>('slotLabel');
   /**
    * v4 `:83-85` — without an explicit predicate, fall back to the
    * character-view rule: personal items are manageable, shared-tier items are
@@ -562,77 +416,59 @@ export class WardrobeItemRow {
     return this.addAction() === 'layer' ? 'Layer onto a slot' : 'Add to a slot';
   });
 
-  /** v4 `:143-150`. */
-  protected handleAddClick(): void {
-    const types = this.item().types;
-    if (types.length === 1) {
-      this.addToSlot.emit({ item: this.item(), slot: types[0] });
-      return;
-    }
-    this.slotPickerOpen.set(!this.slotPickerOpen());
+  /** v4 `trigger={{ content: '+', ariaLabel: addTooltip }}`. */
+  protected readonly addTrigger = computed<MenuTrigger>(() => ({ content: '+', ariaLabel: this.addTooltip() }));
+
+  /** v4 pin `:304-312` — one entry per slot, labelled by the slot name + its badge. */
+  protected readonly slotEntries = computed<readonly MenuEntryLike[]>(() => {
+    const item = this.item();
+    const template = this.slotLabel();
+    return item.types.map((slot) => ({
+      key: `slot-${slot}`,
+      label: WARDROBE_SLOT_META[slot].label,
+      template,
+      onSelect: () => this.addToSlot.emit({ item, slot }),
+    }));
+  });
+
+  protected slotOf(entry: MenuEntry): WardrobeSlotType {
+    return entry.key.slice('slot-'.length) as WardrobeSlotType;
   }
 
-  protected pickSlot(slot: WardrobeSlotType): void {
-    this.addToSlot.emit({ item: this.item(), slot });
-    this.slotPickerOpen.set(false);
-  }
-
-  // The kebab entries close the menu then emit (v4 wraps each onClick).
-  protected menuAction(out: { emit(value: WardrobeItemDto): void }): void {
-    this.kebabOpen.set(false);
-    out.emit(this.item());
-  }
-
-  constructor() {
-    // v4 `useClickOutside(ref, close, { enabled: isOpen, onEscape, escapeCapture:
-    // true })` (`:154-167`): both listeners exist only while a popover is open
-    // (a host `(document:…)` binding would wake every row in the list, and its
-    // change detection, on every press anywhere), and the Escape listener is
-    // on the CAPTURE phase so its `stopPropagation` runs before the wardrobe
-    // dialog's own document Escape — a bubble-phase listener registered after
-    // the dialog's runs too late, and one Escape closed the whole wardrobe.
-    const doc = inject(DOCUMENT);
-    effect((onCleanup) => {
-      if (!this.kebabOpen() && !this.slotPickerOpen()) return;
-      const mousedown = (event: MouseEvent): void => this.onDocumentMousedown(event);
-      const keydown = (event: KeyboardEvent): void => {
-        if (isInFloatingLayer(event.target)) return;
-        if (event.key === 'Escape') this.onEscape(event);
-      };
-      doc.addEventListener('mousedown', mousedown);
-      doc.addEventListener('keydown', keydown, true);
-      onCleanup(() => {
-        doc.removeEventListener('mousedown', mousedown);
-        doc.removeEventListener('keydown', keydown, true);
-      });
-    });
-  }
-
-  /**
-   * v4 `useClickOutside` (`:156-167`, `document` `mousedown`): a press outside
-   * the kebab (its button + menu) closes the kebab; a press outside the slot
-   * popover closes the popover. Closes the pre-existing v5 gap (Escape-only).
-   */
-  protected onDocumentMousedown(event: MouseEvent): void {
-    if (isInFloatingLayer(event.target)) return;
-    const target = event.target as Node | null;
-    if (this.kebabOpen() && !(target && this.kebabRef()?.nativeElement.contains(target))) {
-      this.kebabOpen.set(false);
-    }
-    if (
-      this.slotPickerOpen() &&
-      !(target && this.slotPickerRef()?.nativeElement.contains(target))
-    ) {
-      this.slotPickerOpen.set(false);
-    }
-  }
-
-  /** v4 `:154-167` — Escape closes the popovers without dismissing the modal. */
-  protected onEscape(event: Event): void {
-    if (!this.slotPickerOpen() && !this.kebabOpen()) return;
-    event.stopPropagation();
-    event.preventDefault();
-    this.slotPickerOpen.set(false);
-    this.kebabOpen.set(false);
-  }
+  /** v4 pin `:321-347` — the row's actions in v4's order, `manageable && …` holes dropped. */
+  protected readonly kebabEntries = computed<readonly MenuEntryLike[]>(() => {
+    const item = this.item();
+    const manageable = this.manageable();
+    const generating = this.isGeneratingImage();
+    return [
+      manageable && { key: 'edit', label: 'Edit', onSelect: () => this.edit.emit(item) },
+      manageable &&
+        this.canGenerateImage() && {
+          key: 'generate-image',
+          label: generating ? 'Generating image…' : 'Generate image',
+          disabled: generating,
+          onSelect: () => this.generateImage.emit(item),
+        },
+      manageable && {
+        key: 'default',
+        label: item.isDefault ? '☆ Unmark as default' : '★ Mark as default outfit item',
+        disabled: this.isUpdatingDefault(),
+        onSelect: () => this.toggleDefault.emit(item),
+      },
+      manageable && { key: 'duplicate', label: 'Duplicate', onSelect: () => this.duplicate.emit(item) },
+      manageable &&
+        this.canArchive() && {
+          key: 'archive',
+          label: item.archivedAt ? 'Restore from archive' : 'Archive',
+          onSelect: () => this.toggleArchived.emit(item),
+        },
+      manageable &&
+        this.canMoveToFolder() && { key: 'move-to-folder', label: 'Move to folder…', onSelect: () => this.moveToFolder.emit(item) },
+      manageable &&
+        this.canCopyToFolder() && { key: 'copy-to-folder', label: 'Copy to folder…', onSelect: () => this.copyToFolder.emit(item) },
+      { key: 'transfer-move', label: 'Move to another wardrobe…', onSelect: () => this.move.emit(item) },
+      { key: 'transfer-copy', label: 'Copy to another wardrobe…', onSelect: () => this.copyItem.emit(item) },
+      manageable && { key: 'delete', label: 'Delete', destructive: true, onSelect: () => this.delete.emit(item) },
+    ];
+  });
 }

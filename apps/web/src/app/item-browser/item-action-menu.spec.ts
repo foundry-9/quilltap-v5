@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, computed, signal, viewChild, type TemplateRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -311,5 +311,36 @@ describe('presentEntries', () => {
     const a = entry('a', 'A');
     const b = entry('b', 'B');
     expect(presentEntries([false, a, null, undefined, b])).toEqual([a, b]);
+  });
+});
+
+describe('ItemActionMenu — an entry template (L-8, the slot picker’s badge row)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  @Component({
+    imports: [ItemActionMenu],
+    template: `
+      <ng-template #rich let-entry><span class="rich">{{ entry.label }}!</span></ng-template>
+      <qt-item-action-menu [entries]="entries()" />
+    `,
+  })
+  class RichHost {
+    readonly rich = viewChild.required<TemplateRef<unknown>>('rich');
+    readonly entries = computed<readonly MenuEntryLike[]>(() => [
+      { key: 'slot-top', label: 'Top', template: this.rich(), onSelect: () => {} },
+      { key: 'plain', label: 'Plain', onSelect: () => {} },
+    ]);
+  }
+
+  it('renders the template inside the menuitem with the entry as $implicit; a plain entry keeps its text', () => {
+    TestBed.configureTestingModule({ imports: [RichHost] });
+    const fixture = TestBed.createComponent(RichHost);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    (el.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const items = [...el.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items[0].querySelector('span.rich')!.textContent).toBe('Top!');
+    expect(items[1].textContent!.trim()).toBe('Plain');
   });
 });

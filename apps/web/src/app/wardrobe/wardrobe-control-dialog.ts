@@ -59,6 +59,7 @@ import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
 import { isInFloatingLayer } from '../ui/floating-layer';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { ItemActionMenu, type MenuEntryLike, type MenuTrigger } from '../item-browser/item-action-menu';
 
 interface CharacterSummary {
   id: string;
@@ -138,10 +139,10 @@ type RightTab = 'live' | 'builder' | 'history';
     WardrobeBrowser,
     WardrobeInstructionsSection,
     WardrobeItemOverlays,
+    ItemActionMenu,
   ],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
-    '(document:mousedown)': 'onDocumentMouseDown($event)',
   },
   template: `
     <!-- The chrome switch (v4 WardrobeShell, :128-164). asTab renders bare in a
@@ -305,6 +306,7 @@ type RightTab = 'live' | 'builder' | 'history';
                     <button
                       type="button"
                       (click)="rightTab.set('live')"
+                      [attr.aria-pressed]="rightTab() === 'live'"
                       class="qt-tab"
                       [class.qt-tab-active]="rightTab() === 'live'"
                     >
@@ -319,6 +321,7 @@ type RightTab = 'live' | 'builder' | 'history';
                   <button
                     type="button"
                     (click)="rightTab.set('builder')"
+                    [attr.aria-pressed]="rightTab() === 'builder'"
                     class="qt-tab"
                     [class.qt-tab-active]="rightTab() === 'builder'"
                   >
@@ -328,6 +331,7 @@ type RightTab = 'live' | 'builder' | 'history';
                     <button
                       type="button"
                       (click)="rightTab.set('history')"
+                      [attr.aria-pressed]="rightTab() === 'history'"
                       class="qt-tab"
                       [class.qt-tab-active]="rightTab() === 'history'"
                     >History</button>
@@ -386,59 +390,12 @@ type RightTab = 'live' | 'builder' | 'history';
                           Try on
                         </button>
                       }
-                      <div class="relative" (mousedown)="$event.stopPropagation()">
-                        <button
-                          type="button"
-                          (click)="resetMenuOpen.set(!resetMenuOpen())"
-                          class="qt-button-ghost qt-button-sm"
-                          aria-haspopup="menu"
-                          [attr.aria-expanded]="resetMenuOpen()"
-                          title="Reset the staged composition"
-                        >
-                          Reset…
-                        </button>
-                        @if (resetMenuOpen()) {
-                          <div
-                            role="menu"
-                            class="absolute left-0 top-full mt-1 z-30 min-w-[14rem] rounded border qt-border-default qt-bg-default shadow-md"
-                          >
-                            <ul class="divide-y qt-border-default">
-                              @if (isInChat) {
-                                <li>
-                                  <button
-                                    type="button"
-                                    role="menuitem"
-                                    (click)="resetMenuOpen.set(false); fittingResetToWorn()"
-                                    class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                                  >
-                                    Reset to worn
-                                  </button>
-                                </li>
-                              }
-                              <li>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  (click)="resetMenuOpen.set(false); fittingResetToDefaults()"
-                                  class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                                >
-                                  Reset to defaults
-                                </button>
-                              </li>
-                              <li>
-                                <button
-                                  type="button"
-                                  role="menuitem"
-                                  (click)="resetMenuOpen.set(false); fittingClearAll()"
-                                  class="block w-full text-left px-3 py-2 text-sm qt-text-secondary hover:qt-bg-muted"
-                                >
-                                  Clear all
-                                </button>
-                              </li>
-                            </ul>
-                          </div>
-                        }
-                      </div>
+                      <!-- v4 600c2906f: the shared menu with a visible trigger. -->
+                      <qt-item-action-menu
+                        label="Reset the staged composition"
+                        [trigger]="resetTrigger"
+                        [entries]="resetEntries()"
+                      />
                     </div>
                     <qt-outfit-composer
                       [items]="items()"
@@ -573,7 +530,15 @@ export class WardrobeControlDialogInner {
    *  remount key includes chatId). */
   protected isInChat = false;
   protected readonly rightTab = signal<RightTab>('builder');
-  protected readonly resetMenuOpen = signal(false);
+  /** v4 `trigger={{ content: 'Reset…' }}` (one object — a fresh literal per check would trip NG0100). */
+  protected readonly resetTrigger: MenuTrigger = { content: 'Reset…' };
+  /** v4 pin `:392-396` — Reset to worn (in a chat only), Reset to defaults, Clear all. */
+  protected readonly resetEntries = computed<readonly MenuEntryLike[]>(() => [
+    // `isInChat` is set once at boot from `chatId` (the inner remounts per context).
+    this.chatId() !== null && { key: 'reset-worn', label: 'Reset to worn', onSelect: () => void this.fittingResetToWorn() },
+    { key: 'reset-defaults', label: 'Reset to defaults', onSelect: () => void this.fittingResetToDefaults() },
+    { key: 'clear-all', label: 'Clear all', onSelect: () => void this.fittingClearAll() },
+  ]);
   private fittingSeedKey: string | null = null;
 
   // -------- Staged Live-outfit edits (v4 `useStagedLiveOutfits`) --------
@@ -1305,25 +1270,14 @@ export class WardrobeControlDialogInner {
 
   protected onEscape(event: Event): void {
     if (isInFloatingLayer(event.target)) return;
-    if (this.resetMenuOpen()) {
-      event.stopPropagation();
-      event.preventDefault();
-      this.resetMenuOpen.set(false);
-      return;
-    }
-    // In tab mode v4 renders no BaseModal, so Escape never closes the surface
-    // (only the Reset menu above). The reset-menu arm still fires either way.
+    // An open Reset… menu swallows its own Escape in the capture phase
+    // (`qt-item-action-menu`, v4 `escapeCapture`), so this one never sees it.
+    // In tab mode v4 renders no BaseModal, so Escape never closes the surface.
     if (this.asTab()) return;
     // An overlay (the Move-to-folder picker included — bug 229) owns this
     // Escape; it closes itself.
     if (this.overlayOpen()) return;
     this.requestClose();
-  }
-
-  /** Close the Reset menu on outside click (v4 :846-866). */
-  protected onDocumentMouseDown(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (this.resetMenuOpen()) this.resetMenuOpen.set(false);
   }
 }
 

@@ -71,7 +71,7 @@ export interface InventoryItemActionsOptions {
 
 export interface InventoryItemActions {
   readonly editor: Signal<InventoryEditorState | null>;
-  readonly folderPicker: Signal<{ items: ResolvedInventoryItem[] } | null>;
+  readonly folderPicker: Signal<{ items: ResolvedInventoryItem[]; mode: 'move' | 'copy' } | null>;
   readonly transfer: Signal<{ item: ResolvedInventoryItem; mode: 'move' | 'copy' } | null>;
   readonly instantiateFor: Signal<InventoryInstantiateRequest | null>;
   /** True while any overlay this store opens is up (the dialog's Escape gate reads it). */
@@ -85,7 +85,8 @@ export interface InventoryItemActions {
   openCreate(mode: 'item' | 'kit' | 'archetype', folder?: string): void;
   openEditor(item: ResolvedInventoryItem): void;
   closeEditor(): void;
-  openFolderPicker(items: ResolvedInventoryItem[]): void;
+  /** v4 pin `openFolderPicker(items, mode)` — `b2b783b47` added Copy to folder…. */
+  openFolderPicker(items: ResolvedInventoryItem[], mode?: 'move' | 'copy'): void;
   closeFolderPicker(): void;
   openTransfer(item: ResolvedInventoryItem, mode: 'move' | 'copy'): void;
   closeTransfer(): void;
@@ -108,7 +109,7 @@ function archivedNames(error: CoreDispatchError): string {
 export function createInventoryItemActions(opts: InventoryItemActionsOptions): InventoryItemActions {
   const { core, toasts, requestConfirmation, requestAlert } = opts;
   const editor = signal<InventoryEditorState | null>(null);
-  const folderPicker = signal<{ items: ResolvedInventoryItem[] } | null>(null);
+  const folderPicker = signal<{ items: ResolvedInventoryItem[]; mode: 'move' | 'copy' } | null>(null);
   const transfer = signal<{ item: ResolvedInventoryItem; mode: 'move' | 'copy' } | null>(null);
   const instantiateFor = signal<InventoryInstantiateRequest | null>(null);
 
@@ -230,7 +231,7 @@ export function createInventoryItemActions(opts: InventoryItemActionsOptions): I
     openCreate: (mode, folder = '') => editor.set({ kind: 'create', mode, folder }),
     openEditor: (item) => editor.set({ kind: 'edit', item }),
     closeEditor: () => editor.set(null),
-    openFolderPicker: (items) => folderPicker.set({ items }),
+    openFolderPicker: (items, mode = 'move') => folderPicker.set({ items, mode }),
     closeFolderPicker: () => folderPicker.set(null),
     openTransfer: (item, mode) => transfer.set({ item, mode }),
     closeTransfer: () => transfer.set(null),

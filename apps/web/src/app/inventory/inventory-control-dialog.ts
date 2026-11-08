@@ -203,6 +203,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
           <qt-inventory-folder-picker-dialog
             [container]="folderPickerContainer()!"
             [items]="picker.items"
+            [mode]="picker.mode"
             [actions]="actions"
             (closed)="actions.closeFolderPicker()"
           />

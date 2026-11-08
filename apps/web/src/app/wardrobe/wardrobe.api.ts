@@ -4,8 +4,9 @@
  *
  * §1 (the P4.9f1/P4.9f2 Shared contract): the request types for lane P4.9f1's
  * NEW verbs — `chatOutfitGet`, `chatEquip` (all seven modes, v4's enum order,
- * incl. the deprecated `equip` alias for `wear`), `wardrobeTransferDestinations`
- * / `wardrobeTransferApply`, the GLOBAL archetype tier `wardrobeList` /
+ * incl. the deprecated `equip` alias for `wear`), `wardrobeTransferApply`
+ * (its destinations-read twin left with v4's transfers GET —
+ * P4.D386, C12), the GLOBAL archetype tier `wardrobeList` /
  * `wardrobeCreate` / `wardrobeUpdate` / `wardrobeDelete`, and (tier 2)
  * `wardrobePreviewAvatar` + `chatRegenerateAvatar` — were FOLDED into
  * `core-contract.ts` at the round's unification and the cast retired; the
@@ -49,8 +50,6 @@ import type {
   WardrobeListRequest,
   WardrobePreviewAvatarRequest,
   WardrobeTransferApplyRequest,
-  WardrobeTransferDestinationsRequest,
-  WardrobeTransferScope,
   WardrobeUpdateRequest,
   WardrobeItemDto,
 } from '../core/core-contract';
@@ -70,7 +69,6 @@ export type {
   ChatOutfitGetRequest,
   ChatEquipMode,
   ChatEquipRequest,
-  WardrobeTransferDestinationsRequest,
   WardrobeTransferScope,
   WardrobeListRequest,
   WardrobeCreateRequest,
@@ -104,7 +102,6 @@ export type WardrobeTransferComponentMode = ComponentMode;
 export type WardrobeLaneRequest =
   | ChatOutfitGetRequest
   | ChatEquipRequest
-  | WardrobeTransferDestinationsRequest
   | WardrobeTransferApplyRequest
   | WardrobeListRequest
   | WardrobeCreateRequest
@@ -169,23 +166,6 @@ export async function postWardrobeRollback(
 }
 
 // === end P4.D318 ===
-
-// ---------------------------------------------------------------------------
-// Transfer payload shapes (v4 `WardrobeTransferDialog.tsx:11-21`)
-// ---------------------------------------------------------------------------
-
-export interface TransferDestinationOption {
-  id: string;
-  name: string;
-}
-
-/** v4 `WardrobeTransferDialog.tsx:16-21` / `transfers/route.ts:236-260`. */
-export interface TransferDestinationsPayload {
-  general: { available: boolean; label: string };
-  projects: TransferDestinationOption[];
-  groups: TransferDestinationOption[];
-  users: TransferDestinationOption[];
-}
 
 // ---------------------------------------------------------------------------
 // The container → verb router (v4 `wardrobeCollectionUrl` / `wardrobeItemUrl`)

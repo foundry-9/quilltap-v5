@@ -86,11 +86,6 @@ export const GUARDED: readonly GuardRow[] = [
   { file: 'ui/tooltip.ts', handler: 'onKeyDown', kind: 'keydown' }, // +
   { file: 'wardrobe/equipped-slot-row.ts', handler: 'onEscape', kind: 'escape' },
   { file: 'wardrobe/wardrobe-control-dialog.ts', handler: 'onEscape', kind: 'escape' },
-  {
-    file: 'wardrobe/wardrobe-control-dialog.ts',
-    handler: 'onDocumentMouseDown',
-    kind: 'mousedown',
-  },
   { file: 'wardrobe/outfit-quick-pick.ts', handler: 'onDocMouseDown', kind: 'mousedown' },
   { file: 'wardrobe/outfit-quick-pick.ts', handler: 'onKeyDown', kind: 'keydown' }, // +
   { file: 'chat/rng-dropdown.ts', handler: 'onDocumentMouseDown', kind: 'mousedown' },
@@ -102,12 +97,6 @@ export const GUARDED: readonly GuardRow[] = [
   { file: 'images/image-navigation.ts', handler: 'handleKeyDown', kind: 'keydown' }, // +
   { file: 'almanack/almanack-report-dialog.ts', handler: 'onKeyDown', kind: 'keydown' }, // +
   { file: 'workspace/chrome/workspace-host.ts', handler: 'onClick', kind: 'click' },
-  {
-    file: 'screens/scenarios/shared/scenario-row.ts',
-    handler: 'onDocMouseDown',
-    kind: 'mousedown',
-  },
-  { file: 'screens/scenarios/shared/scenario-row.ts', handler: 'onKeyDown', kind: 'keydown' }, // +
   {
     file: 'screens/generate-image/generate-image-page.ts',
     handler: 'onDocumentClick',
@@ -168,12 +157,6 @@ export const GUARDED: readonly GuardRow[] = [
   { file: 'screens/profile/avatar-picker.ts', handler: 'onEscape', kind: 'escape' },
   { file: 'wardrobe/item-editor/wardrobe-mode-change-prompt.ts', handler: 'onEscape', kind: 'escape' },
   // `addEventListener` / `@HostListener` forms the old site regex missed (union).
-  // v4 `wardrobe-item-row.tsx:162-171` — `useClickOutside`, `escapeCapture`.
-  { file: 'wardrobe/wardrobe-item-row.ts', handler: 'onDocumentMousedown', kind: 'mousedown' },
-  { file: 'wardrobe/wardrobe-item-row.ts', handler: 'keydown', kind: 'escape' },
-  // v4 `inventory-item-row.tsx:87` — `useClickOutside`, `escapeCapture`.
-  { file: 'inventory/inventory-item-row.ts', handler: 'mousedown', kind: 'mousedown' },
-  { file: 'inventory/inventory-item-row.ts', handler: 'keydown', kind: 'escape' },
   // v4 `ScenarioBrowserDialog.tsx:243` — a `BaseModal` (its Escape is `useClickOutside`'s).
   { file: 'scenario/scenario-browser-dialog.ts', handler: 'onEscape', kind: 'escape' },
   // v4 `SpeakerSelector.tsx:51` / `settings/model-selector.tsx:106` — `useClickOutside`.
@@ -188,8 +171,12 @@ export const GUARDED: readonly GuardRow[] = [
   { file: 'wardrobe/wardrobe-item-editor.ts', handler: 'onEscape', kind: 'escape' },
   // === P4.D386 ===
   // The shared ⋮ menu (v4 `ItemActionMenu.tsx` — `useClickOutside`,
-  // `escapeCapture`), the ONE handler pair every item-browser row menu moves
-  // onto (P4.D386 commit 2 removes the per-row pairs it replaces).
+  // `escapeCapture`), the ONE handler pair every item-browser row menu moved
+  // onto: P4.D386 removed the Reset… menu's `wardrobe-control-dialog.ts`
+  // `onDocumentMouseDown`, `wardrobe-item-row.ts`'s `onDocumentMousedown` /
+  // `keydown`, `inventory-item-row.ts`'s `mousedown` / `keydown`, and
+  // `screens/scenarios/shared/scenario-row.ts`'s `onDocMouseDown` /
+  // `onKeyDown` (seven rows, every hand-rolled menu deleted with them).
   { file: 'item-browser/item-action-menu.ts', handler: 'onDocumentMousedown', kind: 'mousedown' },
   { file: 'item-browser/item-action-menu.ts', handler: 'onDocumentKeydown', kind: 'escape' },
   // === P4.D386 ===
@@ -200,9 +187,8 @@ export const GUARDED: readonly GuardRow[] = [
  * document-level dismiss site). v4 at `236c04e35` guards only through
  * `useClickOutside` / `BaseModal`; these sites carry the guard where v4's own
  * listener does not, so an Escape or click inside the Brahma Console leaves the
- * surface beneath open where v4 would close it (observable chiefly on the
- * scenario-row kebab): `ui/tooltip.ts` (v4 `Tooltip.tsx:164-172`),
- * `screens/scenarios/shared/scenario-row.ts` (`ScenarioRow.tsx:55-77`),
+ * surface beneath open where v4 would close it: `ui/tooltip.ts` (v4
+ * `Tooltip.tsx:164-172`),
  * `workspace/chrome/workspace-host.ts` (`WorkspaceLinkInterceptor`),
  * `chat/sidebar/chat-sidebar.ts`, `images/image-navigation.ts`,
  * `images/image-modal.ts`, `almanack/almanack-report-dialog.ts`,
@@ -254,8 +240,8 @@ describe('the floating-layer guard census (ruling R-4)', () => {
     expect(handlerIsGuarded(arrow, 'onPointerDown')).toBe(false);
   });
 
-  it('carries 63 rows: the 48 of the lane (36 census + 7 keydown misses + 2 chip-card + 3 HANDOFF), less the 9 P4.D358 deleted and model-picker’s 2 (exempt), + 14 P4.D358 hosts + the 9 sites the widened regex found + the wardrobe item editor’s new Escape + P4.D386’s shared ⋮ pair', () => {
-    expect(GUARDED).toHaveLength(48 - 9 - 2 + 14 + 9 + 1 + 2);
+  it('carries 56 rows: the 48 of the lane (36 census + 7 keydown misses + 2 chip-card + 3 HANDOFF), less the 9 P4.D358 deleted and model-picker’s 2 (exempt), + 14 P4.D358 hosts + the 9 sites the widened regex found + the wardrobe item editor’s new Escape + P4.D386’s shared ⋮ pair, less the 7 per-row menu listeners it replaced', () => {
+    expect(GUARDED).toHaveLength(48 - 9 - 2 + 14 + 9 + 1 + 2 - 7);
   });
 
   for (const row of GUARDED) {

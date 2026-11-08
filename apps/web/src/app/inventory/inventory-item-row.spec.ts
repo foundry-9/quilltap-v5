@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import { BOW, KIT, LAMP, PROJECT, RING, SWORD, obj } from './__fixtures__/inventory-ui.fixture';
+import { ITEM_ACTION_ENTRY_CLASS as MENU_ITEM } from '../item-browser/item-action-menu';
 import {
   InventoryItemRow,
-  MENU_ITEM,
   type InventoryRowActions,
   type InventoryRowEquip,
 } from './inventory-item-row';
@@ -27,6 +27,7 @@ function actions(): InventoryRowActions {
     onDetach: vi.fn(),
     onDuplicate: vi.fn(),
     onMoveToFolder: vi.fn(),
+    onCopyToFolder: vi.fn(),
     onTransfer: vi.fn(),
     onToggleArchived: vi.fn(),
     onDelete: vi.fn(),
@@ -114,6 +115,8 @@ describe('InventoryItemRow', () => {
       'Detach from archetype…',
       'Duplicate',
       'Move to folder…',
+      // v4 pin (`b2b783b47`): Copy to folder…, copyable objects only.
+      'Copy to folder…',
       'Move to another inventory…',
       'Copy to another inventory…',
       'Archive',
@@ -164,14 +167,17 @@ describe('InventoryItemRow', () => {
     expect(host.actions.onTransfer).toHaveBeenCalledWith(host.item(), 'copy');
   });
 
-  it('the menu is fixed to the viewport by inline style', () => {
+  it('the menu is fixed to the viewport by inline style (the shared ⋮ — opaque qt-bg-popover at the pin)', () => {
     const { el, open } = render();
     open();
-    const menu = el.querySelector('[role="menu"]') as HTMLElement;
+    // v4 pin `ItemActionMenu`: the fixed style rides the `role="presentation"`
+    // wrapper; the `role="menu"` list sits inside it (`29ba4d3f8` → `qt-bg-popover`).
+    const menu = (el.querySelector('[role="menu"]') as HTMLElement).parentElement as HTMLElement;
+    expect(menu.getAttribute('role')).toBe('presentation');
     expect(menu.style.position).toBe('fixed');
     expect(menu.style.overflowY).toBe('auto');
     expect(menu.style.maxHeight).toMatch(/px$/);
-    expect(menu.getAttribute('class')).toBe('z-30 min-w-[14rem] rounded border qt-border-default qt-bg-default shadow-md');
+    expect(menu.getAttribute('class')).toBe('z-30 min-w-[14rem] rounded border qt-border-default qt-bg-popover shadow-md');
   });
 
   it('a capture-phase scroll outside the menu or a resize closes it; a scroll inside does not (trap 14)', () => {

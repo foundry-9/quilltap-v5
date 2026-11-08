@@ -30,6 +30,10 @@ const NEW_FOLDER = '\u0000new';
 @Component({
   selector: 'qt-item-folder-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // `id` names the inner control. A static `id="…"` on this element would ALSO
+  // land on the host, giving the page two elements with one id — the caller's
+  // `<label for>` would then name the host, not the control. Clear it.
+  host: { '[attr.id]': 'null' },
   template: `
     <div>
       <label [attr.for]="id()" [attr.class]="labelClassName()">Folder</label>

@@ -1,17 +1,7 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  ElementRef,
-  OnDestroy,
-  inject,
-  input,
-  output,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import type { ScenarioDto } from '../../../core/core-contract';
-import { isInFloatingLayer } from '../../../ui/floating-layer';
+import { ItemActionMenu, type MenuEntryLike } from '../../../item-browser/item-action-menu';
 
 /**
  * ScenarioRow (v4 `components/scenarios/ScenarioRow.tsx`) — one width-adaptive
@@ -20,12 +10,15 @@ import { isInFloatingLayer } from '../../../ui/floating-layer';
  *
  * Container-query adaptive (Tailwind `@container`/`@lg`): a wide container shows
  * inline Edit / Rename / Archive / Delete buttons; a narrow one collapses the
- * four into a single `⋮` kebab (closes on outside mousedown + capture-phase
- * Escape, mirroring the house wardrobe-row pattern).
+ * four into a single `⋮` kebab — the shared `qt-item-action-menu` at the pin
+ * `624d0d25c` (`29ba4d3f8` onto the fixed menu, then `600c2906f` onto
+ * `ItemActionMenu`: fixed to the viewport, keyboard-operable, closed by an
+ * outside press or a capture-phase Escape).
  */
 @Component({
   selector: 'qt-scenario-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [ItemActionMenu],
   template: `
     <li class="py-3 flex items-start gap-3">
       <input
@@ -90,60 +83,20 @@ import { isInFloatingLayer } from '../../../ui/floating-layer';
         </button>
       </div>
 
-      <!-- Narrow container: kebab menu holding the same four actions. -->
-      <div class="relative @lg:hidden shrink-0">
-        <button
-          type="button"
-          class="qt-button-ghost qt-button-sm"
-          [attr.aria-label]="'More actions for ' + scenario().name"
-          title="More actions"
-          aria-haspopup="menu"
-          [attr.aria-expanded]="kebabOpen()"
-          (click)="toggleKebab()"
-        >
-          ⋮
-        </button>
-        @if (kebabOpen()) {
-          <div role="menu" class="qt-dropdown absolute right-0 top-full mt-1">
-            <button
-              type="button"
-              role="menuitem"
-              class="qt-dropdown-item w-full text-left"
-              (click)="pick(edit)"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              class="qt-dropdown-item w-full text-left"
-              (click)="pick(rename)"
-            >
-              Rename
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              class="qt-dropdown-item w-full text-left"
-              (click)="pick(toggleArchived)"
-            >
-              {{ archiveLabel() }}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              class="qt-dropdown-item w-full text-left qt-text-destructive"
-              (click)="pick(delete)"
-            >
-              Delete
-            </button>
-          </div>
-        }
+      <!-- Narrow container: kebab menu holding the same four actions — the
+           shared item-browser menu (v4 600c2906f, pin :128-141). -->
+      <div class="@lg:hidden shrink-0">
+        <qt-item-action-menu
+          [label]="'More actions for ' + scenario().name"
+          [room]="200"
+          minWidthClass="min-w-[10rem]"
+          [entries]="kebabEntries()"
+        />
       </div>
     </li>
   `,
 })
-export class ScenarioRow implements OnDestroy {
+export class ScenarioRow {
   readonly scenario = input.required<ScenarioDto>();
   /** Used in the default radio's title/aria copy. e.g. "project" or "general". */
   readonly scopeLabel = input<string>('default');
@@ -176,48 +129,14 @@ export class ScenarioRow implements OnDestroy {
     return s.isDefault ? `${this.scopeLabel()} default` : `Set as ${this.scopeLabel()} default`;
   });
 
-  private readonly host = inject(ElementRef<HTMLElement>);
-  protected readonly kebabOpen = signal(false);
-
-  private readonly onDocMouseDown = (e: MouseEvent): void => {
-    if (isInFloatingLayer(e.target)) return;
-    if (!this.host.nativeElement.contains(e.target as Node)) {
-      this.kebabOpen.set(false);
-    }
-  };
-
-  private readonly onKeyDown = (e: KeyboardEvent): void => {
-    if (isInFloatingLayer(e.target)) return;
-    if (e.key !== 'Escape') {
-      return;
-    }
-    e.stopPropagation();
-    e.preventDefault();
-    this.kebabOpen.set(false);
-  };
-
-  protected toggleKebab(): void {
-    this.kebabOpen.update((v) => !v);
-    if (this.kebabOpen()) {
-      document.addEventListener('mousedown', this.onDocMouseDown);
-      document.addEventListener('keydown', this.onKeyDown, true);
-    } else {
-      this.detach();
-    }
-  }
-
-  protected pick(out: { emit(v: ScenarioDto): void }): void {
-    this.kebabOpen.set(false);
-    this.detach();
-    out.emit(this.scenario());
-  }
-
-  ngOnDestroy(): void {
-    this.detach();
-  }
-
-  private detach(): void {
-    document.removeEventListener('mousedown', this.onDocMouseDown);
-    document.removeEventListener('keydown', this.onKeyDown, true);
-  }
+  /** v4 pin `:134-139`. */
+  protected readonly kebabEntries = computed<readonly MenuEntryLike[]>(() => {
+    const scenario = this.scenario();
+    return [
+      { key: 'edit', label: 'Edit', onSelect: () => this.edit.emit(scenario) },
+      { key: 'rename', label: 'Rename', onSelect: () => this.rename.emit(scenario) },
+      { key: 'archive', label: this.archiveLabel(), onSelect: () => this.toggleArchived.emit(scenario) },
+      { key: 'delete', label: 'Delete', destructive: true, onSelect: () => this.delete.emit(scenario) },
+    ];
+  });
 }

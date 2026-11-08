@@ -1,65 +1,37 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  input,
-  output,
-  signal,
-  untracked,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto } from '../core/core-contract';
+import { injectContainerCatalogue } from '../item-browser/container-catalogue';
+import { ContainerSelect } from '../item-browser/container-select';
 import { Modal } from '../ui/modal';
-import {
-  WardrobeComponentModeFieldset,
-  defaultComponentMode,
-} from './wardrobe-component-mode-fieldset';
-import {
-  dispatchWardrobe,
-  type TransferDestinationsPayload,
-  type WardrobeTransferComponentMode,
-  type WardrobeTransferScope,
-} from './wardrobe.api';
+import { WardrobeComponentModeFieldset, defaultComponentMode } from './wardrobe-component-mode-fieldset';
+import { dispatchWardrobe, type WardrobeTransferComponentMode } from './wardrobe.api';
 import { isComposite } from './equipped-slots';
-import { sameWardrobeContainer, type WardrobeContainer } from './wardrobe-container';
+import {
+  GENERAL_CONTAINER,
+  GENERAL_WARDROBE_NAME,
+  decodeWardrobeContainer,
+  encodeWardrobeContainer,
+  type WardrobeContainer,
+} from './wardrobe-container';
 import { ToastService } from '../ui/toast.service';
 
 export type TransferMode = 'move' | 'copy';
 
-interface DestinationValue {
-  scope: WardrobeTransferScope;
-  id: string | null;
-}
-
-/** v4 `WardrobeTransferDialog.tsx:38-40`. */
-export function encodeDestination(scope: WardrobeTransferScope, id: string | null): string {
-  return `${scope}:${id ?? ''}`;
-}
-
-/** v4 `WardrobeTransferDialog.tsx:42-50`. */
-export function decodeDestination(value: string): DestinationValue | null {
-  const [scopeRaw, idRaw] = value.split(':', 2);
-  if (!scopeRaw) return null;
-  if (
-    scopeRaw !== 'general' &&
-    scopeRaw !== 'project' &&
-    scopeRaw !== 'group' &&
-    scopeRaw !== 'character'
-  ) {
-    return null;
-  }
-  const id = idRaw && idRaw.length > 0 ? idRaw : null;
-  return { scope: scopeRaw, id };
-}
-
 /**
- * Move / copy a wardrobe item to another tier — a port of v4
- * `components/wardrobe/WardrobeTransferDialog.tsx` over lane P4.9f1's
- * `wardrobeTransferDestinations` / `wardrobeTransferApply` verbs (v4
- * `GET|POST /api/v1/wardrobe/transfers`, `:73`/`:104`).
+ * Move / copy a wardrobe item to another wardrobe — a character's vault, a
+ * group's or project's store, or Quilltap General — a port of v4
+ * `components/wardrobe/WardrobeTransferDialog.tsx` at the pin `624d0d25c`.
+ * A move keeps the item's id; a copy is a new item. A composite outfit asks
+ * what becomes of its components (all or nothing). The destinations are the
+ * shared container catalogue (`injectContainerCatalogue` — the
+ * `characterList` / `projectList` / `groupList` reads) in the shared
+ * `qt-container-select`, the item's own wardrobe left out; General is the
+ * natural first choice unless the item already lives there, and needs no
+ * availability read (`b2b783b47` retired v4's `GET /wardrobe/transfers`, and
+ * this dialog no longer dispatches the destinations read — C12). The
+ * transfer itself is `wardrobeTransferApply` (v4 `POST /wardrobe/transfers`).
  *
  * Success raises v4's sentence and closes via `transferred`, which the parent
  * answers by reloading items.
@@ -67,7 +39,7 @@ export function decodeDestination(value: string): DestinationValue | null {
 @Component({
   selector: 'qt-wardrobe-transfer-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, WardrobeComponentModeFieldset],
+  imports: [ContainerSelect, Modal, WardrobeComponentModeFieldset],
   template: `
     <qt-modal
       [title]="title()"
@@ -83,78 +55,25 @@ export function decodeDestination(value: string): DestinationValue | null {
         </p>
 
 
-        @if (loadingDestinations()) {
+        @if (catalogue.loading()) {
           <p class="text-sm qt-text-secondary">Loading destinations…</p>
         } @else {
           <div>
-            <label for="wardrobe-transfer-destination" class="text-sm qt-text-secondary">
+            <label id="wardrobe-transfer-destination-label" for="wardrobe-transfer-destination" class="text-sm qt-text-secondary">
               Destination
             </label>
-            <!-- The options load asynchronously, so the selection rides
-                 [selected] per option, never [value] on the select (the
-                 standing dogfood-#6 rule). -->
-            <select
+            <qt-container-select
               id="wardrobe-transfer-destination"
-              class="qt-select w-full mt-1"
-              (change)="selectedDestination.set($any($event.target).value)"
+              labelledBy="wardrobe-transfer-destination-label"
+              selectClass="qt-select w-full mt-1"
+              [value]="selectedDestination()"
+              (valueChange)="chosen.set($event)"
+              [catalogue]="catalogueLists()"
+              [generalName]="generalName"
+              placeholder="Choose a wardrobe"
+              [exclude]="exclude()"
               [disabled]="working()"
-            >
-              @if (noDestinations()) {
-                <option value="" [selected]="selectedDestination() === ''">
-                  No destinations available
-                </option>
-              }
-
-              @if (visibleDestinations()?.general?.available) {
-                <optgroup label="General">
-                  <option
-                    [value]="generalValue"
-                    [selected]="selectedDestination() === generalValue"
-                  >
-                    {{ visibleDestinations()?.general?.label }}
-                  </option>
-                </optgroup>
-              }
-
-              @if ((visibleDestinations()?.projects ?? []).length > 0) {
-                <optgroup label="Projects">
-                  @for (project of visibleDestinations()?.projects ?? []; track project.id) {
-                    <option
-                      [value]="encode('project', project.id)"
-                      [selected]="selectedDestination() === encode('project', project.id)"
-                    >
-                      {{ project.name }}
-                    </option>
-                  }
-                </optgroup>
-              }
-
-              @if ((visibleDestinations()?.groups ?? []).length > 0) {
-                <optgroup label="Groups">
-                  @for (group of visibleDestinations()?.groups ?? []; track group.id) {
-                    <option
-                      [value]="encode('group', group.id)"
-                      [selected]="selectedDestination() === encode('group', group.id)"
-                    >
-                      {{ group.name }}
-                    </option>
-                  }
-                </optgroup>
-              }
-
-              @if ((visibleDestinations()?.users ?? []).length > 0) {
-                <optgroup label="Users">
-                  @for (user of visibleDestinations()?.users ?? []; track user.id) {
-                    <option
-                      [value]="encode('character', user.id)"
-                      [selected]="selectedDestination() === encode('character', user.id)"
-                    >
-                      {{ user.name }}
-                    </option>
-                  }
-                </optgroup>
-              }
-            </select>
+            />
           </div>
         }
 
@@ -189,7 +108,7 @@ export function decodeDestination(value: string): DestinationValue | null {
           type="button"
           (click)="handleSubmit()"
           class="qt-button-primary qt-button-sm"
-          [disabled]="working() || loadingDestinations() || !selection()"
+          [disabled]="working() || catalogue.loading() || !selection()"
         >
           {{ working() ? (mode() === 'move' ? 'Moving…' : 'Copying…') : submitLabel() }}
         </button>
@@ -226,84 +145,47 @@ export class WardrobeTransferDialog {
   readonly closed = output<void>();
   readonly transferred = output<void>();
 
-  protected readonly generalValue = encodeDestination('general', null);
-
-  protected readonly loadingDestinations = signal(false);
-  protected readonly destinations = signal<TransferDestinationsPayload | null>(null);
-  protected readonly selectedDestination = signal('');
+  protected readonly catalogue = injectContainerCatalogue();
+  protected readonly generalName = GENERAL_WARDROBE_NAME;
+  /** v4 `ContainerSelect`'s `catalogue` (plain arrays). */
+  protected readonly catalogueLists = computed(() => ({
+    characters: this.catalogue.characters(),
+    projects: this.catalogue.projects(),
+    groups: this.catalogue.groups(),
+  }));
+  private readonly excludedKey = computed(() => {
+    const exclude = this.excludeDestination();
+    return exclude ? encodeWardrobeContainer(exclude) : null;
+  });
+  protected readonly exclude = computed<readonly string[]>(() => {
+    const key = this.excludedKey();
+    return key ? [key] : [];
+  });
+  /** The operator's pick; null until one is made (v4 `chosen`). */
+  protected readonly chosen = signal<string | null>(null);
+  /** v4 `chosen ?? (excludedKey === generalKey ? '' : generalKey)` — General first, unless the item lives there. */
+  protected readonly selectedDestination = computed(() => {
+    const generalKey = encodeWardrobeContainer(GENERAL_CONTAINER);
+    return this.chosen() ?? (this.excludedKey() === generalKey ? '' : generalKey);
+  });
   protected readonly working = signal(false);
   /**
    * Composite outfits prompt for their components — all or nothing. A move
    * defaults to moving them along; a copy defaults to copying them, since an
-   * outfit that arrives without its pieces is rarely what anyone meant
-   * (v4 `:88-94`). The component mounts per open, so v4's reset-on-open
-   * collapses into this initial read.
+   * outfit that arrives without its pieces is rarely what anyone meant. The
+   * component mounts per open, so v4's initial state is read once.
    */
   protected readonly isComposite = computed(() => isComposite(this.item()));
   protected readonly componentMode = signal<WardrobeTransferComponentMode>('copy');
 
-  private loaded = false;
-
   constructor() {
-    // Load destinations once on mount (v4 :66-90 — the component mounts per
-    // open, so the reset-on-open collapses into the initial state here).
     effect(() => {
-      if (this.loaded) return;
-      this.loaded = true;
-      untracked(() => {
-        this.componentMode.set(defaultComponentMode(this.mode()));
-        void this.loadDestinations();
-      });
+      const mode = this.mode();
+      untracked(() => this.componentMode.set(defaultComponentMode(mode)));
     });
   }
 
-  private async loadDestinations(): Promise<void> {
-    this.loadingDestinations.set(true);
-    try {
-      const data = await dispatchWardrobe(this.core, { type: 'wardrobeTransferDestinations' });
-      const destinations = data['destinations'] as TransferDestinationsPayload;
-      this.destinations.set(destinations);
-      // v4 `:101-108` — preselect General when available AND not the item's own
-      // home; preselecting a destination the list then hides would arm the
-      // submit button against nothing.
-      const generalExcluded = sameWardrobeContainer(this.excludeDestination(), {
-        scope: 'general',
-        id: null,
-      });
-      if (destinations.general.available && !generalExcluded) {
-        this.selectedDestination.set(this.generalValue);
-      }
-    } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : String(err));
-    } finally {
-      this.loadingDestinations.set(false);
-    }
-  }
-
-  /**
-   * The item's known home container is dropped from the list — the server
-   * refuses same-place transfers, so offering it would only invite a scolding
-   * (v4 `:126-148`).
-   */
-  protected readonly visibleDestinations = computed<TransferDestinationsPayload | null>(() => {
-    const destinations = this.destinations();
-    if (!destinations) return null;
-    const exclude = this.excludeDestination();
-    if (!exclude) return destinations;
-    const excluded = (scope: WardrobeTransferScope, id: string | null): boolean =>
-      sameWardrobeContainer(exclude, { scope, id });
-    return {
-      general: {
-        ...destinations.general,
-        available: destinations.general.available && !excluded('general', null),
-      },
-      projects: destinations.projects.filter((p) => !excluded('project', p.id)),
-      groups: destinations.groups.filter((g) => !excluded('group', g.id)),
-      users: destinations.users.filter((u) => !excluded('character', u.id)),
-    };
-  });
-
-  protected readonly selection = computed(() => decodeDestination(this.selectedDestination()));
+  protected readonly selection = computed<WardrobeContainer | null>(() => decodeWardrobeContainer(this.selectedDestination()));
 
   protected readonly componentCountLabel = computed(() => {
     const count = (this.item().componentItemIds ?? []).length;
@@ -317,22 +199,6 @@ export class WardrobeTransferDialog {
   protected readonly title = computed(() =>
     this.mode() === 'move' ? 'Move wardrobe item' : 'Copy wardrobe item',
   );
-
-  /** v4 `:181-185` — the all-empty placeholder option. */
-  protected readonly noDestinations = computed(() => {
-    const d = this.visibleDestinations();
-    return (
-      !!d &&
-      !d.general.available &&
-      d.projects.length === 0 &&
-      d.groups.length === 0 &&
-      d.users.length === 0
-    );
-  });
-
-  protected encode(scope: WardrobeTransferScope, id: string | null): string {
-    return encodeDestination(scope, id);
-  }
 
   /** v4 `:137` — click-outside/Escape closing suspends while working. */
   protected requestClose(): void {
@@ -372,7 +238,10 @@ export class WardrobeTransferDialog {
       );
       this.transferred.emit();
     } catch (err) {
-      this.toasts.showError(err instanceof Error ? err.message : String(err));
+      // v4 pin: `result.error || \`Failed to ${mode} wardrobe item\`` (the refusal's words, else the fallback).
+      this.toasts.showError(
+        err instanceof Error && err.message ? err.message : `Failed to ${this.mode()} wardrobe item`,
+      );
     } finally {
       this.working.set(false);
     }

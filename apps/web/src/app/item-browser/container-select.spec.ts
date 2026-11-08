@@ -109,4 +109,10 @@ describe('ContainerSelect', () => {
     fixture.detectChanges();
     expect(select().getAttribute('aria-labelledby')).toBe('xfer-label');
   });
+
+  it('the id lands on the select only — never on the host', () => {
+    const { el } = render();
+    expect(el.querySelector('qt-container-select')!.hasAttribute('id')).toBe(false);
+    expect(el.querySelectorAll('#xfer')).toHaveLength(1);
+  });
 });

@@ -137,4 +137,11 @@ describe('ItemFolderField', () => {
     const { select } = render((h) => h.selectClass.set('qt-select qt-select-sm'));
     expect(select()!.getAttribute('class')).toBe('qt-select qt-select-sm');
   });
+
+  it('the id lands on the control only — never on the host (one element per id, so the label names the control)', () => {
+    const { el } = render();
+    expect(el.querySelector('qt-item-folder-field')!.hasAttribute('id')).toBe(false);
+    expect(el.querySelectorAll('#inv-folder')).toHaveLength(1);
+    expect(el.querySelector('select#inv-folder')).not.toBeNull();
+  });
 });

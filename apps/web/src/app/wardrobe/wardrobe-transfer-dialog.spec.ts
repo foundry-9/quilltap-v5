@@ -3,12 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
-import type { TransferDestinationsPayload } from './wardrobe.api';
-import {
-  decodeDestination,
-  encodeDestination,
-  WardrobeTransferDialog,
-} from './wardrobe-transfer-dialog';
+import { WardrobeTransferDialog } from './wardrobe-transfer-dialog';
 import { ToastService } from '../ui/toast.service';
 
 type AnyRequest = CoreRequest & Record<string, unknown>;
@@ -25,12 +20,18 @@ const ITEM: WardrobeItemDto = {
   updatedAt: '2024-01-01T00:00:00.000Z',
 } as WardrobeItemDto;
 
-const DESTINATIONS: TransferDestinationsPayload = {
-  general: { available: true, label: 'Quilltap General' },
-  projects: [{ id: 'p1', name: 'The Estate' }],
-  groups: [],
-  users: [{ id: 'u1', name: 'Riya' }],
+/**
+ * The container catalogue's three LIST reads (P4.D386, C12 — v4 `b2b783b47`
+ * retired the transfers GET; the dialog reads `characterList` /
+ * `projectList` / `groupList` through `injectContainerCatalogue`).
+ */
+const CATALOGUE: Record<string, Record<string, unknown>> = {
+  characterList: { characters: [{ id: 'u1', name: 'Riya' }] },
+  projectList: { projects: [{ id: 'p1', name: 'The Estate' }] },
+  groupList: { groups: [] },
 };
+const catalogueRoute = (req: AnyRequest): Record<string, unknown> | Error =>
+  CATALOGUE[req.type as string] ?? {};
 
 async function settle(fixture: ComponentFixture<unknown>, ticks = 4): Promise<void> {
   for (let i = 0; i < ticks; i++) {
@@ -48,9 +49,7 @@ interface RenderOpts {
 
 async function render(
   mode: 'move' | 'copy',
-  route: (req: AnyRequest) => Record<string, unknown> | Error = () => ({
-    destinations: DESTINATIONS,
-  }),
+  route: (req: AnyRequest) => Record<string, unknown> | Error = catalogueRoute,
   opts: RenderOpts = {},
 ): Promise<{ fixture: ComponentFixture<WardrobeTransferDialog>; seen: AnyRequest[] }> {
   const seen: AnyRequest[] = [];
@@ -93,20 +92,20 @@ function toasts(): { type: string; message: string }[] {
     .map((t) => ({ type: t.type, message: t.message }));
 }
 
-describe('destination encoding (v4 WardrobeTransferDialog.tsx:38-50)', () => {
-  it('round-trips scope:id and rejects unknown scopes', () => {
-    expect(encodeDestination('general', null)).toBe('general:');
-    expect(decodeDestination('project:p1')).toEqual({ scope: 'project', id: 'p1' });
-    expect(decodeDestination('general:')).toEqual({ scope: 'general', id: null });
-    expect(decodeDestination('bogus:x')).toBeNull();
-    expect(decodeDestination('')).toBeNull();
-  });
-});
-
 describe('WardrobeTransferDialog (v4 WardrobeTransferDialog.tsx)', () => {
-  it('loads destinations on open and preselects General when available (v4 :73-83)', async () => {
+  it('reads ONLY the catalogue’s three list verbs (+ the apply on submit) — never the retired destinations read (C12)', async () => {
     const { fixture, seen } = await render('move');
-    expect(seen[0]).toEqual({ type: 'wardrobeTransferDestinations' });
+    expect(seen.map((r) => r.type).sort()).toEqual(['characterList', 'groupList', 'projectList']);
+    await submit(fixture, 'Move item');
+    const allowed = new Set(['characterList', 'projectList', 'groupList', 'wardrobeTransferApply']);
+    expect(seen.every((r) => allowed.has(r.type as string))).toBe(true);
+    expect(seen.at(-1)?.type).toBe('wardrobeTransferApply');
+  });
+
+  it('offers Characters, General, Projects as optgroups and preselects General — no availability read (v4 pin)', async () => {
+    const { fixture } = await render('move');
+    const groups = [...(fixture.nativeElement as HTMLElement).querySelectorAll('optgroup')].map((g) => g.label);
+    expect(groups).toEqual(['Characters', 'General', 'Projects']);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Move wardrobe item');
     expect(text).toContain('Quilltap General');
@@ -158,9 +157,20 @@ describe('WardrobeTransferDialog (v4 WardrobeTransferDialog.tsx)', () => {
     });
   });
 
-  it('a failed load surfaces the error as v4\'s toast', async () => {
-    await render('move', () => new Error('unknown request type'));
-    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'unknown request type' });
+  it('a failed list read fails soft: its group is gone, General still offered, no toast (v4 catalogue)', async () => {
+    const { fixture } = await render('move', (req) =>
+      (req.type as string) === 'projectList' ? new Error('unknown request type') : catalogueRoute(req),
+    );
+    expect(options(fixture)).toEqual(['character:u1', 'general:']);
+    expect(toasts()).toEqual([]);
+  });
+
+  it('a refusal with no words toasts v4’s fallback `Failed to move wardrobe item`', async () => {
+    const { fixture } = await render('move', (req) =>
+      (req.type as string) === 'wardrobeTransferApply' ? new Error('') : catalogueRoute(req),
+    );
+    await submit(fixture, 'Move item');
+    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to move wardrobe item' });
   });
 });
 
@@ -207,7 +217,8 @@ describe("the item's known home is hidden from the destinations (v4 :126-148)", 
       source: { scope: 'general', id: null },
       sourceCharacterId: null,
     });
-    expect(options(fixture)).toEqual(['project:p1', 'character:u1']);
+    // Nothing is chosen, so the disabled placeholder leads (v4 `ContainerSelect`).
+    expect(options(fixture)).toEqual(['', 'character:u1', 'project:p1']);
     // Nothing is preselected, so the submit button stays disarmed.
     const move = [
       ...(fixture.nativeElement as HTMLElement).querySelectorAll('button'),
@@ -219,36 +230,32 @@ describe("the item's known home is hidden from the destinations (v4 :126-148)", 
     const project = await render('copy', undefined, {
       excludeDestination: { scope: 'project', id: 'p1' },
     });
-    expect(options(project.fixture)).toEqual(['general:', 'character:u1']);
+    expect(options(project.fixture)).toEqual(['character:u1', 'general:']);
 
     const character = await render('copy', undefined, {
       excludeDestination: { scope: 'character', id: 'u1' },
     });
     expect(options(character.fixture)).toEqual(['general:', 'project:p1']);
+    expect([...(character.fixture.nativeElement as HTMLElement).querySelectorAll('optgroup')].map((g) => g.label)).toEqual([
+      'General',
+      'Projects',
+    ]);
 
     // A DIFFERENT id of the same scope is left alone.
     const other = await render('copy', undefined, {
       excludeDestination: { scope: 'project', id: 'p-other' },
     });
-    expect(options(other.fixture)).toEqual(['general:', 'project:p1', 'character:u1']);
+    expect(options(other.fixture)).toEqual(['character:u1', 'general:', 'project:p1']);
   });
 
-  it('with every destination excluded the placeholder appears (v4 :227-233)', async () => {
+  it('with every destination excluded only the disabled placeholder remains (v4 ContainerSelect)', async () => {
     const { fixture } = await render(
       'move',
-      () => ({
-        destinations: {
-          general: { available: true, label: 'Quilltap General' },
-          projects: [],
-          groups: [],
-          users: [],
-        },
-      }),
+      (req) => ((req.type as string) === 'characterList' ? { characters: [] } : (req.type as string) === 'projectList' ? { projects: [] } : { groups: [] }),
       { excludeDestination: { scope: 'general', id: null } },
     );
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain(
-      'No destinations available',
-    );
+    const opts = [...(fixture.nativeElement as HTMLElement).querySelectorAll('select option')] as HTMLOptionElement[];
+    expect(opts.map((o) => [o.value, o.textContent!.trim(), o.disabled])).toEqual([['', 'Choose a wardrobe', true]]);
   });
 });
 
@@ -314,7 +321,7 @@ describe('the component prompt for a composite outfit (v4 f6a10055 :290-327)', (
           ? new Error(
               'Copying an outfit cannot move its components — the original outfit still needs them',
             )
-          : { destinations: DESTINATIONS },
+          : catalogueRoute(req),
       { item: OUTFIT },
     );
     await submit(fixture, 'Copy item');

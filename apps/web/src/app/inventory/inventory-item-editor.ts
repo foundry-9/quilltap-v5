@@ -21,6 +21,8 @@ import {
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import { GENERAL_INVENTORY_CONTAINER, type InventoryContainer } from './inventory-container';
+import { ItemFolderField } from '../item-browser/item-folder-field';
+import { createInventoryFoldersStore } from './inventory-folders-data';
 import { InventoryPicture, inventorySvgDataUri } from './inventory-glyph';
 import type { InventoryItemActions } from './inventory-item-actions';
 import { InventoryPicturesSection } from './inventory-pictures-section';
@@ -120,7 +122,7 @@ export function svgByteLength(svg: string): number {
 @Component({
   selector: 'qt-inventory-item-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, NgTemplateOutlet, InventoryPicture, InventoryPicturesSection],
+  imports: [Modal, NgTemplateOutlet, InventoryPicture, InventoryPicturesSection, ItemFolderField],
   template: `
     <qt-modal
       [title]="title()"
@@ -243,7 +245,19 @@ export function svgByteLength(svg: string): number {
         }
         <div class="grid md:grid-cols-2 gap-3">
           <ng-container *ngTemplateOutlet="textField; context: { key: 'emoji', label: 'Emoji glyph', placeholder: isKit() ? '🎒' : '🗡️' }" />
-          <ng-container *ngTemplateOutlet="textField; context: { key: 'folder', label: 'Folder', placeholder: isKit() ? 'Loadouts' : 'Weapons/Edged' }" />
+          <!-- v4 b2b783b47 (+ 600c2906f): the shared Folder field over this tier's folders. -->
+          <qt-item-folder-field
+            id="inventory-folder"
+            [folders]="folderStore.folders()"
+            [value]="draft().folder"
+            (valueChange)="set('folder', $event)"
+            rootLabel="Inventory (top level)"
+            [placeholder]="isKit() ? 'e.g., Loadouts' : 'e.g., Weapons/Edged'"
+            hint="Where it is filed for your browsing; it never changes what anyone carries."
+            labelClassName="text-sm text-foreground block mb-1"
+            inputClassName="qt-input qt-input-sm w-full"
+            selectClassName="qt-select qt-select-sm w-full"
+          />
         </div>
         <div class="space-y-1">
           <div class="flex items-center justify-between">
@@ -375,6 +389,8 @@ export class InventoryItemEditor {
   /** The tier a new object is created in; an edited one's own tier. */
   readonly container = input.required<InventoryContainer>();
   readonly containerLabel = input.required<string>();
+  /** v4 `useInventoryFolders(container)` — the Folder field's tree (`b2b783b47`). */
+  protected readonly folderStore = createInventoryFoldersStore(inject(CoreClient));
   /** null to create. */
   readonly item = input<ResolvedInventoryItem | null>(null);
   /** What a create makes. */
@@ -433,6 +449,11 @@ export class InventoryItemEditor {
   });
 
   constructor() {
+    effect(() => {
+      const container = this.container();
+      untracked(() => void this.folderStore.load(container));
+    });
+
     // v4's `useState(() => draftOf(…))` / the inherit set's initialiser —
     // seeded once from the inputs the editor mounts with.
     effect(() => {

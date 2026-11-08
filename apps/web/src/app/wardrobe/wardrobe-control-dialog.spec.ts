@@ -2137,3 +2137,77 @@ describe('Wardrobe dialog — the History tab and the Live staging discard (P4.D
     expect(surface(component).isLiveDirty('c1')).toBe(false);
   });
 });
+
+/**
+ * P4.D386 — v4 `600c2906f` (`wardrobe-control-dialog.tsx` pin `:389-397`): the
+ * Outfit Builder's Reset… is the shared `ItemActionMenu` with a visible
+ * trigger; and `94f041764` (`:425, :438, :448`): the three right-pane tabs
+ * carry `aria-pressed`.
+ */
+describe('WardrobeControlDialogInner — the Reset… menu and the tab aria-pressed (P4.D386)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const buttonNamed = (root: Element, name: string) =>
+    Array.from(root.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.trim().startsWith(name));
+
+  it('the three tabs carry aria-pressed, flipping with the selection', async () => {
+    const { fixture } = await renderInner('chat-1');
+    const el = fixture.nativeElement as HTMLElement;
+    const tabs = () => Array.from(el.querySelectorAll<HTMLButtonElement>('.qt-tab'));
+    const pressed = () => tabs().map((t) => [t.textContent!.trim().split(/\s/)[0], t.getAttribute('aria-pressed')]);
+    expect(pressed()).toEqual([
+      ['Live', 'true'],
+      ['Outfit', 'false'],
+      ['History', 'false'],
+    ]);
+    buttonNamed(el, 'Outfit Builder')!.click();
+    await settle(fixture);
+    expect(pressed()).toEqual([
+      ['Live', 'false'],
+      ['Outfit', 'true'],
+      ['History', 'false'],
+    ]);
+  });
+
+  it('Reset… is the shared menu: v4’s three entries in a chat; Escape closes only the menu', async () => {
+    const { fixture, component } = await renderInner('chat-1');
+    const closed = vi.fn();
+    component.closed.subscribe(closed);
+    document.body.appendChild(fixture.nativeElement);
+    const el = fixture.nativeElement as HTMLElement;
+    buttonNamed(el, 'Outfit Builder')!.click();
+    await settle(fixture);
+    const reset = buttonNamed(el, 'Reset…')!;
+    expect(reset.getAttribute('title')).toBe('Reset the staged composition');
+    expect(reset.getAttribute('aria-haspopup')).toBe('menu');
+    expect(reset.hasAttribute('aria-label')).toBe(false);
+    reset.click();
+    await settle(fixture);
+    const menu = el.querySelector('[role="menu"][aria-label="Reset the staged composition"]')!;
+    expect(menu).not.toBeNull();
+    expect(menu.parentElement!.getAttribute('class')).toContain('qt-bg-popover');
+    expect(Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((b) => [b.dataset['action'], b.textContent!.trim()])).toEqual([
+      ['reset-worn', 'Reset to worn'],
+      ['reset-defaults', 'Reset to defaults'],
+      ['clear-all', 'Clear all'],
+    ]);
+    expect(document.activeElement?.textContent?.trim()).toBe('Reset to worn');
+    (document.activeElement as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle(fixture);
+    expect(el.querySelector('[role="menu"][aria-label="Reset the staged composition"]')).toBeNull();
+    expect(closed).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(reset);
+    fixture.nativeElement.remove();
+  });
+
+  it('outside a chat the menu has no Reset to worn', async () => {
+    const { fixture } = await renderInner(null);
+    const el = fixture.nativeElement as HTMLElement;
+    buttonNamed(el, 'Reset…')!.click();
+    await settle(fixture);
+    expect(Array.from(el.querySelectorAll<HTMLElement>('[role="menuitem"]')).map((b) => b.dataset['action'])).toEqual([
+      'reset-defaults',
+      'clear-all',
+    ]);
+  });
+});

@@ -28,7 +28,8 @@ export interface MenuEntry {
   /**
    * Rich content rendered INSIDE the menuitem in place of the text (the slot
    * picker's badge row, v4 pin `wardrobe-item-row.tsx:306-311`, where v4's
-   * `label` is a `ReactNode`). `label` still names the entry.
+   * `label` is a `ReactNode`). `label` still names the entry. The template
+   * receives the entry as `$implicit` (one template serves every slot).
    */
   template?: TemplateRef<unknown>;
 }
@@ -145,7 +146,7 @@ export function presentEntries(entries: readonly MenuEntryLike[]): MenuEntry[] {
                     (click)="choose(entry)"
                   >
                     @if (entry.template) {
-                      <ng-container [ngTemplateOutlet]="entry.template" />
+                      <ng-container [ngTemplateOutlet]="entry.template" [ngTemplateOutletContext]="{ $implicit: entry }" />
                     } @else {
                       {{ entry.label }}
                     }

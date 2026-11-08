@@ -284,7 +284,8 @@ describe('InventoryBrowser', () => {
     fixture.detectChanges();
     expect(bar.textContent).toContain('1 selected');
     (bar.querySelector('button') as HTMLButtonElement).click();
-    expect(host.actions.openFolderPicker).toHaveBeenCalledWith([SWORD]);
+    // v4 pin (`b2b783b47`): the shell's filing pair passes the mode.
+    expect(host.actions.openFolderPicker).toHaveBeenCalledWith([SWORD], 'move');
   });
 
   it('a borrowed row carries its tier’s label chip', () => {
@@ -295,5 +296,56 @@ describe('InventoryBrowser', () => {
     expect(el.querySelector('[data-testid="inventory-item-row"] .qt-badge-wardrobe-shared')!.textContent).toBe(
       'Project: The Quest',
     );
+  });
+
+  // ---- v4 inventory-ui.test.tsx, the `b2b783b47` row (transcribed) ---------
+
+  it('offers Copy to folder… only for a copyable object of its own tier, and opens the picker in copy mode', () => {
+    const ROPE = obj('rope', { name: 'rope', canCopy: true });
+    const { fixture, el, host } = render((h) => {
+      h.data.set(makeData([SWORD, ROPE]));
+    });
+    document.body.appendChild(fixture.nativeElement);
+    const menuOf = (title: string) => {
+      const row = [...el.querySelectorAll<HTMLElement>('[data-testid="inventory-item-row"]')].find((r) =>
+        r.textContent!.includes(title),
+      )!;
+      (row.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+    };
+    const item = (name: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => b.textContent!.trim() === name);
+    menuOf('Excalibur');
+    expect(item('Copy to folder…')).toBeUndefined();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    fixture.detectChanges();
+
+    menuOf('rope');
+    item('Copy to folder…')!.click();
+    expect(host.actions.openFolderPicker).toHaveBeenCalledWith([ROPE], 'copy');
+    fixture.nativeElement.remove();
+  });
+
+  it('the select bar’s Copy to folder… is blocked with v4’s title when a ticked object cannot be copied', () => {
+    const ROPE = obj('rope', { name: 'rope', canCopy: true });
+    const { fixture, el, rows, host } = render((h) => h.data.set(makeData([SWORD, ROPE])));
+    ([...el.querySelectorAll('[data-testid="inventory-folder-bar"] button')].find((b) => b.textContent!.trim() === 'Select') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const copy = () =>
+      [...el.querySelectorAll<HTMLButtonElement>('[data-testid="inventory-select-bar"] button')].find(
+        (b) => b.textContent!.trim() === 'Copy to folder…',
+      )!;
+    const ropeRow = rows().find((r) => r.textContent!.includes('rope'))!;
+    (ropeRow.querySelector('input[type="checkbox"]') as HTMLInputElement).click();
+    fixture.detectChanges();
+    expect(copy().disabled).toBe(false);
+    expect(copy().hasAttribute('title')).toBe(false);
+    copy().click();
+    expect(host.actions.openFolderPicker).toHaveBeenLastCalledWith([ROPE], 'copy');
+    const swordRow = rows().find((r) => r.textContent!.includes('Excalibur'))!;
+    (swordRow.querySelector('input[type="checkbox"]') as HTMLInputElement).click();
+    fixture.detectChanges();
+    expect(copy().disabled).toBe(true);
+    expect(copy().getAttribute('title')).toBe('Some of these objects cannot be copied');
   });
 });

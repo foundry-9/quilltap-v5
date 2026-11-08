@@ -61,7 +61,7 @@ import { isInFloatingLayer } from '../ui/floating-layer';
         @if (open()) {
           <div
             role="listbox"
-            class="absolute left-0 right-0 top-full z-30 mt-1 rounded border qt-border-default qt-bg-default shadow-md max-h-64 overflow-y-auto"
+            class="absolute left-0 right-0 top-full z-30 mt-1 rounded border qt-border-default qt-bg-popover shadow-md max-h-64 overflow-y-auto"
           >
             <div class="p-2">
               <input

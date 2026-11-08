@@ -27,6 +27,10 @@ interface OptionGroup {
 @Component({
   selector: 'qt-container-select',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // `id` names the inner control. A static `id="…"` on this element would ALSO
+  // land on the host, giving the page two elements with one id — the caller's
+  // `<label for>` would then name the host, not the control. Clear it.
+  host: { '[attr.id]': 'null' },
   template: `
     <select
       [id]="id()"

@@ -227,7 +227,26 @@ describe('WardrobeBrowser — folders (v4 `wardrobe-browser.folders.test.tsx`)',
     // Folder rows come first.
     const list = folderRows(el)[0].parentElement!.parentElement!;
     const order = Array.from(list.children).map((c) => c.tagName.toLowerCase());
-    expect(order.indexOf('qt-wardrobe-folder-row')).toBeLessThan(order.indexOf('qt-wardrobe-item-row'));
+    // P4.D386: the shared shell mounts the row as `qt-item-folder-row` (the
+    // old `qt-wardrobe-folder-row` alias is no longer used in the browser) —
+    // asserted present so the order check cannot pass vacuously on a -1.
+    expect(order.indexOf('qt-item-folder-row')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('qt-item-folder-row')).toBeLessThan(order.indexOf('qt-wardrobe-item-row'));
+  });
+
+  it('the slot filters carry aria-pressed, flipping with the selection (v4 94f041764)', async () => {
+    const { el, fixture } = await renderBrowser(characterContainer, makeData([COAT, GOWN, GLOVES], ownOnly));
+    const slotButtons = () =>
+      Array.from(el.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')).filter(
+        (b) => b.textContent!.trim() !== 'Select',
+      );
+    const pressed = () => slotButtons().filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent!.trim());
+    expect(slotButtons()[0].textContent!.trim()).toBe('All');
+    expect(pressed()).toEqual(['All']);
+    slotButtons()[1].click();
+    fixture.detectChanges();
+    expect(pressed()).toEqual([slotButtons()[1].textContent!.trim()]);
+    expect(slotButtons()[0].getAttribute('aria-pressed')).toBe('false');
   });
 
   it('entering a folder lists its subfolders and its own items; the breadcrumb goes back', async () => {

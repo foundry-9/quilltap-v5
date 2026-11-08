@@ -64,6 +64,8 @@ async function render(setup: (h: Host) => void = () => {}): Promise<{
             seen.push(req);
             if (req['type'] === 'inventoryList') return { items: [obj('gen-lamp', { name: 'general lamp', origin: { scope: 'general', id: null, name: 'Quilltap General' } }), LAMP] };
             if (req['type'] === 'inventoryItemImagesList') return { current: null, images: [] };
+            // v4 b2b783b47: the Folder field reads this tier's folders.
+            if (req['type'] === 'inventoryFolders') return { folders: [] };
             return { item: {} };
           }),
         },
@@ -125,7 +127,7 @@ describe('the instance editor', () => {
     clickSave(el);
     await fixture.whenStable();
 
-    expect(seen.filter((r) => r['type'] !== 'inventoryItemImagesList')).toEqual([
+    expect(seen.filter((r) => r['type'] !== 'inventoryItemImagesList' && r['type'] !== 'inventoryFolders')).toEqual([
       { type: 'inventoryUpdate', container: VIV, itemId: 'i-1', body: { folder: '', description: 'Mine now.' } },
       { type: 'inventoryClearOverride', container: VIV, itemId: 'i-1', fields: ['title'] },
     ]);
@@ -146,7 +148,7 @@ describe('the editor (v5-added)', () => {
     fixture.detectChanges();
     clickSave(el);
     await fixture.whenStable();
-    expect(seen.filter((r) => r['type'] !== 'inventoryItemImagesList')).toEqual([
+    expect(seen.filter((r) => r['type'] !== 'inventoryItemImagesList' && r['type'] !== 'inventoryFolders')).toEqual([
       { type: 'inventoryUpdate', container: VIV, itemId: 'i-1', body: { folder: '' } },
     ]);
   });
@@ -276,7 +278,13 @@ describe('the editor (v5-added)', () => {
     expect((byLabel(el, 'Name') as HTMLInputElement).placeholder).toBe('sword');
     expect((byLabel(el, 'Title') as HTMLInputElement).placeholder).toBe('Excalibur');
     expect((byLabel(el, 'Emoji glyph') as HTMLInputElement).placeholder).toBe('🗡️');
-    expect((byLabel(el, 'Folder') as HTMLInputElement).placeholder).toBe('Weapons/Edged');
+    // v4 b2b783b47: the Folder field is the shared select (root, the tier's
+    // folders, New folder…); the typed path's placeholder shows after New folder….
+    const folder = byLabel(el, 'Folder') as unknown as HTMLSelectElement;
+    expect(folder.tagName).toBe('SELECT');
+    // The object's own folder is offered as chosen even before the tree lists it.
+    expect([...folder.options].map((o) => o.textContent!.trim())).toEqual(['Inventory (top level)', 'Arms', 'New folder…']);
+    expect(el.textContent).toContain('Where it is filed for your browsing; it never changes what anyone carries.');
     expect(el.textContent).toContain('at a time, per chat, across objects of the same name');
   });
 

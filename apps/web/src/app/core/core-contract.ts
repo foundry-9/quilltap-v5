@@ -7210,7 +7210,6 @@ export type MemoryRequest =
   | ChatWardrobeRollbackRequest
   // === end P4.D318 ===
   | ChatRegenerateAvatarRequest
-  | WardrobeTransferDestinationsRequest
   | WardrobeTransferApplyRequest
   | WardrobeListRequest
   | WardrobeCreateRequest
@@ -8959,10 +8958,11 @@ export interface ChatWardrobeRollbackRequest {
 
 // === end P4.D318 ===
 
-/** v4 `GET /api/v1/wardrobe/transfers` (`transfers/route.ts:236-260`). */
-export interface WardrobeTransferDestinationsRequest {
-  type: 'wardrobeTransferDestinations';
-}
+// === P4.D386: item browser (C12) ===
+// The transfer-destinations request (v4 `GET /api/v1/wardrobe/transfers`) is
+// REMOVED: v4 `b2b783b47` retired the route and the transfer dialog reads
+// the container catalogue instead; P4.D378 un-routes the server verb.
+// === end P4.D386 ===
 
 /** v4 `WardrobeTransferDialog.tsx:9` / `transfers/route.ts:47-57`. */
 export type WardrobeTransferScope = 'general' | 'project' | 'group' | 'character';

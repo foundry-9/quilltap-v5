@@ -1231,6 +1231,21 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — feat(spa): the Wardrobe and the Inventory on the shared item browser — every row menu on `qt-item-action-menu`, `aria-pressed`, the Folder fields, the transfer dialog on the container catalogue (C12) (v4 624d0d25c)
+
+_Versions: SPA 0.5.974._
+
+P4.D386 commit 2 (items 3–7), on `BROWSER`.
+
+- **Both browsers on the shell.** `wardrobe-browser.ts` and `inventory-browser.ts` now lay out through `qt-folder-browser-shell` with `createFolderBrowserState` / `createItemFolderHandlers`, keeping only their filters, rows, footers and wording (v4 `b2b783b47`). The Inventory gains *Copy to folder…* on the row ⋮ and in the select bar, which is blocked with `Some of these objects cannot be copied` (pin). Tier rows now count from the pool, not the filtered list (the shared rule at the pin).
+- **Every row menu on `qt-item-action-menu`:** the wardrobe ⋮ and the multi-slot `+` picker (per-entry template: slot name + badge), the Outfit Builder's Reset…, the inventory ⋮, and the scenario row's narrow kebab. The five hand-rolled `role="menu"` blocks are gone, and so are seven document listeners. The floating-layer census drops their rows (63 → 56). `qt-bg-popover` replaces `qt-bg-default` on those menus and on `outfit-quick-pick`.
+- **`aria-pressed`** on the wardrobe slot filters and on the Live outfit / Outfit Builder / History tabs (v4 `94f041764`).
+- **Folder fields.** The wardrobe Folder field is a thin binding over `qt-item-folder-field`. The Inventory editor's Folder text box becomes the shared field over the tier's folders (v4 `b2b783b47` / `600c2906f`).
+- **C12.** The wardrobe transfer dialog reads `injectContainerCatalogue()` into `qt-container-select`. General is preselected unless the item lives there, and the destinations read is gone. The removed-route request leaves `core-contract.ts`, and its payload type leaves `wardrobe.api.ts`; `wardrobeTransferApply` stays. The error fallback is `Failed to <mode> wardrobe item`.
+- **Amendments to `BROWSER` (backward-compatible):**
+  - an entry `template` now receives its entry as `$implicit`;
+  - `qt-item-folder-field` / `qt-container-select` clear their host `id`, so the page never carries two elements with one id and the caller's `<label for>` names the control, not the host.
+
 #### 2026-11-08 — docs(porting): P4.D386 — the `BROWSER` sha in the status header
 
 _Docs-only change._
