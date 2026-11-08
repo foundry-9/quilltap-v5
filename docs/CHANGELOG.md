@@ -1231,6 +1231,12 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — docs(porting): P4.D386 lane record and status header
+
+_Docs-only change._
+
+The P4.D386 lane record. It covers commits `8785aeca0` … `4b8fd34a6`, the red-first counts, the oracle recipe (64 rows), the C12 and floating-layer census deltas, and the HANDOFFs (H-U1 with its ready patch, H-387, H-388, H-377). It also lists the OPEN remainder: item 8, the rest of item 9, item 17, and the four e2e re-runs owed after the disk-full pause.
+
 #### 2026-11-08 — test(e2e): `item-browser-flow` on its own instance (4363) and `wardrobe-flow`'s probe re-aimed onto the container catalogue (C12)
 
 _No crate versions bumped._

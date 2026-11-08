@@ -202312,3 +202312,180 @@ Measured along the way:
 ### 12. Close
 
 Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed and pruned; the lane's `target/` is deleted whole; nothing is pushed to `main`.
+
+## P4.D386 — the shared item browser for the Wardrobe and the Inventory (lane record)
+
+**Branch:** `claude/p4-d386-spa-browser-81cc32`, pushed. The session started in its app-made worktree, already on `CSS` (`3ed560020`, local `round-624/css`). It had no commits of its own and stayed there; the base was confirmed against P4.D383's lane-branch status header. Pin: v4 `624d0d25c`. Baseline: `236c04e35`.
+
+**§R.2 probe (observation, not a gate).**
+- At 2026-11-07 23:38 CST, v4 `main` was 50+ commits past the pin (head `b941280d5`, "Turns mode for the Salon"; 4.12.2 released and merged back), and `bugfix` was at `d67c70a51`.
+- The tree was clean, and the pin was usable:
+  - `git -C "$PIN" rev-parse HEAD` = `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`;
+  - `package.json` = `4.13.0-dev.8`;
+  - `npm ci --offline --ignore-scripts` succeeded first time (no `ENOTCACHED`), followed by `npm rebuild better-sqlite3`;
+  - versions: better-sqlite3 13.0.3, openai 7.47.0, @openrouter/sdk 1.5.34, zod 4.6.7, mermaid 12.3.0.
+- `.claude/pin-plugin-sdks.sh` was SKIPPED: the recorder loads no plugin.
+
+**Commits:**
+- `8785aeca0` — **`BROWSER`** (items 1–2; SPA 0.5.973). The stacking root; P4.D387 branches here.
+- `a6db2415c` — docs: the `BROWSER` sha in the status header.
+- `a84ac25ba` — commit 2: browsers + menus onto the shell, `aria-pressed`, Folder fields, C12 (SPA 0.5.974).
+- `626fecf60` — commit 3: Duplicate, the `wardrobe` topic, the dialog-service base, the transfer footer, and the Inventory catalogue (SPA 0.5.975).
+- `4b8fd34a6` — commit 4: the e2e re-aim and `item-browser-flow` (no bump).
+- (this commit) — the lane record and the status header.
+
+**What landed vs what remains OPEN.**
+- **LANDED:**
+  - Tier 1 items 1–2: the `BROWSER` contract, all 12 names, plus the oracle.
+  - Items 3–7: both browsers on the shell; every row menu on `qt-item-action-menu`; `aria-pressed`; both Folder fields; C12 on both kinds.
+  - Item 9 in part: `qt-item-transfer-footer`.
+  - Items 10–12: Duplicate, the `wardrobe` topic plus `refreshUnlessRealtime`, and the dialog-service base.
+  - Items 13–14: the e2e probe re-aim and `item-browser-flow`.
+  - Tier 2 item 15 (the inventory context already carries `projectId` / `groupId`, measured, so no edit was needed) and item 16 (the `b2b783b47` inventory-ui row was transcribed; `600c2906f` added none).
+- **OPEN, deferred by name.** None of these is a stub; the existing v5 code keeps serving.
+  - **Item 8:** `ItemControlDialogShell` / `createItemControlState` under both control dialogs (the `KIND_COPY` table, `itemContainerLabel`, the lock while an overlay is up). v4 `item-control-shared.test.tsx`'s 8 cases are not transcribed. Both control dialogs keep their own shells. The Inventory one already uses `qt-container-select` and the catalogue.
+  - **Item 9, the rest:**
+    - the shared `ItemFolderPickerDialog` body over `qt-destination-picker-dialog`, which would replace `wardrobe-folder-picker-dialog.ts` and `inventory-folder-picker-dialog.ts`;
+    - `item-overlays.ts` (v4 `useItemOverlays`);
+    - `item-image-viewer.ts` (`kind`, `pictureFilename`), which would replace the two kind viewers. v4 `item-image-viewer.test.tsx`'s 3 cases are not transcribed, and `WARDROBE_VIEWER_ESCAPE_LAYERED` is untouched.
+    - The Inventory picker does carry the pin's copy mode and the toasts with the FILED-folder `where`. The pin's "leave select mode after filing" (`onFiled`) is NOT carried for the Inventory; the wardrobe has always done it.
+  - **Tier 2 item 17:** the `aria-expanded` card-lift probe spec.
+  - **e2e by-file results owed (measured under load, then a full disk; see below).**
+
+**Red-first (§R.7).**
+- `BROWSER`: every new spec failed to compile on `CSS` (modules absent).
+- The oracle, through `CSS`'s `wardrobe/folder-view.ts`: **2 of 64 rows red**, `tierLabel` "character empty name (the byte shift)" and `tierRows` "a character origin with an empty name".
+- Commit 2's specs failed to compile against `BROWSER`'s sources (`onCopyToFolder` is not in `InventoryRowActions`).
+- Commit 3's specs failed to compile against commit 2's (`item-dialog.service`, `item-transfer-footer`, `refresh-unless-realtime` absent).
+- ⚠ The commit-3 red-first dance overwrote 16 sources with HEAD's bytes: bsdtar keeps only the last `-T` list. They were replayed from the transcript's scripts, and the full SPA gate re-ran on the replayed tree. Memory note `bsdtar-multiple-T-keeps-last`.
+
+**The oracle.**
+- `apps/web/oracle/item-browser.recorder.ts` → `src/testing/fixtures/item-browser.oracle.ndjson`, **64 lines**:
+  - 9 `tierLabel`, 15 `childFolderRows`, 8 `tierRows`, 22 `fixedMenuPlacement`, 6 `presentEntries`, 4 `pluralize`.
+- `fixedMenuPlacement` LOADED under tsx: a stub `window` and an anchor rect per row; the `'use client'` React modules resolve from the pin's `node_modules`.
+- Regen recipe:
+
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4d386-624d0d25c
+  cp apps/web/oracle/item-browser.recorder.ts "$PIN/"
+  OUT=apps/web/src/testing/fixtures/item-browser.oracle.ndjson
+  rm -f "$OUT"
+  (cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx item-browser.recorder.ts) > "$OUT"
+  wc -l "$OUT"   # expect 64
+  ```
+
+- Consumer: `item-browser/item-browser.oracle.spec.ts`, 64 rows plus 2 guards.
+
+**Transcribed v4 jest cases.**
+- `useFixedMenu.test.ts`: 9 of 9, plus the four room rows and the 4 moved `menuPlacement` cases.
+- `item-action-menu.test.tsx`: `ItemActionMenu` 6/6, `with a visible trigger` 2/2, and `ItemFolderRow` 2/2 (in `item-folder-row.spec.ts`).
+- `view.test.ts`: 4 of 4.
+- `use-container-catalogue.test.tsx`: 2 of 2.
+- `item-dialog-provider.test.tsx`: 4 of 4. The two misuse cases are the recorded COLLAPSE; root services are always present.
+- `use-item-folders.test.tsx`, the Inventory kind:
+  - transcribed: "creates a folder and leaves the refresh…" and "refreshes … while the socket is down";
+  - already pinned elsewhere: "reads the tree" and "skips a null container" (`inventory-folders-data`), "throws the refusal" (the browser specs), and "kind-specific filing" (the wardrobe's `wardrobe-folders.api.spec`).
+  - The wardrobe kind's two refresh cases are H-U1.
+- `inventory-ui.test.tsx` `b2b783b47`: 1 of 1.
+- `wardrobe-browser.folders.test.tsx` (11): already carried, name for name, in `wardrobe-browser.spec.ts` (with its "ungated twin" titles). One case had become vacuous on the shell (`qt-wardrobe-folder-row` order, now a -1) and was fixed to `qt-item-folder-row` with a presence assert.
+- `topic-map.test.ts:69-77`: the `[]` arm row plus the two subscribers.
+- `item-control-shared.test.tsx` (8) and `item-image-viewer.test.tsx` (3): NOT transcribed; items 8 and 9 are OPEN.
+
+**Measured byte shifts ported.**
+1. `tierLabel`'s empty-name fallback is `General`, not `Quilltap General`.
+2. The folder picker's toast `where` is the FILED row's folder (Inventory picker).
+3. The Inventory's tier rows count from the pool, not the filtered list (`102a23648`'s rule gives way to the shell's at the pin).
+4. `ScenarioRow`'s kebab title is now its label (`More actions for <name>`).
+5. The Inventory editor's Folder becomes the shared select.
+6. The wardrobe transfer dialog's destinations come from the catalogue: there is no "No destinations available" option and no `users` optgroup, Characters come first, and failed reads fail soft without a toast.
+
+**C12 census.**
+- Deleted:
+  - `core-contract.ts`: `WardrobeTransferDestinationsRequest` (the interface and its union member);
+  - `wardrobe.api.ts`: the `TransferDestinationsPayload` and `TransferDestinationOption` types, the request's re-export, and its `WardrobeLaneRequest` arm;
+  - `wardrobe-transfer-dialog.ts`: `encodeDestination` / `decodeDestination` (no other caller).
+- Kept: `WardrobeTransferScope`, which `WardrobeTransferApplyRequest` still uses, and `wardrobeTransferApply` itself.
+- `grep -rn "wardrobeTransferDestinations\|TransferDestinations" apps/web/src apps/web/e2e` finds **0** matches.
+- The e2e probe `hasTransferDestinations` is now `hasContainerCatalogue`.
+
+**Floating-layer census delta (`GUARDED` 61 → 63 at `BROWSER` → 56).**
+- Added: `item-browser/item-action-menu.ts` `onDocumentMousedown` (mousedown) and `onDocumentKeydown` (escape).
+- Removed:
+  - `wardrobe/wardrobe-control-dialog.ts` `onDocumentMouseDown`;
+  - `wardrobe/wardrobe-item-row.ts` `onDocumentMousedown` / `keydown`;
+  - `inventory/inventory-item-row.ts` `mousedown` / `keydown`;
+  - `screens/scenarios/shared/scenario-row.ts` `onDocMouseDown` / `onKeyDown`.
+- Kept: `wardrobe-control-dialog.ts` `onEscape` (the dialog's own) and `outfit-quick-pick.ts`'s pair (a listbox, not this menu).
+- `R4_GUARD_BEYOND_V4` drops `scenario-row.ts`, which is now guarded the way v4's `useClickOutside` is.
+
+**`role="menu"` count** in `wardrobe/`, `inventory/`, `item-browser/` and `screens/scenarios/`: **5 → 1** (only `item-action-menu.ts`).
+
+**SPA gate.**
+- `BROWSER`: 643 files / 15,726.
+- Commit 2: 643 / 15,729.
+- Commit 3: 646 / 15,694 + 2 census timeouts under load average ~25, both green by name (67/67).
+- Lint (qt-classes, css-vars, a11y-names, each with `--self-test`) and build are green at every commit.
+- The 15,694 is lower because the retired `nextCopyTitle` corpus rows (43 + 3) went with it.
+
+**Rust gate** (on commit 3's tree):
+- `cargo fmt --all --check`: clean.
+- clippy (plain and `native-transport`): clean.
+- `cargo test --workspace --no-fail-fast`: **899 binaries / 6,017 passed / 6 failed / 3 ignored.** None of the six is this lane's (no Rust changed). Five are live-checkout guards that compare against v4 HEAD, which is past the pin:
+  - `builtin_prompt_templates_guard`;
+  - `custom_tool_schema_embed_guard`;
+  - `public_schemas_vendor_guard`;
+  - `qtap_schema_embed_guard`;
+  - `provider_sdk_version_guard`.
+
+  The sixth is `spelling_guard`, the base red that main fixed in `a11fbe767`.
+- No Rust crate was bumped.
+
+**e2e, by file.**
+- The binaries were main's cloned release bins from Oct 28.
+- Every run before the full-disk notice overlapped this lane's cargo gate and sibling builds; the re-runs ran on a full disk.
+- Results:
+  - `item-browser-flow`: **3 passed / 2 skipped** (gated (d), (e)).
+  - `wardrobe-folders-flow`: 5 / 0.
+  - `character-wardrobe-pictures-flow`: 1 / 0.
+  - `workbench-wardrobe-picker-flow`: 8 / 0.
+  - `salon-scenario-flow`: 2 / 0.
+  - `projects-flow`: 7 / 0.
+  - `wardrobe-items-editor-flow`: 4 failed under load, then **4 / 0** alone.
+  - Not yet green, re-run owed after the GO:
+    - `wardrobe-flow`: 9 failed / 12 passed;
+    - `wardrobe-copy-to-folder-flow`: 1 failed;
+    - `inventory-flow`: 2 failed / 7 passed, then 3 / 3 on the full disk;
+    - `scenarios-flow`: 1 failed / 1 passed.
+  - Most of these reds wait 10–45 s on the `/characters` or `/projects` page heading before any item-browser surface. That is the same shape `wardrobe-items-editor-flow` showed before it went 4/4 alone.
+- Selectors changed: none in the existing e2e files beyond the `wardrobe-flow` probe.
+
+**HANDOFFs.**
+- **H-U1** (unifier §S.9): the wardrobe kind onto `refreshUnlessRealtime`. READY PATCH: in `apps/web/src/app/wardrobe/wardrobe-browser.ts`, in the `folderHandlers` `ops` factory, replace
+
+  ```ts
+  const settled = <T>(p: Promise<T>): Promise<T> => p.finally(() => void this.actions().refreshLists());
+  ```
+
+  with
+
+  ```ts
+  const settled = <T>(p: Promise<T>): Promise<T> =>
+    p.finally(() => void refreshUnlessRealtime(this.realtime, [() => this.actions().refreshLists()]));
+  ```
+
+  Also add `private readonly realtime = inject(RealtimeService);` and the two imports, as `inventory-browser.ts` does. Then flip `item-browser-flow`'s `P4D377_SERVER_LANDED`. Spec rows to add: the two `use-item-folders` refresh cases, against the wardrobe browser.
+- **H-387:** the `BROWSER` names (C18) are at `8785aeca0`. Two backward-compatible amendments are in `a84ac25ba`:
+  - an entry `template` receives its entry as `$implicit`;
+  - `qt-item-folder-field` / `qt-container-select` clear their host `id`.
+
+  The note is in the shared notes folder (`p4d386-BROWSER-landed.md`).
+- **H-388:** P4.D388 owns the About sentence. At the pin it reads: "The Scriptorium – Document Stores – mountable external knowledge sources that characters can read, search, and (in Document Mode) write back to, browsed with one folder browser shared with the Wardrobe and the Inventory and read-only viewers for pictures, PDFs and Word files" (`app/about/AboutView.tsx:178`).
+- **H-377:** P4.D377 has no branch yet, so `wardrobeItemDuplicate { scope, containerId?, itemId }` (L-4) is unconfirmed against its serde shape. The unifier checks it on the union.
+
+**Versions:** SPA 0.5.972 (the base) → 0.5.975. No Rust crate bumped.
+
+**Cleanup:**
+- The pin worktree `/tmp/qt-v4-pin-p4d386-624d0d25c` is still in place for the owed e2e re-runs' oracle needs. It is removed with `git worktree prune` at close.
+- The lane's `target/` is KEPT at Driftcheck's request (2026-11-08, "don't delete your target/ unless I ask").
+- `/tmp/p4d386/` is left for the unifier.
+- Nothing was pushed to `main`.
