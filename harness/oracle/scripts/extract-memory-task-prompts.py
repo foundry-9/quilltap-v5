@@ -28,6 +28,16 @@ the template literal — v4 `ca363178d`'s TAGS `future` gloss carries the first
 escaped backticks (`\\`moment\\``), and a literal backslash in the output would
 be a byte v4 never sends. Any other escape, and any interpolation left over
 after substitution, aborts the run rather than guessing.
+
+Since v4 `ba6c8fe0f` (the probation) the bodies also interpolate
+`REPAIRS_INSTRUCTION_BLOCK` (a plain constant) and, since `db6190b44`,
+`ESTABLISHED_FACT_INSTRUCTION_BLOCK` — whose ONE interpolation is
+`${ESTABLISHED_FACT_TRANSCRIPT_RULE}`, a constant imported from ANOTHER module
+(`lib/chat/established-fact.ts`, resolved as `<prompts>/../../../chat/`). That
+constant is a `'…' + "…"` concatenation of plain JS string literals; the
+script evaluates exactly that shape (`cross_module_string`) and aborts on any
+backslash, any `${`, any non-literal operand, or a declaration found other
+than once (work order P4.D373 Tier 1 #2).
 """
 import json, re, sys
 
@@ -117,6 +127,75 @@ def importance_note(name):
     return js_evaluate_escapes(raw, name)
 
 
+ESTABLISHED_FACT_MODULE = os.path.normpath(
+    os.path.join(sys.argv[1], '..', '..', '..', 'chat', 'established-fact.ts'))
+
+
+def cross_module_string(path, name):
+    """The value of `export const NAME = '…' + "…"` in ONE named file: a
+    concatenation of single- or double-quoted JS string literals, nothing
+    else. Any backslash (an escape this script would have to evaluate), any
+    `${`, any non-literal operand, or a declaration found other than once
+    aborts — never guess."""
+    if not os.path.isfile(path):
+        raise SystemExit(f'{name}: {path} does not exist — teach the script')
+    text = open(path, encoding='utf-8').read()
+    decls = re.findall(r'\bconst ' + re.escape(name) + r'\s*=', text)
+    if len(decls) != 1:
+        raise SystemExit(f'{name} found {len(decls)} times in {path} — teach the script')
+    i = re.search(r'\bconst ' + re.escape(name) + r'\s*=', text).end()
+    parts = []
+    while True:
+        while text[i] in ' \t\n':
+            i += 1
+        q = text[i]
+        if q not in ('\'', '"'):
+            raise SystemExit(f'{name}: operand {text[i:i+20]!r} is not a string literal — teach the script')
+        j = i + 1
+        while text[j] != q:
+            if text[j] == '\\':
+                raise SystemExit(f'{name}: string literal carries an escape — teach the script')
+            if text[j] == '\n':
+                raise SystemExit(f'{name}: unterminated string literal — teach the script')
+            j += 1
+        lit = text[i + 1:j]
+        if '${' in lit:
+            raise SystemExit(f'{name}: literal carries ${{ — teach the script')
+        parts.append(lit)
+        i = j + 1
+        while text[i] in ' \t':
+            i += 1
+        if text[i] == '\n':
+            k = i
+            while text[k] in ' \t\n':
+                k += 1
+            if text[k] == '+':
+                i = k
+        if text[i] == '+':
+            i += 1
+            continue
+        if text[i] == ';':
+            i += 1
+        if text[i] != '\n':
+            raise SystemExit(f'{name}: unexpected {text[i:i+20]!r} after a literal — teach the script')
+        return ''.join(parts)
+
+
+def established_fact_block(name):
+    """`ESTABLISHED_FACT_INSTRUCTION_BLOCK` (v4 `db6190b44`, `shared.ts`):
+    substitutes exactly `${ESTABLISHED_FACT_TRANSCRIPT_RULE}` from the
+    cross-module constant; any other interpolation aborts (the
+    `importance_note` precedent)."""
+    raw = template_after(f'const {name} = ')
+    for expr in re.findall(r'\$\{([^}]*)\}', raw):
+        if expr != 'ESTABLISHED_FACT_TRANSCRIPT_RULE':
+            raise SystemExit(f'{name}: unhandled interpolation ${{{expr}}} — teach the script')
+    if '${ESTABLISHED_FACT_TRANSCRIPT_RULE}' in raw:
+        raw = raw.replace('${ESTABLISHED_FACT_TRANSCRIPT_RULE}',
+                          cross_module_string(ESTABLISHED_FACT_MODULE, 'ESTABLISHED_FACT_TRANSCRIPT_RULE'))
+    return js_evaluate_escapes(raw, name)
+
+
 # A block absent from the source (AGREEMENTS before v4 `ca363178d`; the two
 # importance notes before `6fd2d5ffb`) is simply not substituted; a body that
 # still references it trips the leftover check.
@@ -127,12 +206,18 @@ BLOCKS = {
         'AGREEMENTS_INSTRUCTION_BLOCK',
         'EVENT_INSTRUCTION_BLOCK',
         'TAGS_INSTRUCTION_BLOCK',
+        'REPAIRS_INSTRUCTION_BLOCK',
     )
     if f'const {name} = ' in src
 }
 BLOCKS.update({
     name: importance_note(name)
     for name in ('IMPORTANCE_WORK_CEILING_NOTE', 'IMPORTANCE_FACT_NOT_TELLING_NOTE')
+    if f'const {name} = ' in src
+})
+BLOCKS.update({
+    name: established_fact_block(name)
+    for name in ('ESTABLISHED_FACT_INSTRUCTION_BLOCK',)
     if f'const {name} = ' in src
 })
 if PRINT_BLOCKS:
@@ -190,8 +275,10 @@ out = '''//! GENERATED — the verbatim prompt text of v4
 //! episode prompt's `participants` line removed by `e0ac7493a`): the SELF / OTHER extraction
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
-//! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
-//! substituted and the template escapes evaluated; `otherBodyForCap`'s
+//! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` / the importance notes /
+//! `REPAIRS_INSTRUCTION_BLOCK` / `ESTABLISHED_FACT_INSTRUCTION_BLOCK` (its
+//! `ESTABLISHED_FACT_TRANSCRIPT_RULE` read from `lib/chat/established-fact.ts`)
+//! interpolations already substituted and the template escapes evaluated; `otherBodyForCap`'s
 //! leading `${grainBlock}` stripped), the fold-grain `FOLD_GRAIN_OTHER_BLOCK`,
 //! and `FOLD_EPISODE_PROMPT`, each body split at its one live interpolation
 //! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by

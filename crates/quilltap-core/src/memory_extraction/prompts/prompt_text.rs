@@ -4,8 +4,10 @@
 //! episode prompt's `participants` line removed by `e0ac7493a`): the SELF / OTHER extraction
 //! bodies (`selfBodyForCap` / `otherBodyForCap`, with the constant
 //! `ORIENTING_CONTEXT_SKIP_BULLET` / `AGREEMENTS_INSTRUCTION_BLOCK` /
-//! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` interpolations already
-//! substituted and the template escapes evaluated; `otherBodyForCap`'s
+//! `EVENT_INSTRUCTION_BLOCK` / `TAGS_INSTRUCTION_BLOCK` / the importance notes /
+//! `REPAIRS_INSTRUCTION_BLOCK` / `ESTABLISHED_FACT_INSTRUCTION_BLOCK` (its
+//! `ESTABLISHED_FACT_TRANSCRIPT_RULE` read from `lib/chat/established-fact.ts`)
+//! interpolations already substituted and the template escapes evaluated; `otherBodyForCap`'s
 //! leading `${grainBlock}` stripped), the fold-grain `FOLD_GRAIN_OTHER_BLOCK`,
 //! and `FOLD_EPISODE_PROMPT`, each body split at its one live interpolation
 //! (the candidate cap / `FOLD_EPISODE_CAP`). Extracted mechanically by
@@ -83,6 +85,24 @@ AGREEMENTS, PROPOSALS, AND CONDITIONS — read these strictly
   "custody, not confiscation — back at breakfast." A memory that
   drops the limit records a different, larger thing than was said.
 
+REPAIRS AND RESOLUTIONS — a repair is a hinge
+- When this exchange resolves an earlier hurt or conflict — an apology
+  accepted, forgiveness given, amends made, a grudge set down — record
+  it as a resolution, and name what it resolves: "Jackie told Charlie
+  she had forgiven him for acting without asking her; she said it was
+  finished."
+- A resolution is at least as important as the hurt it resolves. Never
+  score it below the offense it settles.
+- Record a resolution only on the forgiving party's own words or
+  unmistakable action in this transcript. An apology alone is not
+  forgiveness: record it as an apology, attributed, and if it went
+  unanswered, say so.
+- Forgiveness is not provisional unless the forgiving party said so in
+  words. Do not add "for now" or "on probation" that was not said.
+
+ESTABLISHED FACTS
+Lines labelled or marked as established fact are settled truth in this story. Carry them forward as facts of the world, not as anyone's claim, and do not let a later line's doubt undo them.
+
 DEDUPLICATION
 Before finalizing, scan your own list. If two memories encode the
 same underlying realization or decision in different words, keep
@@ -95,7 +115,9 @@ IMPORTANCE — calibrate to these anchors
   0.85  The subject had a self-revelation that changes how they
         understand themselves, or made a personal commitment
         (one the subject spoke themselves) to another person about
-        their relationship.
+        their relationship — or made a repair: forgave, accepted an
+        apology, or made amends, scored at least as high as what it
+        repairs.
   0.65  The subject formed a substantive new opinion, plan, or
         position — including a commitment to build, file, fix, or
         rule on something.
@@ -246,7 +268,10 @@ WHAT TO SKIP (do not produce a memory for any of these)
   patterns already established in the canon block. Novel or shifted
   gestures belong under category 5, not here.
 - Generic emotional warmth or affection toward established partners,
-  unless this exchange marks a shift in degree or kind.
+  unless this exchange marks a shift in degree or kind. (Kept promises,
+  a time the subject turned out to be right, or showing up when it
+  counted are not generic warmth: record them under STATE CHANGES at
+  0.40–0.55.)
 - Narrative references to tool output: terminal sessions, file paths,
   exit codes, commit hashes, command names, even when the subject
   mentions them in passing.
@@ -272,6 +297,24 @@ AGREEMENTS, PROPOSALS, AND CONDITIONS — read these strictly
   "custody, not confiscation — back at breakfast." A memory that
   drops the limit records a different, larger thing than was said.
 
+REPAIRS AND RESOLUTIONS — a repair is a hinge
+- When this exchange resolves an earlier hurt or conflict — an apology
+  accepted, forgiveness given, amends made, a grudge set down — record
+  it as a resolution, and name what it resolves: "Jackie told Charlie
+  she had forgiven him for acting without asking her; she said it was
+  finished."
+- A resolution is at least as important as the hurt it resolves. Never
+  score it below the offense it settles.
+- Record a resolution only on the forgiving party's own words or
+  unmistakable action in this transcript. An apology alone is not
+  forgiveness: record it as an apology, attributed, and if it went
+  unanswered, say so.
+- Forgiveness is not provisional unless the forgiving party said so in
+  words. Do not add "for now" or "on probation" that was not said.
+
+ESTABLISHED FACTS
+Lines labelled or marked as established fact are settled truth in this story. Carry them forward as facts of the world, not as anyone's claim, and do not let a later line's doubt undo them.
+
 DEDUPLICATION
 Before finalizing, scan your own list. Within a single subject, if two
 memories encode the same underlying fact in different words, keep the
@@ -286,7 +329,8 @@ IMPORTANCE — calibrate to these anchors
   0.85  A revelation, or a personal commitment the subject themselves
         spoke, that changes how the observer relates to the subject.
         A proposal made TO the subject is not the subject's
-        commitment.
+        commitment. A repair — forgiveness given or an apology
+        accepted — is scored at least as high as what it repairs.
   0.60  A new substantive fact about the subject's background, plans,
         or skills — including a commitment to build, file, fix, or
         rule on something.
@@ -463,7 +507,10 @@ change of body, or someone joining or leaving the family is a 0.95 fact
 however it arrives — announced, revealed, confessed, or overheard. The
 0.85 band is for revelations whose content is not itself such a fact.
 
-An episode records what was said and done, not what was agreed: attribute proposals and conditions to their speaker, and record an agreement only where the agreeing party's own assent appears in the window.
+An episode records what was said and done, not what was agreed: attribute proposals and conditions to their speaker, and record an agreement only where the agreeing party's own assent appears in the window. If the episode ended in a repair — an apology accepted, forgiveness given — the episode's narrative says so.
+
+ESTABLISHED FACTS
+Lines labelled or marked as established fact are settled truth in this story. Carry them forward as facts of the world, not as anyone's claim, and do not let a later line's doubt undo them.
 
 Return a JSON array only. No prose, no code fences. If nothing qualifies, return []."####;
 pub(crate) const FOLD_GRAIN_OTHER_BLOCK: &str = r####"GRAIN — READ THIS FIRST
