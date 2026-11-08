@@ -31,6 +31,17 @@ import { openSidebarSection } from './support/sidebar';
  */
 const CHIP_LABEL_SERVER_LANDED = true;
 
+// === P4.D388 ===
+/**
+ * ACTIVATE-AT-UNIFY (P4.D388 §S.9): the presets beat below lists through
+ * P4.D379's `chatCustomToolPresets` verb, and the popup only binds the section's
+ * new inputs once P4.D388's HANDOFF H1 is applied by P4.D385. Until BOTH land
+ * the section renders nothing, so the beat skips. **Unifier: flip both.**
+ */
+const P4D379_SERVER_LANDED = false;
+const P4D385_POPUP_H1_LANDED = false;
+// === end P4.D388 ===
+
 test.describe('Salon custom tools + whispers (P4.6ba)', () => {
   async function maybeUnlock(page: Page) {
     const passphrase = page.locator('#qt-passphrase');
@@ -291,6 +302,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await expect(dialog).toBeHidden();
   });
 
+  // === P4.D388 ===
   /**
    * P4.D43 (v4 `c988fbd2`) — run presets, end to end against a real vault.
    *
@@ -302,11 +314,16 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
    * control.
    *
    * Nothing here stubs a file: the save is a real `mountFileWrite` into ARIA's
-   * character vault, the list is a real `mountFilesList` over it, and the load
+   * character vault, the list is the server's real tool walk over the stores
+   * (`chatCustomToolPresets`, v4 `fd165fce0` — P4.D379 / P4.D388), and the load
    * reads back the bytes the save left. That is the whole point of the feature
    * being ordinary vault documents — this walk is the proof it stayed that way.
    */
   test('save a preset into the vault, deal it back, and reset to defaults', async ({ page }) => {
+    test.skip(
+      !(P4D379_SERVER_LANDED && P4D385_POPUP_H1_LANDED),
+      'awaits P4.D379’s chatCustomToolPresets verb and P4.D388’s HANDOFF H1 in custom-tools-popup.ts (wired at unification)',
+    );
     await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
@@ -318,7 +335,9 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
       data: { type: 'chatCustomToolsList', chatId },
     });
     const roster = (await rosterRes.json()) as {
-      data?: { tools?: Array<{ mountPointId: string; vaultMountPointId?: string | null }> };
+      data?: {
+        tools?: Array<{ mountPointId: string; vaultMountPointId?: string | null; asCharacterId: string }>;
+      };
     };
     const mountPointId = roster.data?.tools?.[0]?.mountPointId;
     expect(mountPointId, 'the seeded Tools roster should resolve').toBeTruthy();
@@ -348,6 +367,23 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
       },
     });
     expect(write.ok()).toBe(true);
+    // The save toast names the store the preset is filed in (v4 fd165fce0):
+    // by default the running character's vault, read off the presets walk.
+    const poolRes = await ctx.post(`${BASE_URL}/api/dispatch`, {
+      data: {
+        type: 'chatCustomToolPresets',
+        chatId,
+        tool: 'e2e_preset',
+        asCharacterId: roster.data?.tools?.[0]?.asCharacterId,
+      },
+    });
+    const pool = (await poolRes.json()) as {
+      data?: { stores?: Array<{ mountPointId: string; mountName: string }> };
+    };
+    const vaultMountName = pool.data?.stores?.find(
+      (store) => store.mountPointId === roster.data?.tools?.[0]?.vaultMountPointId,
+    )?.mountName;
+    expect(vaultMountName, 'the vault is on the presets walk').toBeTruthy();
     await ctx.dispose();
 
     await page.reload();
@@ -369,7 +405,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await bonus.fill('3');
     await dialog.getByLabel('Name to save this preset under').fill('brute');
     await dialog.getByRole('button', { name: 'Save preset' }).click();
-    await expect(page.getByText('Preset “brute” filed in the character\'s vault.')).toBeVisible();
+    await expect(page.getByText(`Preset “brute” filed in ${vaultMountName}.`)).toBeVisible();
     // The refreshed listing found the file the save wrote.
     await expect(presetSelect.locator('option', { hasText: 'brute' })).toHaveCount(1);
 
@@ -384,4 +420,5 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     await dialog.getByRole('button', { name: 'Reset to defaults' }).click();
     await expect(bonus).toHaveValue('0');
   });
+  // === end P4.D388 ===
 });

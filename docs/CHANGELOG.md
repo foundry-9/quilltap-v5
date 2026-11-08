@@ -1187,6 +1187,14 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — test(e2e): the P4.D388 SPA smalls walk, and the Run dialog's presets beat on the store walk
+
+P4.D388 unit (vii), e2e only, so no version moves. The new `apps/web/e2e/spa-smalls-flow.spec.ts` runs on its own instance on port 4365, copied from the salon fixture pair, with no LLM mock. Two beats run today:
+- (A) the About page's 624d0d25c edits;
+- (B) the "Kind of character" card: Roleplay by default, and the Details view and edit tabs keep separate radio groups when both are mounted in a split workspace.
+
+Six beats (C)–(H) are gated by name on the server lanes' wires: P4.D369's character `kind`, P4.D362's sampling capability and `maxImagesPerRequest`, P4.D374's inline Brahma engines, and P4.D379's `chatCustomToolPresets` verb together with HANDOFF H1. The unifier flips each gate when its lane lands (§S.9). `salon-custom-tools-flow.spec.ts`'s presets beat now reads the preset list across the store walk and expects the toast that names the store the preset was filed in. That beat is gated the same way. By file: spa-smalls 2 passed / 6 skipped; salon-custom-tools 4 / 1 skipped; settings-provider-options 8; settings-brahma-console 1; projects 7; characters 7; diagrams 11 (mermaid 12.3.0); settings-autonomous 4; salon-autonomous-entry 3, with no failures.
+
 #### 2026-11-08 — chore(spa): croner 11, mermaid 12.3.0 (v4 3936fdf65, 8f83041aa)
 
 _Versions: SPA 0.5.978._
