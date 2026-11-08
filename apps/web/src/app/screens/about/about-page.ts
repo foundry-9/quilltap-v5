@@ -327,7 +327,7 @@ export class AboutPage {
     },
     {
       title: 'The Salon – Chat',
-      body: 'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, the Scenario Builder, and indexed message search',
+      body: 'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, Deus Ex Machina established facts that every character knows, the Scenario Builder, and indexed message search that looks in the open conversation first',
     },
     {
       title: 'Prospero – Projects',
@@ -347,7 +347,7 @@ export class AboutPage {
     },
     {
       title: 'Pascal the Croupier – Gaming',
-      body: 'persistent state across four registers, dice rolls, coin flips, inventories and stats, plus user-authored custom tools with honest server-side rolls, outcome tables, side effects, and a visual workbench to build them',
+      body: 'persistent state across four registers, dice rolls, coin flips, the Inventory of objects characters carry, stats, plus user-authored custom tools with honest server-side rolls, outcome tables, side effects, and a visual workbench to build them',
     },
     {
       title: 'Calliope – Themes',
@@ -355,7 +355,7 @@ export class AboutPage {
     },
     {
       title: 'The Scriptorium – Document Stores',
-      body: 'mountable external knowledge sources that characters can read, search, and (in Document Mode) write back to',
+      body: 'mountable external knowledge sources that characters can read, search, and (in Document Mode) write back to, browsed with one folder browser shared with the Wardrobe and the Inventory and read-only viewers for pictures, PDFs and Word files',
     },
     {
       title: 'The Librarian – Document Mode',
@@ -371,7 +371,7 @@ export class AboutPage {
     },
     {
       title: 'Saquel Ytzama – Keeper of Secrets',
-      body: 'SQLCipher-encrypted databases, the Pepper Vault for API keys, instance locking, the .dbkey covenant, and the auto-lock idle timer',
+      body: 'ChaCha20-Poly1305-encrypted databases, the Pepper Vault for API keys, instance locking, the .dbkey covenant, and the auto-lock idle timer',
     },
     {
       title: 'Ariel – Terminals',
@@ -387,7 +387,7 @@ export class AboutPage {
     },
     {
       title: 'Brahma – The Console',
-      body: 'a character-less, memory-free generic-LLM surface for plain model chat and read-only SQL inspection, reachable from any Salon as the @Brahma answerer',
+      body: 'a character-less, memory-free generic-LLM surface for plain model chat and read-only SQL inspection, with lookup shortcuts for characters, memories and conversations, reachable from any Salon as the @Brahma answerer on an engine of its own choosing',
     },
     {
       title: 'The Foundry – Architecture',
@@ -415,27 +415,26 @@ export class AboutPage {
     },
   ];
 
-  /** v4 `:224-267`, verbatim — v4's stack, not v5's (see the class docstring). */
+  /** v4 `AboutView.tsx:242-276` at `624d0d25c`, verbatim — v4's stack, not v5's (see the class docstring). */
   protected readonly techStack = [
     { label: 'Runtime', value: 'Node.js 24+' },
     { label: 'Framework', value: 'Next.js 16+' },
     { label: 'UI', value: 'React 19' },
-    { label: 'Language', value: 'TypeScript 5.9+' },
-    { label: 'Database', value: 'SQLite + SQLCipher' },
+    { label: 'Language', value: 'TypeScript 6+' },
+    { label: 'Database', value: 'SQLite + SQLite3 Multiple Ciphers' },
     { label: 'Editor', value: 'Lexical' },
     { label: 'Data Fetching', value: 'TanStack Query' },
-    { label: 'File Manager', value: 'SVAR' },
     { label: 'Desktop', value: 'Electron' },
     { label: 'Styling', value: 'Tailwind CSS 4+' },
     { label: 'Validation', value: 'Zod' },
     { label: 'Containers', value: 'Docker' },
   ];
 
-  /** v4 `AboutView.tsx:373-383` at `236c04e35`, verbatim. */
+  /** v4 `AboutView.tsx:371-380` at `624d0d25c`, verbatim. */
   protected readonly acknowledgments = [
     {
       label: 'Core',
-      body: 'React, Next.js, TypeScript, better-sqlite3-multiple-ciphers (SQLCipher), Zod, Ajv, @tanstack/react-query',
+      body: 'React, Next.js, TypeScript, better-sqlite3-multiple-ciphers (SQLite3 Multiple Ciphers, ChaCha20-Poly1305), Zod, Ajv, @tanstack/react-query',
     },
     {
       label: 'Editor',
@@ -452,11 +451,11 @@ export class AboutPage {
     { label: 'Diagrams', body: 'Mermaid, Graphviz (@hpcc-js/wasm-graphviz), svg2roughjs, DOMPurify' },
     {
       label: 'UI & Interaction',
-      body: 'Tailwind CSS, dnd-kit, @tanstack/react-virtual, @svar-ui/react-filemanager, sharp, Lucide Icons',
+      body: 'Tailwind CSS, dnd-kit, @tanstack/react-virtual, sharp, Lucide Icons',
     },
     { label: 'Terminals & Realtime', body: 'xterm.js, node-pty, ws, croner' },
-    { label: 'Filesystem & Archives', body: 'chokidar, tar, yauzl, semver' },
+    { label: 'Filesystem & Archives', body: 'tar, yauzl, semver' },
     { label: 'Desktop & Infrastructure', body: 'Electron, Docker' },
-    { label: 'Testing', body: 'Jest, Playwright, Storybook, Testing Library' },
+    { label: 'Testing', body: 'Jest, Storybook, Testing Library' },
   ];
 }

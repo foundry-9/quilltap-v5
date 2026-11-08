@@ -134,8 +134,11 @@ describe('AboutPage (v4 app/about/AboutView.tsx)', () => {
     expect(text).toContain(
       'detailed profiles with pronouns, aliases, personalities, subprompts and progressions, a four-tier wardrobe with folders, pictures and a wear ledger, multi-character turn management, and archiving into an encrypted bundle you can rehydrate later',
     );
+    // The Salon sentence moved again at v4 `70d2859d8` (Deus Ex Machina, the
+    // conversation-first search); its whole bytes are pinned in
+    // `about-page.spec.ts` (P4.D388). 8489d08b9's half survives as the head.
     expect(text).toContain(
-      'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, the Scenario Builder, and indexed message search',
+      'chat interface with tool palette, agent mode, server-side rendering, embedded tool messages, Inform notes from the wings, ',
     );
     expect(text).toContain(
       'long-term memory with semantic recall and proactive recall, active and archived shelves, consolidation into digests, and one per-character maintenance pass',

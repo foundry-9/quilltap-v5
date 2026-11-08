@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — feat(spa): the About page's twelve 4.12 edits (v4 70d2859d8, c34986421, db4a76e39, 856ed4f2b)
+
+_Versions: SPA 0.5.977._
+
+P4.D388 unit (v), contract C17. `screens/about/about-page.ts` takes every About line v4 changed between `236c04e35` and the pin. The Salon, Pascal, Scriptorium, Saquel Ytzama and Brahma blurbs are rewritten: Deus Ex Machina and the conversation-first search; the Inventory; the shared folder browser and the read-only viewers; ChaCha20-Poly1305; the Brahma lookups and their own engine. The stack now reads `TypeScript 6+` and `SQLite + SQLite3 Multiple Ciphers`, and the `File Manager: SVAR` row is gone (eleven rows). The Core credit now names SQLite3 Multiple Ciphers and ChaCha20-Poly1305. `@svar-ui/react-filemanager`, `chokidar` and `Playwright` are dropped from their credits. The two source comments point at the pin's lines (`:242-276`, `:371-380`). Blurbs 1, 3 and 5 describe features other lanes of this round land; they are true on the union.
+
 #### 2026-11-08 — feat(spa): the Pascal Run dialog's presets read across the tool walk, filed into a chosen store (v4 fd165fce0)
 
 _Versions: SPA 0.5.976._
