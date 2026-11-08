@@ -6,6 +6,7 @@ import {
   ACTIVE_POLL_MAX,
   PASSIVE_POLL_INTERVAL_MS,
   StoryBackgroundPoller,
+  fetchChatBackground,
   fetchChatBackgroundVar,
   regenerateChatBackground,
   storyBackgroundKeys,
@@ -45,6 +46,19 @@ describe('fetchChatBackgroundVar', () => {
       linkSummary: null,
     });
     expect(await fetchChatBackgroundVar(core, 'chat-9')).toBeNull();
+  });
+
+  it('P4.D384: fetchChatBackground carries the SAME css value plus the picture identity', async () => {
+    const body = { backgroundUrl: '/v4/path/bg.webp', fileId: 'file-42', filename: 'bg.webp', sha256: 'abc', linkSummary: null };
+    const view = await fetchChatBackground(coreReturning(body).core, 'chat-9');
+    expect(view).toEqual({
+      cssVar: "url('/api/v1/files/file-42')",
+      src: '/api/v1/files/file-42',
+      fileId: 'file-42',
+      filename: 'bg.webp',
+    });
+    expect(view?.cssVar).toBe(await fetchChatBackgroundVar(coreReturning(body).core, 'chat-9'));
+    expect(await fetchChatBackground(coreReturning({ ...body, fileId: null }).core, 'chat-9')).toBeNull();
   });
 
   it('keys the query as a sibling of the chat detail key', () => {

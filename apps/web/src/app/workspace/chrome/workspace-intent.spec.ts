@@ -9,11 +9,14 @@
  * the same way.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { CoreClient } from '../../core/core-client';
 import { WorkspaceService } from '../workspace.service';
 import { applyOpenIntent, parseOpenIntent } from './workspace-intent';
+// === P4.D384 ===
+import { MESSAGE_REVEAL_EVENT, takePendingMessageReveal } from '../../chat/message-navigation';
+// === end P4.D384 ===
 
 function reader(q: Record<string, string>) {
   return { get: (n: string) => (n in q ? q[n] : null) };
@@ -303,4 +306,45 @@ describe('applyOpenIntent — the v4 8d86847a intent-layer delta', () => {
     expect(Object.values(svc.state().tabs).filter((t) => t.kind === 'prospero')).toHaveLength(1);
     expect(probe()).toContain('prospero:p2:');
   });
+
+  // === P4.D384 ===
+  describe('?msg= on a Salon intent (v4 WorkspaceIntent.tsx, 4f5047241)', () => {
+    afterEach(() => sessionStorage.clear());
+
+    it('parses the reveal beside the unchanged salon payload', () => {
+      expect(parseOpenIntent(reader({ open: 'salon', chatId: 'c1', msg: 'm1' }))).toEqual({
+        kind: 'salon',
+        payload: { chatId: 'c1' },
+        reveal: { chatId: 'c1', messageId: 'm1' },
+      });
+    });
+
+    it('carries no reveal without msg, with an empty msg, or for another kind', () => {
+      expect(parseOpenIntent(reader({ open: 'salon', chatId: 'c1' }))).not.toHaveProperty('reveal');
+      expect(parseOpenIntent(reader({ open: 'salon', chatId: 'c1', msg: '' }))).not.toHaveProperty('reveal');
+      expect(parseOpenIntent(reader({ open: 'document', chatId: 'c1', msg: 'm1' }))).not.toHaveProperty(
+        'reveal',
+      );
+      expect(parseOpenIntent(reader({ open: 'salon', msg: 'm1' }))).toBeNull();
+    });
+
+    it('opens the Salon and then requests the reveal', () => {
+      const seen: unknown[] = [];
+      const listener = (e: Event) => {
+        seen.push({ detail: (e as CustomEvent).detail, tabs: probe() });
+      };
+      window.addEventListener(MESSAGE_REVEAL_EVENT, listener);
+      open({ open: 'salon', chatId: 'c1', msg: 'm1' });
+      window.removeEventListener(MESSAGE_REVEAL_EVENT, listener);
+
+      expect(seen).toEqual([{ detail: { chatId: 'c1', messageId: 'm1' }, tabs: 'home::|salon:c1:' }]);
+      expect(takePendingMessageReveal('c1')).toBe('m1');
+    });
+
+    it('requests nothing for a Salon intent without msg', () => {
+      open({ open: 'salon', chatId: 'c1' });
+      expect(takePendingMessageReveal('c1')).toBeNull();
+    });
+  });
+  // === end P4.D384 ===
 });

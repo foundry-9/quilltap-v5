@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   computed,
   effect,
   inject,
@@ -166,6 +167,19 @@ import {
   type RaisedHandStatus,
 } from '../../chat/raised-hand-status';
 import type { InterceptArgs } from '../../chat/impersonation-voice/impersonation-voice.state';
+import type { BreadcrumbCharacter, BreadcrumbStoryBackground } from '../../chat/conversation-breadcrumb';
+import { findConversationMatches, type ConversationSearchSource } from '../../chat/conversation-search';
+import { SearchHighlight } from '../../chat/search-highlight';
+import {
+  MESSAGE_REVEAL_EVENT,
+  takePendingMessageReveal,
+  type MessageRevealRequest,
+} from '../../chat/message-navigation';
+import { announcerNamesOf, resolveMessageAuthor } from '../../chat/chat-view-model';
+import { getAnnouncementSenderName } from '../../chat/system-message-labels';
+import { normalizeAvatarSrc } from '../../ui/avatar-stack';
+import { PageToolbarService } from '../../layout/page-toolbar.service';
+import { WorkspaceService } from '../../workspace/workspace.service';
 // === end P4.D384 ===
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import {
@@ -205,7 +219,7 @@ import { StateEditorModal } from '../../shared/state/state-editor-modal';
 import {
   PASSIVE_POLL_INTERVAL_MS,
   StoryBackgroundPoller,
-  fetchChatBackgroundVar,
+  fetchChatBackground,
   regenerateChatBackground,
   storyBackgroundKeys,
 } from './story-background.api';
@@ -506,10 +520,13 @@ interface CascadePrompt {
         [settings]="settings()"
         [messageCount]="chat()!.messages.length"
         [inspectorOpen]="inspectorOpen()"
+        [characters]="breadcrumbCharacters()"
+        [storyBackground]="breadcrumbBackground()"
         (toggleInspector)="toggleInspector()"
+        (openStoryBackground)="onOpenStoryBackground($event)"
       />
 
-      <div class="qt-chat-messages-viewport">
+      <div class="qt-chat-messages-viewport" #messagesViewport>
         <qt-message-list
           [messages]="displayMessages()"
           [chat]="chat()!"
@@ -1285,6 +1302,176 @@ export class SalonConversation {
   /** The message list, so a user send can force a scroll-to-bottom (v4 `scrollOnUserMessage`). */
   private readonly messageList = viewChild(MessageList);
 
+  // === P4.D384 (v4 `3c41cf3da`, `4f5047241`) ===
+  /** The transcript viewport — the in-conversation search paints its ranges here. */
+  private readonly messagesViewport = viewChild<ElementRef<HTMLElement>>('messagesViewport');
+  private readonly pageToolbar = inject(PageToolbarService);
+  private readonly workspace = inject(WorkspaceService);
+  private readonly searchHighlight = new SearchHighlight();
+
+  /**
+   * The breadcrumb's character links (v4 `useParticipants.ts:79-85`
+   * `llmCharacters`): CHARACTER seats driven by the LLM, NOT filtered by
+   * `isActive`, sorted by name with `localeCompare`. The avatar is the one
+   * the row author resolution uses (`normalizeAvatarSrc(character.avatarUrl)`),
+   * `null` under quick-hide "Salon Images".
+   */
+  protected readonly breadcrumbCharacters = computed<BreadcrumbCharacter[]>(() => {
+    const hidden = this.imagesHidden();
+    return (this.chat()?.participants ?? [])
+      .filter((p) => p.type === 'CHARACTER' && p.controlledBy === 'llm' && p.character)
+      .map((p) => ({
+        id: p.character!.id,
+        name: p.character!.name,
+        avatarUrl: hidden ? null : normalizeAvatarSrc(p.character!.avatarUrl),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  });
+
+  /** The VISIBLE story background (quick-hide withholds it) for the thumbnail. */
+  protected readonly breadcrumbBackground = computed<BreadcrumbStoryBackground | null>(() => {
+    if (this.imagesHidden()) return null;
+    const view = this.backgroundQuery.data();
+    return view ? { src: view.src, filename: view.filename, fileId: view.fileId } : null;
+  });
+
+  /** v4 `SalonView.tsx:1167-1238`: the thumbnail opens the picture viewer. */
+  protected onOpenStoryBackground(bg: BreadcrumbStoryBackground): void {
+    this.modalImage.set({
+      src: bg.src,
+      filename: bg.filename || 'story_background.png',
+      fileId: bg.fileId || undefined,
+    });
+  }
+
+  /**
+   * The header search bar's source for THIS chat (v4 `SalonView.tsx:1529-1545`):
+   * one stable object per chat that reads the RENDERED rows when called, so
+   * publishing it never churns the toolbar on a streamed token. `speakerOf` is
+   * v4's: an announcement by its sender name (`getAnnouncementSenderName`), any
+   * other row by its author (`resolveMessageAuthor`, the row's own resolver).
+   */
+  private readonly conversationSearchSource = computed<ConversationSearchSource | null>(() => {
+    const chatId = this.chatId();
+    if (!chatId) return null;
+    return {
+      chatId,
+      search: (query, limit) => {
+        const chat = untracked(() => this.chat());
+        const rows = untracked(() => this.displayMessages());
+        const announcers = chat ? announcerNamesOf(chat) : {};
+        return findConversationMatches(rows, query, {
+          limit,
+          speakerOf: (m) =>
+            m.systemSender
+              ? getAnnouncementSenderName(m, announcers)
+              : chat
+                ? resolveMessageAuthor(m, chat).name
+                : null,
+        });
+      },
+      reveal: (messageId) => this.revealMessage(messageId),
+      setHighlight: (query) => this.searchHighlight.attach(this.messagesViewport()?.nativeElement ?? null, query),
+    };
+  });
+
+  /**
+   * Whether this Salon is the one the header search bar should search (v4's
+   * `WorkspaceToolbarBridge`): inside the workspace only while it is the
+   * FOCUSED pane's active tab (`WorkspaceService.state()` →
+   * `panes[focusedPane].activeTabId`); routed, always.
+   */
+  private readonly searchFocused = computed<boolean>(() => {
+    if (!this.workspaceTabId) return true;
+    const st = this.workspace.state();
+    const pane = st.focusedPane === 'right' ? st.panes.right : st.panes.left;
+    return pane?.activeTabId === this.workspaceTabId;
+  });
+
+  /**
+   * v4's reveal (`SalonView.tsx:1419-1440`): a line this view doesn't show
+   * says why; a shown one is scrolled to the top and flashed by the list's
+   * settle loop. (Expanding a collapsed announcement chip first is P4.D385's
+   * HANDOFF H3 — until it lands the reveal lands on the chip's group row.)
+   */
+  protected revealMessage(messageId: string): void {
+    if (!this.displayMessages().some((m) => m.id === messageId)) {
+      const hidden = this.transcriptMessages().find((m) => m.id === messageId);
+      this.toasts.showInfo(
+        hidden?.targetParticipantIds?.length
+          ? 'That line was a whisper meant for other ears. Choose “Show all whispers” in the sidebar to see it.'
+          : 'That line isn’t on the page — it may belong to another version of a reply, or have been tidied away.',
+      );
+      return;
+    }
+    this.messageList()?.revealMessage(messageId);
+  }
+
+  /** The route's `?msg=` (routed mode), taken at most once (v4 `routeRevealTakenRef`). */
+  private routeRevealTaken = false;
+
+  /** The transcript is here and the initial scroll to the newest line is done. */
+  private readonly revealReady = computed<boolean>(
+    () =>
+      !!this.chat() &&
+      this.transcriptMessages().length > 0 &&
+      (this.messageList()?.isInitialScrollDone() ?? false),
+  );
+
+  /**
+   * Offer this chat to the header search bar while it is the focused tab
+   * (v4 `SalonView.tsx:1547-1555`). The cleanup withdraws ONLY this Salon's
+   * own source (so a backgrounded tab never wipes the focused one's) and
+   * clears its paint. v4 also withholds it while quick-hide COVERS the chat;
+   * v5's Salon has no chat cover (no counterpart), so that arm is vacuous.
+   */
+  private readonly _offerConversationSearch = effect((onCleanup) => {
+    const source = this.conversationSearchSource();
+    if (!source || !this.searchFocused()) return;
+    untracked(() => this.pageToolbar.setConversationSearch(source));
+    onCleanup(() => {
+      source.setHighlight(null);
+      this.pageToolbar.clearConversationSearch(source);
+    });
+  });
+  private readonly _searchTeardown = this.destroyRef.onDestroy(() => this.searchHighlight.dispose());
+
+  /**
+   * The `?msg=` take (v4 `SalonView.tsx:1453-1462`): once the transcript is
+   * loaded, non-empty and initially scrolled, a parked request for THIS chat
+   * first, then (routed mode) the route's own `msg` ONCE.
+   */
+  private readonly _takeReveal = effect(() => {
+    const chatId = this.chatId();
+    if (!chatId || !this.revealReady()) return;
+    untracked(() => {
+      let target = takePendingMessageReveal(chatId);
+      if (!target && !this.workspaceTabId && !this.routeRevealTaken) {
+        const msg = this.route?.snapshot?.queryParamMap?.get('msg') ?? null;
+        if (msg) {
+          this.routeRevealTaken = true;
+          target = msg;
+        }
+      }
+      if (target) this.revealMessage(target);
+    });
+  });
+
+  /** A request made while this Salon is open arrives as an event (v4 `:1463-1473`). */
+  private readonly _revealListener = effect((onCleanup) => {
+    const chatId = this.chatId();
+    if (!chatId || !this.revealReady()) return;
+    const onReveal = (event: Event) => {
+      const request = (event as CustomEvent<MessageRevealRequest>).detail;
+      if (request?.chatId !== chatId) return;
+      const target = takePendingMessageReveal(chatId);
+      if (target) this.revealMessage(target);
+    };
+    window.addEventListener(MESSAGE_REVEAL_EVENT, onReveal);
+    onCleanup(() => window.removeEventListener(MESSAGE_REVEAL_EVENT, onReveal));
+  });
+  // === end P4.D384 ===
+
   /**
    * The composer, so a linked library file can reach its tray. v4 keeps
    * `attachedFiles` in SalonView and passes it down; v5 keeps the tray inside the
@@ -1415,7 +1602,9 @@ export class SalonConversation {
   private readonly backgroundQuery = injectQuery(() => ({
     queryKey: storyBackgroundKeys.background(this.chatId() ?? ''),
     enabled: !!this.chatId(),
-    queryFn: () => fetchChatBackgroundVar(this.core, this.chatId()!),
+    // P4.D384: the view carries the picture's identity for the breadcrumb's
+    // thumbnail; `cssVar` is the same bytes the layer always bound.
+    queryFn: () => fetchChatBackground(this.core, this.chatId()!),
     // Pushed: STORY_BACKGROUND_GENERATION completing publishes `chats:<id>`,
     // which invalidates this key through the topic map. The 30 s sweep is
     // what's left when the channel is down (v4 `f3892158d`).
@@ -1426,7 +1615,7 @@ export class SalonConversation {
     refetchOnReconnect: false,
   }));
   protected readonly backgroundVar = computed<string | null>(
-    () => this.backgroundQuery.data() ?? null,
+    () => this.backgroundQuery.data()?.cssVar ?? null,
   );
 
   private readonly imagesHidden = inject(IMAGES_HIDDEN);
@@ -1437,8 +1626,9 @@ export class SalonConversation {
    * feeds the layer and the workspace backdrop report ONLY — the change hook
    * and the regeneration poller keep reading {@link backgroundVar}, so a
    * toggle is never mistaken for a new background (v4's hunk likewise leaves
-   * `useStoryBackground` alone). v4's third consumer, the header's
-   * story-background thumbnail, has no v5 counterpart.
+   * `useStoryBackground` alone). v4's third consumer is the header
+   * breadcrumb's story-background thumbnail ({@link breadcrumbBackground},
+   * P4.D384).
    */
   protected readonly visibleBackgroundVar = computed<string | null>(() =>
     this.imagesHidden() ? null : this.backgroundVar(),
@@ -1494,7 +1684,7 @@ export class SalonConversation {
   /** v4 `startBackgroundPolling` — the watch `onRegenerateBackground` starts after a queue. */
   private startBackgroundPolling(): void {
     this.poller.start(this.backgroundVar(), async () =>
-      (await this.backgroundQuery.refetch()).data ?? null,
+      (await this.backgroundQuery.refetch()).data?.cssVar ?? null,
     );
   }
 

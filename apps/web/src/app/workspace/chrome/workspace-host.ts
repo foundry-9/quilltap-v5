@@ -54,6 +54,9 @@ import { WorkspaceBackdrop } from './workspace-backdrop';
 import { applyWorkspaceShortcut } from './workspace-shortcuts';
 import { interpretWorkspaceLinkClick } from './link-interceptor';
 import { applyOpenIntent, parseOpenIntent } from './workspace-intent';
+// === P4.D384 ===
+import { requestMessageReveal, revealRequestFromSalonHref } from '../../chat/message-navigation';
+// === end P4.D384 ===
 import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /** Divider column thickness (px). */
@@ -208,6 +211,16 @@ export class WorkspaceHost implements OnInit {
       e.stopImmediatePropagation();
       e.stopPropagation();
       this.ws.openTab(intent.kind, intent.payload);
+      // === P4.D384 ===
+      // A `?msg=` on a Salon link (a Message search result) is not part of the
+      // tab — the tab is the chat — but a one-off request to its Salon (v4
+      // `WorkspaceLinkInterceptor.tsx`, `4f5047241`). A non-null intent means
+      // the target sits inside an `a[href]`; the decision function stays pure.
+      const href =
+        (e.target as HTMLElement | null)?.closest?.('a[href]')?.getAttribute('href') ?? '';
+      const reveal = revealRequestFromSalonHref(href);
+      if (reveal) requestMessageReveal(reveal.chatId, reveal.messageId);
+      // === end P4.D384 ===
     };
     document.addEventListener('click', onClick, true);
 

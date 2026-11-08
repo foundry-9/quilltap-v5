@@ -16,6 +16,9 @@ import { CharacterCard } from '../../screens/characters/list/character-card';
 import { ChatCard } from '../../screens/salon/chat-card';
 import { ToastService } from '../../ui/toast.service';
 import { interpretWorkspaceLinkClick } from './link-interceptor';
+// === P4.D384 ===
+import { revealRequestFromSalonHref } from '../../chat/message-navigation';
+// === end P4.D384 ===
 
 function anchor(attrs: Record<string, string>): HTMLAnchorElement {
   const a = document.createElement('a');
@@ -35,6 +38,40 @@ function click(target: HTMLElement | null, over: Partial<MouseEvent> = {}): Mous
     ...over,
   } as unknown as MouseEvent;
 }
+
+// === P4.D384 ===
+/**
+ * The `?msg=` Salon hrefs (v4 `WorkspaceLinkInterceptor.tsx`, `4f5047241`): the
+ * PURE decision still opens just the chat — the `msg` is not in the payload —
+ * and the host's follow-up `revealRequestFromSalonHref(href)` names the request.
+ */
+describe('interpretWorkspaceLinkClick — ?msg= Salon hrefs (P4.D384)', () => {
+  const rows: Array<[string, { chatId: string; messageId: string } | null]> = [
+    ['/salon/abc?msg=m1', { chatId: 'abc', messageId: 'm1' }],
+    ['/salon/abc/?x=1&msg=m1', { chatId: 'abc', messageId: 'm1' }],
+    ['/salon/abc?msg=m1#frag', { chatId: 'abc', messageId: 'm1' }],
+    ['/salon/abc?tab=x', null],
+    ['/salon/abc?msg=', null],
+  ];
+
+  it.each(rows)('%s opens the chat tab only, and the href names the reveal', (href, reveal) => {
+    expect(interpretWorkspaceLinkClick(click(anchor({ href })))).toEqual({
+      kind: 'salon',
+      payload: { chatId: 'abc' },
+    });
+    expect(revealRequestFromSalonHref(href)).toEqual(reveal);
+  });
+
+  it('/salon/new?msg=m opens the New-Chat tab, and names no reveal', () => {
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/new?msg=m' })))?.kind).toBe('salon-new');
+    expect(revealRequestFromSalonHref('/salon/new?msg=m')).toBeNull();
+  });
+
+  it('a modified click on a ?msg= link is passed through (no intent, so the host requests nothing)', () => {
+    expect(interpretWorkspaceLinkClick(click(anchor({ href: '/salon/abc?msg=m1' }), { metaKey: true }))).toBeNull();
+  });
+});
+// === end P4.D384 ===
 
 describe('interpretWorkspaceLinkClick', () => {
   it('maps an in-app anchor href to a tab intent', () => {

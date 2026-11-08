@@ -39,6 +39,13 @@ function chatDetail(overrides: Partial<ChatDetail> = {}): ChatDetail {
   };
 }
 
+/** Matches outside the breadcrumb's measuring copies (`aria-hidden` + `inert`). */
+function visible(fixture: ComponentFixture<unknown>, selector: string): HTMLElement[] {
+  return (
+    Array.from((fixture.nativeElement as HTMLElement).querySelectorAll(selector)) as HTMLElement[]
+  ).filter((el) => el.closest('[inert]') === null);
+}
+
 function render(chat: ChatDetail): ComponentFixture<ConversationHeader> {
   TestBed.configureTestingModule({
     imports: [ConversationHeader],
@@ -102,7 +109,8 @@ describe('ConversationHeader — the chat-totals summary gate (v4 SalonView.tsx:
   });
 
   it('keeps the copy-id entry alongside the summary', () => {
-    // The summary joins the right cluster; it must not displace what was there.
+    // The summary sits in the right cluster; the copy-id button rides the
+    // breadcrumb on the left (v4 3c41cf3da) — neither displaces the other.
     const fixture = renderWith(settingsRow(true));
     expect(fixture.nativeElement.querySelector('qt-copy-chat-id-button')).not.toBeNull();
   });
@@ -225,10 +233,9 @@ describe('ConversationHeader — the sidebar reclaimed its entries (P4.9H1)', ()
 describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1190-1222 @ ce2f1dabf)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
+  /** The VISIBLE row's pills — the breadcrumb's inert measuring copies carry their own. */
   function badges(fixture: ComponentFixture<ConversationHeader>): HTMLElement[] {
-    return Array.from(
-      fixture.nativeElement.querySelectorAll('.qt-danger-badge'),
-    ) as HTMLElement[];
+    return visible(fixture, '.qt-danger-badge');
   }
 
   /** Advance fake time, then let the render + afterRenderEffect passes run. */
@@ -239,10 +246,8 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1190-1222
     fixture.detectChanges();
   }
 
-  async function hover(fixture: ComponentFixture<unknown>): Promise<void> {
-    (fixture.nativeElement as HTMLElement)
-      .querySelector('qt-tooltip')!
-      .dispatchEvent(new Event('pointerenter'));
+  async function hover(fixture: ComponentFixture<ConversationHeader>): Promise<void> {
+    badges(fixture)[0].closest('qt-tooltip')!.dispatchEvent(new Event('pointerenter'));
     await tick(fixture, 250);
   }
 
@@ -378,5 +383,101 @@ describe('ConversationHeader — the Concierge badge (v4 SalonView.tsx:1190-1222
       );
       expect(text).not.toContain('Categories');
     });
+  });
+});
+
+describe("ConversationHeader — v4's left / right split (3c41cf3da, ruling R3)", () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const FOLLOWING = 4; // Node.DOCUMENT_POSITION_FOLLOWING
+
+  function renderFull(): ComponentFixture<ConversationHeader> {
+    TestBed.configureTestingModule({
+      imports: [ConversationHeader],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: { dispatchData: vi.fn(() => new Promise(() => {})) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(ConversationHeader);
+    fixture.componentRef.setInput(
+      'chat',
+      chatDetail({
+        projectId: 'proj-1',
+        projectName: 'The Brass Owl',
+        conciergeState: 'unmoderated',
+        conciergeSetBy: 'operator',
+      }),
+    );
+    fixture.componentRef.setInput('settings', {
+      llmLoggingSettings: { enabled: true },
+      tokenDisplaySettings: {
+        showPerMessageTokens: false,
+        showPerMessageCost: false,
+        showChatTotals: true,
+        showSystemEvents: false,
+      },
+    } as unknown as ChatSettingsDto);
+    fixture.componentRef.setInput('characters', [
+      { id: 'char-1', name: 'Abigail', avatarUrl: null },
+    ]);
+    fixture.componentRef.setInput('storyBackground', {
+      src: '/api/v1/files/bg-1',
+      filename: 'bg.png',
+      fileId: 'bg-1',
+    });
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('orders the left row project / character / background / Concierge / title / copy-id', () => {
+    const fixture = renderFull();
+    const crumb = fixture.nativeElement.querySelector('qt-conversation-breadcrumb') as HTMLElement;
+    const pick = (sel: string): HTMLElement => visible(fixture, sel)[0];
+    const sequence = [
+      pick('a[href="/prospero/proj-1"]'),
+      pick('a[href="/characters/char-1?tab=conversations"]'),
+      pick('button[aria-label="Display story background"]'),
+      pick('.qt-danger-badge'),
+      pick('a[href="/salon/chat-1"]'),
+      pick('qt-copy-chat-id-button'),
+    ];
+    for (const el of sequence) {
+      expect(el).toBeTruthy();
+      expect(crumb.contains(el)).toBe(true);
+    }
+    for (let i = 1; i < sequence.length; i++) {
+      expect(sequence[i - 1].compareDocumentPosition(sequence[i]) & FOLLOWING).toBeTruthy();
+    }
+  });
+
+  it('keeps the Inspector and the summary right of the spacer, outside the breadcrumb', () => {
+    const fixture = renderFull();
+    const header = fixture.nativeElement.querySelector('header') as HTMLElement;
+    const children = Array.from(header.children) as HTMLElement[];
+    expect(children[0].tagName.toLowerCase()).toBe('qt-conversation-breadcrumb');
+    expect(children[1].className).toBe('flex-1');
+    expect(children[2].getAttribute('aria-label')).toBe('Toggle LLM Inspector');
+    expect(children[3].tagName.toLowerCase()).toBe('qt-chat-cost-summary');
+    expect(children).toHaveLength(4);
+  });
+
+  it('re-emits the thumbnail click as openStoryBackground', () => {
+    const fixture = renderFull();
+    const seen: unknown[] = [];
+    fixture.componentInstance.openStoryBackground.subscribe((bg) => seen.push(bg));
+    visible(fixture, 'button[aria-label="Display story background"]')[0].click();
+    expect(seen).toEqual([{ src: '/api/v1/files/bg-1', filename: 'bg.png', fileId: 'bg-1' }]);
+  });
+
+  it("falls back to v5's Untitled chat for an empty title", () => {
+    TestBed.configureTestingModule({ imports: [ConversationHeader], providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(ConversationHeader);
+    fixture.componentRef.setInput('chat', chatDetail({ title: '' }));
+    fixture.detectChanges();
+    expect(visible(fixture, 'a[href="/salon/chat-1"]')[0].textContent?.trim()).toBe(
+      'Untitled chat',
+    );
   });
 });

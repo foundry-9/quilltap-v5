@@ -1,0 +1,78 @@
+{"id":"jest: Abigail → first three","kind":"abbreviate","name":"Abigail","out":"Abi"}
+{"id":"jest: Revenant → first three","kind":"abbreviate","name":"Revenant","out":"Rev"}
+{"id":"jest: Amy kept whole","kind":"abbreviate","name":"Amy","out":"Amy"}
+{"id":"jest: Riya kept whole (four is the ceiling)","kind":"abbreviate","name":"Riya","out":"Riya"}
+{"id":"jest: Baraka Ilunga → initials","kind":"abbreviate","name":"Baraka Ilunga","out":"BI"}
+{"id":"jest: Voyages of the Covenant → minor words dropped","kind":"abbreviate","name":"Voyages of the Covenant","out":"VC"}
+{"id":"jest: five words capped at four initials","kind":"abbreviate","name":"One Two Three Four Five","out":"OTTF"}
+{"id":"jest: all minor falls back to every word","kind":"abbreviate","name":"Of The","out":"OT"}
+{"id":"jest: blank name","kind":"abbreviate","name":"   ","out":""}
+{"id":"empty string","kind":"abbreviate","name":"","out":""}
+{"id":"tab and newline only","kind":"abbreviate","name":"\t\n","out":""}
+{"id":"NBSP only (JS \\s matches U+00A0)","kind":"abbreviate","name":" ","out":""}
+{"id":"ideographic space only (U+3000)","kind":"abbreviate","name":"　","out":""}
+{"id":"one letter","kind":"abbreviate","name":"Q","out":"Q"}
+{"id":"four code points kept whole","kind":"abbreviate","name":"Aria","out":"Aria"}
+{"id":"five code points cut to three","kind":"abbreviate","name":"Arial","out":"Ari"}
+{"id":"surrounding whitespace trimmed before counting","kind":"abbreviate","name":"  Riya  ","out":"Riya"}
+{"id":"lower-case single word keeps its case","kind":"abbreviate","name":"abigail","out":"abi"}
+{"id":"digits count as letters","kind":"abbreviate","name":"12345","out":"123"}
+{"id":"punctuation counts","kind":"abbreviate","name":"O'Neil","out":"O'N"}
+{"id":"hyphenated single word","kind":"abbreviate","name":"Jean-Luc","out":"Jea"}
+{"id":"astral letter in a long word","kind":"abbreviate","name":"𝒜lice","out":"𝒜li"}
+{"id":"astral letter in a short word (four points, eight units)","kind":"abbreviate","name":"𝒜𝒷𝒸𝒹","out":"𝒜𝒷𝒸𝒹"}
+{"id":"five emoji cut to three emoji","kind":"abbreviate","name":"😀😀😀😀😀","out":"😀😀😀"}
+{"id":"four emoji kept whole","kind":"abbreviate","name":"😀😀😀😀","out":"😀😀😀😀"}
+{"id":"astral initials across words","kind":"abbreviate","name":"𝒜lice 𝒷ob","out":"𝒜𝒷"}
+{"id":"emoji initial","kind":"abbreviate","name":"😀Smile Face","out":"😀F"}
+{"id":"combining acute makes four letters five points","kind":"abbreviate","name":"Zoéy","out":"Zoe"}
+{"id":"precomposed é stays four points","kind":"abbreviate","name":"Zoéy","out":"Zoéy"}
+{"id":"combining mark on a short word","kind":"abbreviate","name":"Amé","out":"Amé"}
+{"id":"combining mark right after the third letter is cut","kind":"abbreviate","name":"Reńee","out":"Ren"}
+{"id":"initial with a combining mark keeps only the base","kind":"abbreviate","name":"Émile Zola","out":"EZ"}
+{"id":"NBSP separates words","kind":"abbreviate","name":"Baraka Ilunga","out":"BI"}
+{"id":"tab separates words","kind":"abbreviate","name":"Baraka\tIlunga","out":"BI"}
+{"id":"newline separates words","kind":"abbreviate","name":"Baraka\nIlunga","out":"BI"}
+{"id":"run of mixed whitespace","kind":"abbreviate","name":"Baraka \t\n  Ilunga","out":"BI"}
+{"id":"ideographic space separates words","kind":"abbreviate","name":"Baraka　Ilunga","out":"BI"}
+{"id":"zero-width space does NOT separate (not \\s)","kind":"abbreviate","name":"Baraka​Ilunga","out":"Bar"}
+{"id":"The Of A — all minor","kind":"abbreviate","name":"The Of A","out":"TOA"}
+{"id":"all ten minor words → first four initials","kind":"abbreviate","name":"a an and the of in on at to for","out":"AAAT"}
+{"id":"mixed-case minor words dropped","kind":"abbreviate","name":"Voyages OF tHe Covenant","out":"VC"}
+{"id":"leading minor word dropped","kind":"abbreviate","name":"The Brass Owl","out":"BO"}
+{"id":"trailing minor word dropped","kind":"abbreviate","name":"Brass Owl Of","out":"BO"}
+{"id":"minor-looking word with punctuation is NOT minor","kind":"abbreviate","name":"Tales of. the Owl","out":"TOO"}
+{"id":"five significant words capped at four","kind":"abbreviate","name":"Alpha Bravo Charlie Delta Echo","out":"ABCD"}
+{"id":"minors among five significant words","kind":"abbreviate","name":"Alpha of Bravo the Charlie and Delta in Echo","out":"ABCD"}
+{"id":"one significant word among minors","kind":"abbreviate","name":"The Owl","out":"O"}
+{"id":"lower-case initials upper-cased","kind":"abbreviate","name":"baraka ilunga","out":"BI"}
+{"id":"toUpperCase can grow an initial (ß → SS)","kind":"abbreviate","name":"ßtraße Zeit","out":"SSZ"}
+{"id":"dotted i upper-cases under the default locale","kind":"abbreviate","name":"istanbul izmir","out":"II"}
+{"id":"numbers as words","kind":"abbreviate","name":"7 Seas","out":"7S"}
+{"id":"two single letters","kind":"abbreviate","name":"A B","out":"B"}
+{"id":"jest: full fits","kind":"density","available":700,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"full"}
+{"id":"jest: only abbrev and avatar fit","kind":"density","available":450,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"abbrev"}
+{"id":"jest: only avatar fits","kind":"density","available":300,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"jest: nothing fits → avatar","kind":"density","available":100,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"full exactly equal","kind":"density","available":600,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"full"}
+{"id":"one under full","kind":"density","available":599,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"abbrev"}
+{"id":"abbrev exactly equal","kind":"density","available":400,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"abbrev"}
+{"id":"one under abbrev","kind":"density","available":399,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"avatar exactly equal","kind":"density","available":250,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"one under avatar","kind":"density","available":249,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"fractional just under full","kind":"density","available":599.5,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"abbrev"}
+{"id":"available 0 with real widths","kind":"density","available":0,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"available 0 with zero widths","kind":"density","available":0,"widths":{"full":0,"abbrev":0,"avatar":0},"out":"full"}
+{"id":"zero widths fit any width","kind":"density","available":500,"widths":{"full":0,"abbrev":0,"avatar":0},"out":"full"}
+{"id":"only avatar zero, available 0","kind":"density","available":0,"widths":{"full":10,"abbrev":5,"avatar":0},"out":"avatar"}
+{"id":"NaN full skips to abbrev","kind":"density","available":500,"widths":{"full":"NaN","abbrev":400,"avatar":250},"out":"abbrev"}
+{"id":"NaN everywhere → avatar floor","kind":"density","available":500,"widths":{"full":"NaN","abbrev":"NaN","avatar":"NaN"},"out":"avatar"}
+{"id":"NaN available → avatar floor","kind":"density","available":"NaN","widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"NaN full and abbrev, avatar fits","kind":"density","available":300,"widths":{"full":"NaN","abbrev":"NaN","avatar":250},"out":"avatar"}
+{"id":"abbrev wider than full still picks full first","kind":"density","available":500,"widths":{"full":300,"abbrev":450,"avatar":100},"out":"full"}
+{"id":"avatar wider than abbrev","kind":"density","available":350,"widths":{"full":600,"abbrev":300,"avatar":400},"out":"abbrev"}
+{"id":"Infinity available fits full","kind":"density","available":"Infinity","widths":{"full":600,"abbrev":400,"avatar":250},"out":"full"}
+{"id":"-Infinity available → avatar floor","kind":"density","available":"-Infinity","widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"Infinity widths never fit","kind":"density","available":1000,"widths":{"full":"Infinity","abbrev":"Infinity","avatar":"Infinity"},"out":"avatar"}
+{"id":"negative available","kind":"density","available":-5,"widths":{"full":600,"abbrev":400,"avatar":250},"out":"avatar"}
+{"id":"negative widths fit available 0","kind":"density","available":0,"widths":{"full":-1,"abbrev":-1,"avatar":-1},"out":"full"}

@@ -16,6 +16,9 @@ import {
   type TabKind,
   type WorkspaceHandle,
 } from '../workspace-contract';
+// === P4.D384 ===
+import { requestMessageReveal, type MessageRevealRequest } from '../../chat/message-navigation';
+// === end P4.D384 ===
 
 const OPENABLE_KINDS: ReadonlySet<TabKind> = new Set<TabKind>([
   'home',
@@ -63,6 +66,16 @@ export interface OpenIntent {
    * the `salon-new` tab.
    */
   also?: { kind: TabKind; payload?: unknown };
+  // === P4.D384 ===
+  /**
+   * `/workspace?open=salon&chatId=abc&msg=def` (the old-route redirect of a
+   * Message search result): after the Salon opens, scroll that chat to message
+   * `def` (v4 `WorkspaceIntent.tsx`, `4f5047241`). Not part of the tab — the tab
+   * is the chat — but a one-off request {@link applyOpenIntent} hands to
+   * `requestMessageReveal`. Absent unless both ids are present.
+   */
+  reveal?: MessageRevealRequest;
+  // === end P4.D384 ===
 }
 
 /** A minimal read-only params view (URLSearchParams or Angular's ParamMap). */
@@ -162,6 +175,15 @@ export function parseOpenIntent(params: ParamReader): OpenIntent | null {
     };
   }
 
+  // === P4.D384 ===
+  // `/salon/<id>?msg=<messageId>` (a Message search result) arrives here
+  // through the old-route redirect: scroll that chat to it.
+  const messageId = params.get('msg');
+  if (kind === 'salon' && chatId && messageId) {
+    return { kind, payload, reveal: { chatId, messageId } };
+  }
+  // === end P4.D384 ===
+
   return { kind, payload };
 }
 
@@ -182,5 +204,8 @@ export function applyOpenIntent(handle: WorkspaceHandle, intent: OpenIntent): st
     id = handle.openTab(intent.kind, intent.payload);
   }
   if (intent.also) handle.openTab(intent.also.kind, intent.also.payload);
+  // === P4.D384 ===
+  if (intent.reveal) requestMessageReveal(intent.reveal.chatId, intent.reveal.messageId);
+  // === end P4.D384 ===
   return id;
 }

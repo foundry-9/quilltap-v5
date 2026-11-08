@@ -149,4 +149,34 @@ describe('workspaceRedirectGuard', () => {
     expect(tree).toBeInstanceOf(UrlTree);
     expect(tree.queryParams).toEqual({ open: 'settings-wizard' });
   });
+
+  // === P4.D384 ===
+  describe('the ?msg= reveal (v4 app/salon/[id]/page.tsx, 4f5047241)', () => {
+    const salon = () => workspaceRedirectGuard('salon', (r) => ({ chatId: r.paramMap.get('id') }));
+
+    it('carries msg for open=salon', () => {
+      const tree = run(salon(), snap({ id: 'c1' }, { msg: 'm1' })) as UrlTree;
+      expect(tree.queryParams).toEqual({ open: 'salon', chatId: 'c1', msg: 'm1' });
+    });
+
+    it('drops an empty msg', () => {
+      const tree = run(salon(), snap({ id: 'c1' }, { msg: '' })) as UrlTree;
+      expect(tree.queryParams).toEqual({ open: 'salon', chatId: 'c1' });
+    });
+
+    it('drops a repeated msg (Next hands v4 an array, which it ignores)', () => {
+      const route = {
+        paramMap: convertToParamMap({ id: 'c1' }),
+        queryParamMap: convertToParamMap({ msg: ['a', 'b'] }),
+      } as unknown as ActivatedRouteSnapshot;
+      const tree = run(salon(), route) as UrlTree;
+      expect(tree.queryParams).toEqual({ open: 'salon', chatId: 'c1' });
+    });
+
+    it('carries msg for no other open kind', () => {
+      const tree = run(workspaceRedirectGuard('aurora'), snap({}, { msg: 'm1' })) as UrlTree;
+      expect(tree.queryParams).toEqual({ open: 'aurora' });
+    });
+  });
+  // === end P4.D384 ===
 });

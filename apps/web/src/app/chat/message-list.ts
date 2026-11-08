@@ -11,6 +11,7 @@ import {
   output,
   untracked,
   viewChild,
+  type Signal,
 } from '@angular/core';
 import { injectVirtualizer } from '@tanstack/angular-virtual';
 
@@ -346,6 +347,21 @@ export class MessageList {
 
   protected readonly autoScroll = new AutoScrollController();
 
+  // === P4.D384 ===
+  /**
+   * Whether the initial scroll to the newest message has finished (v4
+   * `useAutoScroll`'s `isInitialScrollDone`, delegated to the controller). The
+   * Salon takes a `?msg=` reveal only once this is true — the initial scroll
+   * would otherwise carry the view straight back down.
+   */
+  readonly isInitialScrollDone: Signal<boolean> = this.autoScroll.isInitialScrollDone;
+
+  /** The in-flight reveal's animation frame (0 = none). */
+  private revealFrame = 0;
+  /** The pending highlight-removal timers, cleared on destroy. */
+  private readonly revealHighlightTimers = new Set<ReturnType<typeof setTimeout>>();
+  // === end P4.D384 ===
+
   /**
    * v4 `SalonView.tsx:1171-1174 shouldShowAvatars` — the ONE avatar gate, used
    * for the settled rows (`VirtualizedMessageList.tsx:274`, `:305`) AND the
@@ -459,7 +475,14 @@ export class MessageList {
       this.autoScroll.notifyMessageCount(count, s != null, s?.waitingForResponse ?? false);
     });
 
-    inject(DestroyRef).onDestroy(() => this.autoScroll.dispose());
+    inject(DestroyRef).onDestroy(() => {
+      this.autoScroll.dispose();
+      // === P4.D384: a reveal never outlives the list ===
+      this.cancelReveal();
+      for (const t of this.revealHighlightTimers) clearTimeout(t);
+      this.revealHighlightTimers.clear();
+      // === end P4.D384 ===
+    });
 
     // Drive the virtualizer's window computation from a plain effect as well as
     // the adapter's own `afterRenderEffect`. `_willUpdate()` wires the scroll-rect
@@ -498,15 +521,130 @@ export class MessageList {
    * `querySelector` returning `null`.
    */
   scrollToMessage(messageId: string): void {
-    const items = this.items();
-    const index = items.findIndex((item) =>
+    // === P4.D384: the one index lookup, shared with revealMessage ===
+    const index = this.renderIndexOf(messageId);
+    // === end P4.D384 ===
+    if (index === -1) return;
+    this.virtualizer.scrollToIndex(index, { align: 'center', behavior: 'smooth' });
+  }
+
+  // === P4.D384 ===
+  /**
+   * Scroll a message to the top of the transcript and flash it — v4's `?msg=`
+   * / in-conversation-search reveal (`SalonView.tsx` settle loop, `4f5047241`,
+   * pinned at `624d0d25c`). The list is virtualized, so the row may not exist
+   * yet: ask the virtualizer for the index (`align: 'start'`), then nudge until
+   * the row's top sits 12px below the container's top, and flash it with
+   * `qt-memory-source-highlight` for 3000ms.
+   *
+   * The loop is v4's, rule for rule:
+   * - at most 40 attempts (frames), each re-asking the virtualizer while the row
+   *   is not mounted;
+   * - a kept-alive tab is `display:none` until it is activated, and a request can
+   *   arrive in the same tick as the activation — while the container's
+   *   `clientHeight` is 0 it waits (≤ 600 frames) WITHOUT spending an attempt;
+   * - keep nudging while rows above are still being measured
+   *   (`|offset| > 2`), until the row is at the top or the container can scroll
+   *   no further (`scrollTop` stopped moving).
+   *
+   * Two v5 shapes, both recorded:
+   * - v4 finds the row by `[data-message-id]`; v5's message rows carry
+   *   `id="message-<id>"` (v4 stamps both; `message-row.ts` keeps the id only),
+   *   which the chips carry too — so the lookup is by that id.
+   * - A message inside a collapsed announcement group: v4 expands the chip first
+   *   and reveals the message's own row; v5's expansion state is private to
+   *   `AnnouncementGroup` (handoff H3), so this scrolls to and flashes the GROUP
+   *   row (the chip's `.qt-chat-announcement-group`).
+   *
+   * A target not in the render-item array is a silent no-op (the caller — the
+   * Salon — says why with a toast first). A new reveal cancels the one in
+   * flight (v4's effect cleanup); destroy cancels both the loop and the flash.
+   */
+  revealMessage(messageId: string): void {
+    this.cancelReveal();
+    const index = this.renderIndexOf(messageId);
+    if (index === -1) return;
+
+    this.virtualizer.scrollToIndex(index, { align: 'start' });
+    let attempts = 0;
+    let lastScrollTop = -1;
+    let hiddenFrames = 0;
+    const settle = (): void => {
+      this.revealFrame = 0;
+      const container = this.scroll()?.nativeElement;
+      if (!container || ++attempts > 40) return;
+      // A kept-alive tab is display:none until it is activated, and a request
+      // can arrive in the same tick as the activation: wait until it shows.
+      if (container.clientHeight === 0) {
+        if (++hiddenFrames > 600) return;
+        attempts--;
+        this.revealFrame = requestAnimationFrame(settle);
+        return;
+      }
+      const row = this.revealRowOf(container, messageId);
+      if (!row) {
+        // v4 re-asks the same index, and its effect restarts the whole loop
+        // whenever the render items change (a new line arrived); v5 has no
+        // such effect, so it re-asks for the target's CURRENT index instead,
+        // and stops if the target is gone.
+        const current = this.renderIndexOf(messageId);
+        if (current === -1) return;
+        this.virtualizer.scrollToIndex(current, { align: 'start' });
+        this.revealFrame = requestAnimationFrame(settle);
+        return;
+      }
+      const offset = row.getBoundingClientRect().top - container.getBoundingClientRect().top - 12;
+      // Keep nudging while rows above are still being measured, until the row
+      // is at the top or the container can scroll no further.
+      if (Math.abs(offset) > 2 && container.scrollTop !== lastScrollTop) {
+        lastScrollTop = container.scrollTop;
+        container.scrollTop += offset;
+        this.revealFrame = requestAnimationFrame(settle);
+        return;
+      }
+      row.classList.add('qt-memory-source-highlight');
+      const timer = setTimeout(() => {
+        this.revealHighlightTimers.delete(timer);
+        row.classList.remove('qt-memory-source-highlight');
+      }, 3000);
+      this.revealHighlightTimers.add(timer);
+    };
+    this.revealFrame = requestAnimationFrame(settle);
+  }
+
+  /** Cancel the in-flight reveal loop, if any (the flash already shown stays). */
+  private cancelReveal(): void {
+    if (this.revealFrame) cancelAnimationFrame(this.revealFrame);
+    this.revealFrame = 0;
+  }
+
+  /** The render-item index holding `messageId` (a message row, or the group whose chip it is). */
+  private renderIndexOf(messageId: string): number {
+    return this.items().findIndex((item) =>
       item.type === 'announcement-group'
         ? item.chips.some((chip) => chip.id === messageId)
         : item.message.id === messageId,
     );
-    if (index === -1) return;
-    this.virtualizer.scrollToIndex(index, { align: 'center', behavior: 'smooth' });
   }
+
+  /**
+   * The mounted element to align and flash: the message's own row, or — for a
+   * chip in a collapsed group — the group row the chip sits in.
+   */
+  private revealRowOf(container: HTMLElement, messageId: string): HTMLElement | null {
+    // v4 builds a `CSS.escape`d selector; matching the id directly over the
+    // mounted rows (the window is a handful) is the same lookup unescaped.
+    const id = `message-${messageId}`;
+    const anchor = [...container.querySelectorAll<HTMLElement>('[id^="message-"]')].find(
+      (el) => el.id === id,
+    );
+    if (!anchor) return null;
+    if (anchor.hasAttribute('data-message-id')) {
+      return anchor.closest<HTMLElement>('.qt-chat-announcement-group') ?? anchor;
+    }
+    return anchor;
+  }
+  // === end P4.D384 ===
 
   protected swipeFor(message: MessageDto): SwipeState | null {
     return message.swipeGroupId ? (this.swipeStates()[message.swipeGroupId] ?? null) : null;

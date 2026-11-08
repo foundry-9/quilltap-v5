@@ -25,6 +25,8 @@ import { CoreClient } from '../../core/core-client';
 import { coreStreamStub } from '../../core/core-client.testing';
 import type { RaisedHandStatus } from '../../chat/raised-hand-status';
 import { DocumentModeController } from '../../documents/document-mode';
+import { PageToolbarService } from '../../layout/page-toolbar.service';
+import { MessageList } from '../../chat/message-list';
 import { ImpersonationVoiceState } from '../../chat/impersonation-voice/impersonation-voice.state';
 import type { ConnectionState } from '../../core/core-transport';
 import type {
@@ -6020,3 +6022,88 @@ describe('SalonConversation — Storyteller mode (P4.D344)', () => {
   });
 });
 // === end P4.D344 ===
+
+// === P4.D384: the breadcrumb inputs, the conversation-search source, the reveal ===
+describe('SalonConversation — P4.D384 breadcrumb, conversation search and reveal', () => {
+  type Host = {
+    breadcrumbCharacters(): Array<{ id: string; name: string; avatarUrl: string | null }>;
+    breadcrumbBackground(): { src: string; filename: string | null; fileId: string | null } | null;
+    onOpenStoryBackground(bg: { src: string; filename: string | null; fileId: string | null }): void;
+    modalImage(): { src: string; filename: string; fileId?: string } | null;
+    revealMessage(id: string): void;
+  };
+
+  function richChat(): ChatDetail {
+    const chat = chatDetail();
+    chat.participants = [
+      ...chat.participants,
+      participant({
+        id: 'p2',
+        isActive: false,
+        character: { id: 'char2', name: 'Aunt Agatha', title: null, avatarUrl: 'img/agatha.png', defaultImageId: null, defaultImage: null },
+      }),
+      participant({
+        id: 'p3',
+        controlledBy: 'user',
+        character: { id: 'char3', name: 'Zed', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+      }),
+    ];
+    chat.messages = [
+      ...chat.messages,
+      message({ id: 'w2', role: 'ASSISTANT', participantId: 'p1', content: 'a zephyr for Agatha alone', targetParticipantIds: ['p2'], createdAt: '2024-01-01T00:00:05.000Z' }),
+      message({ id: 'z1', role: 'ASSISTANT', participantId: 'p1', content: 'The zephyr rose.', createdAt: '2024-01-01T00:00:06.000Z' }),
+    ];
+    return chat;
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('breadcrumbCharacters: LLM seats only, inactive kept, sorted by localeCompare, avatar normalised', async () => {
+    const fixture = await render(stubClient(richChat(), new Subject<ScopedEvent>()));
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.breadcrumbCharacters()).toEqual([
+      { id: 'char2', name: 'Aunt Agatha', avatarUrl: '/img/agatha.png' },
+      { id: 'char1', name: 'Friday', avatarUrl: null },
+    ]);
+  });
+
+  it('the story-background thumbnail opens the viewer with v4’s filename fallback', async () => {
+    const fixture = await render(
+      stubClient(chatDetail(), new Subject<ScopedEvent>(), { backgroundUrl: null, fileId: 'bg-1', filename: null, sha256: null, linkSummary: null }),
+    );
+    const inst = fixture.componentInstance as unknown as Host;
+    expect(inst.breadcrumbBackground()).toEqual({ src: '/api/v1/files/bg-1', filename: null, fileId: 'bg-1' });
+    inst.onOpenStoryBackground(inst.breadcrumbBackground()!);
+    expect(inst.modalImage()).toEqual({ src: '/api/v1/files/bg-1', filename: 'story_background.png', fileId: 'bg-1' });
+  });
+
+  it('offers a conversation-search source for this chat (routed mode) that searches the RENDERED rows', async () => {
+    const fixture = await render(stubClient(richChat(), new Subject<ScopedEvent>()));
+    const toolbar = TestBed.inject(PageToolbarService);
+    const source = toolbar.conversationSearch();
+    expect(source?.chatId).toBe('chat-1');
+    const found = source!.search('zephyr', 5);
+    // The whisper to Agatha is not rendered, so it is not found.
+    expect(found.matches.map((m) => m.messageId)).toEqual(['z1']);
+    expect(found.matches[0].speaker).toBe('Friday');
+    fixture.destroy();
+    expect(toolbar.conversationSearch()).toBeNull();
+  });
+
+  it('reveal: a hidden whisper and a missing line each toast v4’s sentence; a shown one reaches the list', async () => {
+    const fixture = await render(stubClient(richChat(), new Subject<ScopedEvent>()));
+    const inst = fixture.componentInstance as unknown as Host;
+    const spy = vi.spyOn(MessageList.prototype, 'revealMessage').mockImplementation(() => undefined);
+    const n = toasts().length;
+    inst.revealMessage('w2');
+    inst.revealMessage('nope');
+    expect(toasts().slice(n).map((t) => t.message)).toEqual([
+      'That line was a whisper meant for other ears. Choose “Show all whispers” in the sidebar to see it.',
+      'That line isn’t on the page — it may belong to another version of a reply, or have been tidied away.',
+    ]);
+    expect(spy).not.toHaveBeenCalled();
+    inst.revealMessage('z1');
+    expect(spy).toHaveBeenCalledWith('z1');
+  });
+});
+// === end P4.D384 ===

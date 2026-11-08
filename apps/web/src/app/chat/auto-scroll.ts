@@ -53,6 +53,9 @@ export class AutoScrollController {
   // --- reactive state (read by the template) ---
   private readonly _enabled = signal(true);
   private readonly _settled = signal(false);
+  // === P4.D384 ===
+  private readonly _initialScrollDone = signal(false);
+  // === end P4.D384 ===
 
   /** Whether the view is at/near the bottom (v4 `isAtBottom` / `isAutoScrollEnabled`). */
   readonly isAtBottom: Signal<boolean> = this._enabled.asReadonly();
@@ -60,6 +63,17 @@ export class AutoScrollController {
   readonly isSettled: Signal<boolean> = this._settled.asReadonly();
   /** v4 `showScrollToBottom={isSettled && !isAtBottom}`. */
   readonly showScrollToBottom = computed(() => this._settled() && !this._enabled());
+  // === P4.D384 ===
+  /**
+   * Whether the initial scroll to the newest message has finished — it keeps
+   * nudging for a few hundred ms after `isSettled`. Anything that scrolls the
+   * view elsewhere on arrival (a `?msg=` reveal) waits for this. (v4
+   * `useAutoScroll`'s `isInitialScrollDone`, `4f5047241`: false on reset; true
+   * when the initial `performScrollToBottom('auto', onDone)` finishes, or at once
+   * when no initial scroll is owed — an empty chat.)
+   */
+  readonly isInitialScrollDone: Signal<boolean> = this._initialScrollDone.asReadonly();
+  // === end P4.D384 ===
 
   private bindings: AutoScrollBindings | null = null;
   private removeScrollListener: (() => void) | null = null;
@@ -79,6 +93,11 @@ export class AutoScrollController {
   bind(bindings: AutoScrollBindings, messageCount: number): void {
     this.bindings = bindings;
     this.prevMessageCount = messageCount;
+    // === P4.D384: a (re)bind is v4's "loading just started" reset, which
+    // clears `hasInitialScrolled` and `isInitialScrollDone` together ===
+    this.hasInitialScrolled = false;
+    this._initialScrollDone.set(false);
+    // === end P4.D384 ===
 
     const handleScroll = () => {
       if (this.scrollCheckTimer) clearTimeout(this.scrollCheckTimer);
@@ -96,11 +115,16 @@ export class AutoScrollController {
         this._settled.set(true);
         if (!this.hasInitialScrolled) {
           this.hasInitialScrolled = true;
-          this.performScrollToBottom('auto');
+          // === P4.D384 ===
+          this.performScrollToBottom('auto', () => this._initialScrollDone.set(true));
+          // === end P4.D384 ===
         }
       }, SETTLE_DELAY_MS);
     } else {
       this._settled.set(true);
+      // === P4.D384: no messages — no initial scroll is owed ===
+      this._initialScrollDone.set(true);
+      // === end P4.D384 ===
     }
   }
 
@@ -190,7 +214,12 @@ export class AutoScrollController {
    * sizing warns and janks), then a 50ms direct scrollTop correction, a 150ms
    * `endRef.scrollIntoView`, and a 300ms final safety correction.
    */
-  private performScrollToBottom(behavior: 'auto' | 'smooth' = 'smooth'): void {
+  private performScrollToBottom(
+    behavior: 'auto' | 'smooth' = 'smooth',
+    // === P4.D384: v4's `onDone`, called after the 300ms safety correction ===
+    onDone?: () => void,
+    // === end P4.D384 ===
+  ): void {
     const b = this.bindings;
     if (!b) return;
 
@@ -212,6 +241,9 @@ export class AutoScrollController {
       if (b.container.scrollTop < maxScrollTop - 10) {
         b.container.scrollTo({ top: maxScrollTop, behavior: 'auto' });
       }
+      // === P4.D384 ===
+      onDone?.();
+      // === end P4.D384 ===
     }, 300);
   }
 }

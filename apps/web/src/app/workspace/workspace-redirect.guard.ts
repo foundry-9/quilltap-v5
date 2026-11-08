@@ -54,6 +54,17 @@ export function workspaceRedirectGuard(
         if (v) queryParams[k] = v;
       }
     }
+    // === P4.D384 ===
+    // `/salon/<id>?msg=<messageId>` — a Message search result: the workspace
+    // opens the chat scrolled to that message (v4 `app/salon/[id]/page.tsx`,
+    // `4f5047241`: `redirectToWorkspaceTab('salon', { chatId: id, msg })`, where
+    // `msg` is kept only as a lone non-empty string — a repeated `?msg=` arrives
+    // in Next as an array and is dropped).
+    if (open === 'salon') {
+      const msg = route.queryParamMap.getAll('msg');
+      if (msg.length === 1 && msg[0]) queryParams['msg'] = msg[0];
+    }
+    // === end P4.D384 ===
     return router.createUrlTree(['/workspace'], { queryParams });
   };
 }

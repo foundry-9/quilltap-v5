@@ -583,28 +583,79 @@ import graph is v4's own `lib/` only (`lib/utils/regex.ts`).
   own oracle from the same `name-mentions.ts`; the unifier may diff the `matcher`
   rows.
 
-## P4.D384 — `stream-frames.oracle.ndjson` (the Salon's kind-tagged frames)
+## P4.D384 — `breadcrumb-density.oracle.ndjson` (the compact header breadcrumb)
 
-Recorded by `apps/web/oracle/stream-frames.recorder.ts` against v4's REAL
-`parseFrame` / `doneLeavesNoReply` (`lib/chat/stream-frames.ts`, `604a082c4`)
-at the pin **`624d0d25c`** (`4.13.0-dev.8`, `zod` 4.6.7), from the lane-unique
-pin `/tmp/qt-v4-pin-p4d384-624d0d25c` with its OWN `npm ci --offline`. Replayed
-IN FILE ORDER through one fresh module by `core/stream-frames.oracle.spec.ts`
-(the once-per-kind WARN Set is module-global, so order is part of the corpus).
+Recorded 2026-11-07 at the pin `624d0d25c` (`/tmp/qt-v4-pin-p4d384-624d0d25c`,
+a detached worktree with its OWN `npm ci --offline --ignore-scripts` — never a
+symlink to the live checkout's `node_modules`) through v4's REAL
+`components/chat/ChatHeaderBreadcrumb.tsx` (`3c41cf3da`). tsx loads the
+`.tsx` module's whole import graph (`Icon`, `Tooltip`, `CopyChatIdButton`,
+React) without a DOM, so no jest capture was needed.
 
-**179 rows:** `null` 11, `valid` 66, `drop` 46 (each refused row also carries
-`issues`, v4's first three Zod issue texts), `golden` 51 (every frame of v4's
-six golden streams through v4's own `loadFrameStream`; `core/__fixtures__/
-frame-trace.ts`'s `goldenStream()` reads them for the reducer specs),
-`doneLeavesNoReply` 5. The spec asserts every count.
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `breadcrumb-density.oracle.ndjson` | 78 — 52 `abbreviate`, 26 `density` | `f3335df83f830e7ec821383a079b5e0f65e8ecc5975c9eaeb251c001499febd1` | `abbreviateName` / `chooseDensity` in `components/chat/ChatHeaderBreadcrumb.tsx` (`3c41cf3da`) | `app/chat/breadcrumb-density.oracle.spec.ts` |
 
-```bash
-PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
-F=<V5>/apps/web/src/testing/fixtures/stream-frames.oracle.ndjson
-rm -f "$F"; cp <V5>/apps/web/oracle/stream-frames.recorder.ts "$PIN/"
-cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx stream-frames.recorder.ts > "$F"
-wc -l < "$F"   # 179
-```
+- **Row shapes:** `{id, kind: 'abbreviate', name, out}` and `{id, kind:
+  'density', available, widths: {full, abbrev, avatar}, out}`; a non-finite
+  number is spelled `"NaN"` / `"Infinity"` / `"-Infinity"` (the spec decodes
+  with `Number`).
+- **Corpus:** v4's own ten jest assertions (`__tests__/unit/components/chat/
+  ChatHeaderBreadcrumb.test.tsx`) plus astral letters and emoji, combining
+  marks, the 4- vs 5-code-point boundary, NBSP / tab / newline / U+3000
+  separators (and U+200B, which is not `\s`), all-minor and mixed-case minor
+  words, leading / trailing minors, the four-initial cap, a growing upper-case
+  (`ß` → `SS`), empty / whitespace; `chooseDensity` at every `<=` boundary,
+  zero / `NaN` / infinite / negative widths and `available`.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
+  ls -ld "$PIN" && git -C "$PIN" rev-parse HEAD
+  F=<V5>/apps/web/src/testing/fixtures/breadcrumb-density.oracle.ndjson
+  rm -f "$F"
+  cp <V5>/apps/web/oracle/breadcrumb-density.recorder.ts "$PIN/"
+  cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx breadcrumb-density.recorder.ts > "$F"
+  wc -l < "$F"   # 78
+  ```
+
+## P4.D384 — `message-navigation.oracle.ndjson` (the `?msg=` reveal href reader)
+
+Recorded 2026-11-07 at the pin `624d0d25c` (`/tmp/qt-v4-pin-p4d384-624d0d25c`, a
+detached worktree with its OWN `npm ci`, never a live `node_modules` symlink)
+through v4's REAL `lib/chat/message-navigation.ts` (`4f5047241`). Its import
+graph is empty: the module is self-contained.
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `message-navigation.oracle.ndjson` | 42 — 41 `out`, 1 `threw` | `deed6ab424e0283edded566997ecee8819e71111c6c0db5f1a0ff57fbd4090db` | `lib/chat/message-navigation.ts` `revealRequestFromSalonHref` (`4f5047241`) | `app/chat/message-navigation.oracle.spec.ts` |
+
+- **Row shape:** `{id, href, out}` (`out` = `{chatId, messageId}` or `null`) or
+  `{id, href, threw}` — a malformed `%` escape in the chat id makes v4's
+  `decodeURIComponent` throw `URIError: URI malformed`, uncaught; the twin
+  matches.
+- **Vectors:** v4's own test hrefs (`message-navigation.test.ts:80-94`) + `new`
+  (with a slash, upper case, percent-encoded — which decodes to `new` AFTER the
+  check), trailing / doubled slashes, a `#hash` either side of the query,
+  `%2F` / `%20` / multi-byte / malformed ids, empty / bare / repeated / `+`
+  `msg`s, non-salon, relative and absolute hrefs, the empty string.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
+  ls -ld "$PIN" && git -C "$PIN" rev-parse HEAD   # 624d0d25c…
+  F=<V5>/apps/web/src/testing/fixtures/message-navigation.oracle.ndjson
+  rm -f "$F"
+  cp <V5>/apps/web/oracle/message-navigation.recorder.ts "$PIN/"
+  cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx message-navigation.recorder.ts > "$F"
+  wc -l < "$F"                 # 42
+  grep -c '"threw"' "$F"       # 1
+  ```
+- **The storage / event pair is not in the corpus** (it needs `sessionStorage`
+  and `window`): `app/chat/message-navigation.spec.ts` replays v4's own
+  `message-navigation.test.ts:45-77` cases plus the storage-failure arms.
 
 ## P4.D384 — `conversation-search.oracle.ndjson` ("find in this chat")
 
@@ -649,3 +700,26 @@ its own `npm ci`) through v4's REAL `lib/chat/conversation-search.ts`
 - **Not in the corpus:** the DOM paint (`chat/search-highlight.ts`, v4
   `useSearchHighlight`) and the search surfaces (`search/conversation-matches.ts`,
   the bar, the dialog) — component specs over v4's markup.
+
+## P4.D384 — `stream-frames.oracle.ndjson` (the Salon's kind-tagged frames)
+
+Recorded by `apps/web/oracle/stream-frames.recorder.ts` against v4's REAL
+`parseFrame` / `doneLeavesNoReply` (`lib/chat/stream-frames.ts`, `604a082c4`)
+at the pin **`624d0d25c`** (`4.13.0-dev.8`, `zod` 4.6.7), from the lane-unique
+pin `/tmp/qt-v4-pin-p4d384-624d0d25c` with its OWN `npm ci --offline`. Replayed
+IN FILE ORDER through one fresh module by `core/stream-frames.oracle.spec.ts`
+(the once-per-kind WARN Set is module-global, so order is part of the corpus).
+
+**179 rows:** `null` 11, `valid` 66, `drop` 46 (each refused row also carries
+`issues`, v4's first three Zod issue texts), `golden` 51 (every frame of v4's
+six golden streams through v4's own `loadFrameStream`; `core/__fixtures__/
+frame-trace.ts`'s `goldenStream()` reads them for the reducer specs),
+`doneLeavesNoReply` 5. The spec asserts every count.
+
+```bash
+PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
+F=<V5>/apps/web/src/testing/fixtures/stream-frames.oracle.ndjson
+rm -f "$F"; cp <V5>/apps/web/oracle/stream-frames.recorder.ts "$PIN/"
+cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx stream-frames.recorder.ts > "$F"
+wc -l < "$F"   # 179
+```

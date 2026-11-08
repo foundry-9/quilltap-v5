@@ -183,4 +183,76 @@ describe('AutoScrollController', () => {
     vi.advanceTimersByTime(SCROLL_CHECK_DEBOUNCE_MS);
     expect(controller.isAtBottom()).toBe(true);
   });
+
+  // === P4.D384 ===
+  describe('isInitialScrollDone (v4 useAutoScroll, 4f5047241)', () => {
+    it('is false until the initial scroll-to-bottom finishes its 300ms correction', () => {
+      const { controller } = makeController();
+      expect(controller.isInitialScrollDone()).toBe(false);
+
+      vi.advanceTimersByTime(SETTLE_DELAY_MS);
+      // Settled, but the initial scroll is still nudging.
+      expect(controller.isSettled()).toBe(true);
+      expect(controller.isInitialScrollDone()).toBe(false);
+
+      vi.advanceTimersByTime(299);
+      expect(controller.isInitialScrollDone()).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(controller.isInitialScrollDone()).toBe(true);
+    });
+
+    it('is true at once when no initial scroll is owed (no messages)', () => {
+      const controller = new AutoScrollController();
+      controller.bind(
+        {
+          container: new FakeScrollElement() as unknown as HTMLElement,
+          end: null,
+          virtualizer: null,
+          itemCount: () => 0,
+          autoScrollOnComplete: () => false,
+        },
+        0,
+      );
+      expect(controller.isInitialScrollDone()).toBe(true);
+    });
+
+    it('a later user-send or jump scroll does not touch it', () => {
+      const { controller } = makeController();
+      controller.scrollToBottom();
+      vi.advanceTimersByTime(300);
+      // The jump's own 300ms correction is not the initial scroll.
+      expect(controller.isInitialScrollDone()).toBe(false);
+      settleFully();
+      expect(controller.isInitialScrollDone()).toBe(true);
+    });
+
+    it('resets to false on a rebind (v4: loading started again)', () => {
+      const { controller } = makeController();
+      settleFully();
+      expect(controller.isInitialScrollDone()).toBe(true);
+      controller.dispose();
+      controller.bind(
+        {
+          container: new FakeScrollElement() as unknown as HTMLElement,
+          end: null,
+          virtualizer: null,
+          itemCount: () => 3,
+          autoScrollOnComplete: () => false,
+        },
+        3,
+      );
+      expect(controller.isInitialScrollDone()).toBe(false);
+      settleFully();
+      expect(controller.isInitialScrollDone()).toBe(true);
+    });
+
+    it('never fires once disposed mid-scroll', () => {
+      const { controller } = makeController();
+      vi.advanceTimersByTime(SETTLE_DELAY_MS + 100);
+      controller.dispose();
+      vi.advanceTimersByTime(1000);
+      expect(controller.isInitialScrollDone()).toBe(false);
+    });
+  });
+  // === end P4.D384 ===
 });

@@ -1,0 +1,42 @@
+{"id":"v4: a Message search result link","href":"/salon/chat-a?msg=msg-1","out":{"chatId":"chat-a","messageId":"msg-1"}}
+{"id":"v4: a trailing slash and another param first","href":"/salon/chat-a/?x=1&msg=msg-1","out":{"chatId":"chat-a","messageId":"msg-1"}}
+{"id":"v4: no query","href":"/salon/chat-a","out":null}
+{"id":"v4: a query without msg","href":"/salon/chat-a?tab=x","out":null}
+{"id":"v4: /salon/new is excluded","href":"/salon/new?msg=m","out":null}
+{"id":"v4: a non-salon path","href":"/aurora/x?msg=m","out":null}
+{"id":"new: with a trailing slash","href":"/salon/new/?msg=m","out":null}
+{"id":"new: upper case is a chat id","href":"/salon/NEW?msg=m","out":{"chatId":"NEW","messageId":"m"}}
+{"id":"new: percent-encoded decodes to \"new\" after the check","href":"/salon/%6Eew?msg=m","out":{"chatId":"new","messageId":"m"}}
+{"id":"new: a longer id starting with new","href":"/salon/newer?msg=m","out":{"chatId":"newer","messageId":"m"}}
+{"id":"slash: trailing slash, no query","href":"/salon/chat-a/","out":null}
+{"id":"slash: two trailing slashes","href":"/salon/chat-a//?msg=m","out":null}
+{"id":"slash: a deeper path","href":"/salon/chat-a/terminal/s1?msg=m","out":null}
+{"id":"hash: after the query","href":"/salon/chat-a?msg=m1#frag","out":{"chatId":"chat-a","messageId":"m1"}}
+{"id":"hash: inside the msg value position","href":"/salon/chat-a?x=1#msg=m1","out":null}
+{"id":"hash: before the query","href":"/salon/chat-a#frag?msg=m1","out":null}
+{"id":"hash: a hash-only tail","href":"/salon/chat-a#msg=m1","out":null}
+{"id":"encoded: %2F in the chat id","href":"/salon/a%2Fb?msg=m1","out":{"chatId":"a/b","messageId":"m1"}}
+{"id":"encoded: %20 in the chat id","href":"/salon/a%20b?msg=m1","out":{"chatId":"a b","messageId":"m1"}}
+{"id":"encoded: a raw space in the chat id","href":"/salon/a b?msg=m1","out":{"chatId":"a b","messageId":"m1"}}
+{"id":"encoded: %2F in the msg","href":"/salon/chat-a?msg=m%2F1","out":{"chatId":"chat-a","messageId":"m/1"}}
+{"id":"encoded: %20 in the msg","href":"/salon/chat-a?msg=m%201","out":{"chatId":"chat-a","messageId":"m 1"}}
+{"id":"encoded: a malformed escape in the chat id","href":"/salon/a%ZZ?msg=m1","threw":"URIError: URI malformed"}
+{"id":"encoded: a malformed escape in the msg","href":"/salon/chat-a?msg=m%ZZ","out":{"chatId":"chat-a","messageId":"m%ZZ"}}
+{"id":"encoded: a multi-byte chat id","href":"/salon/%C3%A9t%C3%A9?msg=m1","out":{"chatId":"été","messageId":"m1"}}
+{"id":"msg: empty","href":"/salon/chat-a?msg=","out":null}
+{"id":"msg: bare key","href":"/salon/chat-a?msg","out":null}
+{"id":"msg: two msgs, the first wins","href":"/salon/chat-a?msg=a&msg=b","out":{"chatId":"chat-a","messageId":"a"}}
+{"id":"msg: an empty first msg then a real one","href":"/salon/chat-a?msg=&msg=b","out":null}
+{"id":"msg: a plus is a space","href":"/salon/chat-a?msg=a+b","out":{"chatId":"chat-a","messageId":"a b"}}
+{"id":"msg: ampersand noise","href":"/salon/chat-a?&msg=m1&","out":{"chatId":"chat-a","messageId":"m1"}}
+{"id":"msg: upper-case key","href":"/salon/chat-a?MSG=m1","out":null}
+{"id":"msg: a uuid","href":"/salon/0b7c6f8e-1d2a-4f3b-9c8d-7e6f5a4b3c2d?msg=5f4e3d2c-1b0a-4987-8654-3210fedcba98","out":{"chatId":"0b7c6f8e-1d2a-4f3b-9c8d-7e6f5a4b3c2d","messageId":"5f4e3d2c-1b0a-4987-8654-3210fedcba98"}}
+{"id":"path: /salons","href":"/salons/x?msg=m","out":null}
+{"id":"path: /salon with no id","href":"/salon?msg=m","out":null}
+{"id":"path: /salon/ with no id","href":"/salon/?msg=m","out":null}
+{"id":"path: /workspace","href":"/workspace?open=salon&chatId=c&msg=m","out":null}
+{"id":"relative: no leading slash","href":"salon/chat-a?msg=m1","out":null}
+{"id":"relative: a query only","href":"?msg=m1","out":null}
+{"id":"absolute: an http URL","href":"http://localhost:3000/salon/chat-a?msg=m1","out":null}
+{"id":"absolute: a protocol-relative URL","href":"//localhost/salon/chat-a?msg=m1","out":null}
+{"id":"empty: the empty string","href":"","out":null}

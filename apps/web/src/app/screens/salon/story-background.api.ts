@@ -39,11 +39,34 @@ export async function fetchChatBackgroundVar(
   core: CoreClient,
   chatId: string,
 ): Promise<string | null> {
+  return (await fetchChatBackground(core, chatId))?.cssVar ?? null;
+}
+
+// === P4.D384 ===
+/**
+ * The resolved background WITH the picture's identity (P4.D384, v4
+ * `3c41cf3da`): the header breadcrumb's thumbnail opens the picture viewer,
+ * which wants the DTO's `fileId` and `filename` beside the CSS value. `cssVar`
+ * is byte-identical to {@link fetchChatBackgroundVar}'s answer, so the layer and
+ * the regeneration poller's string comparison do not move.
+ */
+export interface ChatBackgroundView {
+  cssVar: string;
+  /** The byte route the thumbnail and the viewer load. */
+  src: string;
+  fileId: string;
+  filename: string | null;
+}
+
+export async function fetchChatBackground(core: CoreClient, chatId: string): Promise<ChatBackgroundView | null> {
   const req: ChatGetBackgroundRequest = { type: 'chatGetBackground', chatId };
   const data = (await core.dispatchData(req)) as unknown as ChatBackgroundDto;
   const fileId = data.fileId ?? null;
-  return fileId ? `url('${fileUrl(fileId)}')` : null;
+  if (!fileId) return null;
+  const src = fileUrl(fileId);
+  return { cssVar: `url('${src}')`, src, fileId, filename: data.filename ?? null };
 }
+// === end P4.D384 ===
 
 // ---------------------------------------------------------------------------
 // Regeneration (the P4.6ap round's Shared contract §2)

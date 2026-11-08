@@ -1055,6 +1055,16 @@ _Docs-only change._
 
 The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
 
+#### 2026-11-08 — feat(salon): the compact header breadcrumb, the in-chat search source, the `?msg=` reveal (v4 3c41cf3da, 4f5047241)
+
+_Versions: SPA 0.5.975._
+
+P4.D384 items 8 and 10, plus the Salon side of item 9.
+
+- **The breadcrumb.** New `chat/breadcrumb-density.ts` twins v4's `abbreviateName` / `chooseDensity`, proven by a 78-row oracle corpus recorded from v4's real `ChatHeaderBreadcrumb.tsx` at `624d0d25c`. New `chat/conversation-breadcrumb.ts` ports v4's row inside v5's inline header (ruling R3): project, LLM characters, the story-background thumbnail, the Concierge badge (a template stamped into every row), the title, and the copy-id button. It has full / abbreviation / avatar densities chosen from inert measuring copies under a `ResizeObserver`, and the compact tooltips. `conversation-header.ts` hosts it left of the Inspector and the cost summary. The Salon feeds it LLM seats (not active-filtered, `localeCompare`-sorted, avatars null under quick-hide) and the visible background; `story-background.api.ts` gains `fetchChatBackground` with the picture's id and filename beside the unchanged CSS value. The thumbnail opens the picture viewer.
+- **The reveal.** New `chat/message-navigation.ts` twins v4's `?msg=` plumbing, with a 42-row oracle corpus over `revealRequestFromSalonHref`. `auto-scroll.ts` gains `isInitialScrollDone`. `message-list.ts` gains `revealMessage`, v4's settle loop: align to the top, then a 3 s `qt-memory-source-highlight` flash; a collapsed chip lands on its group row. The workspace redirect carries `msg`, the `?open=` intent and the link interceptor park a reveal request, and the Salon takes a parked request or the route's `msg` once its transcript has loaded and scrolled, or listens for one live. A line the view doesn't show toasts v4's whisper or not-on-page sentence.
+- **The in-chat search source.** The Salon offers a `ConversationSearchSource` to the header search bar while it is the focused pane's active tab (always, when routed). The source searches the rendered rows with v4's speaker rule and paints through `SearchHighlight`. Only the owning Salon withdraws it.
+
 #### 2026-11-08 — feat(search): "This conversation" matches in the header search and dialog, the Custom Highlight paint (v4 4f5047241, 94f041764, 29ba4d3f8)
 
 _Versions: SPA 0.5.974._
