@@ -201934,7 +201934,8 @@ All are green after the lane.
 | `8d0945fc9` | 9, search side: `chat/conversation-search.ts`, `chat/search-highlight.ts`, the toolbar `conversationSearch` slot (owner-only clear), `search/conversation-matches.ts`, the bar / dialog / results edits | 0.5.974 |
 | `a03ba1a4f` | 8 + 10 + the Salon side of 9: the breadcrumb, `MessageList.revealMessage`, the `?msg=` plumbing, `fetchChatBackground` | 0.5.975 |
 | `82d187624` | Tier 2 item 13: the `parseFrameValue` chokepoint census | 0.5.976 |
-| (this commit) | the new `salon-conversation-search-flow.spec.ts` (S1–S8 LIVE, G1 / G2 gated); this record (e2e step in progress) | 0.5.977 |
+| `76e7bb136` | the new `salon-conversation-search-flow.spec.ts` (S1–S8 LIVE, G1 / G2 gated); this record (e2e step in progress) | 0.5.977 |
+| (this commit) | the seven spec edits (three streaming specs on `kind`-tagged frames; four badge / placeholder locators); the e2e results; the order status | 0.5.978 |
 
 **The four corpora.** Each recorder imports v4's real module from the pin
 with tsx and writes committed NDJSON, and each `*.oracle.spec.ts` replays its
@@ -202004,11 +202005,11 @@ only for `isPlainObject`.
 
 **e2e, each file alone (§R.9):**
 
-⚠ **The e2e step is IN PROGRESS.** The coordinator paused the lane for a
-machine shutdown on 2026-11-08. This record covers the runs completed so far.
+The step ran in two sittings: the coordinator paused the lane for a machine
+shutdown on 2026-11-08, and the owed files ran after the reboot. Every file
+ran alone, queued behind sibling Playwright PIDs.
 
-**Ran green, alone, on lane debug bins** (`CSS` base server; global setup
-about 7 m per file on a debug server):
+**On lane debug bins** (`CSS` base server; global setup about 7 m per file):
 
 | file | result |
 |---|---|
@@ -202020,37 +202021,36 @@ about 7 m per file on a debug server):
 | `settings-brahma-console-flow` | 1 passed (P-2: the console streams as before) |
 | `workspace-brahma-console-flow` | 5 passed (every beat) |
 | `workspace-help-ask-flow` | 4 passed (Help stays legacy) |
+| `workspace-search-documents-flow` | 3 passed, after a spec fix (below) |
+| `salon-concierge-three-state-flow` | 1 passed, after a spec fix |
+| `concierge-marks-flow` | 5 passed, after a spec fix |
 
-**Red at first run: each a spec premise this lane moved, fixed, re-run
-OWED.** The fixes are in the worktree, uncommitted.
-- `workspace-search-documents-flow`: 1 failed / 2 passed. Line 113 selects
-  `Search... (⌘K)`, but with a Salon focused the bar now reads v4's
-  `Search this chat & all… (⌘K)`. The order named this selector. The
-  locator is now a regex over both.
-- `salon-concierge-three-state-flow`: 1 failed (`one badge`, received 4).
-  `concierge-marks-flow`: 1 failed / 4 passed (same count). The Concierge
-  badge is stamped into the visible row AND the three inert measuring
-  copies. The locators now read `.qt-danger-badge:not([inert] *)`.
+**Tier 2 item 12, LIVE against `FRAMES` bins.** `FRAMES` (`1fd8481ce`) was
+recorded before the e2e step. Release `quilltap-web` + `quilltap` were built
+at that sha in a detached scratch worktree (target cloned from main, 4 m 50 s)
+and copied into the lane's `target/release/`. They were never committed, and
+are deleted at close.
 
-**STILL TO RUN (after GO), each alone:**
-1. On lane bins: the three re-runs above, `workspace-search-documents-flow`,
-   `salon-concierge-three-state-flow` and `concierge-marks-flow`.
-2. **Tier 2 item 12** — `FRAMES` (`1fd8481ce`) WAS recorded before the e2e
-   step. Release `quilltap-web` + `quilltap` are built at that sha in the
-   detached scratch worktree `.claude/worktrees/p4d384-frames-bins/`, and are
-   to be copied into the lane's `target/release/` (never committed). Run
-   against those bins:
-   - `salon-interrupt-flow` (edited: the gated `P4D385_CHIP_LANDED`
-     aria-live assertion);
-   - `salon-chain-pause-toast-flow` (edited: `kind === 'chainComplete'`);
-   - `salon-streaming-avatar-flow` (edited: the `kind`-tagged `WireFrame`);
-   - `salon-regenerate-stream-flow`;
-   - `salon-try-uncensored-flow` (also the header);
-   - `salon-documents-flow`;
-   - `salon-conversation-search-flow` again (the G1 premise on the frames
-     server).
+| file | result |
+|---|---|
+| `salon-interrupt-flow` (edited: the gated `P4D385_CHIP_LANDED` aria-live assertion) | 8 passed / 1 skipped (the standing `P4D335` gate) |
+| `salon-chain-pause-toast-flow` (edited: `kind === 'chainComplete'`) | 2 passed / 3 skipped (the standing `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`) |
+| `salon-streaming-avatar-flow` (edited: the `kind`-tagged `WireFrame`) | 2 passed |
+| `salon-regenerate-stream-flow` | 3 passed |
+| `salon-try-uncensored-flow` | 6 passed, after a spec fix |
+| `salon-documents-flow` | 5 passed |
+| `salon-conversation-search-flow` | 7 passed / 2 skipped by name |
 
-   The three edited streaming specs are uncommitted until they run green.
+**Four reds at first run, each a spec premise this lane moved. Each was fixed
+in the spec and re-run green:**
+- `workspace-search-documents-flow`: line 113 selected `Search... (⌘K)`, but
+  with a Salon focused the bar now reads v4's `Search this chat & all…
+  (⌘K)`. The order named this selector. The locator is now a regex over both.
+- `salon-concierge-three-state-flow` (`one badge`, received 4),
+  `concierge-marks-flow` and `salon-try-uncensored-flow` (a strict-mode
+  violation, 4 elements): the Concierge badge is stamped into the visible
+  breadcrumb row AND its three inert measuring copies. The locators now read
+  `qt-conversation-header .qt-danger-badge:not([inert] *)`.
 
 **HANDOFFs:**
 
@@ -202059,7 +202059,7 @@ OWED.** The fixes are in the worktree, uncommitted.
 | H1b (P4.D385) | OPEN on this side by design: three fenced `LANE-REMOVE (C4 H1)` shims stand in for `ComposerSend.establishedFact` / `InterceptArgs.establishedFact` / `MessageDto.isEstablishedFact`. The union deletes them, and G2 flips LIVE. |
 | H2 (P4.D385) | OPEN by design: the `LANE-REMOVE (C4 H2)` type block in `chat/raised-hand-status.ts`. P4.D385's `chat/raised-hand.ts` also exports `isHandUp`, so at the union `raised-hand-status.ts` should import the type and delegate `isHandUp` (one copy). That note is in the shared notes folder (`p4d384-progress.md`). |
 | H3 (P4.D385) | OPEN: the Salon's `revealMessage` does not expand a collapsed announcement chip. `MessageList.revealMessage` scrolls to and flashes the group row; S4 asserts that row. The union wires `[revealExpand]`. |
-| H4 (P4.D366) | Partly measured: the Salon streaming files ran against `FRAMES` bins (above). The zero-WARN close needs the union. |
+| H4 (P4.D366) | Partly measured: the seven Salon streaming files ran green against `FRAMES` bins (above). The zero-`[StreamFrames]`-WARN close needs the union. |
 | H5 (P4.D388) | Credit: the About Salon blurb's "indexed message search that looks in the open conversation first" (`70d2859d8`) describes THIS lane's feature (items 9 + 10). P4.D388 lands the words. |
 
 **Union obligations:**
@@ -202078,7 +202078,7 @@ OWED.** The fixes are in the worktree, uncommitted.
   - the interrupt spec's `P4D385_CHIP_LANDED` aria-live assertion;
   - `P4D366_FRAMES_LANDED` in the new spec.
 
-**Versions so far:** SPA **0.5.977**. No crate was touched.
+**Versions:** SPA **0.5.978**. No crate was touched.
 
 **Gotchas met (memory-note candidates):**
 - A planted message id that is not a UUID is silently dropped from the

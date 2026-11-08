@@ -1055,6 +1055,17 @@ _Docs-only change._
 
 The SPA stacking root for P4.D384, P4.D385, P4.D386 and P4.D388.
 
+#### 2026-11-08 — test(salon): Salon e2e specs follow the kind-tagged frames and the breadcrumb
+
+_Versions: SPA 0.5.978._
+
+P4.D384's closing e2e commit.
+
+- `salon-chain-pause-toast-flow`, `salon-streaming-avatar-flow` and `salon-interrupt-flow` read the `kind`-tagged stream frames. The interrupt spec gains a gated (`P4D385_CHIP_LANDED`) aria-live assertion for the yielded floor.
+- The Concierge badge locators in `salon-concierge-three-state-flow`, `concierge-marks-flow` and `salon-try-uncensored-flow` skip the breadcrumb's three inert measuring copies (`:not([inert] *)`).
+- `workspace-search-documents-flow` accepts the in-chat search placeholder `Search this chat & all… (⌘K)`.
+- The seven Salon streaming files ran green against release bins built at `FRAMES` (`1fd8481ce`). The lane record and the order status are closed.
+
 #### 2026-11-08 — test(salon): the "This conversation" search, `?msg=` reveal and breadcrumb e2e
 
 _Versions: SPA 0.5.977._

@@ -157,7 +157,9 @@ test.describe('P4.D229 — "Try uncensored": where the buttons are', () => {
     });
     await openChat(page, chatId);
 
-    await expect(page.locator('qt-conversation-header .qt-danger-badge')).toHaveText('Locked', {
+    // The visible breadcrumb row only: the badge is also stamped into the three
+    // inert measuring copies the density choice reads (P4.D384, v4 3c41cf3da).
+    await expect(page.locator('qt-conversation-header .qt-danger-badge:not([inert] *)')).toHaveText('Locked', {
       timeout: 15_000,
     });
     await expect(

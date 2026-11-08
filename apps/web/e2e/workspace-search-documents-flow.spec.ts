@@ -110,7 +110,8 @@ async function openWorkspace(page: Page): Promise<void> {
 
 /** Type the token into the toolbar bar and open the full dialog. */
 async function openDialog(page: Page) {
-  const bar = page.getByPlaceholder('Search... (⌘K)');
+  // With a Salon focused the bar reads v4's in-chat placeholder (P4.D384, v4 4f5047241).
+  const bar = page.getByPlaceholder(/^Search(\.\.\.| this chat & all…) \(⌘K\)$/);
   await expect(bar).toBeVisible({ timeout: 15_000 });
   await bar.fill(DOC_TITLE);
   await page.getByText('See all results →').click();

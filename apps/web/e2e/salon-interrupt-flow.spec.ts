@@ -59,6 +59,10 @@ import {
  * Brahma's one-shot resolves).
  */
 const P4D335_SERVER_LANDED = true;
+// === P4.D384 (U1) === flips at the union (§S.9) once P4.D385's raised-hand
+// chip — and its `aria-live` status words — are on the tree.
+const P4D385_CHIP_LANDED = false;
+// === end P4.D384 ===
 const GATE_REASON =
   'awaits P4.D335’s chatStopTurn / chatRaiseHand variants and the handAnswered / stopped / yielded frames (wired at unification)';
 
@@ -428,7 +432,16 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     // A bare yield persists nothing but the Host's note (v4 handleTurnYield).
     await expect(page.locator('.qt-chat-messages-list').getByText(YIELD_REPLY, { exact: true })).toHaveCount(0);
     await expect(hand(page)).toHaveAttribute('aria-pressed', 'false');
+    // P4.D384 (v4 `9eab8d2da`): the decline TOAST is gone for good — a yield
+    // never had one, and now neither does a decline.
     await expect(page.getByText('carried on regardless')).toHaveCount(0);
+    // === P4.D384 (U1) === gated on P4.D385's raised-hand chip: its
+    // `aria-live` region says the yield in words. Run early, it fails on its
+    // own premise (no such region exists before the chip lands).
+    if (P4D385_CHIP_LANDED) {
+      await expect(page.locator('[aria-live]').filter({ hasText: /yields the floor — it is yours/ })).toBeVisible();
+    }
+    // === end P4.D384 ===
   });
 
   test('(H) Stop mid-Brahma ends the consult at once and keeps its partial answer', async ({ page }) => {

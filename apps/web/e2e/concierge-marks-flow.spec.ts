@@ -293,7 +293,9 @@ test.describe('P4.D144 — the header pill explains itself below the toolbar', (
     await maybeUnlock(page);
     await page.getByRole('link', { name: titleOf('locked') }).first().click();
 
-    const pill = page.locator('qt-conversation-header .qt-danger-badge');
+    // The visible breadcrumb row only: the badge is also stamped into the three
+    // inert measuring copies the density choice reads (P4.D384, v4 3c41cf3da).
+    const pill = page.locator('qt-conversation-header .qt-danger-badge:not([inert] *)');
     await expect(pill).toHaveCount(1, { timeout: 15_000 });
     await expect(pill).toHaveText('Locked');
     await expect(pill).toHaveAttribute('aria-label', 'Concierge: Locked');

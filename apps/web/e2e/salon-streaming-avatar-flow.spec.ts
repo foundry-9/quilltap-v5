@@ -48,12 +48,15 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  * (P4.D225 → P4.D228); the three new ones (`moderated` / `unmoderated` /
  * `locked`) are what every Concierge dispatch here sends.
  */
+/**
+ * P4.D384 (v4 `604a082c4`): a Salon frame on the wire is `kind`-tagged —
+ * `turnStart` / `content` (`text`) / `done` — with its `chatId` scope first.
+ */
 interface WireFrame {
   chatId?: string;
+  kind?: string;
   participantId?: string;
-  turnStart?: boolean;
-  content?: string;
-  done?: boolean;
+  text?: string;
 }
 
 /**
@@ -216,7 +219,12 @@ test.describe('P4.75 — the streaming bubble names the responding character', (
     let participantId: string | undefined;
     for (let i = 0; i < 100 && !participantId; i += 1) {
       participantId = (await seenFrames(page))
-        .filter((f) => f.chatId === chatId && typeof f.participantId === 'string')
+        .filter(
+          (f) =>
+            f.chatId === chatId &&
+            (f.kind === 'turnStart' || f.kind === 'done') &&
+            typeof f.participantId === 'string',
+        )
         .map((f) => f.participantId)
         .pop();
       if (!participantId) await page.waitForTimeout(200);

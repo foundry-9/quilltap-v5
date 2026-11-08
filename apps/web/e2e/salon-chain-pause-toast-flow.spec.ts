@@ -138,7 +138,8 @@ async function injectPausedChainComplete(
           if (typeof data === 'string') {
             try {
               const frame = JSON.parse(data) as Record<string, unknown>;
-              if (frame['chainComplete'] === true) {
+              // P4.D384 (v4 `604a082c4`): the frames dialect — one `kind` per frame.
+              if (frame['kind'] === 'chainComplete') {
                 frame['reason'] = chainReason;
                 frame['paused'] = args.paused;
                 if (args.heldUserTurn) frame['heldUserTurn'] = true;

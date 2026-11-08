@@ -269,7 +269,9 @@ function conciergeSelect(page: Page) {
 }
 
 function conciergeBadge(page: Page) {
-  return page.locator('qt-conversation-header .qt-danger-badge');
+  // The visible breadcrumb row only: the badge is also stamped into the three
+  // inert measuring copies the density choice reads (P4.D384, v4 3c41cf3da).
+  return page.locator('qt-conversation-header .qt-danger-badge:not([inert] *)');
 }
 
 /**
