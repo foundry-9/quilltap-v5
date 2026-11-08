@@ -76,11 +76,11 @@ function ofKind<K extends Row['kind']>(kind: K): Array<Extract<Row, { kind: K }>
 describe("slash-commands agrees with v4's lib/slash-commands row for row", () => {
   it('carries the whole recorded corpus', () => {
     // A truncated fixture would make every it.each below vacuously green.
-    expect(ROWS).toHaveLength(186);
+    expect(ROWS).toHaveLength(196);
     expect(ofKind('constants')).toHaveLength(1);
     expect(ofKind('trigger')).toHaveLength(54);
-    expect(ofKind('rank')).toHaveLength(107);
-    expect(ofKind('build')).toHaveLength(24);
+    expect(ofKind('rank')).toHaveLength(116);
+    expect(ofKind('build')).toHaveLength(25);
   });
 
   it('the corpus discriminates: open and shut triggers, empty and capped rankings', () => {

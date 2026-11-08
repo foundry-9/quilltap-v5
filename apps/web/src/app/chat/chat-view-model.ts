@@ -14,6 +14,7 @@
 
 import type { ChatDetail, MessageDto } from '../core/core-contract';
 import { normalizeAvatarSrc } from '../ui/avatar-stack';
+import { isEstablishedFactAnnouncement } from './established-fact';
 import { groupToolMessagesIntoAssistants, readInitiatedBy } from './group-tool-messages';
 import {
   getAnnouncementImportance,
@@ -284,15 +285,23 @@ export type RenderItem =
  *  - **Pascal `custom-tool-result`** — the table's binding verdict on the scene,
  *    "legible in full rather than reduced to a chip the reader has to unpack".
  *
- * Both of the latter are KIND-scoped in v4 and were sender-scoped here, so v5
+ *  - **A machine-delivered established fact** (Deus Ex Machina, v4
+ *    `db6190b44` / `671c59a53`) is exempt too: "it is what is now true in the
+ *    story, so it renders as a full band, expanded, and never collapses into a
+ *    run of Host chips."
+ *
+ * The suparna / pascal exemptions are KIND-scoped in v4 and were sender-scoped here, so v5
  * chipped every letter and spread the roll's exemption to Pascal's other kinds
  * (P4.26). v4's expanded/collapsed term is absent: v5 keeps the chip mounted and
  * renders the body beneath it (see `AnnouncementGroup`), so a chip never leaves
  * its group.
  */
 export function isAnnouncementChip(message: MessageDto): boolean {
-  if (message.systemSender == null) return false;
+  // v4's `!!message.systemSender`: an empty sender is no Staff sender either
+  // (the P4.D385 corpus measured `''` chipping here while v4 kept it a row).
+  if (!message.systemSender) return false;
   if (message.systemSender === 'carina') return false;
+  if (isEstablishedFactAnnouncement(message)) return false;
   if (message.systemSender === 'suparna' && message.systemKind === 'mail-delivery') return false;
   if (message.systemSender === 'pascal' && message.systemKind === 'custom-tool-result') return false;
   return true;

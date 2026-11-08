@@ -246,7 +246,14 @@ export type StaffSenderWire =
 export type AnnouncerSenderWire =
   | { kind: 'staff'; staffId: StaffSenderWire }
   | { kind: 'character'; characterId: string }
-  | { kind: 'custom'; displayName: string };
+  | { kind: 'custom'; displayName: string }
+  // === P4.D385 (C4, PL-9) ===
+  /** A machine-delivered established fact (Deus Ex Machina, v4 `db6190b44`):
+   *  posted by the Host, public, belonging to no speaker. The server answers
+   *  400 `Failed to post established fact (empty content or unknown chat).`
+   *  on an empty body (P4.D372's route arm). */
+  | { kind: 'fact' };
+  // === end P4.D385 ===
 
 /**
  * v4 `POST /api/v1/chats/[id]?action=announcement` — post an ad-hoc
@@ -3506,6 +3513,14 @@ export interface MessageDto {
   isSilentMessage: boolean | null;
   systemSender: SystemSender;
   systemKind: string | null;
+  // === P4.D385 (C4, PL-9) ===
+  /** The operator's seat line posted as established fact (Deus Ex Machina, v4
+   *  `db6190b44`'s `chat_messages.isEstablishedFact`). The server always sends
+   *  it (`or_null`, P4.D372); optional here only so a test double still
+   *  type-checks. A machine fact is a Host row instead
+   *  (`systemKind: 'established-fact'`). */
+  isEstablishedFact?: boolean | null;
+  // === end P4.D385 ===
   hostEvent: HostEvent | null;
   customAnnouncer: CustomAnnouncer | null;
   carinaMeta: CarinaMeta | null;

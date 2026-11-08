@@ -1110,6 +1110,23 @@ _Versions: SPA 0.5.973._
 
 P4.D384 items 2–7. `core-contract.ts`'s flat `ChatStreamFrame` bag becomes v4's `kind`-discriminated union (contract C3); the old bag is renamed `LegacyStreamBag` and kept for Help chat and the Brahma console, and `ScopedEvent` stays the loose raw-wire type (ruling P-1). New `core/stream-frames.ts` is the client's one parser (`parseFrame` / `parseFrameValue`, `doneLeavesNoReply`, `assertNever`): it strips unknown keys, emits schema key order, and WARNs a refused frame once per kind. A new 179-row oracle corpus recorded from v4's real `parseFrame` at `624d0d25c` pins output bytes, warns and issue texts. The stream reducer is now v4's two exhaustive switches (seat frames, then the stream's own), with the floor frames handled in both, which fixes the seat-tagged `handAnswered` the old fold swallowed. `FinalDoneInfo` gains `outcome` and derives the four legacy flags in one place. The old fold survives as `reduceLegacyChatFrame` for the Brahma console (ruling P-2), with the pre-frames spec kept over it. The swipe reader and Document Mode's `toolResult` reader move to frames. The raised hand is now v4's `RaisedHandStatus` machine (raised, asked, yielded, declined, unasked) computed from `handAsked` / `handAnswered` frames, and the "carried on regardless" toast is deleted. The reply's `raised` is no longer read. An established-fact send dispatches `isEstablishedFact: true` (absent otherwise) and refuses an attachment-only fact. The composer-side types are fenced `LANE-REMOVE` stand-ins until P4.D385 lands them.
 
+#### 2026-11-07 — feat(spa): P4.D385 commit 1 — the established-fact predicates, RaisedHandStatus, the deus slash action + icon name, the fact label/accent/importance and never-collapsed arm (v4 624d0d25c)
+
+_Versions: SPA 0.5.973._
+
+P4.D385 items 1–4, 9, 10. New `chat/established-fact.ts` (v4 `db6190b44`'s four
+fact predicates and `ESTABLISHED_FACT_KIND`; no model-facing strings) and
+`chat/raised-hand.ts` (`RaisedHandStatus` + `isHandUp`, the shared type for
+P4.D384's HANDOFF H2). `ComposerAction` gains `deus` with v4's spec, the `/`
+menu icon, and the `deus-ex-machina` `IconName`. `system-message-labels.ts`
+labels a Host `established-fact` row "Deus Ex Machina", accents it
+`qt-chat-established-fact` and rates it high; `isAnnouncementChip` never chips
+it, and now treats an empty `systemSender` as no sender (v4's `!!`). Contract:
+`MessageDto.isEstablishedFact` and the `{kind:'fact'}` announcer sender (fenced).
+New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
+`slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
+the pin.
+
 #### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
 
 _Versions: SPA 0.5.972._

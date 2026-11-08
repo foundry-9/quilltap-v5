@@ -8,6 +8,7 @@
 
 import type { MessageDto, SystemSender } from '../core/core-contract';
 import { staffDisplayName } from './staff-display-names';
+import { isEstablishedFactAnnouncement } from './established-fact';
 
 type StaffFields = Pick<MessageDto, 'systemSender' | 'systemKind' | 'content' | 'pascalMeta'>;
 
@@ -60,6 +61,9 @@ const KIND_DISPLAY_OVERRIDES: Record<string, string> = {
   // `e7d77bb60`). Deliberately NOT "inform": the chip names what the row IS —
   // a note passed outside the scene — rather than the verb that made it.
   inform: 'out of character',
+  // A machine-delivered established fact (v4 `db6190b44`): the Salon's one
+  // place that names Deus Ex Machina — it never reaches a model.
+  'established-fact': 'Deus Ex Machina',
   'custom-tool-result': 'roll outcome',
   'custom-tool-error': "the table couldn't deal",
   // Pascal's line for who took up or set down what (v4 `4fbdad186`, `:52`).
@@ -315,14 +319,18 @@ export function getAnnouncementOutcomeState(
 }
 
 /**
- * Accent classes for the announcement bar/chip wrapper of a Pascal roll — the
- * same `qt-pascal-result` family the Workbench's outcome rows and the Proving
- * Bench's miniature wear, so a success reads as a success wherever it appears.
- * Empty for every other Staff message, which keeps its plain bar.
+ * Per-kind accent classes for an announcement's bar/chip wrapper. A Pascal
+ * roll wears its outcome state — the same `qt-pascal-result` family the
+ * Workbench's outcome rows and the Proving Bench's miniature wear, so a
+ * success reads as a success wherever it appears. A machine-delivered
+ * established fact (Deus Ex Machina) wears `qt-chat-established-fact`
+ * (v4 `db6190b44`). Empty for every other Staff message, which keeps its plain
+ * bar.
  */
 export function getAnnouncementAccentClasses(
-  message: Pick<StaffFields, 'systemSender' | 'pascalMeta'>,
+  message: Pick<StaffFields, 'systemSender' | 'systemKind' | 'pascalMeta'>,
 ): string {
+  if (isEstablishedFactAnnouncement(message)) return 'qt-chat-established-fact';
   const state = getAnnouncementOutcomeState(message);
   return state ? `qt-pascal-result qt-pascal-result--${state}` : '';
 }
@@ -376,6 +384,8 @@ const IMPORTANCE_TABLE: Record<NonNullable<SystemSender>, Record<string, Announc
     // A nudge is a deliberate operator summon — worth an amber dot, but not the
     // red reserved for structural room changes (add / remove / status).
     nudge: 'medium',
+    // An established fact (Deus Ex Machina) changes what is true in the story.
+    'established-fact': 'high',
     '*': 'medium',
   },
   concierge: { danger: 'high', refusal: 'high', '*': 'high' },

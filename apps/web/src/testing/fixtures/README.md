@@ -271,7 +271,18 @@ Expect ≥ 425 and exactly 144 lines; `grep -c '"id":"triggers-'` ≥ 20,
 
 ## `slash-commands.ndjson`
 
-**186 rows** — 1 `constants`, 54 `trigger`, 107 `rank`, 24 `build`. Drives
+_Refreshed 2026-11-07 at the round pin `624d0d25c` (`4.13.0-dev.8`) by P4.D385
+for v4 `db6190b44`'s `deus` composer action: `ALL_ACTIONS` gained `'deus'` in
+v4's test's position, plus ten new rows (`build: action deus alone` and nine
+`rank: deus …` rows over its keywords and a `de…` tie). 186 → **196 rows**. The
+31 pre-existing rows that moved are EXACTLY the ones whose INPUT carries the
+new action (`constants`, `build: v4 all actions`, `build: mixed`, every
+`rank: mixed …` and `rank: all actions bare`): with the `action:deus` command
+stripped from input and output each equals its old bytes, except `rank: mixed
+"d" limit 3`, where `deus` takes one of the three slots (`library` drops out)
+— measured, no other v4 drift._
+
+**196 rows** — 1 `constants`, 54 `trigger`, 116 `rank`, 25 `build`. Drives
 `app/chat/slash-commands/slash-commands.oracle.spec.ts`: v4's `lib/slash-commands/`
 (the composer's `/` slash commands, `4877fc2da`) over v4's own test vectors
 (`lib/slash-commands/__tests__/slash-commands.test.ts`) plus a wider corpus —
@@ -288,7 +299,7 @@ compared through `JSON.stringify` (key order is part of the value).
   pin, `4.11.0-dev.10`) from a pinned worktree, Node 24.13.1 —
   `localeCompare` / `toLocaleLowerCase` are Node's ICU on both sides.
 - **Recorder:** `apps/web/oracle/slash-commands.recorder.ts` (its header has
-  the invocation). Expect 186 lines; a second run reproduces the file byte
+  the invocation). Expect 196 lines; a second run reproduces the file byte
   for byte (`cmp`).
 
 
@@ -723,3 +734,24 @@ rm -f "$F"; cp <V5>/apps/web/oracle/stream-frames.recorder.ts "$PIN/"
 cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx stream-frames.recorder.ts > "$F"
 wc -l < "$F"   # 179
 ```
+
+
+## `established-fact.oracle.ndjson`
+
+**207 rows** — 72 `sender … × kind …` (every `systemSender` × `systemKind`
+cell with `isEstablishedFact` absent) + 135 `flag … × sender … × kind …` (the
+five other fact flags — true / false / null / 1 / `'true'` — over every sender
+with the kind absent / null / `established-fact`). Drives
+`app/chat/established-fact.oracle.spec.ts`: v4's four fact predicates
+(`lib/chat/established-fact.ts`, `db6190b44`), `getSystemKindDisplayLabel` /
+`getAnnouncementAccentClasses` / `getAnnouncementImportance`
+(`system-message-labels.ts`) and `isAlwaysExpandedAnnouncement` /
+`isCollapsedAnnouncement` (`announcement-render-items.ts`, `671c59a53`), each
+row one message shape with every function's answer.
+
+- **Provenance:** recorded 2026-11-07 by P4.D385 at the round pin `624d0d25c`
+  (`4.13.0-dev.8`) from a lane-unique detached worktree with its own `npm ci
+  --offline`, Node 24.13.1, through v4's REAL modules (the import idiom).
+- **Recorder:** `apps/web/oracle/established-fact.recorder.ts` (its header has
+  the invocation). Expect 207 lines; a second run reproduces the file byte for
+  byte (`cmp` — measured).

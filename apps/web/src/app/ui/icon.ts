@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 /**
  * The theme-replaceable icon set (v4 `components/ui/icons/icon-registry.ts`).
  * Rendered as a CSS `mask-image` of `/images/icons/<name>.svg` tinted by
- * `currentColor` (except `brand`, a full-colour background image). The 88-name
+ * `currentColor` (except `brand`, a full-colour background image). The 89-name
  * registry is a public contract for theme overrides.
  */
 export type IconName =
@@ -22,7 +22,11 @@ export type IconName =
   | 'zoom-in' | 'zoom-out' | 'projects'
   | 'files' | 'file' | 'file-plus' | 'folder' | 'folder-plus' | 'book'
   | 'characters' | 'scriptorium' | 'photos' | 'scenarios' | 'profile' | 'user'
-  | 'user-plus' | 'users' | 'megaphone' | 'mail' | 'dice' | 'sparkles' | 'wand'
+  | 'user-plus' | 'users' | 'megaphone' | 'mail' | 'dice'
+  // The composer's Deus Ex Machina toggle and armed chip (v4 `db6190b44` /
+  // `df8d4d70a`); the SVG and its `_icons.css` mask row are P4.D383's.
+  | 'deus-ex-machina'
+  | 'sparkles' | 'wand'
   // The rocking quill shown while a reply is awaited or streaming. The MOTION
   // is a separate theme hook (`.qt-thinking-indicator` in _chat.css) so a theme
   // can change the glyph and the animation independently. Deliberately NOT

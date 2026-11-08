@@ -5,7 +5,8 @@
  * in `lib/slash-commands/` (types, trigger, ranking, registry) — a CLIENT tier
  * despite its `lib/` home. v5's `chat/slash-commands/` is a character-for-
  * character transcription, and THIS corpus, recorded from v4's REAL module at
- * the round pin `25b8fab6a`, is what proves it: every exported function over
+ * the round pin `25b8fab6a`, is what proves it (re-recorded at `624d0d25c` by
+ * P4.D385 for `db6190b44`'s `deus` action): every exported function over
  * v4's own vectors (`lib/slash-commands/__tests__/slash-commands.test.ts`) plus
  * a wider corpus along each rule's edges (every opener context, the alphabet
  * and length edges, each `WORD_SPLIT` separator, kind-order and label ties,
@@ -20,14 +21,14 @@
  * This file lives OUTSIDE `src/` on purpose: it imports v4's `@/lib/...` and
  * would not compile in the SPA's own tsconfig.
  *
- * Run it from a pinned v4 worktree at `25b8fab6a` (Node 24.13.1 at
+ * Run it from a lane-unique pinned v4 worktree at `624d0d25c` (Node 24.13.1 at
  * `~/.nvm/versions/node/v24.13.1/bin` — `localeCompare` /
  * `toLocaleLowerCase` are Node's ICU on both sides):
  *
  * ```bash
- * PIN=/tmp/qt-v4-pin-<order>-25b8fab6a
- * git -C ~/source/quilltap-server worktree add --detach "$PIN" 25b8fab6a
- * ln -sfn ~/source/quilltap-server/node_modules "$PIN/node_modules"
+ * PIN=/tmp/qt-v4-pin-<order>-624d0d25c
+ * git -C ~/source/quilltap-server worktree add --detach "$PIN" 624d0d25c
+ * (cd "$PIN" && npm ci --offline --ignore-scripts --no-audit --no-fund && npm rebuild better-sqlite3)
  * export PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH
  * cp <V5>/apps/web/oracle/slash-commands.recorder.ts "$PIN/"
  * rm -f <V5>/apps/web/src/testing/fixtures/slash-commands.ndjson
@@ -290,7 +291,7 @@ function build(id: string, sources: Partial<SourcesRow>): SlashCommand[] {
 }
 
 const ALL_ACTIONS: ComposerAction[] = [
-  'attach', 'library', 'image', 'announce', 'mail', 'inform',
+  'attach', 'library', 'image', 'announce', 'mail', 'inform', 'deus',
   'tool', 'pascal', 'roll', 'd6', 'd20', 'coin', 'bottle',
 ];
 
@@ -378,6 +379,16 @@ for (const q of ['', 'a', 'at', 'roll', 'r', 'd', 'd2', 'wear', 'w', 'co', 'coin
 rank('rank: mixed "d" limit 3', mixed, 'd', 3);
 rank('rank: all actions bare', allBuilt, '');
 rank('rank: v4 built-ins bare', builtIns, '');
+// Deus Ex Machina (v4 `db6190b44`): its keywords, and a `de…` prefix tie
+// against the other built `de…` labels.
+for (const q of ['deus', 'fact', 'dem', 'canon', 'de', 'true', 'machina', 'ex']) {
+  rank(`rank: deus ${JSON.stringify(q)}`, allBuilt, q);
+}
+rank('rank: deus "de" vs de-labels', [
+  ...allBuilt,
+  command({ kind: 'builtin-tool', command: 'delete_thing', label: 'Delete Thing' }),
+  command({ kind: 'custom-tool', command: 'detect', label: 'Detect Magic', key: 'custom:detect::x' }),
+], 'de');
 rank('rank: v4 customs wear', customs, 'wear');
 
 for (const row of rows) process.stdout.write(`${JSON.stringify(row)}\n`);

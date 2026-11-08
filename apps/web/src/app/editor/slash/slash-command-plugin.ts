@@ -87,6 +87,7 @@ export const ACTION_ICONS: Readonly<Partial<Record<ComposerAction, IconName>>> =
   announce: 'megaphone',
   mail: 'mail',
   inform: 'info',
+  deus: 'deus-ex-machina',
   tool: 'wrench',
   pascal: 'wand',
 };

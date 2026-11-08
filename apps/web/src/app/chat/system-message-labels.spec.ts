@@ -104,8 +104,9 @@ describe('getAnnouncementOutcomeState / getAnnouncementAccentClasses (P4.d21)', 
   const roll = (meta: Partial<PascalMeta> | null) =>
     ({
       systemSender: 'pascal',
+      systemKind: 'custom-tool-result',
       pascalMeta: meta as PascalMeta | null,
-    }) as Pick<StaffFields, 'systemSender' | 'pascalMeta'>;
+    }) as Pick<StaffFields, 'systemSender' | 'systemKind' | 'pascalMeta'>;
 
   it('reports the state the roll landed on', () => {
     for (const state of ['success', 'partial', 'failure', 'info'] as const) {
@@ -118,9 +119,19 @@ describe('getAnnouncementOutcomeState / getAnnouncementAccentClasses (P4.d21)', 
 
   it('leaves every other Staff sender unaccented', () => {
     expect(getAnnouncementOutcomeState({ systemSender: 'librarian', pascalMeta: null })).toBeNull();
-    expect(getAnnouncementAccentClasses({ systemSender: 'host', pascalMeta: null })).toBe('');
+    expect(getAnnouncementAccentClasses({ systemSender: 'host', systemKind: null, pascalMeta: null })).toBe('');
     // Prospero authors the custom-tool ERROR chip, and it carries no roll record.
-    expect(getAnnouncementAccentClasses({ systemSender: 'prospero', pascalMeta: null })).toBe('');
+    expect(getAnnouncementAccentClasses({ systemSender: 'prospero', systemKind: null, pascalMeta: null })).toBe('');
+  });
+
+  // P4.D385 — v4 `db6190b44` (`system-message-labels.ts:51, :297, :368`).
+  it('labels, accents and rates a machine-delivered established fact', () => {
+    const fact = { systemSender: 'host' as const, systemKind: 'established-fact', content: '', pascalMeta: null };
+    expect(getSystemKindDisplayLabel(fact)).toBe('Deus Ex Machina');
+    expect(getAnnouncementAccentClasses(fact)).toBe('qt-chat-established-fact');
+    expect(getAnnouncementImportance(fact)).toBe('high');
+    // The accent is the Host fact's alone: another sender with the same kind is plain.
+    expect(getAnnouncementAccentClasses({ ...fact, systemSender: 'pascal' })).toBe('');
   });
 
   it('falls back to the importance dot on a roll record with no usable state', () => {
