@@ -281,7 +281,11 @@ fn doc_mount_file_links_tier2_matches_oracle() {
 
     let oracle_text =
         std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("cannot read oracle: {e}"));
-    let oracle: Value = serde_json::from_str(oracle_text.trim()).expect("parse oracle dump");
+    // === P4.D381 === the FIRST line is this family's dump; P4.D381's
+    // `p4d381-browser-clear` line follows it (its own test below).
+    let oracle: Value = serde_json::from_str(oracle_text.lines().next().unwrap_or("").trim())
+        .expect("parse oracle dump");
+    // === /P4.D381 ===
 
     // Fresh copy so the shared seed fixture stays pristine.
     let work_dir = tempfile::Builder::new()
@@ -677,3 +681,207 @@ fn oracle_key(table: &str) -> &'static str {
         other => panic!("unknown table {other}"),
     }
 }
+
+// === P4.D381 (v4 `aec626eff`): `listForBrowser` + `clearLinkGroup` over a
+// separate database store, driven through v4's REAL repository methods (the
+// oracle's `p4d381-browser-clear` line). Compared IN ORDER, as bytes, with the
+// minted ids remapped by first sight and the timestamps masked. ===
+
+fn p4d381_remap(v: &mut Value, ids: &mut HashMap<String, String>) {
+    match v {
+        Value::Object(m) => {
+            for (k, val) in m.iter_mut() {
+                match k.as_str() {
+                    "id" | "fileId" | "linkGroupId" | "groupId" | "folderId" => {
+                        if let Value::String(s) = val {
+                            let n = ids.len();
+                            let tok = ids.entry(s.clone()).or_insert_with(|| format!("<id{n}>"));
+                            *val = Value::String(tok.clone());
+                        }
+                    }
+                    "lastModified" | "createdAt" | "updatedAt" | "descriptionUpdatedAt" => {
+                        if val.is_string() {
+                            *val = Value::String("<ts>".into());
+                        }
+                    }
+                    _ => p4d381_remap(val, ids),
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(|x| p4d381_remap(x, ids)),
+        _ => {}
+    }
+}
+
+#[test]
+fn p4d381_browser_listing_and_clear_link_group_match_oracle() {
+    let (Ok(oracle_path), Ok(fixture)) = (
+        std::env::var("QT_ORACLE_DOC_MOUNT_FILE_LINKS"),
+        std::env::var("QT_FIXTURE_DOC_MOUNT_FILE_LINKS"),
+    ) else {
+        eprintln!("SKIP: set QT_ORACLE_DOC_MOUNT_FILE_LINKS + QT_FIXTURE_DOC_MOUNT_FILE_LINKS.");
+        return;
+    };
+    let spec: Spec =
+        serde_json::from_str(&std::fs::read_to_string(spec_path()).unwrap()).expect("spec");
+    let text = std::fs::read_to_string(&oracle_path).unwrap();
+    let want: Value = text
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+        .find(|v| v["case"] == "p4d381-browser-clear")
+        .expect("the oracle carries no p4d381-browser-clear line (regenerate it)");
+
+    let dir = tempfile::Builder::new()
+        .prefix("qt-p4d381-dmfl-")
+        .tempdir()
+        .unwrap();
+    let work = dir.path().join("w.db");
+    std::fs::copy(&fixture, &work).unwrap();
+    let w = Writer::open_writable(&work, &spec.test_pepper_base64).unwrap();
+    const STORE: &str = "5700000e-0000-4000-8000-0000000d3810";
+    w.connection()
+        .execute_batch(&format!(
+            "CREATE TEMP TABLE p4d381_mp AS SELECT * FROM doc_mount_points WHERE id = '{}'; \
+             UPDATE p4d381_mp SET id = '{STORE}', name = 'P4D381 Browser Store'; \
+             INSERT INTO doc_mount_points SELECT * FROM p4d381_mp;",
+            spec.store.id
+        ))
+        .unwrap();
+    let repo = w.doc_mount_file_links();
+    for (rel, body) in [
+        ("g/a.md", "# A\n\nP4D381 grouped.\n"),
+        ("g/b.md", "# A\n\nP4D381 grouped.\n"),
+        ("g/c.md", "# A\n\nP4D381 grouped.\n"),
+        ("d/one.md", "# Shared\n\nP4D381 dedup.\n"),
+        ("d/two.md", "# Shared\n\nP4D381 dedup.\n"),
+    ] {
+        repo.write_database_document(STORE, rel, body).unwrap();
+    }
+    let at = |rel: &str| {
+        repo.find_by_mount_point_and_path(STORE, rel)
+            .unwrap()
+            .unwrap_or_else(|| panic!("no link at {rel}"))
+            .id
+    };
+    repo.bind_link_group(&at("g/a.md"), &at("g/b.md")).unwrap();
+    repo.bind_link_group(&at("g/a.md"), &at("g/c.md")).unwrap();
+    let before = repo.list_for_browser_or_empty(STORE);
+    let clears = vec![
+        (
+            "clear_first_of_three",
+            repo.clear_link_group_or_default(&at("g/b.md")),
+        ),
+        (
+            "clear_second_dissolves",
+            repo.clear_link_group_or_default(&at("g/a.md")),
+        ),
+        (
+            "clear_ungrouped",
+            repo.clear_link_group_or_default(&at("d/one.md")),
+        ),
+        (
+            "clear_unknown",
+            repo.clear_link_group_or_default("5700000e-0000-4000-8000-00000000dead"),
+        ),
+    ];
+    let after = repo.list_for_browser_or_empty(STORE);
+    // The fallback write's ERROR under a throwing plant (the oracle's `plant`).
+    let grouped_id = at("g/c.md");
+    w.connection()
+        .execute_batch(
+            "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"linkGroupId\" TO \"linkGroupId_x\"",
+        )
+        .unwrap();
+    let (plant_result, plant_lines) = quilltap_core::test_support::captured_with(|| {
+        repo.clear_link_group_or_default(&grouped_id)
+    });
+    w.connection()
+        .execute_batch(
+            "ALTER TABLE \"doc_mount_file_links\" RENAME COLUMN \"linkGroupId_x\" TO \"linkGroupId\"",
+        )
+        .unwrap();
+    // v5's `LEVEL target message k=v…` → v4's `{level, message, fields}` with
+    // `error` dropped (the oracle omits it).
+    let plant_lines: Vec<Value> = plant_lines
+        .iter()
+        .filter(|l| l.starts_with("ERROR "))
+        .map(|l| {
+            let rest = l.splitn(3, ' ').nth(2).unwrap();
+            let (msg, kv) = match rest.find(" collection=") {
+                Some(i) => (&rest[..i], &rest[i + 1..]),
+                None => (rest, ""),
+            };
+            let kv = kv.split(" error=").next().unwrap_or("");
+            let fields: Vec<Value> = kv
+                .split(' ')
+                .filter(|t| !t.is_empty())
+                .filter_map(|t| t.split_once('='))
+                .map(|(k, v)| serde_json::json!([k, v]))
+                .collect();
+            serde_json::json!({ "level": "error", "message": msg, "fields": fields })
+        })
+        .collect();
+    let links: Vec<Value> = {
+        let mut stmt = w
+            .connection()
+            .prepare(
+                "SELECT relativePath, linkGroupId, fileId FROM doc_mount_file_links \
+                 WHERE mountPointId = ? ORDER BY relativePath",
+            )
+            .unwrap();
+        stmt.query_map([STORE], |r| {
+            Ok(serde_json::json!({
+                "relativePath": r.get::<_, String>(0)?,
+                "linkGroupId": r.get::<_, Option<String>>(1)?,
+                "fileId": r.get::<_, String>(2)?,
+            }))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+    };
+    let mut got = serde_json::json!({
+        "case": "p4d381-browser-clear",
+        "before": before,
+        "clears": clears
+            .iter()
+            .map(|(step, r)| serde_json::json!({ "step": step, "result": r }))
+            .collect::<Vec<_>>(),
+        "after": after,
+        "links": links,
+        "plant": { "result": plant_result, "lines": plant_lines },
+    });
+    let mut want = want;
+    let (mut ig, mut iw) = (HashMap::new(), HashMap::new());
+    p4d381_remap(&mut got, &mut ig);
+    p4d381_remap(&mut want, &mut iw);
+    // The plant line's `linkId` field is a minted id (a `[k, v]` pair, which the
+    // key-based remap does not reach): resolved through each side's own map.
+    for (v, ids) in [(&mut got, &ig), (&mut want, &iw)] {
+        if let Some(lines) = v["plant"]["lines"].as_array_mut() {
+            for line in lines {
+                for pair in line["fields"].as_array_mut().into_iter().flatten() {
+                    if pair[0] == "linkId" {
+                        let raw = pair[1].as_str().unwrap_or_default().to_string();
+                        pair[1] = Value::String(ids.get(&raw).cloned().unwrap_or(raw));
+                    }
+                }
+            }
+        }
+    }
+    let (g, w2) = (
+        serde_json::to_string_pretty(&got).unwrap(),
+        serde_json::to_string_pretty(&want).unwrap(),
+    );
+    assert_eq!(g, w2, "the browser listing / clearLinkGroup rows diverge");
+    // Non-vacuous: the group dissolved on the second clear, the dedup pair
+    // reads linkCount 2 with a null group.
+    assert!(g.contains("\"dissolved\": true"), "{g}");
+    assert!(g.contains("\"linkCount\": 2"), "{g}");
+    assert!(
+        g.contains("Error clearing hard-link group"),
+        "the plant line: {g}"
+    );
+    eprintln!("OK: p4d381 browser listing + clearLinkGroup matched oracle.");
+}
+// === /P4.D381 ===

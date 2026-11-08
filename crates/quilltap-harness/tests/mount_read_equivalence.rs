@@ -347,6 +347,30 @@ fn mount_read_matches_oracle() {
             "list case {id}\n{}",
             diff(&norm(&norm_list(&got)), &norm(&norm_list(&want["out"])))
         );
+        // === P4.D381 (v4 `aec626eff`): the `DocMountBrowserEntry` rows as BYTES,
+        // in ROW ORDER — v4's `listForBrowser` has no ORDER BY, so the order is
+        // SQLite's join order on both sides (correction 7), and the key order is
+        // the wire contract (`serde_json::Value ==` is key-order-blind). No
+        // `extractedText` (asserted absent).
+        let (got_files, want_files) = (
+            serde_json::to_string(&got["files"]).unwrap(),
+            serde_json::to_string(&want["out"]["files"]).unwrap(),
+        );
+        assert_eq!(
+            got_files, want_files,
+            "list case {id}: the browser entries' bytes / order"
+        );
+        assert!(
+            !got_files.contains("extractedText\""),
+            "list case {id}: extractedText present"
+        );
+        if id == "list-db" {
+            assert!(
+                got_files.contains("\"linkCount\":"),
+                "list-db carries linkCount"
+            );
+        }
+        // === /P4.D381 ===
         checked += 1;
     }
 

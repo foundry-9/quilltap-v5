@@ -219,6 +219,11 @@ const HOME_MESSAGES: &[&str] = &[
     // fallback (`memories.repository.ts:1063-1102`) ===
     "Error finding memories in event window",
     // === end P4.D375 ===
+    // === P4.D381 (v4 `aec626eff`) — the store browser's listing + the
+    // hard-link group clear (`doc-mount-file-links.repository.ts:695-796`) ===
+    "Error listing file links for browser",
+    "Error clearing hard-link group",
+    // === /P4.D381 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

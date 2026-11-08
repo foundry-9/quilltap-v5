@@ -1,7 +1,9 @@
 //! The mount-files listing surface (P4.6v) — v4's
 //! `GET /api/v1/mount-points/[id]/files` (`files/route.ts`). Returns
-//! `{ files, folders }`: `files` is the full `DocMountFileLinkWithContent` set
-//! (`docMountFiles.findByMountPointId`); `folders` merges the
+//! `{ files, folders }`: `files` is the store browser's listing
+//! (`docMountFileLinks.listForBrowser` — v4 `aec626eff`, P4.D381: the
+//! `DocMountBrowserEntry` rows, no `extractedText`, with `allow*`,
+//! `linkGroupId` and `linkCount`); `folders` merges the
 //! `doc_mount_folders` path set with, for filesystem/obsidian mounts, the
 //! on-disk directory tree (`listFilesystemFolders`) so empty folders show.
 //!
@@ -9,7 +11,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::db::doc_mount_files::DocMountFilesRepository;
+use crate::db::doc_mount_file_links::{DocMountBrowserEntry, DocMountFileLinksRepository};
 use crate::db::doc_mount_folders::DocMountFoldersRepository;
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::runtime::Db;
@@ -18,7 +20,7 @@ use super::read_file::MountFileError;
 
 /// The `{ files, folders }` list result.
 pub struct MountFilesList {
-    pub files: Vec<serde_json::Value>,
+    pub files: Vec<DocMountBrowserEntry>,
     pub folders: Vec<String>,
 }
 
@@ -102,14 +104,14 @@ pub fn mount_files_list(db: &Db, mount_point_id: &str) -> Result<MountFilesList,
     let mp = mp.ok_or_else(|| MountFileError::Other("Mount point not found".to_string()))?;
 
     let id = mount_point_id.to_string();
-    // v4 `files/route.ts:29-30` reads both through fallbacks: `docMountFiles.
-    // findByMountPointId` (`Error finding files by mount point ID`, `[]`) and
-    // `docMountFolders.findByMountPointId` (`Error finding entities by filter`,
-    // `[]` — its outer line unreachable). Each WHOLE checkout sits inside its
-    // home, as v4's `getCollection()` does inside its `safeQuery` (P4.142, G1).
-    let files = crate::db::fallback::files_by_mount_point_id_or_empty(mount_point_id, || {
+    // v4 `files/route.ts:32-35` (`aec626eff`) reads both through fallbacks:
+    // `docMountFileLinks.listForBrowser` (`Error listing file links for
+    // browser`, `[]`) and `docMountFolders.findByMountPointId` (`Error finding
+    // entities by filter`, `[]` — its outer line unreachable). Each WHOLE
+    // checkout sits inside its home, as v4's `withRawDb` acquires inside it.
+    let files = crate::db::fallback::browser_entries_or_empty(mount_point_id, || {
         db.read_mount_index(move |conn| {
-            DocMountFilesRepository::new(conn).find_links_with_content_json_by_mount_point_id(&id)
+            DocMountFileLinksRepository::new(conn).list_for_browser(&id)
         })
     });
 
@@ -137,8 +139,13 @@ pub fn mount_files_list(db: &Db, mount_point_id: &str) -> Result<MountFilesList,
             }
         }
     }
-    Ok(MountFilesList {
-        files,
-        folders: folder_set.into_iter().collect(),
-    })
+    let folders: Vec<String> = folder_set.into_iter().collect();
+    tracing::debug!(
+        target: "quilltap::mount_index",
+        mountPointId = %mount_point_id,
+        files = files.len(),
+        folders = folders.len(),
+        "[Mount Points v1] Listed files for browser"
+    );
+    Ok(MountFilesList { files, folders })
 }

@@ -226,6 +226,52 @@ pub fn joined_file_links_or_empty<T>(
     })
 }
 
+// === P4.D381 (v4 `aec626eff`) ===
+
+/// v4 `docMountFileLinks.listForBrowser` as its callers see it: a fallback
+/// `withRawDb([])`, so `read()`'s `Err` logs `Error listing file links for
+/// browser {collection, mountPointId, error}` and answers `[]`
+/// (`doc-mount-file-links.repository.ts:695-756`).
+pub fn browser_entries_or_empty<T>(
+    mount_point_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_file_links",
+            mountPointId = %mount_point_id,
+            error = %error_text(&error),
+            "Error listing file links for browser"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `docMountFileLinks.clearLinkGroup` as its callers see it: a fallback
+/// WRITE `withRawDb({groupId: null, dissolved: false})`, so `write()`'s `Err`
+/// logs `Error clearing hard-link group {collection, linkId, error}` and
+/// answers `{null, false}` (`doc-mount-file-links.repository.ts:758-796`).
+pub fn clear_link_group_or_default(
+    link_id: &str,
+    write: impl FnOnce() -> Result<crate::db::doc_mount_file_links::ClearLinkGroupResult, DbError>,
+) -> crate::db::doc_mount_file_links::ClearLinkGroupResult {
+    write().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_file_links",
+            linkId = %link_id,
+            error = %error_text(&error),
+            "Error clearing hard-link group"
+        );
+        crate::db::doc_mount_file_links::ClearLinkGroupResult {
+            group_id: None,
+            dissolved: false,
+        }
+    })
+}
+// === /P4.D381 ===
+
 /// The ONE emitter of `Error querying joined file links` (both the plain twin
 /// and [`joined_file_links_strict_aware`] log through it).
 fn log_joined_file_links_failure(where_clause: &str, error: &DbError, strict: bool) {

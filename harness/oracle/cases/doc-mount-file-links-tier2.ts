@@ -206,6 +206,71 @@ async function main(): Promise<void> {
     orderBy: 'sortKey',
   });
 
+  // === P4.D381 (v4 `aec626eff`): `listForBrowser` + `clearLinkGroup` ===
+  // A SEPARATE database store (cloned from the spec store's row), AFTER the
+  // main dump is taken, so the spec's rows above are untouched. Its own docs:
+  // `g/a.md` grouped with `g/b.md` and `g/c.md` (a 3-member group), and two
+  // byte-identical ungrouped docs (`d/one.md`, `d/two.md` — a dedup share). The
+  // content is unique to this block, so `linkCount` counts only these links.
+  const P4D381_STORE = '5700000e-0000-4000-8000-0000000d3810';
+  midb.exec(
+    `CREATE TEMP TABLE p4d381_mp AS SELECT * FROM doc_mount_points WHERE id = '${spec.store.id}';
+     UPDATE p4d381_mp SET id = '${P4D381_STORE}', name = 'P4D381 Browser Store';
+     INSERT INTO doc_mount_points SELECT * FROM p4d381_mp;`
+  );
+  await writeDatabaseDocument(P4D381_STORE, 'g/a.md', '# A\n\nP4D381 grouped.\n');
+  await writeDatabaseDocument(P4D381_STORE, 'g/b.md', '# A\n\nP4D381 grouped.\n');
+  await writeDatabaseDocument(P4D381_STORE, 'g/c.md', '# A\n\nP4D381 grouped.\n');
+  await writeDatabaseDocument(P4D381_STORE, 'd/one.md', '# Shared\n\nP4D381 dedup.\n');
+  await writeDatabaseDocument(P4D381_STORE, 'd/two.md', '# Shared\n\nP4D381 dedup.\n');
+  const at = async (rel: string) => {
+    const l = await links().findByMountPointAndPath(P4D381_STORE, rel);
+    if (!l) throw new Error(`p4d381: no link at ${rel}`);
+    return l;
+  };
+  await links().bindLinkGroup((await at('g/a.md')).id, (await at('g/b.md')).id);
+  await links().bindLinkGroup((await at('g/a.md')).id, (await at('g/c.md')).id);
+  const p4d381Before = await links().listForBrowser(P4D381_STORE);
+  const p4d381Clears = [
+    { step: 'clear_first_of_three', result: await links().clearLinkGroup((await at('g/b.md')).id) },
+    { step: 'clear_second_dissolves', result: await links().clearLinkGroup((await at('g/a.md')).id) },
+    { step: 'clear_ungrouped', result: await links().clearLinkGroup((await at('d/one.md')).id) },
+    { step: 'clear_unknown', result: await links().clearLinkGroup('5700000e-0000-4000-8000-00000000dead') },
+  ];
+  const p4d381After = await links().listForBrowser(P4D381_STORE);
+  // The fallback write's ERROR (a throwing plant: the column the first
+  // statement reads is renamed — fails v4's and v5's read alike), captured off
+  // the `Logger` prototype as `{level, message, fields}` (`module` / `error`
+  // omitted — the mount-read plant recipe).
+  const { Logger } = await import('@/lib/logger');
+  const p4d381Lines: Array<{ level: string; message: string; fields: Array<[string, string]> }> = [];
+  const originalError = Logger.prototype.error;
+  Logger.prototype.error = function (this: unknown, message: string, context?: Record<string, unknown>, ...rest: unknown[]) {
+    const fields: Array<[string, string]> = [];
+    for (const [k, v] of Object.entries(context ?? {})) {
+      if (k === 'module' || k === 'error') continue;
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') fields.push([k, String(v)]);
+    }
+    p4d381Lines.push({ level: 'error', message, fields });
+    return (originalError as (...a: unknown[]) => void).call(this, message, context, ...rest);
+  } as never;
+  const p4d381GroupedId = (await at('g/c.md')).id;
+  midb.exec('ALTER TABLE "doc_mount_file_links" RENAME COLUMN "linkGroupId" TO "linkGroupId_x"');
+  let p4d381PlantResult: unknown;
+  try {
+    p4d381PlantResult = await links().clearLinkGroup(p4d381GroupedId);
+  } finally {
+    midb.exec('ALTER TABLE "doc_mount_file_links" RENAME COLUMN "linkGroupId_x" TO "linkGroupId"');
+    Logger.prototype.error = originalError;
+  }
+  const p4d381Links = midb
+    .prepare(
+      `SELECT relativePath, linkGroupId, fileId FROM doc_mount_file_links
+        WHERE mountPointId = ? ORDER BY relativePath`
+    )
+    .all(P4D381_STORE);
+  // === /P4.D381 ===
+
   closeMountIndexSQLiteClient();
   await closeDatabase();
 
@@ -220,6 +285,19 @@ async function main(): Promise<void> {
       blobs,
     }) + '\n'
   );
+  // === P4.D381 === the second line: the browser / clear rows (raw — the Rust
+  // side remaps the minted ids and masks the timestamps).
+  process.stdout.write(
+    JSON.stringify({
+      case: 'p4d381-browser-clear',
+      before: p4d381Before,
+      clears: p4d381Clears,
+      after: p4d381After,
+      links: p4d381Links,
+      plant: { result: p4d381PlantResult, lines: p4d381Lines },
+    }) + '\n'
+  );
+  // === /P4.D381 ===
   process.exit(0);
 }
 

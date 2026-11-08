@@ -391,7 +391,7 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
     // a move reports success while the source link survives.
     (
         "quilltap-core/src/services/mount_index/file_ops.rs",
-        "move_file",
+        "move_file_unpublished",
         "delete_with_gc",
         "strict-by-ruling(write-path)",
     ),
@@ -738,8 +738,8 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_source", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "delete_with_gc", "strict-by-ruling(write-path)"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "move_file", "delete_with_gc", "strict-by-ruling(write-path)"),
-    ("quilltap-core/src/services/mount_index/file_ops.rs", "link_file", "find_by_mount_point_and_path", "swallowed-by-other-means"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "move_file_unpublished", "delete_with_gc", "strict-by-ruling(write-path)"),
+    ("quilltap-core/src/services/mount_index/file_ops.rs", "link_file_unpublished", "find_by_mount_point_and_path", "swallowed-by-other-means"),
     ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/general_state.rs", "ensure_general_state_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/link_groups.rs", "reindex_inner", "find_by_mount_point_and_path_or_none", "converted"),
@@ -754,7 +754,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/services/mount_index/reindex_file.rs", "reindex_inner", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/services/mount_index/scanner.rs", "process_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/scanner.rs", "process_mount_file_with_probe", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/scanner.rs", "remove_mount_file", "delete_with_gc_or_false", "converted"),
     ("quilltap-core/src/services/mount_index/scanner.rs", "rescan_database_mount_point", "find_by_mount_point_id_or_empty", "converted"),

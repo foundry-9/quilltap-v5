@@ -2339,6 +2339,359 @@ impl<'c> DocMountFileLinksRepository<'c> {
     }
 }
 
+// === P4.D381 (v4 `aec626eff`): the store browser's listing, the hard-link
+// group surface (§R.10 (h) — appended; P4.D380 owns `link_document_content`) ===
+
+/// v4 `DocMountBrowserEntry` (`lib/schemas/mount-index.types.ts`) — one row of
+/// a store browser's listing: the joined link + content fields WITHOUT
+/// `extractedText` (the heavy column; a browser fetches it per file), with
+/// `linkCount`, the number of links anywhere sharing the link's content row.
+/// FIELD ORDER IS v4's KEY ORDER (`doc-mount-file-links.repository.ts:721-751`)
+/// — the wire is compared as bytes. Numeric cells keep v4's JSON number form
+/// ([`js_number_cell`]: a REAL `3.0` renders `3`, as `JSON.stringify` does).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocMountBrowserEntry {
+    pub id: String,
+    pub file_id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub folder_id: Option<String>,
+    pub original_file_name: Option<String>,
+    pub original_mime_type: Option<String>,
+    pub description: String,
+    pub description_updated_at: Option<String>,
+    pub conversion_status: Option<String>,
+    pub conversion_error: Option<String>,
+    pub plain_text_length: serde_json::Value,
+    pub extracted_text_sha256: Option<String>,
+    pub extraction_status: Option<String>,
+    pub extraction_error: Option<String>,
+    pub chunk_count: serde_json::Value,
+    pub allow_embed: bool,
+    pub allow_character_read: bool,
+    pub allow_character_write: bool,
+    pub link_group_id: Option<String>,
+    pub last_modified: serde_json::Value,
+    pub created_at: serde_json::Value,
+    pub updated_at: serde_json::Value,
+    pub sha256: serde_json::Value,
+    pub file_size_bytes: serde_json::Value,
+    pub file_type: serde_json::Value,
+    pub source: serde_json::Value,
+    pub link_count: i64,
+}
+
+/// v4 `clearLinkGroup`'s `{groupId, dissolved}` (that key order).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClearLinkGroupResult {
+    pub group_id: Option<String>,
+    pub dissolved: bool,
+}
+
+/// A cell as better-sqlite3 hands it to `JSON.stringify`: NULL → `null`, an
+/// INTEGER → itself, a REAL → a JS number (integral values without the `.0`),
+/// TEXT → a string. (A BLOB is not a v4 shape here; it renders as its UTF-8.)
+fn js_number_cell(v: rusqlite::types::ValueRef<'_>) -> serde_json::Value {
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Null => serde_json::Value::Null,
+        ValueRef::Integer(i) => serde_json::Value::from(i),
+        ValueRef::Real(f) => {
+            if f.is_finite() && f.fract() == 0.0 && f.abs() < 9.007_199_254_740_992e15 {
+                serde_json::Value::from(f as i64)
+            } else {
+                serde_json::json!(f)
+            }
+        }
+        ValueRef::Text(t) | ValueRef::Blob(t) => {
+            serde_json::Value::String(String::from_utf8_lossy(t).into_owned())
+        }
+    }
+}
+
+impl<'c> DocMountFileLinksRepository<'c> {
+    /// v4 `listForBrowser(mountPointId)` — the store browser's listing. v4's SQL
+    /// byte-for-byte, with **NO `ORDER BY`** (the rows come in SQLite's join
+    /// order, as v4's do). DEBUG `Listed file links for browser {mountPointId,
+    /// count}`. The raw read; callers go through [`Self::list_for_browser_or_empty`].
+    pub fn list_for_browser(
+        &self,
+        mount_point_id: &str,
+    ) -> Result<Vec<DocMountBrowserEntry>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "\n          SELECT\n            l.id, l.fileId, l.mountPointId, l.relativePath, l.fileName,\n            l.folderId, l.originalFileName, l.originalMimeType,\n            l.description, l.descriptionUpdatedAt,\n            l.conversionStatus, l.conversionError, l.plainTextLength,\n            l.extractedTextSha256, l.extractionStatus, l.extractionError,\n            l.chunkCount, l.allowEmbed, l.allowCharacterRead, l.allowCharacterWrite,\n            l.linkGroupId, l.lastModified, l.createdAt, l.updatedAt,\n            f.sha256, f.fileSizeBytes, f.fileType, f.source,\n            (SELECT COUNT(*) FROM doc_mount_file_links s WHERE s.fileId = l.fileId) AS linkCount\n          FROM doc_mount_file_links l\n          JOIN doc_mount_files f ON f.id = l.fileId\n          WHERE l.mountPointId = ?\n        ",
+        )?;
+        let rows = stmt
+            .query_map(params![mount_point_id], |row| {
+                let chunk_count = match row.get_ref(16)? {
+                    rusqlite::types::ValueRef::Null => serde_json::Value::from(0),
+                    v => js_number_cell(v),
+                };
+                let link_count: i64 = row.get::<_, Option<i64>>(28)?.unwrap_or(0);
+                Ok(DocMountBrowserEntry {
+                    id: row.get(0)?,
+                    file_id: row.get(1)?,
+                    mount_point_id: row.get(2)?,
+                    relative_path: row.get(3)?,
+                    file_name: row.get(4)?,
+                    folder_id: row.get(5)?,
+                    original_file_name: row.get(6)?,
+                    original_mime_type: row.get(7)?,
+                    description: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+                    description_updated_at: row.get(9)?,
+                    conversion_status: row.get(10)?,
+                    conversion_error: row.get(11)?,
+                    plain_text_length: js_number_cell(row.get_ref(12)?),
+                    extracted_text_sha256: row.get(13)?,
+                    extraction_status: row.get(14)?,
+                    extraction_error: row.get(15)?,
+                    chunk_count,
+                    allow_embed: coerce_allow(row.get::<_, Option<i64>>(17)?),
+                    allow_character_read: coerce_allow(row.get::<_, Option<i64>>(18)?),
+                    allow_character_write: coerce_allow(row.get::<_, Option<i64>>(19)?),
+                    link_group_id: row.get(20)?,
+                    last_modified: js_number_cell(row.get_ref(21)?),
+                    created_at: js_number_cell(row.get_ref(22)?),
+                    updated_at: js_number_cell(row.get_ref(23)?),
+                    sha256: js_number_cell(row.get_ref(24)?),
+                    file_size_bytes: js_number_cell(row.get_ref(25)?),
+                    file_type: js_number_cell(row.get_ref(26)?),
+                    source: js_number_cell(row.get_ref(27)?),
+                    // v4 `Number(row.linkCount) || 1`.
+                    link_count: if link_count == 0 { 1 } else { link_count },
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        tracing::debug!(
+            target: "quilltap::db",
+            mountPointId = %mount_point_id,
+            count = rows.len(),
+            "Listed file links for browser"
+        );
+        Ok(rows)
+    }
+
+    /// [`Self::list_for_browser`] as v4's callers see it: a FALLBACK
+    /// `withRawDb([])` (`Error listing file links for browser {mountPointId}`).
+    pub fn list_for_browser_or_empty(&self, mount_point_id: &str) -> Vec<DocMountBrowserEntry> {
+        super::fallback::browser_entries_or_empty(mount_point_id, || {
+            self.list_for_browser(mount_point_id)
+        })
+    }
+
+    /// v4 `clearLinkGroup(linkId)` — take a link out of its hard-link group. The
+    /// link keeps its content row (so it reads exactly as before), and the next
+    /// write through it forks a row of its own, as an ungrouped dedup share does.
+    /// A group left with one member is dissolved, as `deleteWithGC` does. ONE
+    /// transaction over v4's four statements; DEBUG `Cleared hard-link group
+    /// from link {linkId, groupId, dissolved}` after it commits. The raw write;
+    /// callers go through [`Self::clear_link_group_or_default`].
+    pub fn clear_link_group(&self, link_id: &str) -> Result<ClearLinkGroupResult, DbError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let group: Option<Option<String>> = {
+            let mut stmt =
+                tx.prepare("SELECT linkGroupId FROM doc_mount_file_links WHERE id = ?")?;
+            let mut rows = stmt.query(params![link_id])?;
+            match rows.next()? {
+                Some(r) => Some(r.get(0)?),
+                None => None,
+            }
+        };
+        let Some(Some(group_id)) = group else {
+            tx.commit()?;
+            let result = ClearLinkGroupResult {
+                group_id: None,
+                dissolved: false,
+            };
+            log_cleared_link_group(link_id, &result);
+            return Ok(result);
+        };
+        let now = now_iso();
+        tx.execute(
+            "UPDATE doc_mount_file_links SET linkGroupId = NULL, updatedAt = ? WHERE id = ?",
+            params![now, link_id],
+        )?;
+        let survivors: Vec<String> = {
+            let mut stmt =
+                tx.prepare("SELECT id FROM doc_mount_file_links WHERE linkGroupId = ?")?;
+            let ids = stmt
+                .query_map(params![group_id], |r| r.get(0))?
+                .collect::<Result<Vec<String>, _>>()?;
+            ids
+        };
+        let dissolved = survivors.len() <= 1;
+        if dissolved {
+            tx.execute(
+                "UPDATE doc_mount_file_links SET linkGroupId = NULL, updatedAt = ? WHERE linkGroupId = ?",
+                params![now, group_id],
+            )?;
+        }
+        tx.commit()?;
+        let result = ClearLinkGroupResult {
+            group_id: Some(group_id),
+            dissolved,
+        };
+        log_cleared_link_group(link_id, &result);
+        Ok(result)
+    }
+
+    /// [`Self::clear_link_group`] as v4's callers see it: a FALLBACK write
+    /// `withRawDb({groupId: null, dissolved: false})` (`Error clearing
+    /// hard-link group {linkId}`).
+    pub fn clear_link_group_or_default(&self, link_id: &str) -> ClearLinkGroupResult {
+        super::fallback::clear_link_group_or_default(link_id, || self.clear_link_group(link_id))
+    }
+
+    /// v4 `findByLinkGroupId` exactly as its callers see it: `safeQuery(
+    /// queryJoined('WHERE l.linkGroupId = ?'), …, [])` — `queryJoined` is itself a
+    /// fallback, so a failed read logs `Error querying joined file links
+    /// {whereClause: "WHERE l.linkGroupId = ?"}` and answers `[]`; the outer
+    /// line is UNREACHABLE (the [`Self::find_by_file_id_or_empty`] shape).
+    pub fn find_by_link_group_id_or_empty(&self, link_group_id: &str) -> Vec<LinkRow> {
+        super::fallback::joined_file_links_or_empty("WHERE l.linkGroupId = ?", || {
+            self.find_by_link_group_id(link_group_id)
+        })
+    }
+}
+
+/// v4's DEBUG after `clearLinkGroup`'s transaction (`{linkId, ...result}`).
+fn log_cleared_link_group(link_id: &str, result: &ClearLinkGroupResult) {
+    tracing::debug!(
+        target: "quilltap::db",
+        linkId = %link_id,
+        groupId = result.group_id.as_deref(),
+        dissolved = result.dissolved,
+        "Cleared hard-link group from link"
+    );
+}
+
+#[cfg(test)]
+mod p4d381_browser_tests {
+    use super::*;
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn store() -> (tempfile::TempDir, crate::db::Writer, String) {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' ORDER BY id LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        (dir, w, id)
+    }
+
+    #[test]
+    fn the_listing_and_clear_lines_and_their_fallbacks() {
+        let (_dir, w, mp) = store();
+        let repo = DocMountFileLinksRepository::new(w.connection());
+        repo.write_database_document(&mp, "x/a.md", "same").unwrap();
+        repo.write_database_document(&mp, "x/b.md", "same").unwrap();
+        let a = repo
+            .find_by_mount_point_and_path(&mp, "x/a.md")
+            .unwrap()
+            .unwrap()
+            .id;
+        let b = repo
+            .find_by_mount_point_and_path(&mp, "x/b.md")
+            .unwrap()
+            .unwrap()
+            .id;
+        repo.bind_link_group(&a, &b).unwrap();
+
+        let (rows, lines) =
+            crate::test_support::captured_with(|| repo.list_for_browser_or_empty(&mp));
+        let dedup: Vec<_> = rows
+            .iter()
+            .filter(|r| r.relative_path.starts_with("x/"))
+            .collect();
+        assert_eq!(dedup.len(), 2);
+        assert!(dedup
+            .iter()
+            .all(|r| r.link_count == 2 && r.link_group_id.is_some()));
+        assert_eq!(
+            lines,
+            vec![format!(
+                "DEBUG quilltap::db Listed file links for browser mountPointId={mp} count={}",
+                rows.len()
+            )]
+        );
+
+        let (r, lines) =
+            crate::test_support::captured_with(|| repo.clear_link_group_or_default(&a));
+        let g = r.group_id.clone().unwrap();
+        assert!(r.dissolved, "a group of two dissolves when one leaves");
+        assert_eq!(
+            lines,
+            vec![format!(
+                "DEBUG quilltap::db Cleared hard-link group from link linkId={a} groupId={g} dissolved=true"
+            )]
+        );
+        let (r, lines) =
+            crate::test_support::captured_with(|| repo.clear_link_group_or_default(&a));
+        assert_eq!(
+            r,
+            ClearLinkGroupResult {
+                group_id: None,
+                dissolved: false
+            }
+        );
+        // An absent `groupId` is OMITTED (v4's `undefined`… here `null` → no field).
+        assert_eq!(
+            lines,
+            vec![format!(
+                "DEBUG quilltap::db Cleared hard-link group from link linkId={a} dissolved=false"
+            )]
+        );
+
+        // The fallbacks: a throwing plant fails each read; the bare line, the
+        // fallback value, and no DEBUG.
+        w.connection()
+            .execute_batch("ALTER TABLE doc_mount_files RENAME COLUMN source TO source_x")
+            .unwrap();
+        let (rows, lines) =
+            crate::test_support::captured_with(|| repo.list_for_browser_or_empty(&mp));
+        assert!(rows.is_empty());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with(&format!(
+            "ERROR quilltap::db Error listing file links for browser collection=doc_mount_file_links mountPointId={mp} error=no such column: f.source"
+        )), "{lines:?}");
+        w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_files RENAME COLUMN source_x TO source; \
+                 ALTER TABLE doc_mount_file_links RENAME COLUMN linkGroupId TO linkGroupId_x",
+            )
+            .unwrap();
+        let (r, lines) =
+            crate::test_support::captured_with(|| repo.clear_link_group_or_default(&b));
+        assert_eq!(
+            r,
+            ClearLinkGroupResult {
+                group_id: None,
+                dissolved: false
+            }
+        );
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with(&format!(
+            "ERROR quilltap::db Error clearing hard-link group collection=doc_mount_file_links linkId={b} error="
+        )), "{lines:?}");
+        assert_eq!(
+            serde_json::to_string(&r).unwrap(),
+            r#"{"groupId":null,"dissolved":false}"#
+        );
+    }
+}
+// === /P4.D381 ===
+
 /// Read a REAL-affinity `chunkCount` cell as i64, tolerating both Integer and
 /// Real (`0.0`) storage forms (the column is `REAL DEFAULT 0`). NULL/other → 0.
 fn real_affinity_i64(v: rusqlite::types::ValueRef<'_>) -> i64 {
