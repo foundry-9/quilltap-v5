@@ -1,97 +1,39 @@
 //! Scenario Builder mount pool — "what this chat could see", before the chat
-//! exists (v4 `lib/scenario-builder/mount-pool.ts`, `d1c06cd9d`,
+//! exists (v4 `lib/scenario-builder/mount-pool.ts`,
 //! `resolveScenarioBuilderMountPool`).
 //!
-//! v4's own header, carried: the Scenario Builder runs a character-less tool
-//! loop that must read exactly the stores a chat with this cast (and project)
-//! would reach — every cast member's vault, the union of every cast member's
-//! group stores, the project's stores, and Quilltap General. Launched from a
-//! group's page, the run also names that group outright (`groupIds`, v4
-//! `08c49319d`), whose stores join the group tier whether or not any cast
-//! member belongs to it — FIRST, ahead of the cast union, so the first-
-//! occurrence dedup keeps a named group's stores in the named group's place.
-//! [`resolve_tiered_mount_pool`](crate::db::tiered_mount_pool::resolve_tiered_mount_pool)
-//! cannot express that (its group tier is keyed on a single responding
-//! character), so the pool is assembled here by hand from the same per-tier
-//! helpers, in precedence order, and deduped with the same rule
-//! ([`dedupe_tier_triple`]). The cast vaults sit in the PARTICIPANT tier; there
-//! is no acting character, so `character_mount_point_id` is always `None`.
-//! Consumers flatten with `include_participants: true`. Any tier whose lookup
-//! fails drops out with a `warn`; this never fails.
+//! v4's header, carried (as of `0c47f4539`): the Scenario Builder runs a
+//! character-less tool loop that must read exactly the stores a chat with this
+//! cast (and project) would reach — every cast member's vault, the union of
+//! every cast member's group stores, the project's stores, and Quilltap
+//! General. Launched from a group's page, the run also names that group
+//! outright (`groupIds`), whose stores join the group tier whether or not any
+//! cast member belongs to it.
 //!
-//! ## The reads, and one that is v5's by necessity
+//! That is a cast's reach, and a cast's reach is
+//! [`resolve_cast_pool`](crate::db::reach::resolve_cast_pool); this module is
+//! the Builder's name for it. The cast vaults sit in the participant tier and
+//! `character_mount_point_id` is always `None`, so consumers flatten with
+//! `include_participants: true`. Any tier whose lookup fails drops out; this
+//! never fails.
 //!
-//! - The cast is read RAW (`characters_read::find_by_id_raw` — no vault
-//!   overlay): v4 wants only the vault pointer, the owner and the archive flag,
-//!   and "a broken vault overlay must cost a tier, not the run". (The ROUTE's
-//!   cast scoping reads the OVERLAID, user-scoped `findById` — two different
-//!   reads over the same ids, both kept; §R.4(f).)
-//! - The project tier is v4's `resolveProjectMountPointIds`, which v5 never
-//!   grew as a function — `resolve_tiered_mount_pool` inlines the same
-//!   `ProjectDocMountLinksRepository::find_by_project_id` read. That read is
-//!   inlined here too ([`project_mount_point_ids`]), with v4's fail-soft WARN
-//!   (`db/**` is outside this lane's ownership, so the helper is not hoisted).
-//! - Quilltap General is `get_general_mount_point_id`. **Its WARN arm is
-//!   unreachable on BOTH sides**: v4's `readSetting` catches its own failure
-//!   (logging `[InstanceSettings] Failed to read setting` and answering `null`),
-//!   and v5's `read_setting` does the same since P4.113 (the WARN, then
-//!   `None`). The family's poisoned-settings arm measures exactly that (both
-//!   pools lose the global tier; neither pool logger warns; the
-//!   `[InstanceSettings]` WARN is pinned on both sides).
-//!
-//! ## The four log lines (logger `ScenarioBuilderMountPool`) — two unreachable
-//!
-//! DEBUG `Archived cast member contributes nothing to the pool` `{ characterId }`
-//! and DEBUG `Resolved Scenario Builder mount pool` `{ castCount,
-//! liveCastCount, namedGroupCount, participants, groups, projects, hasGlobal }`
-//! (`namedGroupCount` since `08c49319d`, counted post-dedup) are ported and
-//! pinned. v4's two WARNs are UNREACHABLE through v4's real code, measured:
-//! `Cast vault lookup failed; tier dropped for this character` sits behind
-//! `findByIdRaw`, a fallback-mode `safeQuery` that never throws (see the read
-//! loop), and `Quilltap General lookup failed; global tier dropped` sits
-//! behind `readSetting`, which catches its own failure (see above). v5 keeps
-//! the General arm's shape (its reader is `Result`-typed) and reproduces the
-//! cast read's `safeQuery` fallback in place of its WARN. Both unreachable
-//! lines are recorded in the P4.D217 lane record; v4's `mount-pool.test.ts`
-//! reaches them only by mocking the repositories to throw.
+//! P4.D376: the module's own walk and its three `ScenarioBuilderMountPool`
+//! lines are GONE (v4 deleted them), replaced by reach's — `[Reach] Archived
+//! cast member contributes nothing to the pool` and `[Reach] Resolved cast
+//! pool`, whose `namedGroupCount` is the RAW `groupIds` length — and the
+//! project tier is the shared `resolve_project_mount_point_ids` (official
+//! first; this module's private `Project mount lookup failed` WARN went with
+//! it). v4 answers the whole `CastPool` typed as a `TieredMountPool`; v5 hands
+//! back the pool half, since no consumer serialises it (the run's DEBUG reads
+//! only its counts).
 
 use rusqlite::Connection;
-use serde_json::Value;
 
-use crate::db::characters_read;
-use crate::db::instance_settings::get_general_mount_point_id;
-use crate::db::project_doc_mount_links::ProjectDocMountLinksRepository;
-use crate::db::tiered_mount_pool::{
-    dedupe_tier_triple, resolve_group_mount_point_ids_for_character,
-    resolve_mount_point_ids_for_group, TierTriple, TieredMountPool,
-};
-
-/// Push `id` onto `list` unless already present — JS `[...new Set(xs)]`
-/// (insertion-ordered).
-fn push_unique(list: &mut Vec<String>, id: &str) {
-    if !list.iter().any(|x| x == id) {
-        list.push(id.to_string());
-    }
-}
-
-/// v4 `resolveProjectMountPointIds(projectId)` — `[]` for a missing id or a
-/// failed lookup (WARN `Project mount lookup failed`, v4's `TieredMountPool`
-/// logger).
-fn project_mount_point_ids(mount: &Connection, project_id: Option<&str>) -> Vec<String> {
-    let Some(project_id) = project_id.filter(|p| !p.is_empty()) else {
-        return Vec::new();
-    };
-    match ProjectDocMountLinksRepository::new(mount).find_by_project_id(project_id) {
-        Ok(ids) => ids,
-        Err(e) => {
-            tracing::warn!(projectId = %project_id, error = %e, "Project mount lookup failed");
-            Vec::new()
-        }
-    }
-}
+use crate::db::reach::{resolve_cast_pool, CastPoolOptions};
+use crate::db::tiered_mount_pool::TieredMountPool;
 
 /// v4 `resolveScenarioBuilderMountPool({ userId, projectId, characterIds,
-/// groupIds })`.
+/// groupIds })` — `return resolveCastPool(opts)`.
 pub fn resolve_scenario_builder_mount_pool(
     main: &Connection,
     mount: &Connection,
@@ -100,140 +42,30 @@ pub fn resolve_scenario_builder_mount_pool(
     character_ids: &[String],
     group_ids: &[String],
 ) -> TieredMountPool {
-    // `[...new Set((opts.groupIds ?? []).filter(Boolean))]` — BEFORE the cast
-    // ids, as v4 computes it.
-    let mut named_group_ids: Vec<String> = Vec::new();
-    for id in group_ids.iter().filter(|id| !id.is_empty()) {
-        push_unique(&mut named_group_ids, id);
-    }
-    // `[...new Set(characterIds.filter(Boolean))]`
-    let mut cast_ids: Vec<String> = Vec::new();
-    for id in character_ids.iter().filter(|id| !id.is_empty()) {
-        push_unique(&mut cast_ids, id);
-    }
-
-    // 1. Cast vaults. Raw reads: only the vault pointer, the owner and the
-    //    archive flag are wanted, and a broken vault overlay must cost a tier,
-    //    not the run. An archived character is a tombstone and contributes
-    //    nothing — never `ensureCharacterVault` one here.
-    let mut live_cast_ids: Vec<String> = Vec::new();
-    let mut vault_ids: Vec<String> = Vec::new();
-    for character_id in &cast_ids {
-        // v4's `findByIdRaw` is `_findById`, i.e. `safeQuery(…, 'Error
-        // finding entity by ID', { id }, null)` in FALLBACK mode
-        // (`base.repository.ts:236-246`): a failed read — a row that no
-        // longer decodes included — logs that line at the repository and
-        // answers `null`, so v4's pool skips the member SILENTLY and its own
-        // `Cast vault lookup failed` WARN never fires. v5's raw read
-        // surfaces the error instead, so the fallback is taken through the
-        // ONE home (`db::fallback`), not the unreachable WARN.
-        // Measured: the family's `unreadable-member-warns` arm (a BLOB
-        // `name`) — v4's pool logger is silent.
-        let Some(character) =
-            crate::db::fallback::find_by_id_or_none("characters", character_id, || {
-                characters_read::find_by_id_raw(main, character_id)
-            })
-        else {
-            continue;
-        };
-        let character: Value = character;
-        let str_of = |k: &str| character.get(k).and_then(Value::as_str);
-        // `character.userId && character.userId !== userId` — an empty owner
-        // is falsy and admitted.
-        if let Some(owner) = str_of("userId").filter(|o| !o.is_empty()) {
-            if owner != user_id {
-                continue;
-            }
-        }
-        if str_of("archivedAt").is_some_and(|a| !a.is_empty()) {
-            tracing::debug!(
-                characterId = %character_id,
-                "Archived cast member contributes nothing to the pool"
-            );
-            continue;
-        }
-        live_cast_ids.push(character_id.clone());
-        if let Some(vault) = str_of("characterDocumentMountPointId").filter(|v| !v.is_empty()) {
-            vault_ids.push(vault.to_string());
-        }
-    }
-
-    // 2. Group stores — the named groups, then the union over the whole cast
-    //    (both helpers fail soft). One plain list; `dedupe_tier_triple` keeps
-    //    each id's FIRST occurrence.
-    let mut group_tier_ids: Vec<String> = Vec::new();
-    for group_id in &named_group_ids {
-        group_tier_ids.extend(resolve_mount_point_ids_for_group(main, mount, group_id));
-    }
-    for character_id in &live_cast_ids {
-        group_tier_ids.extend(resolve_group_mount_point_ids_for_character(
-            main,
-            mount,
-            character_id,
-        ));
-    }
-
-    // 3. Project stores (fails soft to []).
-    let project_ids = project_mount_point_ids(mount, project_id);
-
-    // 4. Quilltap General (`None` during the pre-provisioning window).
-    let global_mount_point_id = match get_general_mount_point_id(main) {
-        Ok(g) => g,
-        Err(e) => {
-            tracing::warn!(error = %e, "Quilltap General lookup failed; global tier dropped");
-            None
-        }
-    };
-
-    // 5. Scoped-tier dedup, then participants excluded from every scoped tier
-    //    so each mount classifies into exactly one bucket.
-    let deduped = dedupe_tier_triple(TierTriple {
-        character_mount_point_id: None,
-        group_mount_point_ids: group_tier_ids,
-        project_mount_point_ids: project_ids,
-        global_mount_point_id,
-    });
-    let excluded = |id: &String| {
-        deduped.group_mount_point_ids.contains(id)
-            || deduped.project_mount_point_ids.contains(id)
-            || deduped.global_mount_point_id.as_ref() == Some(id)
-    };
-    let mut participant_mount_point_ids: Vec<String> = Vec::new();
-    for id in &vault_ids {
-        push_unique(&mut participant_mount_point_ids, id);
-    }
-    participant_mount_point_ids.retain(|id| !excluded(id));
-
-    let pool = TieredMountPool {
-        character_mount_point_id: deduped.character_mount_point_id,
-        participant_mount_point_ids,
-        group_mount_point_ids: deduped.group_mount_point_ids,
-        project_mount_point_ids: deduped.project_mount_point_ids,
-        global_mount_point_id: deduped.global_mount_point_id,
-    };
-    tracing::debug!(
-        castCount = cast_ids.len(),
-        liveCastCount = live_cast_ids.len(),
-        namedGroupCount = named_group_ids.len(),
-        participants = pool.participant_mount_point_ids.len(),
-        groups = pool.group_mount_point_ids.len(),
-        projects = pool.project_mount_point_ids.len(),
-        hasGlobal = pool.global_mount_point_id.is_some(),
-        "Resolved Scenario Builder mount pool"
-    );
-    pool
+    resolve_cast_pool(
+        main,
+        mount,
+        &CastPoolOptions {
+            user_id,
+            project_id,
+            character_ids,
+            group_ids,
+        },
+    )
+    .pool
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// P4.D231: the pool DEBUG's field ORDER — `namedGroupCount` right after
-    /// `liveCastCount`, v4's key order. The tier-2 family compares the fields
-    /// as a SET (its structural capture cannot see order), so the position is
-    /// pinned here, over the rendered line.
+    /// The pool DEBUG is reach's (P4.D376, v4 `0c47f4539`): `namedGroupCount`
+    /// counts the RAW `groupIds` — `["g-1", "", "g-1"]` is THREE (P4.D231's pin
+    /// said one, counted post-dedup; v4 at `624d0d25c` says three). The field
+    /// ORDER is pinned over the rendered line (the tier-2 family compares the
+    /// fields as a set).
     #[test]
-    fn the_pool_line_carries_named_group_count_after_live_cast_count() {
+    fn the_pool_line_is_reachs_and_counts_the_raw_named_groups() {
         let main = Connection::open_in_memory().unwrap();
         let mount = Connection::open_in_memory().unwrap();
         let named = vec!["g-1".to_string(), String::new(), "g-1".to_string()];
@@ -242,13 +74,23 @@ mod tests {
         });
         let line = lines
             .iter()
-            .find(|l| l.contains("Resolved Scenario Builder mount pool"))
+            .find(|l| l.contains("[Reach] Resolved cast pool"))
             .unwrap_or_else(|| panic!("{lines:?}"));
         assert!(
+            line.starts_with("DEBUG quilltap_core::db::reach "),
+            "{line}"
+        );
+        assert!(
             line.contains(
-                " castCount=0 liveCastCount=0 namedGroupCount=1 participants=0 groups=0 projects=0 hasGlobal=false"
+                " castCount=0 liveCastCount=0 namedGroupCount=3 participants=0 groups=0 projects=0 hasGlobal=false"
             ),
             "{line}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Scenario Builder mount pool")),
+            "the old line is gone: {lines:?}"
         );
     }
 }

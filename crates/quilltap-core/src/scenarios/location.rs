@@ -35,23 +35,20 @@
 
 use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::db::chats::ScenarioRef;
 use crate::db::database_store::{
     delete_database_document, move_database_document, write_database_document, StoreError,
 };
 use crate::db::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-use crate::db::ensure_official_store::{ensure_owner_official_store, StoreOwnerKind};
-use crate::db::instance_settings::get_general_mount_point_id;
 use crate::db::scenarios::{
     build_scenario_file_content, build_scenario_list, is_scenario_content_archived,
     parse_scenario_doc, resolve_scenario_path, set_scenario_default_in_folder, ListScenariosResult,
     ParsedScenario, ScenarioListLogContext, ScenarioPathResolution, ScenarioWriteError,
     SCENARIOS_FOLDER,
 };
-use crate::db::{characters_read, groups, projects, DbError};
+use crate::db::DbError;
 use crate::scenarios::decode_uri::{js_decode_uri_component, UriMalformed};
 use crate::vault_overlay::{
     parse_scenario_file, sanitize_file_name, stable_uuid_from_string, VaultDoc,
@@ -662,28 +659,6 @@ impl CharacterRow {
     }
 }
 
-/// v4 `ensureScenariosFolder(mp)` (`location.ts:408-418`): heal `Scenarios/`;
-/// a failure is the writer's to see — WARN `[ScenarioLocation] Failed to
-/// ensure Scenarios folder {mountPointId, error}`, then RETHROW (the pre-span
-/// General helper swallowed it).
-fn ensure_scenarios_folder(
-    mount: &Connection,
-    mount_point_id: &str,
-) -> Result<(), ScenarioLocationError> {
-    if let Err(error) =
-        DocMountFileLinksRepository::new(mount).ensure_folder_path(mount_point_id, SCENARIOS_FOLDER)
-    {
-        let text = crate::db::fallback::error_text(&error);
-        tracing::warn!(
-            mountPointId = %mount_point_id,
-            error = %text,
-            "[ScenarioLocation] Failed to ensure Scenarios folder"
-        );
-        return Err(ScenarioLocationError::Other(text));
-    }
-    Ok(())
-}
-
 /// v4 `resolveScenarioLocation(scope, id, repos, userId, { ensure })`
 /// (`location.ts:369-401`): the location, or `None` when the owner is missing
 /// (or, for a character, not `user_id`'s, archived, or vaultless), when a
@@ -734,7 +709,17 @@ pub fn resolve_store_scenario_location(
     )
 }
 
-/// v4's private `resolve` (`location.ts:420-462`).
+// === P4.D376 ===
+/// v4's private `resolve` (`location.ts:403-425` at `624d0d25c`) — since
+/// `0c47f4539` a wrapper over the shared owner → store walk
+/// ([`crate::db::reach::resolve_owner_store`]). v4's *why*: an `ensure` caller
+/// is a writer about to write, or a startup heal, so a folder failure is
+/// theirs to see — `onFolderFailure: 'throw'` (the reach WARN `[Reach] Failed
+/// to ensure Scenarios folder {mountPointId, folder, context: 'scenarios'}`
+/// replaces this module's old `[ScenarioLocation]` one). `archived: 'refuse'`:
+/// an archived character holds no scenarios (the reach DEBUG `[Reach] Archived
+/// character refused`). A project / group is named `name || 'Project' |
+/// 'Group'`.
 fn resolve(
     main: &Connection,
     mount: &Connection,
@@ -743,84 +728,63 @@ fn resolve(
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<ScenarioLocation>, ScenarioLocationError> {
-    if scope == ScenarioScope::General {
-        let Some(mount_point_id) = get_general_mount_point_id(main)? else {
-            return Ok(None);
-        };
-        if ensure {
-            ensure_scenarios_folder(mount, &mount_point_id)?;
+    use crate::db::reach::{
+        resolve_owner_store, Archived, EnsureFolder, OwnerFolderFailure, OwnerScope,
+        ResolveOwnerStoreOptions,
+    };
+    let owner_scope = match scope {
+        ScenarioScope::General => OwnerScope::General,
+        ScenarioScope::Character => OwnerScope::Character,
+        ScenarioScope::Project => OwnerScope::Project,
+        ScenarioScope::Group => OwnerScope::Group,
+    };
+    let opts = ResolveOwnerStoreOptions {
+        ensure: ensure.then_some(EnsureFolder {
+            folder: SCENARIOS_FOLDER,
+            on_folder_failure: OwnerFolderFailure::Throw,
+        }),
+        archived: Archived::Refuse,
+        context: Some("scenarios"),
+    };
+    let Some(store) = resolve_owner_store(main, mount, owner_scope, id, user_id, &opts)? else {
+        return Ok(None);
+    };
+    match store.scope {
+        OwnerScope::Character => {
+            let Some(row) = store.character.as_ref() else {
+                return Ok(None);
+            };
+            Ok(CharacterRow::from_raw(row)
+                .usable(user_id)
+                .map(ScenarioLocation::Character))
         }
-        return Ok(Some(ScenarioLocation::Store(StoreScenarioLocation {
+        OwnerScope::General => Ok(Some(ScenarioLocation::Store(StoreScenarioLocation {
             scope,
             id: None,
-            mount_point_id,
+            mount_point_id: store.mount_point_id,
             owner_name: GENERAL_OWNER_NAME.to_string(),
-        })));
+        }))),
+        OwnerScope::Project | OwnerScope::Group => {
+            let fallback = if store.scope == OwnerScope::Project {
+                "Project"
+            } else {
+                "Group"
+            };
+            let name = if store.owner.name.is_empty() {
+                fallback.to_string()
+            } else {
+                store.owner.name
+            };
+            Ok(Some(ScenarioLocation::Store(StoreScenarioLocation {
+                scope,
+                id: store.owner.id,
+                mount_point_id: store.mount_point_id,
+                owner_name: name,
+            })))
+        }
     }
-
-    // JS truthiness: '' is no id.
-    let Some(id) = id.filter(|i| !i.is_empty()) else {
-        return Ok(None);
-    };
-
-    if scope == ScenarioScope::Character {
-        // Raw read: only the row's mount pointer and name are needed, and a
-        // broken vault should cost a null rather than a throw. `ensure` is
-        // ignored for characters.
-        let Some(row) = characters_read::find_by_id_raw_or_none(main, id) else {
-            return Ok(None);
-        };
-        return Ok(CharacterRow::from_raw(&row)
-            .usable(user_id)
-            .map(ScenarioLocation::Character));
-    }
-
-    // Raw read: only `name` and `officialMountPointId` are needed.
-    let (owner, kind, fallback_name) = match scope {
-        ScenarioScope::Project => (
-            projects::find_by_id_raw_or_none(main, id),
-            StoreOwnerKind::Project,
-            "Project",
-        ),
-        _ => (
-            groups::find_by_id_raw_or_none(main, id),
-            StoreOwnerKind::Group,
-            "Group",
-        ),
-    };
-    let Some(owner) = owner else {
-        return Ok(None);
-    };
-    let owner_id = str_field(&owner, "id").unwrap_or(id).to_string();
-    let name = str_field(&owner, "name")
-        .filter(|n| !n.is_empty())
-        .unwrap_or(fallback_name)
-        .to_string();
-
-    let mount_point_id = if ensure {
-        let Some(ensured) = ensure_owner_official_store(main, mount, kind, &owner_id, &name)?
-        else {
-            return Ok(None);
-        };
-        ensure_scenarios_folder(mount, &ensured.mount_point_id)?;
-        Some(ensured.mount_point_id)
-    } else {
-        str_field(&owner, "officialMountPointId").map(str::to_string)
-    };
-    let Some(mount_point_id) = mount_point_id.filter(|m| !m.is_empty()) else {
-        return Ok(None);
-    };
-    Ok(Some(ScenarioLocation::Store(StoreScenarioLocation {
-        scope,
-        id: Some(owner_id),
-        mount_point_id,
-        owner_name: name,
-    })))
 }
-
-fn str_field<'a>(row: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-    row.get(key).and_then(Value::as_str)
-}
+// === end P4.D376 ===
 
 /// What [`classify`] found: the owner, and (for a character) the row it read.
 struct Classified {
@@ -839,31 +803,29 @@ pub fn classify_scenario_mount(
     Ok(classify(main, mount_point_id, user_id)?.map(|c| (c.scope, c.id)))
 }
 
-/// v4's private `classify` (`location.ts:475-504`), ORDER: General → a
-/// character's vault (another user's or an archived one → DEBUG `Mount
-/// belongs to an unavailable character` → `None`) → a project's official
-/// store → a group's. A LINKED (non-official) store or an arbitrary
-/// Scriptorium store classifies as nothing.
+// === P4.D376 ===
+/// v4's private `classify` (`location.ts:438-460` at `624d0d25c`) — since
+/// `0c47f4539` a filter over the shared [`crate::db::reach::classify_mount`]
+/// (General → a character's vault → a project's official store → a group's; a
+/// LINKED store or an arbitrary Scriptorium store classifies as nothing):
+/// another user's or an archived character's vault holds no scenarios for
+/// this caller (DEBUG `Mount belongs to an unavailable character`).
 fn classify(
     main: &Connection,
     mount_point_id: &str,
     user_id: &str,
 ) -> Result<Option<Classified>, ScenarioLocationError> {
-    if get_general_mount_point_id(main)?.as_deref() == Some(mount_point_id) {
-        return Ok(Some(Classified {
-            scope: ScenarioScope::General,
-            id: None,
-            character: None,
-        }));
-    }
-
-    if let Some(raw) = characters_read::find_by_document_mount_point_id_raw(main, mount_point_id) {
-        let row = CharacterRow::from_raw(&raw);
-        if row.user_id != user_id || row.archived {
+    use crate::db::reach::{classify_mount, OwnerScope};
+    let Some(owner) = classify_mount(main, mount_point_id)? else {
+        return Ok(None);
+    };
+    if let Some(raw) = owner.character.as_ref() {
+        let row = CharacterRow::from_raw(raw);
+        if row.user_id != user_id || owner.archived {
             tracing::debug!(
                 mountPointId = %mount_point_id,
                 characterId = %row.id,
-                archived = row.archived,
+                archived = owner.archived,
                 "[ScenarioLocation] Mount belongs to an unavailable character"
             );
             return Ok(None);
@@ -874,25 +836,19 @@ fn classify(
             character: Some(row),
         }));
     }
-
-    if let Some(project) = projects::find_by_official_mount_point_id_raw(main, mount_point_id) {
-        return Ok(Some(Classified {
-            scope: ScenarioScope::Project,
-            id: str_field(&project, "id").map(str::to_string),
-            character: None,
-        }));
-    }
-
-    if let Some(group) = groups::find_by_official_mount_point_id_raw(main, mount_point_id) {
-        return Ok(Some(Classified {
-            scope: ScenarioScope::Group,
-            id: str_field(&group, "id").map(str::to_string),
-            character: None,
-        }));
-    }
-
-    Ok(None)
+    let scope = match owner.scope {
+        OwnerScope::General => ScenarioScope::General,
+        OwnerScope::Project => ScenarioScope::Project,
+        OwnerScope::Group => ScenarioScope::Group,
+        OwnerScope::Character => ScenarioScope::Character,
+    };
+    Ok(Some(Classified {
+        scope,
+        id: owner.owner_id,
+        character: None,
+    }))
 }
+// === end P4.D376 ===
 
 /// v4 `ScenarioRefLookup` (`location.ts:507-510`) — for callers that must tell
 /// a refusal from a miss.
@@ -1000,7 +956,7 @@ mod fallback_read_tests {
                 |r| r.get(0),
             )
             .unwrap();
-        DocMountFileLinksRepository::new(w.connection())
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(w.connection())
             .write_database_document(&mp, "Scenarios/a.md", "---\nname: A\n---\nbody")
             .unwrap();
         w.connection()

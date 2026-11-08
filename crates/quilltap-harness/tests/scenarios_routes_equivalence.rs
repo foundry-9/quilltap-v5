@@ -187,6 +187,10 @@ const LINE_PREFIXES: &[&str] = &[
     "Scenario file body is empty; skipping",
     "Scenarios: multiple isDefault: true entries",
     "Failed to demote a previously-default scenario",
+    // === P4.D376 === (v4 `0c47f4539`): the location's folder WARN and its
+    // archived DEBUG are reach's lines now.
+    "[Reach] ",
+    // === end P4.D376 ===
 ];
 
 /// The rows whose v4 route param the oracle HTTP-ENCODES (L-6: v4's factory
@@ -1557,7 +1561,11 @@ fn scenarios_routes_match_oracle() {
             false,
             &spec.user_id,
         ));
-        err("project_list_folder_failure_500", &resp, &mut failed);
+        // === P4.D376 === v4 #136 (`0c47f4539`): the list no longer heals, so
+        // the planted folder failure is never reached — 200 at the pin (the
+        // row keeps its id; its premise moved with the hunk).
+        ok("project_list_folder_failure_500", &resp, false, &mut failed);
+        // === end P4.D376 ===
     }
     {
         let db = fresh_db(&spec, "u_folder_fail");
@@ -1797,6 +1805,127 @@ fn scenarios_routes_match_oracle() {
         }
         lines_check(name, lines, &mut failed);
     }
+
+    // === P4.D376 === v4 #136: the list GETs read and never provision; the
+    // create still provisions; the cast GET skips a store-less group. Each row
+    // compares the store census after the call (v4 `storeCensus`).
+    {
+        let unlink = |db: &Db, table: &'static str, id: &'static str| {
+            db.write_blocking(move |w| {
+                w.main().connection().execute(
+                    &format!(
+                        "UPDATE \"{table}\" SET \"officialMountPointId\" = NULL WHERE \"id\" = ?1"
+                    ),
+                    [id],
+                )?;
+                Ok(())
+            })
+            .expect("unlink owner");
+        };
+        let census = |db: &Db| -> Value {
+            let mount_count: i64 = db
+                .read_mount_index(|m| {
+                    Ok(m.query_row("SELECT COUNT(*) FROM doc_mount_points", [], |r| r.get(0))?)
+                })
+                .unwrap();
+            db.read_main(|c| {
+                let has = |table: &str, id: &str| -> bool {
+                    c.query_row(
+                        &format!("SELECT officialMountPointId FROM {table} WHERE id = ?1"),
+                        [id],
+                        |r| r.get::<_, Option<String>>(0),
+                    )
+                    .ok()
+                    .flatten()
+                    .is_some()
+                };
+                Ok(json!({
+                    "mountCount": mount_count,
+                    "projectOfficial": has("projects", IOTA),
+                    "groupOfficial": has("groups", GAMMA),
+                    "beaconOfficial": has("groups", BEACON),
+                }))
+            })
+            .unwrap()
+        };
+        let stores_match = |name: &str, db: &Db, failed: &mut Vec<String>| {
+            let got = census(db);
+            if got != oracle[name]["stores"] {
+                eprintln!(
+                    "[{name}] STORES MISMATCH: v4 {} v5 {got}",
+                    oracle[name]["stores"]
+                );
+                failed.push(format!("{name}(stores)"));
+            }
+        };
+        {
+            let name = "p4d376_project_list_no_store";
+            let db = fresh_db(&spec, name);
+            unlink(&db, "projects", IOTA);
+            let resp = rt.block_on(projects::project_scenario_list(
+                &db,
+                IOTA,
+                false,
+                &spec.user_id,
+            ));
+            ok(name, &resp, false, &mut failed);
+            stores_match(name, &db, &mut failed);
+        }
+        {
+            let name = "p4d376_group_list_no_store";
+            let db = fresh_db(&spec, name);
+            unlink(&db, "groups", GAMMA);
+            let resp = rt.block_on(groups::group_scenario_list(
+                &db,
+                GAMMA,
+                false,
+                &spec.user_id,
+            ));
+            ok(name, &resp, false, &mut failed);
+            stores_match(name, &db, &mut failed);
+        }
+        {
+            let name = "p4d376_project_create_no_store";
+            let db = fresh_db(&spec, name);
+            unlink(&db, "projects", IOTA);
+            let resp = rt.block_on(projects::project_scenario_create(
+                &db,
+                IOTA,
+                json!({ "filename": "fresh", "body": "Fresh." }),
+                &spec.user_id,
+            ));
+            ok(name, &resp, true, &mut failed);
+            stores_match(name, &db, &mut failed);
+        }
+        {
+            let name = "p4d376_group_create_no_store";
+            let db = fresh_db(&spec, name);
+            unlink(&db, "groups", GAMMA);
+            let resp = rt.block_on(groups::group_scenario_create(
+                &db,
+                GAMMA,
+                json!({ "filename": "fresh", "body": "Fresh." }),
+                &spec.user_id,
+            ));
+            ok(name, &resp, true, &mut failed);
+            stores_match(name, &db, &mut failed);
+            folders_match(name, &db, "group", &mut failed);
+        }
+        {
+            let name = "p4d376_union_storeless_group";
+            let db = fresh_db(&spec, name);
+            unlink(&db, "groups", BEACON);
+            let resp = rt.block_on(groups::group_scenarios_union(
+                &db,
+                vec![ARIA.to_string()],
+                false,
+                &spec.user_id,
+            ));
+            ok(name, &resp, false, &mut failed);
+            stores_match(name, &db, &mut failed);
+        }
+    }
+    // === end P4.D376 ===
 
     assert!(failed.is_empty(), "scenarios-routes FAILED: {failed:?}");
 }

@@ -845,9 +845,11 @@ mod tests {
     }
 
     /// L-7 (P4.D295, v4 `545e299bb`): the General heal is the scenario
-    /// location's `ensure`, so a folder failure logs the location's WARN
-    /// `[ScenarioLocation] Failed to ensure Scenarios folder {mountPointId,
-    /// error}` (L2 — the bare driver message, never `sqlite error: `) and the
+    /// location's `ensure`, so a folder failure logs — since P4.D376 (v4
+    /// `0c47f4539`) — the shared reach WARN `[Reach] Failed to ensure Scenarios
+    /// folder {mountPointId, folder, context: 'scenarios', error}` (it replaced
+    /// the location's `[ScenarioLocation]` line; L2 — the bare driver message,
+    /// never `sqlite error: `) and the
     /// error PROPAGATES to the host's `Error ensuring general scenarios folder,
     /// continuing startup` (L37). v4's `[GeneralScenarios]` WARN is gone.
     #[test]
@@ -868,7 +870,7 @@ mod tests {
         assert_eq!(warns.len(), 1, "{lines:?}");
         assert!(
             warns[0].starts_with(
-                "WARN quilltap_core::scenarios::location [ScenarioLocation] Failed to ensure Scenarios folder mountPointId=gen-1 error=no such column: "
+                "WARN quilltap_core::db::reach [Reach] Failed to ensure Scenarios folder mountPointId=gen-1 folder=Scenarios context=scenarios error=no such column: "
             ),
             "{}",
             warns[0]

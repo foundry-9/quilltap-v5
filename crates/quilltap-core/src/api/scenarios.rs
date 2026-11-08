@@ -374,9 +374,14 @@ fn load_location(
 }
 
 /// v4 the collection bodies' `ensureLocation(ownerId, ctx, forWrite)`
-/// (`:309-334`): the RAW owner check (404), then `ensure` — General
-/// unprovisioned is a 400 for a write and an EMPTY 200 for a read; a store
-/// that cannot be provisioned is a 500. Then `afterEnsure`.
+/// (`:314-337` at `624d0d25c`): the RAW owner check (404), then the resolve —
+/// with `ensure` ONLY for a write (v4 #136, `0c47f4539`: "only a writer
+/// provisions; a read probe takes the store as it is"). A read with no
+/// location — General in the pre-migration race, or a project / group with no
+/// store yet — logs DEBUG `${logTag} No ${owner} store yet; no scenarios
+/// {[logIdKey]: ownerId ?? null}` and answers the EMPTY 200. A write with no
+/// location: General → 400, else 500. `afterEnsure` (the group's
+/// `Knowledge/`) only on a write.
 fn ensure_location(
     main: &Connection,
     mount: &Connection,
@@ -392,26 +397,31 @@ fn ensure_location(
             }
         }
     }
+    // === P4.D376 === (v4 #136: a read never provisions)
     let Some(location) =
-        resolve_store_scenario_location(main, mount, cfg.scope, owner_id, user_id, true)?
+        resolve_store_scenario_location(main, mount, cfg.scope, owner_id, user_id, for_write)?
     else {
+        if !for_write {
+            owner_line!(debug, cfg, owner_id;
+                "{} No {} store yet; no scenarios", cfg.log_tag, cfg.owner());
+            return Ok(Err((cfg.wrap)(
+                json!({ "mountPointId": null, "scenarios": [], "warnings": [] }),
+            )));
+        }
         if cfg.scope == ScenarioScope::General {
-            return Ok(Err(if for_write {
-                bad_request(
-                    "Quilltap General mount has not been provisioned yet — restart the server",
-                )
-            } else {
-                (cfg.wrap)(json!({ "mountPointId": null, "scenarios": [], "warnings": [] }))
-            }));
+            return Ok(Err(bad_request(
+                "Quilltap General mount has not been provisioned yet — restart the server",
+            )));
         }
         return Ok(Err(internal(format!(
             "Failed to ensure {} document store",
             cfg.owner()
         ))));
     };
-    if cfg.ensure_knowledge {
+    if for_write && cfg.ensure_knowledge {
         ensure_group_knowledge_folder(mount, location.mount_point_id())?;
     }
+    // === end P4.D376 ===
     Ok(Ok(location))
 }
 

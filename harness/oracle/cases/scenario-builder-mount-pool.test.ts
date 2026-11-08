@@ -154,7 +154,11 @@ async function main(): Promise<void> {
   // `validateSafe`, on the plain logger), with their `error` bytes.
   const validationLines: Array<Record<string, unknown>> = [];
   const { Logger } = await import('@/lib/logger');
-  for (const level of ['error', 'warn'] as const) {
+  // === P4.D376 === (v4 `0c47f4539`): the pool is `resolveCastPool` now, and
+  // its lines are reach's (`[Reach] …`) on the ROOT logger — recorded here into
+  // `logLines` (the old `ScenarioBuilderMountPool` service logger records
+  // nothing at the pin). `debug` / `info` join the patched levels for them.
+  for (const level of ['error', 'warn', 'info', 'debug'] as const) {
     const original = Logger.prototype[level];
     Logger.prototype[level] = function (
       this: unknown,
@@ -162,6 +166,10 @@ async function main(): Promise<void> {
       context?: Record<string, unknown>,
       ...rest: unknown[]
     ) {
+      if (typeof message === 'string' && message.startsWith('[Reach]')) {
+        logLines.push({ level, message, context: context ?? null });
+      }
+      // === end P4.D376 ===
       if (message === 'Data validation failed' || message === 'Safe validation failed') {
         validationLines.push({
           level,

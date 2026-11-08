@@ -103,7 +103,14 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-const TARGETS: &[&str] = &["quilltap_core::services::scenario_builder::mount_pool"];
+// === P4.D376 === (v4 `0c47f4539`): the pool is `reach::resolve_cast_pool`;
+// its lines are reach's, on `quilltap_core::db::reach` (the module's own
+// target stays listed — it must now log NOTHING).
+const TARGETS: &[&str] = &[
+    "quilltap_core::services::scenario_builder::mount_pool",
+    "quilltap_core::db::reach",
+];
+// === end P4.D376 ===
 
 /// P4.113 — the `read_setting` WARN's target. Captured by this file's OWN
 /// layer ([`SettingsCapture`]), never by widening the shared
@@ -586,7 +593,7 @@ fn scenario_builder_mount_pool_matches_oracle() {
                 }
                 if wl
                     .iter()
-                    .any(|l| l.1 == "Archived cast member contributes nothing to the pool")
+                    .any(|l| l.1 == "[Reach] Archived cast member contributes nothing to the pool")
                 {
                     saw_archived_line = true;
                 }

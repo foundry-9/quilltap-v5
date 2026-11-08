@@ -83,6 +83,10 @@ const LINE_PREFIXES = [
   'Scenario file body is empty; skipping',
   'Scenarios: multiple isDefault: true entries',
   'Failed to demote a previously-default scenario',
+  // === P4.D376 === (v4 `0c47f4539`): the location's folder WARN and archived
+  // DEBUG are reach's now (`[Reach] Failed to ensure Scenarios folder …`).
+  '[Reach] ',
+  // === end P4.D376 ===
 ];
 let capturedLines: string[] = [];
 
@@ -165,6 +169,31 @@ async function folderState(scope: 'group' | 'project' | 'general' | 'beacon') {
       .get(mp, f).n > 0;
   return { scenarios: has('scenarios'), knowledge: has('knowledge') };
 }
+// === P4.D376 ===
+/** The store census (v4 #136): the mount count and the three owners' pointers. */
+async function storeCensus() {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const midb = getRawMountIndexDatabase() as unknown as {
+    prepare: (s: string) => { get: (...a: unknown[]) => { n: number } };
+  };
+  const main = getRawDatabase() as unknown as {
+    prepare: (s: string) => { get: (...a: unknown[]) => { p: string | null } | undefined };
+  };
+  const pointer = (table: string, id: string) =>
+    main.prepare(`SELECT "officialMountPointId" AS p FROM "${table}" WHERE "id" = ?`).get(id)?.p ?? null;
+  return {
+    mountCount: midb.prepare('SELECT COUNT(*) AS n FROM "doc_mount_points"').get().n,
+    projectOfficial: pointer('projects', IOTA) !== null,
+    groupOfficial: pointer('groups', GAMMA) !== null,
+    beaconOfficial: pointer('groups', BEACON) !== null,
+  };
+}
+const unlinkOwner = (table: 'projects' | 'groups', id: string) => () =>
+  mainExec(`UPDATE "${table}" SET "officialMountPointId" = NULL WHERE "id" = ?`, id);
+// === end P4.D376 ===
 /** ARIA's vault mount (the character `?action=read` row). */
 async function ariaVault(): Promise<string> {
   const { getRepositories } = await import('@/lib/repositories/factory');
@@ -229,6 +258,11 @@ interface CaseSpec {
   /** [P4.D295] Mask the created entity's minted ids in the lines (a create
    *  hook) — `<entity>.id` → `<id>`, `.officialMountPointId` → `<mount>`. */
   maskEntity?: 'project' | 'group';
+  // === P4.D376 === After `run`, emit the store census: how many stores the
+  // mount index holds and the three owners' official pointers — v4 #136, a
+  // read never provisions.
+  storesAfter?: true;
+  // === end P4.D376 ===
 }
 
 /** [P4.D120] The mount id behind each scenario scope, resolved at run time. */
@@ -344,6 +378,9 @@ async function runCase(
       lines,
     };
     if (c.folderAfter) payload.folders = await folderState(c.folderAfter);
+    // === P4.D376 ===
+    if (c.storesAfter) payload.stores = await storeCensus();
+    // === end P4.D376 ===
     if (c.readBack) {
       payload.fileBytes = await readScenarioBytes(c.readBack.scope, c.readBack.file);
     }
@@ -899,6 +936,8 @@ async function main(): Promise<void> {
     },
     {
       // The collection ensure's folder heal fails: the location's L2, then L18.
+      // P4.D376 (v4 #136, `0c47f4539`): a list never heals now, so the failure
+      // is never reached and the row answers 200 (id kept).
       name: 'project_list_folder_failure_500',
       prep: async () => {
         await dropFolder('project', 'Scenarios')();
@@ -995,6 +1034,27 @@ async function main(): Promise<void> {
       name: 'general_read_malformed_percent',
       run: async () => generalCollection('GET', undefined, readQuery(await scopeMount('general'), 'Scenarios/%E0.md')),
     },
+    // === P4.D376 === v4 #136 (`0c47f4539`): a store-less owner's list GET
+    // answers the empty 200 with the DEBUG and provisions NOTHING; a create on
+    // the same owner still provisions (adopting the existing named store) and
+    // heals `Knowledge/` for a group; the cast GET skips a store-less group.
+    { name: 'p4d376_project_list_no_store', prep: unlinkOwner('projects', IOTA), run: () => projectCollection('GET', IOTA), storesAfter: true },
+    { name: 'p4d376_group_list_no_store', prep: unlinkOwner('groups', GAMMA), run: () => groupCollection('GET', GAMMA), storesAfter: true },
+    {
+      name: 'p4d376_project_create_no_store',
+      prep: unlinkOwner('projects', IOTA),
+      run: () => projectCollection('POST', IOTA, { filename: 'fresh', body: 'Fresh.' }),
+      storesAfter: true,
+    },
+    {
+      name: 'p4d376_group_create_no_store',
+      prep: unlinkOwner('groups', GAMMA),
+      run: () => groupCollection('POST', GAMMA, { filename: 'fresh', body: 'Fresh.' }),
+      storesAfter: true,
+      folderAfter: 'group',
+    },
+    { name: 'p4d376_union_storeless_group', prep: unlinkOwner('groups', BEACON), run: () => groupsUnion(ARIA), storesAfter: true },
+    // === end P4.D376 ===
     // --- the create hooks (`projects/route.ts:85-99`, `groups/route.ts:100-115`) ---
     {
       name: 'project_create_hook',

@@ -44,12 +44,8 @@ pub use document_search::{search_document_chunks, DocumentSearchOptions, Documen
 pub use crate::doc_edit::qtap_uri;
 
 use crate::db::runtime::Db;
-use crate::db::tiered_mount_pool::{dedupe_tier_triple, TierTriple};
 use crate::db::DbError;
 use crate::jsstr::{is_js_ws, js_trim, utf16_len};
-use crate::literal_boost::{
-    LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
-};
 use crate::markdown::parse_frontmatter;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::token_estimation::estimate_tokens;
@@ -184,48 +180,42 @@ pub async fn retrieve_knowledge_for_turn<P: EmbeddingProvider>(
         .inline_token_threshold
         .unwrap_or(DEFAULT_INLINE_TOKEN_THRESHOLD);
 
-    // Build the tier plan via the shared dedup (character > group > project > global).
-    let deduped = dedupe_tier_triple(TierTriple {
-        character_mount_point_id: params.character_mount_point_id.clone(),
-        group_mount_point_ids: params.group_mount_point_ids.clone(),
-        project_mount_point_ids: params.project_mount_point_ids.clone(),
-        global_mount_point_id: params.global_mount_point_id.clone(),
-    });
-
+    // === P4.D376 ===
+    // Build the tier plan from the caller's pool (v4 `0c47f4539`). The pool
+    // comes from `resolve_tiered_mount_pool`, already deduped (character >
+    // group > project > global), so it is bucketed as-is by the shared
+    // `bucket_mounts` — the same tiers and literal-phrase boosts the
+    // scriptorium search uses. Nothing is deduped here any more: a caller that
+    // hands in a colliding id searches that mount in both tiers, as v4 does.
     struct TierPlan {
         tier: KnowledgeTier,
         mount_point_ids: Vec<String>,
         boost: f64,
     }
-    let mut tiers: Vec<TierPlan> = Vec::new();
-    if let Some(id) = &deduped.character_mount_point_id {
-        tiers.push(TierPlan {
-            tier: KnowledgeTier::Character,
-            mount_point_ids: vec![id.clone()],
-            boost: LITERAL_BOOST_CHARACTER,
-        });
-    }
-    if !deduped.group_mount_point_ids.is_empty() {
-        tiers.push(TierPlan {
-            tier: KnowledgeTier::Group,
-            mount_point_ids: deduped.group_mount_point_ids.clone(),
-            boost: LITERAL_BOOST_GROUP,
-        });
-    }
-    if !deduped.project_mount_point_ids.is_empty() {
-        tiers.push(TierPlan {
-            tier: KnowledgeTier::Project,
-            mount_point_ids: deduped.project_mount_point_ids.clone(),
-            boost: LITERAL_BOOST_PROJECT,
-        });
-    }
-    if let Some(id) = &deduped.global_mount_point_id {
-        tiers.push(TierPlan {
-            tier: KnowledgeTier::Global,
-            mount_point_ids: vec![id.clone()],
-            boost: LITERAL_BOOST_GLOBAL,
-        });
-    }
+    let tiers: Vec<TierPlan> = crate::db::reach::bucket_mounts(
+        &crate::db::tiered_mount_pool::TieredMountPool {
+            character_mount_point_id: params.character_mount_point_id.clone(),
+            participant_mount_point_ids: Vec::new(),
+            group_mount_point_ids: params.group_mount_point_ids.clone(),
+            project_mount_point_ids: params.project_mount_point_ids.clone(),
+            global_mount_point_id: params.global_mount_point_id.clone(),
+        },
+        crate::db::reach::BucketScope::All,
+        false,
+    )
+    .into_iter()
+    .map(|b| TierPlan {
+        tier: match b.tier {
+            crate::db::reach::KnowledgeTier::Character => KnowledgeTier::Character,
+            crate::db::reach::KnowledgeTier::Group => KnowledgeTier::Group,
+            crate::db::reach::KnowledgeTier::Project => KnowledgeTier::Project,
+            crate::db::reach::KnowledgeTier::Global => KnowledgeTier::Global,
+        },
+        mount_point_ids: b.mount_point_ids,
+        boost: b.boost,
+    })
+    .collect();
+    // === end P4.D376 ===
 
     if tiers.is_empty() {
         return Ok(KnowledgeRetrievalResult::empty());

@@ -764,7 +764,8 @@ mod tests {
         );
         // P4.D231 (v4 `08c49319d`): `namedGroupCount` right after `castCount`
         // — `input.groupIds?.length ?? 0`, the route's list as handed over, so
-        // a repeated id counts twice here (the pool's own count dedups).
+        // a repeated id counts twice here (and, since P4.D376, in the pool's
+        // reach line as well).
         let logs = logs.lock().unwrap().clone();
         let starting = logs
             .iter()
@@ -776,11 +777,14 @@ mod tests {
             ),
             "{starting}"
         );
+        // === P4.D376 === (v4 `0c47f4539`): the pool line is reach's, and it
+        // counts the RAW `groupIds` too.
         let pool_line = logs
             .iter()
-            .find(|l| l.contains("Resolved Scenario Builder mount pool"))
+            .find(|l| l.contains("[Reach] Resolved cast pool"))
             .unwrap_or_else(|| panic!("{logs:#?}"));
-        assert!(pool_line.contains(" namedGroupCount=1 "), "{pool_line}");
+        assert!(pool_line.contains(" namedGroupCount=2 "), "{pool_line}");
+        // === end P4.D376 ===
         let emitted = emitted.into_inner().unwrap();
         assert!(
             emitted.iter().any(|(after, _)| !after),

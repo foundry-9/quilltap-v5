@@ -46,6 +46,11 @@ interface Spec {
 const PINNED_MESSAGES = [
   '[ScenarioLocation] Resolved scenario location',
   '[ScenarioLocation] Failed to ensure Scenarios folder',
+  // === P4.D376 === (v4 `0c47f4539`): the location resolves through reach —
+  // the folder WARN is re-texted and an archived character gains a DEBUG.
+  '[Reach] Failed to ensure Scenarios folder',
+  '[Reach] Archived character refused',
+  // === end P4.D376 ===
   '[ScenarioLocation] Created scenario',
   '[ScenarioLocation] Updated scenario',
   '[ScenarioLocation] Renamed scenario',

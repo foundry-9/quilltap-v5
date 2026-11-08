@@ -94,6 +94,18 @@
       "provider": "ANTHROPIC",
       "charsPerToken": 3.5,
       "minScore": 0.999
+    },
+    {
+      "label": "p4d376_colliding_character_project",
+      "$comment": "P4.D376 shift (s) (v4 0c47f4539): the injector no longer dedups its own input; the character vault handed in again in the project tier is searched in BOTH tiers at the pin (bucketMounts as-is), where unported v5 deduped it away",
+      "query": "analytical engine",
+      "characterMountPointId": "6b000000-0000-4000-8000-0000000000c1",
+      "groupMountPointIds": ["6b000000-0000-4000-8000-0000000000c2"],
+      "projectMountPointIds": ["6b000000-0000-4000-8000-0000000000c1", "6b000000-0000-4000-8000-0000000000c3"],
+      "globalMountPointId": "6b000000-0000-4000-8000-0000000000c4",
+      "budgetTokens": 2000,
+      "provider": "ANTHROPIC",
+      "charsPerToken": 3.5
     }
   ]
 }

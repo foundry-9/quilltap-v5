@@ -9,7 +9,7 @@
 //!   planted nothing would pass against a deleted call): after boot each has
 //!   an official store holding `Scenarios/`, and the group also `Knowledge/`.
 //! - **C-8 (P4.D295 HANDOFF (1)):** the General heal's failure logs the
-//!   location's L2 (`[ScenarioLocation] Failed to ensure Scenarios folder`)
+//!   location's L2 (`[Reach] Failed to ensure Scenarios folder` since P4.D376)
 //!   THEN the host's L37 (`Error ensuring general scenarios folder, continuing
 //!   startup`), over the location's REAL failing ensure — a `BEFORE INSERT`
 //!   trigger on `doc_mount_folders` added after the General store exists, so
@@ -224,8 +224,11 @@ fn a_failed_general_heal_logs_l2_then_l37() {
     assert_eq!(
         warns,
         [
-            "WARN quilltap_core::scenarios::location [ScenarioLocation] Failed to ensure Scenarios folder \
-             mountPointId=d0000171-0000-4000-8000-0000000000aa error=planted folder failure",
+            // P4.D376 (v4 `0c47f4539`): the location resolves through reach,
+            // whose WARN replaced the location's own.
+            "WARN quilltap_core::db::reach [Reach] Failed to ensure Scenarios folder \
+             mountPointId=d0000171-0000-4000-8000-0000000000aa folder=Scenarios context=scenarios \
+             error=planted folder failure",
             "WARN quilltap::boot Error ensuring general scenarios folder, continuing startup \
              context=instrumentation.register error=planted folder failure",
         ],

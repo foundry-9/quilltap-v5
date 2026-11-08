@@ -805,17 +805,26 @@ pub async fn group_scenarios_union(
             return Ok(Vec::new());
         }
 
+        // === P4.D376 ===
         // Distinct groups any supplied participant belongs to (insertion order —
-        // the final sort makes it deterministic).
-        let members_repo = GroupCharacterMembersRepository::new(mount);
+        // the final sort makes it deterministic), walked through the shared
+        // group tier (`group_mounts_for`, v4 `0c47f4539`) keeping groups whose
+        // stores an earlier group already claimed: each group's own
+        // `Scenarios/` folder is offered under its own name.
         let mut group_ids: Vec<String> = Vec::new();
         for cid in &character_ids {
-            for gid in members_repo.find_group_ids_by_character_id(cid)? {
-                if !group_ids.contains(&gid) {
-                    group_ids.push(gid);
+            for g in crate::db::reach::group_mounts_for(
+                main,
+                mount,
+                cid,
+                crate::db::tiered_mount_pool::GroupMountsOptions { include_empty: true },
+            ) {
+                if !group_ids.contains(&g.group.id) {
+                    group_ids.push(g.group.id);
                 }
             }
         }
+        // === end P4.D376 ===
 
         let mut entries: Vec<Value> = Vec::new();
         for gid in &group_ids {
@@ -826,7 +835,10 @@ pub async fn group_scenarios_union(
                     crate::scenarios::location::ScenarioScope::Group,
                     Some(gid),
                     &user_id,
-                    true,
+                    // === P4.D376 === A read never provisions (v4 #136): a
+                    // group with no store yet has no scenarios.
+                    false,
+                    // === end P4.D376 ===
                 )?
                 else {
                     return Ok(None);
