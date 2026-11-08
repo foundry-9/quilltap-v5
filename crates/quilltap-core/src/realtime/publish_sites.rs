@@ -1821,6 +1821,36 @@ mod mount_store_publish_sites {
         )
         .unwrap();
         assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
+        // Into a FILESYSTEM store the destination write emits nothing of its own
+        // (`write_fs_file_bytes` + the re-index), so this hint is the WRAPPER's
+        // alone — the leg that kills a deleted `copyFile` publish.
+        let base = fx.dir.path().join("fs-store");
+        std::fs::create_dir_all(&base).unwrap();
+        fx.mount
+            .connection()
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE p4d381_fs AS SELECT * FROM doc_mount_points WHERE id = '{}'; \
+                 UPDATE p4d381_fs SET id = 'p4d381-fs', name = 'P4D381 FS', mountType = 'filesystem', \
+                   basePath = '{}'; \
+                 INSERT INTO doc_mount_points SELECT * FROM p4d381_fs;",
+                fx.a,
+                base.display()
+            ))
+            .unwrap();
+        file_ops::copy_file(
+            fx.mount.connection(),
+            &file_ops::CopyOpts {
+                source_mount_point_id: fx.a.clone(),
+                source_path: "notes/one.md".to_string(),
+                dest_mount_point_id: "p4d381-fs".to_string(),
+                dest_path: "one.md".to_string(),
+                force: false,
+            },
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp("p4d381-fs")]);
     }
 
     #[tokio::test]
@@ -2061,7 +2091,21 @@ mod mount_store_publish_sites {
             extractor: e.as_ref(),
             webp: blob_codec_or_refusing(None),
         };
+        crate::db::database_store::create_database_folder(fx.mount.connection(), &fx.a, "hollow")
+            .unwrap();
         let mut cap = HintCapture::start();
+        // An EMPTY folder's copy: no per-file copy publishes, so the hint is the
+        // folder op's own (the leg that kills a deleted `copyFolder` publish).
+        copy_folder(
+            fx.mount.connection(),
+            &d,
+            &fx.a,
+            "hollow",
+            Some(&fx.b),
+            "hollow2",
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
         // A refused delete (non-empty, not recursive) announces nothing.
         assert!(delete_folder(fx.mount.connection(), &fx.a, "notes", false).is_err());
         assert!(cap.drain().await.is_empty(), "a refused delete announced");
