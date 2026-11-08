@@ -201311,3 +201311,352 @@ LANE COMPLETE. The **OPEN remainder** (Tier 2):
 ### Cleanup
 
 The pin worktree `/tmp/qt-v4-pin-p4.d380-624d0d25c` and the scratch red-first worktree `.claude/worktrees/p4d380-redfirst` are removed, and `git worktree prune` is run. The lane's `target/` is deleted. `/tmp/p4d380/` is left for the unifier: the gate env (`gate-env.sh` plus copies under `gate/`), the sweep logs, the red-first logs, `oracle-documents-routes.ndjson` and the `doc_blob_document_reads` / `doc_resolved_file` oracles. Nothing is merged to `main`.
+
+## P4.D381 — STORES: the mount-point document-store API, its per-store realtime hints, and the iCloud-placeholder scan — LANE RECORD (2026-11-08)
+
+**Branch** `claude/p4-d381-stores-e2ff41`, cut from `REAIM` `0eaa5d4fb` (P4.D361's
+status header on `claude/p4-d361-reaim-583925` records it; no parent amendment
+cherry-picked). The session started IN that worktree (an app-made worktree,
+already on `REAIM`, no commits of its own) — no move was needed. Worktree path
+`~/source/quilltap-v5/.claude/worktrees/p4-d381-stores-e2ff41` (spaceless via the
+`~/source/quilltap-v5` symlink). Pin `/tmp/qt-v4-pin-p4d381-624d0d25c`
+(`624d0d25c6cbb68daa54e08fc57e21e16ce205aa`, `4.13.0-dev.8`), never swept or
+recreated during the lane.
+
+### §2 probe (an observation, §R.2)
+
+- 2026-11-07 23:38 CST: v4 `main` moved — `b941280d5` and nine more past the pin
+  (`8d5eb8f0e` … `3a79f744c`, incl. `release: 4.12.2`, `merge: 4.12.2 back into
+  main`); `bugfix` at `d67c70a51`; the tree CLEAN (`git status --short` empty).
+  The pin was usable (HEAD `624d0d25c…`, `package.json` `4.13.0-dev.8`).
+- Pin `npm ci --offline --ignore-scripts` succeeded first try (no ENOTCACHED);
+  `npm rebuild better-sqlite3` ok. Verified: better-sqlite3 13.0.3, openai 7.47.0,
+  @openrouter/sdk 1.5.34, zod 4.6.7, mermaid 12.3.0, **mammoth 1.13.0 present**,
+  jszip 3.10.2. Floor install printed: openai 7.47.0 | anthropic 1.4.0 | genai
+  2.32.0 | openrouter 1.5.34 | plugin-utils 2.7.3; CLI driver 13.0.3 / SQLite
+  3.53.4 / chacha20.
+- Sibling branches touching my files: none pushed at lane start (every sibling
+  lane was local and mid-flight); measured at close — see "Union notes".
+
+### Red-first (on `REAIM`, the pin's oracles, before any behavioural edit)
+
+- `query_param_semantics_equivalence` ALSO red on `wardrobe_collection_post__empty` /
+  `__unknown` / `__empty_then_known` (v4 adds `duplicate` — P4.D377's; first missed
+  in this record, found at the gate).
+
+- `mount_ops_equivalence`: **3 rows** — `folder_move_db` and
+  `folder_move_fs_after_scan` (`destMountPointId`; the latter ALSO red in the
+  `doc_mount_folders` dump: v4 carries `moved-notes`, `moved-notes/sub`), and
+  `folder_create_then_delete_db` (`deletedFiles`). **Correction to the order:**
+  the `folder_delete_*` rows it named are all REFUSALS (`_nonempty` /
+  `_missing`) and stay green — the only successful delete in the family is
+  `folder_create_then_delete_db`.
+- `mount_index_equivalence`: **3 rows** — `scan_fs`, `scan_obs`, `scan_db`
+  (`filesInCloud`); `scan_404` green.
+- `mount_read_equivalence`: red on the `list-db` browser-entry shape (first-fail
+  runner; the list rows).
+- `query_param_semantics_equivalence`: red — `mount_point_action_post__bare` /
+  `__empty` / `__unknown` (`availableActions` 13 vs 15).
+- `mount_points_routes_equivalence`, `doc_mount_file_links_tier2_equivalence`,
+  `mount_link_groups_equivalence`: GREEN.
+- `degraded_mount_routes_equivalence`: 12 rows red, ALL other lanes' drift
+  (`character_favorite_vaultless`, `chat_equip_wear` / `_wardrobe_history` /
+  `_wardrobe_rollback` lines, `group_wardrobe_create`, `project_inventory_create`,
+  `project_scenarios_list`, `project_wardrobe_list`) — the character / wardrobe /
+  scenario rounds' (P4.D369 / P4.D376–P4.D378). No mount-files row; REAIM's
+  transfers-GET rows were removed, not red. Not fixed here.
+- Garbage check before the Rust run: the regenerated mount-ops NDJSON carried
+  `deletedFiles` and `destMountPointId` (> 0).
+- (Commit A's pure module was written before the first Rust red run; it is a new
+  module with no caller and does not move any family.)
+
+### Commits (all on the lane branch)
+
+Seven commits (`0eaa5d4fb..HEAD`):
+- `f827e3901` (A+B) — `cloud_placeholder.rs` + the scan (the order's A and B in ONE
+  commit: `allocation_stat` would be dead code until the scanner reads it).
+- `fa780abc7` (C) — `realtime.rs` + every publish site + pins + census rows.
+- `5cdf5f6e5` (D) — `list_for_browser` / `clear_link_group` + the listing.
+- `6ab8978da` (E+F) — `c34986421`'s rows + the folder family + the api surface +
+  `?action=links` / `render-html` in core (intertwined in `api/mount_files.rs`), the
+  readdir-order convergence, the R-6 draft.
+- `c2bc6d89f` (G) — the web edge + the `query_param` / `mount_link_groups` /
+  wrong-type census rows.
+- `0c49213bf` — two publish-site pins strengthened (the mutation pass).
+- `c654750b7` — the gate's test follow-through (15-action asserts, the hand-built
+  `Request` count 157 → 159, two harness lints).
+
+### What landed (Tier 1 items 1–15)
+
+1. Red-first — above.
+2. `services/mount_index/realtime.rs` (NEW): `publish_mount_change` +
+   `emit_document_{written,deleted,moved}` (the publish half; R-P7 payload
+   args, unused-by-name). `MountPoints` doc comment → v4's.
+3. Every publish site wired + pinned: the five published file-op wrappers over
+   private `*_unpublished` bodies; six `file_ops.rs` emits; four
+   `database_store.rs` emits (the folder move per non-blob document AFTER the
+   loop); the database rescan (per document link, `database-store.ts:784`);
+   `store_file.rs`; both `apply_store.rs` writers; the filesystem folder move's
+   per-link emit; the folders route (ONE v5 success arm for v4's two); the nine
+   folder-op publishes; unlink's two. **Pins:** 10 `publish_sites.rs` tests
+   (`mount_store_publish_sites`) with silence legs (missing delete, refused copy,
+   blob-only folder move, absent document delete, refused folder create, refused
+   folder delete, 404 unlink, ungrouped unlink = self only). **Census:** nine rows
+   in `realtime_publish_sites_guard` (file_ops 5 publish / 6 emit; database_store
+   4; scanner 1; store_file 1; apply_store 2; folder_ops 9 / 1; mount_files 3).
+4. `list_for_browser` / `clear_link_group` / `find_by_link_group_id_or_empty`
+   (appended, fenced, §R.10 (h)); `DocMountBrowserEntry` typed in v4's key order
+   with JS number forms; two fallback homes (`fallback_home_guard` +2).
+5. The files listing switches; `[Mount Points v1] Listed files for browser` DEBUG.
+   `files_by_mount_point_id_or_empty` KEPT (`api/projects.rs:1726` still calls
+   it). SPA consumers: NO row reader reads `extractedText` (the one declaration is
+   `scriptorium.api.ts:56`'s blob-DETAIL type) — no HANDOFF.
+6. `c34986421`: the filesystem delete removes the exact-path folder row; the
+   filesystem move carries the source row (EXACT match) + descendants, parent via
+   `ensure_folder_path` (or an explicit `parentId = NULL` — `DmfUpdate` cannot
+   spell NULL; recorded), with both DEBUGs.
+7. The folder family whole (`folder_ops.rs` from 197 to ~1,300 lines with tests):
+   recursive delete with the stray refusal (three names + `, …`), copy with undo,
+   cross-store move with move-back, the within-store move's `destMountPointId`.
+   **No outer transaction** (why-comment). Log target `quilltap::mount_index`.
+8. The api surface: `MountFolderDelete.recursive` / `MountFolderMove.
+   destMountPointId` (raw tri-states), NEW `MountFolderCopy`, `MountFileUnlink`,
+   `MountFileLinks`, `MountFileRenderHtml`; the four route INFOs with `userId`
+   (`SINGLE_USER_ID`, the inventory precedent); `folder_failure` replaces
+   `map_file_or_store` (its P4.D340 unit pin re-aimed, same assertion).
+9. The web edge: `AVAILABLE` 13 → 15 in v4's order (`UNSERVED_KNOWN_ACTIONS`
+   loud arm unchanged for both new names); `mount_file_get` dispatches
+   `links` / `render-html` BEFORE the raw/JSON gate, and an unknown / bare
+   `?action=` is the helper's envelope. No `COLLAPSE_CENSUS` row was needed (the
+   new arms route through `core_response_to_http`, no new route) — measured by
+   running it.
+10. `?action=links` (`mount_file_links`): v4's Map union (first position, last
+    value), one name read per distinct store via the `doc_mount_points`
+    fallback (`'Unknown store'`), the stable ICU sort.
+11. `?action=render-html` + `DOCX_RENDER_HTML_REFUSED` (R-E) in
+    `services/mount_index/docx_html.rs`; v4's arm order (read → non-DOCX 400 →
+    DOCX 422); the v5-worded DEBUG (R-P4). DOCX plant
+    `harness/oracle/fixtures/docx-sample.b64` (recipe in its header).
+12. `cloud_placeholder.rs` whole + `PLACEHOLDER_CHECK_UNIX_ONLY` (R-3) + the
+    source-text guard; tier-1 family `cloud_placeholder_equivalence` (122 rows).
+13. The scan: stat-before-read, `InCloud`, `filesInCloud`, `ScanResult::empty`,
+    `AllocationProbe` / `HostAllocationProbe` + `*_with_probe` siblings; the three
+    span lines + the route's `Scan completed`; `mount_scan` split into two writes
+    so the route line lands between the scanner's lines and the enqueue's (order
+    proven against v4's captured stream).
+14. VERIFY-ONLY records — below (one was NOT verify-only: the readdir order).
+15. R-6 — measured on v4, drafted (NOT FILED):
+    `work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`.
+
+### Tier 2
+
+- **16 — LANDED whole:** `Starting database-backed mount point rescan`,
+  `Database-backed rescan failed`, `Error processing file during mount scan`,
+  `Mount point scan failed`, `Unable to read directory during walk` — each
+  unit-pinned with its silence leg, and the first, third and fifth also in
+  `mount_index_equivalence`'s comparand (rows `scan_db`,
+  `scan_fs_unreadable_file`, `scan_fs_unreadable_dir`).
+- **17 — PARTIAL:** `mount_scan` (`Error scanning mount point`), the folder
+  delete / move (`Error deleting folder` / `Error moving folder`) and the copy
+  (`Error trying to copy folder`) are v4's ERRORs now; `map_file_or_store` is
+  gone. **Residue (still `eprintln!`), by line at close:** `map_file_op_only`'s generic arm, and the `mount_file_move` / `mount_file_copy` / `mount_file_link` / `mount_file_delete` / `mount_file_update` / `mount_folder_create` / write-file (×3) / blob upload (×2) / blob list / blob delete / blob description handlers — 15 `eprintln!` sites in `api/mount_files.rs` at close.
+- **18 — NOT LANDED (residue):** the outer emit sites
+  (`photos/character_gallery_service.rs`, `photos/user_gallery_service.rs`,
+  `photos/save_image_to_album.rs`, `services/wardrobe_image_bridge.rs`, the vault
+  bridge's v5 home) — HANDOFF candidates because P4.D377 / P4.D378 own the
+  wardrobe / photos edges this round; left for the follow-ups round by name.
+
+### Corrections / measurements
+
+1. (ledger `bf7a457f6`) v5 logged none of the scan's lines — confirmed; all
+   ported (Tier 1 + Tier 2 item 16).
+2. (ledger) `danger_scan_tier2_equivalence` is the chat danger scan; not moved.
+3. (ledger `05264ace3`) the placeholder skip is the files/ WATCHER's — confirmed
+   (NO-COUNTERPART).
+4. (survey §7.2) `types.rs` edit is the doc comment only; `job_topics.rs`
+   untouched.
+5. Copy-folder reuses `moveFolderSchema` — ported that way (one parse, the copy's
+   sentence).
+6. The per-file GET ERRORs read `Error list file locations` / `Error render file`
+   (no "trying to"); the copy's is `Error trying to copy folder` — verbatim.
+7. **`listForBrowser` order (no ORDER BY): measured EQUAL** — `mount_read`
+   compares the entries as BYTES in row order and is green; no `EXPLAIN` pair
+   needed.
+8. **NEW — the walk order is NOT "native readdir order" (item 14 / `05264ace3`).**
+   Node's `fs.readdir` goes through libuv's `scandir`, which SORTS entries with
+   `strcmp` (`uv__fs_scandir_sort`); `std::fs::read_dir` answers APFS's raw
+   order. Measured: the stray list of `notes/` came back `z.xyz, blank.md` in v5
+   and `blank.md, z.xyz` in v4. v5's `walk_directory` (scanner),
+   `list_filesystem_folders` (list) and the folder ops' stray scan now read
+   through ONE `list::read_dir_node_order` (byte-sorted) — the scan's order fixes
+   the link-insertion order a no-`ORDER BY` listing reads back. mount_index /
+   mount_ops / mount_read re-run green.
+9. The v4 `folder-ops-walks.test.ts` has EIGHT `it`s (the order said seven) +
+   three in `folder-ops-fs-move.test.ts`; all eleven mirrored in
+   `folder_ops::p4d381_walk_tests` (+1 helper test).
+10. `move_database_folder` has the same `DmfUpdate`-cannot-NULL gap for a
+    destination at the top level (`dest_dir == "."` leaves the old `parentId`);
+    PRE-EXISTING, in `database_store.rs` outside my §R.10 (i) region — recorded,
+    not fixed (no row exercises it; a follow-ups item).
+
+### `tree.files` order for the undo plants
+
+`findByMountPointId` (no ORDER BY → rowid order): after the case's scan,
+`notes/sub/deep.md` then `notes/sub/deeper.md` on both sides (the plant makes
+the SECOND, `deeper.md`, mode 000). Measured by the rows themselves: both undo
+rows answer v4's bytes (copy: `copied: 1`; move: `moved: 1`).
+
+### Divergences as landed
+
+- `DOCX_RENDER_HTML_REFUSED` (both-ways table in `mount_ops_equivalence`):
+  `render_html_docx_valid` v4 200 `{"html":"<p>The Scriptorium regrets
+  nothing.</p>"}` / v5 422 `{"error":"not_available: docx render-html"}`;
+  `render_html_docx_corrupt` v4 500 `Failed to render file` / v5 the same 422.
+  `render_html_md`, `render_html_db_md`, `render_html_missing` strict.
+- `PLACEHOLDER_CHECK_UNIX_ONLY`: one row (`win32 + blocks 0 + size > 0`), the
+  non-unix `allocation_stat → None` arm, source-text-guarded.
+- Value-only log renderings (recorded, not divergences of behaviour): a `null`
+  field v4 logs (`groupId: null` on the clear DEBUG and the unlink INFO) is
+  OMITTED from v5's line (the file layer's absent-field rendering); the route
+  ERRORs carry `error=<message>` where v4's transport shows none.
+
+### Mutation proofs
+
+- **The read-before-stat reorder:** re-inserting a `std::fs::read` before the probe
+  reds `mount_index_equivalence` on `scan_fs_in_cloud` (body AND lines); restored.
+- **The publish sites (one batched recompile, one mutation per distinct pin):**
+  deleting the `database_store` delete emit, the rescan emit, and unlink's
+  sibling publish each RED their pin. Deleting `copy_file`'s wrapper publish and
+  `copy_folder`'s success publish first SURVIVED — equivalent mutants under the
+  bus's `(topic, id)` coalescing (an inner emit / the per-file copies publish
+  the same key). The pins gained the two legs where nothing else publishes (a
+  database → filesystem copy; an empty-folder copy) and both mutations now RED
+  (`0c49213bf`).
+- **The log lines:** each ported line is compared EXACTLY against v4's captured
+  line in its family (`mount_index` 42 lines in order; `mount_ops` ≥ 30 lines in
+  order) or pinned by an exact unit assertion with a silence leg; a deleted line
+  fails the exact comparison. No per-line source mutation was run beyond the
+  reorder above (recorded).
+
+### Census numbers (before → after)
+
+- `fallback_home_guard`: HOME_MESSAGES +2 (`Error listing file links for browser`,
+  `Error clearing hard-link group`).
+- `doc_mount_fallback_sites_census`: (95, 14, 20, 1, 13, 5, 1, 20, 5) →
+  (102, 14, 20, 1, 13, 5, 1, 20, 5); three rows renamed with the bodies
+  (`move_file` → `move_file_unpublished`, `link_file` → `link_file_unpublished`,
+  `process_mount_file` → `process_mount_file_with_probe`), `move_folder` →
+  `move_folder_within_mount` (ruling key + row).
+- `realtime_publish_sites_guard`: +9 rows.
+- `dispatch_wrong_type_census`: NEW `MOUNT_FOLDER_RAW` (six raw keys) + two tests;
+  the route-identifier exclusion 523 → 529 (the four new variants' `mount_point_id` / `path` URL segments); `tri_state_edges_share_the_decoder`'s hand-built count 157 → 159 (`files_routes.rs` 9 → 11).
+- `COLLAPSE_CENSUS`: no row needed (see item 9).
+
+### In-process-job hint measurement (item 2)
+
+An in-process job's store write publishes from the writer thread through
+`publish_mount_change`; `job_topics.rs` scopes the same batch's `docMount*` writes
+to `(mountPoints, <mountPointId>)`. The bus coalesces by `(topic, id)` key
+(`pending_key`), so both land as ONE hint per window — no hint set differs.
+(Measured from the coalescer key; no differential can see a hint.)
+
+### Planner calls (R-P1–R-P8)
+
+All landed as written: R-P1 (`Unprocessable` + `not_available: docx
+render-html`, no code), R-P2 (v4's arm order), R-P3 (`neutraliseUnsafeHrefs` not
+ported; vectors cited in `docx_html.rs`), R-P4 (the v5-worded DEBUG), R-P5
+(`cloud_placeholder.rs` under `services/mount_index/`), R-P6
+(`is_not_fully_materialized` ported, `pub`, tier-1-covered), R-P7 (payload args,
+`_`-named, no `allow(unused)`), R-P8 (R-6 in `/tmp/p4d381/r6/`).
+
+### R-6 (measured, draft only)
+
+On v4 at the pin over the mounts fixture (APFS): a filesystem `move-folder` of
+`notes` for an indexed `Notes/` answers success and renames the directory to
+`archive/`, but `doc_mount_folders` keeps `Notes`, `Notes/sub` and every link
+keeps `Notes/…`; `chatDocuments.findUnderFolder('notes')` misses `Notes/a.md`
+while the database folder lookup finds `notes` for `NOTES` (NOCASE); and the
+Scriptorium's `move-folder` has no `sweepChatDocumentsAfterFolderMove` call.
+v5 ports all three faithfully. Draft:
+`docs/developer/porting/work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`
+— **awaits the human's go-ahead; NOT filed.**
+
+### VERIFY-ONLY
+
+- `05264ace3`: v5's walkers vs `walkTree` — visit-then-descend, symlinks skipped,
+  excludes on directories and files: equal. **The ORDER was not** (correction 8,
+  fixed). The walk WARN landed (Tier 2 item 16).
+- `3d39c303c`: byte-identical by reading (`created` = 201, `successResponse` =
+  200 at the pin); `mount_points_routes_equivalence` green at red-first, unmoved.
+- `db4a76e39`: NO-PORT here; its About line is P4.D388's.
+
+### Tier 3 records (19–24)
+
+19 `DOCX_RENDER_HTML_REFUSED`; 20 `PLACEHOLDER_CHECK_UNIX_ONLY`; 21
+`neutraliseUnsafeHrefs` / mammoth / `Rendered DOCX to HTML` NOT PORTED; 22
+NO-COUNTERPART (`scanAllMountPoints`, PHASE 3.3, `startup-state.ts`,
+`instrumentation.ts` lines, both watchers + `Mount watcher left a cloud-evicted
+file unread`, `recursive-watcher.ts`, `watcher-shutdown.ts`,
+`materialize-cloud-files.ts`, the `db-store-events.ts` subscription half,
+`db4a76e39`); 23 other lanes — **P4.D387**: `lib/query/keys.ts`
+`mountPoints.{store,detail,files,links,lists}`, `topic-map.ts`'s scoped arm,
+`ScanResult.filesInCloud` + `errors: string[]` in `scriptorium.api.ts:65-71`, the
+browser; **P4.D388**: About (`db4a76e39` chokidar drop, `c34986421` SVAR drop);
+**P4.D382**: `help/mount-points.md` (`bf7a457f6` +10 / −2, `c34986421` +35),
+`docs/developer/API.md`, `features/folder-browser.md`,
+`FILE-SYSTEM-IMPLEMENTATION.md`, `README.md` / `CHANGELOG` stamps; 24 the
+`listFilesystemFolders` folder SET order in the listing stays the recorded
+`BTreeSet` divergence (the walk itself is now v4's order).
+
+### HANDOFFs
+
+| to | what |
+|---|---|
+| P4.D387 | C13 as landed: `DocMountBrowserEntry` keys (`id, fileId, mountPointId, relativePath, fileName, folderId, originalFileName, originalMimeType, description, descriptionUpdatedAt, conversionStatus, conversionError, plainTextLength, extractedTextSha256, extractionStatus, extractionError, chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, linkGroupId, lastModified, createdAt, updatedAt, sha256, fileSizeBytes, fileType, source, linkCount`); dispatch `mountFolderCopy {mountPointId, fromPath, toPath, destMountPointId?}`, `mountFileUnlink {mountPointId, path}` → `{mountPointId, path, groupId, dissolved}`, `mountFolderMove` + `destMountPointId?`, `mountFolderDelete` + `recursive?` → `deletedFiles`; REST `GET …/files/<path>?action=links` → `{linkGroupId, locations: [{linkId, mountPointId, mountPointName, relativePath, grouped, self}]}`, `?action=render-html` → 422 `{"error":"not_available: docx render-html"}` for a `.docx`, 400 `Only .docx files can be rendered to HTML` otherwise; the hint `(mountPoints, <store id>)`; `ScanResult.filesInCloud` |
+| P4.D388 / P4.D382 | the About / help / docs rows of Tier 3 item 23 |
+| (follow-ups) | Tier 2 item 18's outer emit sites; item 17's residue; `move_database_folder`'s NULL-parent gap |
+
+### Union notes
+
+- Branch pushed at the PAUSE (`6ab8978da`) and at close. No sibling had pushed a
+  branch touching my files at lane start.
+- **Shared rows** (§R.10 (j9)): `doc-mount-file-links-tier2.ts` / its family take a
+  SECOND NDJSON line (`p4d381-browser-clear`) and the main test reads only the
+  FIRST line — P4.D380's rows merge beside it; re-run the family on the union.
+  `query_param_semantics_equivalence` + `dispatch_wrong_type_census`: my rows +
+  the 529 / 159 counts are to be SUMMED with siblings' on the union.
+- **`realtime_publish_sites_guard`'s `database_store.rs` row (4 emits)** counts my
+  §R.10 (i) region; P4.D380's new blob readers add none; P4.D377's wardrobe /
+  inventory writes ride these same emits, so a P4.D377 pin asserting an exact
+  hint set may see the `mountPoints` hint (as v4 does).
+- **`mount_ops_equivalence`'s rows now carry `tree` and `logs`**: a sibling row
+  added to `mount-ops.test.ts` gets both automatically on the v4 side and must
+  match on the v5 side (the v5 runner computes both for every row).
+- `mount_common::status_of_kind` gained `Unprocessable → 422` (shared helper).
+- **The full gate's reds at close (900 binaries / 6,054 passed / 9 failed / 3
+  ignored, zero SKIP):** after the follow-through commit, mine are 0. The rest:
+  `spelling_guard` (the base red main's `a11fbe767` fixes — ignored as instructed);
+  `degraded_mount_routes` (the same 12 other-lane rows as at red-first);
+  `query_param_semantics` (`wardrobe_collection_post__empty_body` / `__unknown_body` /
+  `__empty_then_known_body` — v4's `duplicate`, P4.D377's; red at red-first too, a
+  red-first row I first missed); `builtin_prompt_templates_guard` 21 vs 22
+  (P4.D373); `provider_sdk_version_guard` (P4.D364); `qtap_schema_embed_guard`
+  (P4.D362); `cli_differential` `[db help]` (P4.D365's `db integrity`; 424 cases,
+  1 failure). Plus the two mine the follow-through fixed
+  (`mount_write_and_read_edges`, the hand-built count), green by name.
+- fmt clean; clippy `--workspace --all-targets -D warnings` plain AND
+  `--features quilltap-core/native-transport` clean on the final tree;
+  `recipe_sweep.py --self-test` 0 failures (the new `cloud_placeholder` header
+  parses); SPA `realtime-topic-map.spec.ts` 27/27 (untouched).
+
+### 💸 for the owed dogfood pass
+
+As the order's §💸 (store browser `linkCount` / `?action=links` / unlink
+dissolve with both stores' hints; recursive delete, stray refusal, copy-folder,
+cross-store move, no ghost folder row; `.docx` 422 / `.md` 400; `brctl evict` →
+`filesInCloud: 1`, still evicted after, the three log lines; an unknown file-GET
+action → the envelope).
+
+### Versions at close
+
+core 0.0.1432 (REAIM's 0.0.1427 + 5), web 0.0.257 (+1); host 0.0.223, cli 0.0.38, tauri 0.0.9, sys 0.1.0, SPA 0.5.971, harness 0.0.1110 unchanged.
