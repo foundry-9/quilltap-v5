@@ -8,10 +8,13 @@
 //! `sourceSha256` and `destSha256` so the caller can verify the bytes survived
 //! end-to-end.
 //!
-//! v4's `emitDocumentWritten`/`emitDocumentDeleted`/`emitDocumentMoved` events
-//! feed only the watcher's debounced embedding refresh — part of the
-//! chokidar-equivalent watcher deferral (loud in the P4.6y status header), so
-//! the emit sites here are annotated but not wired.
+//! v4's `emitDocumentWritten`/`emitDocumentDeleted`/`emitDocumentMoved` sites
+//! are wired through `super::realtime` (P4.D381, v4 `aec626eff`): their PUBLISH
+//! half — the per-store `mountPoints` realtime hint — is live; their watcher
+//! half (the debounced re-embed subscription) is still the chokidar-equivalent
+//! watcher deferral. The five public operations are v4's PUBLISHED entry
+//! points (`file-ops.ts:952-990`): each runs its `*_unpublished` body, then
+//! publishes the stores it changed.
 
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
@@ -448,7 +451,7 @@ fn write_dest_bytes(
         // inferred (the work order's "both branches" is prose; `23da0b322`'s
         // `file-ops.ts` diff is one import plus one call at `:725`).
         super::reindex_file::reindex_after_database_write(conn, &dest_mount.id, dest_rel);
-        // v4 emitDocumentWritten — the watcher deferral (see module header).
+        super::realtime::emit_document_written(&dest_mount.id, dest_rel);
         return Ok(content_sha);
     }
 
@@ -483,7 +486,7 @@ fn write_dest_bytes(
         last_modified: None,
         created_at: None,
     })?;
-    // v4 emitDocumentWritten — the watcher deferral.
+    super::realtime::emit_document_written(&dest_mount.id, dest_rel);
     Ok(sha)
 }
 
@@ -491,7 +494,7 @@ fn write_dest_bytes(
 fn delete_at_source(
     conn: &Connection,
     mp: &MountServiceInfo,
-    _relative_path: &str,
+    relative_path: &str,
     info: &SourceInfo,
 ) -> Result<(), MountFileError> {
     let links = DocMountFileLinksRepository::new(conn);
@@ -510,7 +513,7 @@ fn delete_at_source(
     }
     if let Some(link_id) = &info.link_id {
         links.delete_with_gc(link_id)?;
-        // v4 emitDocumentDeleted — the watcher deferral.
+        super::realtime::emit_document_deleted(&mp.id, relative_path);
     }
     Ok(())
 }
@@ -532,8 +535,9 @@ pub fn delete_at_dest(
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(MountFileError::Other(e.to_string())),
         }
+    } else {
+        super::realtime::emit_document_deleted(&mp.id, relative_path);
     }
-    // else: v4 emitDocumentDeleted — the watcher deferral.
     Ok(())
 }
 
@@ -596,7 +600,7 @@ fn hard_link_db_to_db(
             );
         }
     }
-    // v4 emitDocumentWritten — the watcher deferral.
+    super::realtime::emit_document_written(dest_mount_point_id, dest_relative_path);
     Ok(dest_link_id)
 }
 
@@ -642,7 +646,7 @@ pub(crate) fn node_dirname(p: &str) -> &str {
 // ============================================================================
 
 /// v4 `copyFile`.
-pub fn copy_file(
+fn copy_file_unpublished(
     conn: &Connection,
     opts: &CopyOpts,
     extractor: &dyn DocumentTextExtractor,
@@ -782,7 +786,7 @@ pub fn copy_file(
 }
 
 /// v4 `moveFile`.
-pub fn move_file(
+fn move_file_unpublished(
     conn: &Connection,
     source_mount_point_id: &str,
     source_path: &str,
@@ -835,7 +839,7 @@ pub fn move_file(
         update_link_location(conn, link_id, &dest_mount.id, &dest_rel)?;
         dest_sha = source_info.sha256.clone();
         strategy = FileOpStrategy::DbLink;
-        // v4 emitDocumentMoved — the watcher deferral.
+        super::realtime::emit_document_moved(&source_mount.id, &source_rel, &dest_rel);
     } else if source_is_fs && dest_is_fs {
         let source_abs = source_info.absolute_path.clone().expect("fs source abs");
         let dest_abs =
@@ -907,7 +911,7 @@ pub fn move_file(
 /// v4 `linkFile` — a true hard link (NO copy). Cross-storage and cross-device
 /// raise `UNSUPPORTED` rather than silently degrading — that distinction is the
 /// whole point of `link` versus `copy`. Never overwrites.
-pub fn link_file(
+fn link_file_unpublished(
     conn: &Connection,
     source_mount_point_id: &str,
     source_path: &str,
@@ -1044,7 +1048,7 @@ pub fn link_file(
 
 /// v4 `writeFile` (the `?action=write-file` byte-preserving writer — distinct
 /// from the transcoding `storeMountFile` ingest).
-pub fn write_file(
+fn write_file_unpublished(
     conn: &Connection,
     mount_point_id: &str,
     relative_path: &str,
@@ -1084,7 +1088,7 @@ pub fn write_file(
 
 /// v4 `deleteFile` — `{deleted, mountPointId, path}`; verifies the path is
 /// really gone (`VERIFY_FAILED` otherwise).
-pub fn delete_file(
+fn delete_file_unpublished(
     conn: &Connection,
     mount_point_id: &str,
     relative_path: &str,
@@ -1111,6 +1115,116 @@ pub fn delete_file(
         "mountPointId": mp.id,
         "path": rel,
     }))
+}
+
+// ============================================================================
+// Published entry points — every file op tells open browsers which stores
+// changed (`publish_mount_change`, a realtime hint carrying no data). v4
+// `file-ops.ts:952-990` (`aec626eff`, P4.D381 R-5).
+// ============================================================================
+
+/// v4 `publishBoth`: the destination, then the source when it differs.
+fn publish_both(result: &FileOpResult) {
+    super::realtime::publish_mount_change(&result.dest_mount_point_id);
+    if result.source_mount_point_id != result.dest_mount_point_id {
+        super::realtime::publish_mount_change(&result.source_mount_point_id);
+    }
+}
+
+/// v4 `copyFile` — the copy, then the destination store's hint.
+pub fn copy_file(
+    conn: &Connection,
+    opts: &CopyOpts,
+    extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
+) -> Result<FileOpResult, MountFileError> {
+    let result = copy_file_unpublished(conn, opts, extractor, webp)?;
+    super::realtime::publish_mount_change(&result.dest_mount_point_id);
+    Ok(result)
+}
+
+/// v4 `moveFile` — the move, then both stores' hints (`publishBoth`).
+pub fn move_file(
+    conn: &Connection,
+    source_mount_point_id: &str,
+    source_path: &str,
+    dest_mount_point_id: &str,
+    dest_path: &str,
+    extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
+) -> Result<FileOpResult, MountFileError> {
+    let result = move_file_unpublished(
+        conn,
+        source_mount_point_id,
+        source_path,
+        dest_mount_point_id,
+        dest_path,
+        extractor,
+        webp,
+    )?;
+    publish_both(&result);
+    Ok(result)
+}
+
+/// v4 `linkFile` — the link, then both stores' hints (`publishBoth`).
+pub fn link_file(
+    conn: &Connection,
+    source_mount_point_id: &str,
+    source_path: &str,
+    dest_mount_point_id: &str,
+    dest_path: &str,
+    extractor: &dyn DocumentTextExtractor,
+) -> Result<FileOpResult, MountFileError> {
+    let result = link_file_unpublished(
+        conn,
+        source_mount_point_id,
+        source_path,
+        dest_mount_point_id,
+        dest_path,
+        extractor,
+    )?;
+    publish_both(&result);
+    Ok(result)
+}
+
+/// v4 `writeFile` — the write, then `opts.mountPointId`'s hint (the caller's
+/// id as passed, as v4 publishes it).
+pub fn write_file(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+    data: &[u8],
+    force: bool,
+    extractor: &dyn DocumentTextExtractor,
+    webp: &dyn crate::services::mount_index::blob_transcode::WebpTranscoder,
+) -> Result<serde_json::Value, MountFileError> {
+    let result = write_file_unpublished(
+        conn,
+        mount_point_id,
+        relative_path,
+        data,
+        force,
+        extractor,
+        webp,
+    )?;
+    super::realtime::publish_mount_change(mount_point_id);
+    Ok(result)
+}
+
+/// v4 `deleteFile` — the delete, then the store's hint ONLY when something was
+/// deleted (`if (result.deleted)`).
+pub fn delete_file(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Result<serde_json::Value, MountFileError> {
+    let result = delete_file_unpublished(conn, mount_point_id, relative_path)?;
+    if result["deleted"] == serde_json::Value::Bool(true) {
+        if let Some(id) = result["mountPointId"].as_str() {
+            super::realtime::publish_mount_change(id);
+        }
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

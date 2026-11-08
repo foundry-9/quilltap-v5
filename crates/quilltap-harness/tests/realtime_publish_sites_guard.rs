@@ -251,6 +251,51 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          transfer's locations and the drop announce).",
     ),
     // === end P4.D328 ===
+    // === P4.D381 (v4 `aec626eff`, R-5): the per-store `mountPoints` hints ===
+    (
+        "crates/quilltap-core/src/services/mount_index/file_ops.rs",
+        "realtime::publish_mount_change(",
+        5,
+        "v4 `file-ops.ts:952-990`'s five published wrappers: `copyFile` (the \
+         destination), `publishBoth`'s two (destination, then a different \
+         source) shared by `moveFile` / `linkFile`, `writeFile` (the id as \
+         passed), `deleteFile` (only when deleted).",
+    ),
+    (
+        "crates/quilltap-core/src/services/mount_index/file_ops.rs",
+        "realtime::emit_document_",
+        6,
+        "v4 `file-ops.ts`'s six inner emits (`:472` moved, `:734` / `:755` / \
+         `:850` written, `:780` / `:797` deleted) — each also publishes \
+         (`db-store-events.ts:70-83`).",
+    ),
+    (
+        "crates/quilltap-core/src/db/database_store.rs",
+        "realtime::emit_document_",
+        4,
+        "v4 `database-store.ts`'s write `:277`, delete `:302`, move `:393`, and \
+         the folder move's per-document emit after the loop `:655` (the \
+         rescan's `:784` lives in v5's `scanner.rs`).",
+    ),
+    (
+        "crates/quilltap-core/src/services/mount_index/scanner.rs",
+        "realtime::emit_document_",
+        1,
+        "v4 `database-store.ts:784`: the database rescan, one per document link.",
+    ),
+    (
+        "crates/quilltap-core/src/services/mount_index/store_file.rs",
+        "realtime::emit_document_",
+        1,
+        "v4 `store-file.ts:430`.",
+    ),
+    (
+        "crates/quilltap-core/src/services/mount_index/sync/apply_store.rs",
+        "realtime::emit_document_",
+        2,
+        "v4 `sync/apply-store.ts:100` (text) and `:126` (blob / pdf / docx).",
+    ),
+    // === /P4.D381 ===
 ];
 
 fn repo_root() -> PathBuf {

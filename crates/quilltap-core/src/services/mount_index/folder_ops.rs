@@ -165,7 +165,7 @@ pub fn move_folder(
                 ..Default::default()
             },
         )?;
-        // v4 emitDocumentMoved — the watcher deferral (see file_ops header).
+        super::realtime::emit_document_moved(&mp.id, &link.relative_path, &new_path);
     }
 
     Ok(serde_json::json!({

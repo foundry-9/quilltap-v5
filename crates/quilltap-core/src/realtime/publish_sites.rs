@@ -1676,3 +1676,365 @@ mod admission_publish_tests {
     }
 }
 // === end P4.D290 ===
+
+// === P4.D381 (v4 `aec626eff`, R-5): the per-store `mountPoints` hints ===
+//
+// The document-store publish sites: the five published file-op wrappers, the
+// database-store emits, the database rescan, the store-file ingest, the sync
+// applier, and the folders route. Each drives the REAL entry point over a
+// provisioned instance and asserts the `(mountPoints, <store id>)` hints; each
+// conditional carries its silence leg.
+#[cfg(test)]
+mod mount_store_publish_sites {
+    use super::*;
+    use crate::db::database_store as ds;
+    use crate::db::Writer;
+    use crate::inventory::lint_scope::TitleLintScope;
+    use crate::services::mount_index::file_ops;
+    use crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn mp(id: &str) -> (String, Option<String>) {
+        ("mountPoints".to_string(), Some(id.to_string()))
+    }
+
+    struct Fx {
+        dir: tempfile::TempDir,
+        main: Writer,
+        mount: Writer,
+        a: String,
+        b: String,
+    }
+
+    /// A provisioned instance: its main + mount-index writers on THIS thread,
+    /// its first database store (`a`) and a second database store (`b`) cloned
+    /// from it, with `notes/one.md` written into `a` BEFORE the capture arms.
+    fn fixture() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let main = Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let mount =
+            Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER).unwrap();
+        let a: String = mount
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' ORDER BY id LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        mount
+            .connection()
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE p4d381_b AS SELECT * FROM doc_mount_points WHERE id = '{a}'; \
+                 UPDATE p4d381_b SET id = 'p4d381-store-b', name = 'P4D381 Second Store'; \
+                 INSERT INTO doc_mount_points SELECT * FROM p4d381_b;"
+            ))
+            .unwrap();
+        ds::write_database_document(
+            mount.connection(),
+            &a,
+            "notes/one.md",
+            "# One\n\nThe first.\n",
+            TitleLintScope::Unlinted {
+                main: main.connection(),
+            },
+        )
+        .unwrap();
+        Fx {
+            dir,
+            main,
+            mount,
+            a,
+            b: "p4d381-store-b".to_string(),
+        }
+    }
+
+    fn lint(fx: &Fx) -> TitleLintScope<'_> {
+        TitleLintScope::Unlinted {
+            main: fx.main.connection(),
+        }
+    }
+
+    fn ex() -> std::sync::Arc<dyn crate::services::mount_index::converters::DocumentTextExtractor> {
+        crate::services::mount_index::converters::default_text_extractor()
+    }
+
+    // ── the five published file-op wrappers (`file-ops.ts:952-990`) ──
+
+    #[tokio::test]
+    async fn write_file_publishes_its_store() {
+        let fx = fixture();
+        let mut cap = HintCapture::start();
+        let e = ex();
+        file_ops::write_file(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/two.md",
+            b"# Two\n",
+            false,
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
+    #[tokio::test]
+    async fn delete_file_publishes_only_when_something_was_deleted() {
+        let fx = fixture();
+        let mut cap = HintCapture::start();
+        let r = file_ops::delete_file(fx.mount.connection(), &fx.a, "notes/missing.md").unwrap();
+        assert_eq!(r["deleted"], false);
+        assert!(cap.drain().await.is_empty(), "a missing path announced");
+        file_ops::delete_file(fx.mount.connection(), &fx.a, "notes/one.md").unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
+    #[tokio::test]
+    async fn copy_file_publishes_the_destination_only_and_a_refusal_nothing() {
+        let fx = fixture();
+        let mut cap = HintCapture::start();
+        let e = ex();
+        let opts = |src: &str| file_ops::CopyOpts {
+            source_mount_point_id: fx.a.clone(),
+            source_path: src.to_string(),
+            dest_mount_point_id: fx.b.clone(),
+            dest_path: "copied/one.md".to_string(),
+            force: false,
+        };
+        assert!(file_ops::copy_file(
+            fx.mount.connection(),
+            &opts("notes/nope.md"),
+            e.as_ref(),
+            blob_codec_or_refusing(None)
+        )
+        .is_err());
+        assert!(cap.drain().await.is_empty(), "a refused copy announced");
+        file_ops::copy_file(
+            fx.mount.connection(),
+            &opts("notes/one.md"),
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
+    }
+
+    #[tokio::test]
+    async fn move_and_link_publish_both_stores() {
+        let fx = fixture();
+        let mut cap = HintCapture::start();
+        let e = ex();
+        file_ops::link_file(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/one.md",
+            &fx.b,
+            "linked/one.md",
+            e.as_ref(),
+        )
+        .unwrap();
+        let mut want = vec![mp(&fx.a), mp(&fx.b)];
+        want.sort();
+        assert_eq!(cap.drain_sorted_expecting(2).await, want);
+        file_ops::move_file(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/one.md",
+            &fx.b,
+            "moved/one.md",
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_sorted_expecting(2).await, want);
+        // Within ONE store, `publishBoth` publishes that store once.
+        file_ops::move_file(
+            fx.mount.connection(),
+            &fx.b,
+            "moved/one.md",
+            &fx.b,
+            "moved/renamed.md",
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
+    }
+
+    // ── the database-store emits (`database-store.ts:277, :302, :393, :655`) ──
+
+    #[tokio::test]
+    async fn the_database_store_write_delete_and_move_emits_publish() {
+        let fx = fixture();
+        let mut cap = HintCapture::start();
+        ds::write_database_document(fx.mount.connection(), &fx.a, "notes/w.md", "w", lint(&fx))
+            .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        ds::move_database_document(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/w.md",
+            "notes/w2.md",
+            lint(&fx),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        assert!(ds::delete_database_document(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/w2.md",
+            lint(&fx)
+        )
+        .unwrap());
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        // Silence: deleting a path that is not there returns before the emit.
+        assert!(!ds::delete_database_document(
+            fx.mount.connection(),
+            &fx.a,
+            "notes/zz.md",
+            lint(&fx)
+        )
+        .unwrap());
+        assert!(cap.drain().await.is_empty(), "an absent delete announced");
+    }
+
+    #[tokio::test]
+    async fn a_folder_move_emits_per_document_and_a_blob_only_folder_nothing() {
+        let fx = fixture();
+        // A folder holding only a blob, planted before the capture arms.
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(fx.mount.connection())
+            .link_blob_content(&crate::db::doc_mount_file_links::LinkBlobInput {
+                mount_point_id: fx.a.clone(),
+                relative_path: "pics/a.bin".into(),
+                file_name: "a.bin".into(),
+                file_type: None,
+                original_file_name: Some("a.bin".into()),
+                original_mime_type: Some("application/octet-stream".into()),
+                stored_mime_type: "application/octet-stream".into(),
+                sha256: "0".repeat(64),
+                data: vec![1, 2, 3],
+                normalize_images: false,
+                description: None,
+                conversion_status: None,
+                extracted_text: None,
+                extracted_text_sha256: None,
+                extraction_status: None,
+                last_modified: None,
+                created_at: None,
+            })
+            .unwrap();
+        let mut cap = HintCapture::start();
+        ds::move_database_folder(fx.mount.connection(), &fx.a, "pics", "pics2", lint(&fx)).unwrap();
+        assert!(
+            cap.drain().await.is_empty(),
+            "v4 emits per moved DOCUMENT only — a blob-only folder move announces nothing here"
+        );
+        ds::move_database_folder(fx.mount.connection(), &fx.a, "notes", "notes2", lint(&fx))
+            .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
+    // ── the rescan (`database-store.ts:784`), the ingest (`store-file.ts:430`),
+    // the sync applier (`apply-store.ts:100`, `:126`) ──
+
+    #[tokio::test]
+    async fn the_rescan_ingest_and_sync_publish() {
+        let fx = fixture();
+        let info =
+            crate::db::doc_mount_points::DocMountPointsRepository::new(fx.mount.connection())
+                .find_service_info_by_id(&fx.a)
+                .unwrap()
+                .unwrap();
+        let mut cap = HintCapture::start();
+        let e = ex();
+        crate::services::mount_index::scanner::rescan_database_mount_point(
+            fx.mount.connection(),
+            &info,
+            e.as_ref(),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+
+        let mut input = crate::services::mount_index::store_file::StoreFileInput::new(
+            &fx.b,
+            "ingest/a.txt",
+            b"ingested".to_vec(),
+        );
+        input.enqueue_embedding = false;
+        crate::services::mount_index::store_file::store_mount_file(
+            fx.main.connection(),
+            fx.mount.connection(),
+            &input,
+            e.as_ref(),
+            blob_codec_or_refusing(None),
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
+
+        let times = crate::services::mount_index::sync::apply_store::StoreTimes {
+            last_modified: None,
+            created_at: None,
+        };
+        crate::services::mount_index::sync::apply_store::write_store_file(
+            fx.mount.connection(),
+            &fx.a,
+            "synced/a.md",
+            b"# Synced\n",
+            &times,
+            None,
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        crate::services::mount_index::sync::apply_store::write_store_file(
+            fx.mount.connection(),
+            &fx.a,
+            "synced/b.bin",
+            &[0u8, 1, 2],
+            &times,
+            None,
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
+    // ── the folders route (`folders/route.ts:59`, `:96`) ──
+
+    #[tokio::test]
+    async fn the_folders_route_publishes_on_success_and_never_on_a_refusal() {
+        let Fx {
+            dir,
+            main,
+            mount,
+            a,
+            ..
+        } = fixture();
+        drop((main, mount));
+        let path = dir.path().to_path_buf();
+        let db = crate::db::runtime::Db::open(
+            crate::db::runtime::DbPaths {
+                main: path.join("quilltap.db"),
+                mount_index: Some(path.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let mut cap = HintCapture::start();
+        let r = crate::api::mount_files::mount_folder_create(&db, &a, "../evil").await;
+        assert!(matches!(r, crate::api::types::Response::Error(_)), "{r:?}");
+        assert!(
+            cap.drain().await.is_empty(),
+            "a refused folder create announced"
+        );
+        let r = crate::api::mount_files::mount_folder_create(&db, &a, "fresh/sub").await;
+        assert!(
+            matches!(r, crate::api::types::Response::MountFile(_)),
+            "{r:?}"
+        );
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&a)]);
+    }
+}
+// === /P4.D381 ===

@@ -16,12 +16,15 @@
 //!
 //! ## Seams deliberately NOT ported (no-ops in v4's port surface)
 //!
-//! - The **`emitDocument*` events** (`emitDocumentWritten` / `Deleted` / `Moved`)
-//!   trigger the embedding re-index watcher; they are no-op seams here. (The
-//!   post-write **chunk pass IS ported** — see [`write_database_document`] —
-//!   but the embedding *scheduling* that `emitDocumentWritten` triggers remains
-//!   a standing loud refusal, so a chunked document still awaits an explicit
-//!   embed pass before semantic search sees it.)
+//! - The **`emitDocument*` events** (`emitDocumentWritten` / `Deleted` / `Moved`):
+//!   their PUBLISH half is live (P4.D381, v4 `aec626eff` — each emit announces
+//!   the store's `mountPoints` realtime hint through
+//!   `services::mount_index::realtime`); their WATCHER half, the embedding
+//!   re-index subscription, is still a seam here. (The post-write **chunk pass
+//!   IS ported** — see [`write_database_document`] — but the embedding
+//!   *scheduling* that `emitDocumentWritten` triggers remains a standing loud
+//!   refusal, so a chunked document still awaits an explicit embed pass before
+//!   semantic search sees it.)
 //! - The **`expectedMtime`** mtime-conflict guard is out of scope (not ported).
 //! - `backfillFolderRowsForMountPoint` / `rescanDatabaseMountPoint` are out of
 //!   scope (they drive the chunk/embed pipeline).
@@ -585,6 +588,9 @@ pub fn write_database_document(
         mount_point_id,
         &rel,
     );
+    // === P4.D381 === v4 emits before `afterLint()` (`database-store.ts:277`).
+    crate::services::mount_index::realtime::emit_document_written(mount_point_id, &rel);
+    // === /P4.D381 ===
     after_lint.write();
 
     // v4 returns `new Date(now).getTime()` for a `now` minted in the same JS
@@ -614,8 +620,8 @@ pub fn write_database_document(
 /// NOT_FOUND-tolerant early return) — and ALSO when the link lookup FAILED (v4's
 /// `findByMountPointAndPath` is a fallback `queryJoined`). A failed GC logs and
 /// still answers `true`: v4 emits `documentDeleted` and returns `true` whatever
-/// `deleteWithGC` answered. The `emitDocumentDeleted` event is a no-op seam
-/// (skipped). An absent path is never linted (v4 returns before the lint).
+/// `deleteWithGC` answered. `emitDocumentDeleted` publishes the store's hint
+/// (P4.D381). An absent path is never linted (v4 returns before the lint).
 pub fn delete_database_document(
     conn: &Connection,
     mount_point_id: &str,
@@ -636,6 +642,9 @@ pub fn delete_database_document(
         &linted,
     )?;
     links.delete_with_gc_or_false(&link.id);
+    // === P4.D381 === (`database-store.ts:302`)
+    crate::services::mount_index::realtime::emit_document_deleted(mount_point_id, &rel);
+    // === /P4.D381 ===
     after_lint.write();
     Ok(true)
 }
@@ -648,7 +657,7 @@ pub fn delete_database_document(
 /// the source exists, the target extension is supported, and no conflict at the
 /// target; ensures the destination folder; then updates the link's
 /// `relativePath`/`fileName`/`folderId`, and the file row's `fileType` when it
-/// changed. `emitDocumentMoved` is a no-op seam.
+/// changed. `emitDocumentMoved` publishes the store's hint (P4.D381).
 pub fn move_database_document(
     conn: &Connection,
     mount_point_id: &str,
@@ -743,6 +752,9 @@ pub fn move_database_document(
         }
     }
 
+    // === P4.D381 === (`database-store.ts:393`)
+    crate::services::mount_index::realtime::emit_document_moved(mount_point_id, &from_rel, &to_rel);
+    // === /P4.D381 ===
     after_lint.write();
     Ok(())
 }
@@ -900,7 +912,9 @@ pub fn delete_database_folder(
 /// v4 `moveDatabaseFolder` (`database-store.ts:412`): rename/move a folder and
 /// rewrite every descendant folder's path + every link under it. Verifies source
 /// exists + dest doesn't; ensures the dest parent. `emitDocumentMoved` per moved
-/// doc is a no-op seam.
+/// NON-BLOB document, after every update (v4's "emit events after all updates"),
+/// publishes the store's hint (P4.D381) — a folder holding only blobs emits
+/// nothing.
 pub fn move_database_folder(
     conn: &Connection,
     mount_point_id: &str,
@@ -1010,6 +1024,7 @@ pub fn move_database_folder(
     // the renamed folder. Post-refactor, path/folder membership lives entirely on
     // doc_mount_file_links.
     let links = links_repo.find_by_mount_point_id_or_empty(mount_point_id);
+    let mut moved_documents: Vec<(String, String)> = Vec::new(); // === P4.D381 ===
     for link in &links {
         if !old_prefix.is_empty() && link.relative_path.starts_with(&old_prefix) {
             let new_path = format!("{}{}", new_prefix, &link.relative_path[old_prefix.len()..]);
@@ -1032,9 +1047,23 @@ pub fn move_database_folder(
                     ..Default::default()
                 },
             )?;
+            // === P4.D381 === documents (text content) track their old path.
+            if link.file_type != "blob" {
+                moved_documents.push((link.relative_path.clone(), new_path));
+            }
+            // === /P4.D381 ===
         }
     }
 
+    // === P4.D381 === emit events after all updates (`database-store.ts:655`).
+    for (old_path, new_path) in &moved_documents {
+        crate::services::mount_index::realtime::emit_document_moved(
+            mount_point_id,
+            old_path,
+            new_path,
+        );
+    }
+    // === /P4.D381 ===
     after_lint.write();
     Ok(())
 }

@@ -639,7 +639,9 @@ pub fn store_mount_file(
             RefusedConverterPolicy::WriteFailed,
         );
 
-    // v4 emitDocumentWritten — the watcher deferral (see file_ops header).
+    // v4 `store-file.ts:430` emitDocumentWritten — its publish half is the
+    // store's hint (P4.D381); the watcher half is the standing deferral.
+    super::realtime::emit_document_written(&mp.id, &final_path);
 
     if input.enqueue_embedding && has_extracted_text {
         refresh_now(main, mount, &mp.id, &final_path, "", extractor);

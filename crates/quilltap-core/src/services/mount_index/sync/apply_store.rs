@@ -209,10 +209,15 @@ pub fn write_store_file(
         // not widen it. Where v4 runs a sync inside a forked child it would
         // leave the chunks to the next rescan; v5 builds the same rows sooner.
         //
-        // v4's `emitDocumentWritten` beside it has no v5 analogue at all: it
-        // schedules the debounced embedding pass, which the in-process runner
-        // reaches through this same call.
+        // v4's `emitDocumentWritten` beside it (`apply-store.ts:100`): its
+        // watcher half schedules the debounced embedding pass, which the
+        // in-process runner reaches through this same call; its PUBLISH half is
+        // the store's realtime hint (P4.D381).
         reindex_after_database_write(conn, mount_point_id, relative_path);
+        crate::services::mount_index::realtime::emit_document_written(
+            mount_point_id,
+            relative_path,
+        );
         return Ok(content_sha256);
     }
 
@@ -250,6 +255,8 @@ pub fn write_store_file(
         last_modified: times.last_modified.map(str::to_string),
         created_at: times.created_at.map(str::to_string),
     })?;
+    // v4 `apply-store.ts:126` (P4.D381): the store's realtime hint.
+    crate::services::mount_index::realtime::emit_document_written(mount_point_id, relative_path);
 
     // pdf/docx carry extractable text, so they chunk like a document does. The
     // second and last of the sync's two re-index call sites (see the note on the

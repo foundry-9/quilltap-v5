@@ -616,8 +616,9 @@ pub fn rescan_database_mount_point(
             // reindex_single_file is itself best-effort (v4 catches + warns).
             reindex_single_file(conn, &mount_point.id, &link.relative_path, "", extractor);
         }
-        // v4 emits document-written per link (the watcher seam) — the event
-        // emitter is not a ported surface; the refresh scheduler covers it.
+        // v4 `database-store.ts:784`: one document-written per document link,
+        // re-chunked or not — its publish half is the store's hint (P4.D381).
+        super::realtime::emit_document_written(&mount_point.id, &link.relative_path);
     }
     Ok(doc_links.len() as i64)
 }

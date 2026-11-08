@@ -23,7 +23,9 @@ pub enum RealtimeTopic {
     Projects,
     /// Characters and their prompts/photos.
     Characters,
-    /// Document stores and their indexing/embedding status.
+    /// Document stores, their indexing/embedding status, and their files and
+    /// folders. Scoped by store id (`publish_mount_change`): that store's
+    /// browser re-reads. (v4 `aec626eff`, P4.D381.)
     MountPoints,
     /// The Commonplace Book's rows. Scoped by *chat* id rather than by memory
     /// id — the count beside a Salon's Delete Memories button is what watches

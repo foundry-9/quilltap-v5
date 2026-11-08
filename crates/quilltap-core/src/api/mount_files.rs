@@ -601,7 +601,12 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
         })
         .await;
     match out {
-        Ok(Ok(created)) => Response::MountFile(serde_json::json!({ "path": created })),
+        Ok(Ok(created)) => {
+            // v4 `folders/route.ts:59` / `:96` (P4.D381): both success arms
+            // publish the store's hint immediately before the `{path}` answer.
+            crate::services::mount_index::realtime::publish_mount_change(mount_point_id);
+            Response::MountFile(serde_json::json!({ "path": created }))
+        }
         Ok(Err(FolderCreateRefusal::NotFound)) => {
             Response::error(ErrorKind::NotFound, "Mount point not found")
         }
