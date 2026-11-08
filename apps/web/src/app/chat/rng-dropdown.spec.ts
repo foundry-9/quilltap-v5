@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
@@ -335,5 +336,32 @@ describe('RngDropdown (v4 components/chat/RngDropdown.tsx, gutter variant)', () 
     const fixture = mount(stub(), true);
     open(fixture);
     expect(fixture.nativeElement.querySelector('[role="menu"]')).toBeNull();
+  });
+});
+
+/**
+ * v4 `df8d4d70a` / `94f041764` (P4.D385 item 15): the trigger and the dice
+ * count buttons wear Quilltap tooltips, not native titles, and the Custom Roll
+ * menuitem reports whether its panel is open.
+ */
+describe('RngDropdown — tooltips and the Custom Roll aria-expanded', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('tooltips the trigger and both count buttons, with no native title anywhere', () => {
+    const fixture = mount(stub());
+    expect(tooltipContentOf(fixture, byLabel(fixture, 'Random number generator'))).toBe('Random number generator');
+    open(fixture);
+    expect(tooltipContentOf(fixture, byLabel(fixture, 'Increase d6 count'))).toBe('Increase dice count');
+    expect(tooltipContentOf(fixture, byLabel(fixture, 'Decrease d6 count'))).toBe('Decrease dice count');
+    expect((fixture.nativeElement as HTMLElement).querySelector('[title]')).toBeNull();
+  });
+
+  it('marks the Custom Roll menuitem aria-expanded both ways', () => {
+    const fixture = mount(stub());
+    open(fixture);
+    expect(menuItem(fixture, 'Custom Roll').getAttribute('aria-expanded')).toBe('false');
+    menuItem(fixture, 'Custom Roll').click();
+    fixture.detectChanges();
+    expect(menuItem(fixture, 'Custom Roll').getAttribute('aria-expanded')).toBe('true');
   });
 });

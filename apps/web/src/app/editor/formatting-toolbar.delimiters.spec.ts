@@ -2,6 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import oracle from './__fixtures__/delimiter-oracle.json';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { FormattingToolbar } from './formatting-toolbar';
 import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
 
@@ -58,7 +59,13 @@ describe('FormattingToolbar — the delimiter section, v4 rendered-DOM parity', 
       );
 
       expect(buttons.map((b) => b.textContent!.trim())).toEqual(v.buttons.map((b) => b.label));
-      expect(buttons.map((b) => b.getAttribute('title'))).toEqual(v.buttons.map((b) => b.title));
+      // The capture predates v4 `df8d4d70a`, which moved this exact string
+      // from the button's `title` into its `<Tooltip content>` (the pin's
+      // `FormattingToolbar.tsx:562-572` — `getDelimiterTooltip(delimiter)`, the
+      // same function). So v5's tooltip content is compared with the captured
+      // title, and the button itself carries no native title.
+      expect(buttons.map((b) => tooltipContentOf(fixture, b))).toEqual(v.buttons.map((b) => b.title));
+      expect(buttons.every((b) => !b.hasAttribute('title'))).toBe(true);
       expect(buttons.map((b) => b.className)).toEqual(v.buttons.map((b) => b.className));
       expect(root.querySelectorAll('.qt-formatting-toolbar-divider').length).toBe(v.dividers);
     });

@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -199,6 +200,16 @@ describe('CustomToolsPopup — the wand and its gating', () => {
     // The badge renders the loader's verbatim reason.
     expect(text(fixture)).toContain('Tools/broken.tool.json');
     expect(text(fixture)).toContain('bad outcome table');
+  });
+
+  // P4.D385 (§R.10 (y)) — v4 df8d4d70a's `Tooltip content="Custom tools"`.
+  it('wears a Quilltap tooltip on the trigger, not a native title, and keeps its name and popup role', async () => {
+    const fixture = await mount(stub({ tools: [UNLOCK], errors: [] }));
+    const trigger = button(fixture)!;
+    expect(trigger.hasAttribute('title')).toBe(false);
+    expect(tooltipContentOf(fixture, trigger)).toBe('Custom tools');
+    expect(trigger.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('re-resolves the roster fresh on every open (v4 enabled: isOpen)', async () => {

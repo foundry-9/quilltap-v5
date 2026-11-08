@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -121,7 +122,7 @@ describe('PendingInformChips (v4 components/chat/PendingInformChips.tsx @ f45a51
     const fixture = await mount(stub([BATCH]));
     expect(chipLabels(fixture)).toContain('Informing Alice, Bob before their next turn');
     const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip');
-    expect(chip.getAttribute('title')).toBe(
+    expect(tooltipContentOf(fixture, chip.querySelector('.text-foreground'))).toBe(
       'You see that Alice slipped the letter into her sleeve.',
     );
   });
@@ -133,7 +134,7 @@ describe('PendingInformChips (v4 components/chat/PendingInformChips.tsx @ f45a51
     const fixture = await mount(stub([{ ...BATCH, permanent: true }]));
     expect(chipLabels(fixture)).toContain('Informing Alice, Bob on every turn in this chat');
     const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip');
-    expect(chip.getAttribute('title')).toBe(
+    expect(tooltipContentOf(fixture, chip.querySelector('.text-foreground'))).toBe(
       'Standing in this chat until withdrawn — You see that Alice slipped the letter into her sleeve.',
     );
   });
@@ -145,7 +146,7 @@ describe('PendingInformChips (v4 components/chat/PendingInformChips.tsx @ f45a51
     const remove = fixture.nativeElement.querySelector(
       '.qt-chat-attachment-chip-remove',
     ) as HTMLButtonElement;
-    expect(remove.getAttribute('title')).toBe('Withdraw this standing inform');
+    expect(tooltipContentOf(fixture, remove)).toBe('Withdraw this standing inform');
     expect(remove.getAttribute('aria-label')).toBe('Withdraw the inform for Alice, Bob');
   });
 
@@ -156,11 +157,11 @@ describe('PendingInformChips (v4 components/chat/PendingInformChips.tsx @ f45a51
       const fixture = await mount(stub([batch]));
       expect(chipLabels(fixture)).toContain('Informing Alice, Bob before their next turn');
       const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip');
-      expect(chip.getAttribute('title')).toBe(
+      expect(tooltipContentOf(fixture, chip.querySelector('.text-foreground'))).toBe(
         'You see that Alice slipped the letter into her sleeve.',
       );
       const remove = chip.querySelector('.qt-chat-attachment-chip-remove') as HTMLButtonElement;
-      expect(remove.getAttribute('title')).toBe('Withdraw this inform');
+      expect(tooltipContentOf(fixture, remove)).toBe('Withdraw this inform');
     }
   });
 
@@ -217,5 +218,21 @@ describe('firstInformLine (v4 `firstLine`)', () => {
   it('answers the empty string for a passage with nothing in it', () => {
     expect(firstInformLine('')).toBe('');
     expect(firstInformLine('\n   \n')).toBe('');
+  });
+});
+
+describe('PendingInformChips — tooltips, not titles (v4 df8d4d70a)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('carries no native title, and the label tooltip anchors the icon and label', async () => {
+    const fixture = await mount(stub([BATCH]));
+    const chip = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip') as HTMLElement;
+    expect(chip.querySelector('[title]')).toBeNull();
+    expect(chip.hasAttribute('title')).toBe(false);
+    const anchor = chip.querySelector('qt-tooltip')!;
+    expect(anchor.classList.contains('gap-2')).toBe(true);
+    expect(anchor.classList.contains('min-w-0')).toBe(true);
+    expect(anchor.querySelector('qt-icon')).not.toBeNull();
+    expect(anchor.querySelector('.text-foreground')).not.toBeNull();
   });
 });

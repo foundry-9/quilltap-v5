@@ -755,3 +755,21 @@ row one message shape with every function's answer.
 - **Recorder:** `apps/web/oracle/established-fact.recorder.ts` (its header has
   the invocation). Expect 207 lines; a second run reproduces the file byte for
   byte (`cmp` — measured).
+
+## `markdown-button-name.oracle.ndjson`
+
+**31 rows** — 1 `formats` (v4's `MARKDOWN_FORMATS` label / tooltip / type in
+order, plus the sliced declaration's bytes) + 30 `name` (v4's eleven buttons,
+then the rule's edges: containment either case, digit-only, non-alphanumeric /
+empty / astral / accented labels, an empty tooltip, a dotted capital İ).
+Drives `app/editor/formatting-toolbar.oracle.spec.ts`: v4's
+`markdownButtonName` (`components/chat/FormattingToolbar.tsx:128-139`,
+`df8d4d70a`), the Markdown buttons' accessible names.
+
+- **Provenance:** recorded 2026-11-08 by P4.D385 at the round pin `624d0d25c`
+  (`4.13.0-dev.8`), Node 24.13.1. v4 does NOT export the function, so the
+  recorder reads the pin's own `FormattingToolbar.tsx`, slices exactly the one
+  declaration, transpiles it with the pin's TypeScript 6.0.3 and evaluates it
+  (the SLICE idiom, ruling PL-11).
+- **Recorder:** `apps/web/oracle/markdown-button-name.recorder.ts`. Expect 31
+  lines; a second run reproduces the file byte for byte (`cmp` — measured).

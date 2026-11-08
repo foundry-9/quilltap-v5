@@ -16,6 +16,7 @@ import { WORKSPACE_HANDLE } from '../workspace/workspace-contract';
 import { CoreClient, coreErrorMessage } from '../core/core-client';
 import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
+import { Tooltip } from '../ui/tooltip'; // P4.D385 (§R.10 (y)): the trigger's tooltip
 import {
   CustomToolParamsForm,
   coerceParamValues,
@@ -93,6 +94,7 @@ interface ReferenceRow {
   imports: [
     Icon,
     Modal,
+    Tooltip, // P4.D385 (§R.10 (y))
     CustomToolParamsForm,
     CustomToolPresets,
     CustomToolWardrobeLines,
@@ -108,10 +110,11 @@ interface ReferenceRow {
            "relative" class — which had no positioned descendant left — is the whole
            delta. -->
       <div>
+        <!-- === P4.D385 (§R.10 (y)): v4 df8d4d70a's trigger tooltip === -->
+        <qt-tooltip content="Custom tools">
         <button
           type="button"
           [class]="buttonClass()"
-          title="Custom tools"
           aria-label="Custom tools"
           aria-haspopup="dialog"
           [attr.aria-expanded]="isOpen()"
@@ -120,6 +123,8 @@ interface ReferenceRow {
         >
           <qt-icon name="wand" class="w-5 h-5" />
         </button>
+        </qt-tooltip>
+        <!-- === end P4.D385 === -->
       </div>
     }
 

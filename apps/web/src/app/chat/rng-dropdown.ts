@@ -13,6 +13,7 @@ import type { RngKind } from './chat-cast.api';
 import { requestRngPendingResult, type RngPendingResult } from './rng-request';
 import { CoreClient } from '../core/core-client';
 import { Icon } from '../ui/icon';
+import { Tooltip } from '../ui/tooltip';
 import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
@@ -68,13 +69,13 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
   // v4 listens on mousedown, not click, so the menu is gone before the click
   // lands on whatever was underneath it.
   host: { '(document:mousedown)': 'onDocumentMouseDown($event)' },
-  imports: [Icon],
+  imports: [Icon, Tooltip],
   template: `
     <div class="relative">
+      <qt-tooltip content="Random number generator">
       <button
         type="button"
         [class]="buttonClass()"
-        title="Random number generator"
         aria-label="Random number generator"
         [attr.aria-expanded]="open()"
         aria-haspopup="menu"
@@ -87,6 +88,7 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
           <qt-icon name="dice" class="w-5 h-5" />
         }
       </button>
+      </qt-tooltip>
 
       @if (open()) {
         <div
@@ -106,26 +108,28 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
                   Roll {{ count(die.sides) }}{{ die.label }}
                 </button>
                 <div class="flex flex-col">
+                  <qt-tooltip content="Increase dice count">
                   <button
                     type="button"
                     class="px-1.5 py-0.5 text-xs hover:qt-bg-muted transition-colors disabled:opacity-30 rounded-t border border-b-0"
-                    title="Increase dice count"
                     [attr.aria-label]="'Increase ' + die.label + ' count'"
                     [disabled]="loading() || count(die.sides) >= 100"
                     (click)="adjust(die.sides, 1)"
                   >
                     <qt-icon name="chevron-down" class="w-3 h-3 rotate-180" />
                   </button>
+                  </qt-tooltip>
+                  <qt-tooltip content="Decrease dice count">
                   <button
                     type="button"
                     class="px-1.5 py-0.5 text-xs hover:qt-bg-muted transition-colors disabled:opacity-30 rounded-b border"
-                    title="Decrease dice count"
                     [attr.aria-label]="'Decrease ' + die.label + ' count'"
                     [disabled]="loading() || count(die.sides) <= 1"
                     (click)="adjust(die.sides, -1)"
                   >
                     <qt-icon name="chevron-down" class="w-3 h-3" />
                   </button>
+                  </qt-tooltip>
                 </div>
               </div>
             }
@@ -148,6 +152,7 @@ const DICE_TYPES: ReadonlyArray<{ sides: number; label: string }> = [
               type="button"
               role="menuitem"
               class="w-full px-3 py-2 text-left text-sm hover:qt-bg-muted transition-colors disabled:opacity-50 flex items-center justify-between"
+              [attr.aria-expanded]="customOpen()"
               [disabled]="loading()"
               (click)="customOpen.set(!customOpen())"
             >

@@ -5,6 +5,7 @@ import { CoreClient } from '../core/core-client';
 import type { ChatInformsListResult, PendingInformBatch } from '../core/core-contract';
 import { RealtimeService } from '../core/realtime.service';
 import { Icon } from '../ui/icon';
+import { Tooltip } from '../ui/tooltip';
 import { ToastService } from '../ui/toast.service';
 import { chatKeys } from './chat-keys';
 
@@ -40,27 +41,32 @@ export function firstInformLine(markdown: string): string {
 @Component({
   selector: 'qt-pending-inform-chips',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, Tooltip],
   template: `
     @if (chips().length > 0) {
       <div class="qt-chat-attachment-list mb-2">
         @for (chip of chips(); track chip.batchId) {
-          <div class="qt-chat-tool-result-chip" [title]="chip.hover">
-            <qt-icon
-              name="info"
-              class="qt-chat-attachment-chip-icon qt-chat-attachment-chip-icon-info"
-            />
-            <span class="text-foreground max-w-[280px] truncate">{{ chip.label }}</span>
+          <div class="qt-chat-tool-result-chip">
+            <!-- The label truncates in a narrow composer, so the chip says what
+                 it is in its tooltip too (v4 df8d4d70a). -->
+            <qt-tooltip [content]="chip.hover" class="gap-2 min-w-0">
+              <qt-icon
+                name="info"
+                class="qt-chat-attachment-chip-icon qt-chat-attachment-chip-icon-info"
+              />
+              <span class="text-foreground max-w-[280px] truncate">{{ chip.label }}</span>
+            </qt-tooltip>
+            <qt-tooltip [content]="chip.withdrawTitle">
             <button
               type="button"
               class="qt-chat-attachment-chip-remove"
-              [title]="chip.withdrawTitle"
               [attr.aria-label]="'Withdraw the inform for ' + chip.names"
               [disabled]="cancelling()"
               (click)="onCancel(chip.batchId)"
             >
               <qt-icon name="close" class="w-4 h-4" />
             </button>
+            </qt-tooltip>
           </div>
         }
       </div>

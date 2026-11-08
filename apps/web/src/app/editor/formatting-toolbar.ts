@@ -14,6 +14,7 @@ import type { CharProfile } from './char-insert/types';
 import { UnicodePickerPopover } from './char-insert/unicode-picker-popover';
 import { getDelimiterTooltip, visibleDelimiters } from './delimiter-transforms';
 import { Icon } from '../ui/icon';
+import { Tooltip } from '../ui/tooltip';
 import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contract';
 
 /**
@@ -60,6 +61,25 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
 ];
 
 /**
+ * Accessible name for a Markdown button (v4 `FormattingToolbar.tsx:128-139`,
+ * `df8d4d70a`): the tooltip's plain words ("Bold"), keeping the visible glyph
+ * when the words don't already contain it ("Heading 4 (H4)") so a
+ * voice-control user can say what they see (2.5.3). v4 keeps it file-local;
+ * v5 exports it so the tier-1 corpus can reach it (a visibility difference
+ * only).
+ */
+export function markdownButtonName(format: { label: string; tooltip: string }): string {
+  const { label, tooltip } = format;
+  return /^[A-Za-z0-9]+$/.test(label) && !tooltip.toLowerCase().includes(label.toLowerCase())
+    ? `${tooltip} (${label})`
+    : tooltip;
+}
+
+/** The toolbar's Markdown button table — v4's `MARKDOWN_FORMATS` (exported for the corpus spec). */
+export const MARKDOWN_BUTTON_TABLE: ReadonlyArray<Pick<ButtonConfig, 'label' | 'tooltip' | 'type'>> =
+  MARKDOWN_BUTTONS;
+
+/**
  * The rich-editor formatting toolbar (v4 `components/chat/FormattingToolbar.tsx`
  * markdown section). Bold / italic / H1–H6 / lists / blockquote plus a code-block
  * toggle — the same button inventory v4 shows (strikethrough/highlight are dialect
@@ -93,55 +113,62 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
 @Component({
   selector: 'qt-formatting-toolbar',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, EmojiPickerPopover, UnicodePickerPopover],
+  imports: [Icon, Tooltip, EmojiPickerPopover, UnicodePickerPopover],
   template: `
     <div class="qt-formatting-toolbar">
       <div class="qt-formatting-toolbar-section">
         @for (btn of buttons(); track btn.type) {
+          <qt-tooltip [content]="btn.tooltip">
+            <button
+              type="button"
+              class="qt-formatting-button qt-formatting-button-{{ btn.type }}"
+              [attr.aria-label]="buttonName(btn)"
+              [disabled]="disabled()"
+              (mousedown)="$event.preventDefault()"
+              (click)="action.emit(btn.action)"
+            >
+              {{ btn.label }}
+            </button>
+          </qt-tooltip>
+        }
+        <qt-tooltip content="Outdent list item (Shift+Tab)">
           <button
             type="button"
-            class="qt-formatting-button qt-formatting-button-{{ btn.type }}"
-            [title]="btn.tooltip"
+            class="qt-formatting-button qt-formatting-button-outdent"
+            aria-label="Outdent list item"
             [disabled]="disabled()"
             (mousedown)="$event.preventDefault()"
-            (click)="action.emit(btn.action)"
+            (click)="action.emit({ kind: 'outdent' })"
           >
-            {{ btn.label }}
+            ⇤
           </button>
-        }
-        <button
-          type="button"
-          class="qt-formatting-button qt-formatting-button-outdent"
-          title="Outdent list item (Shift+Tab)"
-          aria-label="Outdent list item"
-          [disabled]="disabled()"
-          (mousedown)="$event.preventDefault()"
-          (click)="action.emit({ kind: 'outdent' })"
-        >
-          ⇤
-        </button>
-        <button
-          type="button"
-          class="qt-formatting-button qt-formatting-button-indent"
-          title="Indent list item (Tab)"
-          aria-label="Indent list item"
-          [disabled]="disabled()"
-          (mousedown)="$event.preventDefault()"
-          (click)="action.emit({ kind: 'indent' })"
-        >
-          ⇥
-        </button>
-        <button
-          type="button"
-          class="qt-formatting-button qt-formatting-button-code-block"
-          [class.qt-formatting-button-active]="inCodeBlock()"
-          [title]="inCodeBlock() ? 'End code block' : 'Insert code block'"
-          [disabled]="disabled()"
-          (mousedown)="$event.preventDefault()"
-          (click)="action.emit({ kind: 'codeBlock' })"
-        >
-          {{ inCodeBlock() ? '/CODE' : 'CODE' }}
-        </button>
+        </qt-tooltip>
+        <qt-tooltip content="Indent list item (Tab)">
+          <button
+            type="button"
+            class="qt-formatting-button qt-formatting-button-indent"
+            aria-label="Indent list item"
+            [disabled]="disabled()"
+            (mousedown)="$event.preventDefault()"
+            (click)="action.emit({ kind: 'indent' })"
+          >
+            ⇥
+          </button>
+        </qt-tooltip>
+        <qt-tooltip [content]="inCodeBlock() ? 'End code block' : 'Insert code block'">
+          <button
+            type="button"
+            class="qt-formatting-button qt-formatting-button-code-block"
+            [class.qt-formatting-button-active]="inCodeBlock()"
+            aria-label="Code block"
+            [attr.aria-pressed]="inCodeBlock()"
+            [disabled]="disabled()"
+            (mousedown)="$event.preventDefault()"
+            (click)="action.emit({ kind: 'codeBlock' })"
+          >
+            {{ inCodeBlock() ? '/CODE' : 'CODE' }}
+          </button>
+        </qt-tooltip>
       </div>
 
       <!-- Roleplay-template delimiters — their own section, shown only when the
@@ -151,16 +178,17 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
         <div class="qt-formatting-toolbar-divider"></div>
         <div class="qt-formatting-toolbar-section">
           @for (delimiter of shownDelimiters(); track $index) {
-            <button
-              type="button"
-              class="qt-rp-annotation-button"
-              [title]="tooltipFor(delimiter)"
-              [disabled]="disabled()"
-              (mousedown)="$event.preventDefault()"
-              (click)="applyDelimiter.emit(delimiter)"
-            >
-              {{ delimiter.buttonName }}
-            </button>
+            <qt-tooltip [content]="tooltipFor(delimiter)">
+              <button
+                type="button"
+                class="qt-rp-annotation-button"
+                [disabled]="disabled()"
+                (mousedown)="$event.preventDefault()"
+                (click)="applyDelimiter.emit(delimiter)"
+              >
+                {{ delimiter.buttonName }}
+              </button>
+            </qt-tooltip>
           }
         </div>
       }
@@ -171,11 +199,11 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
            surprise. An explicit button press never can. -->
       <div class="qt-formatting-toolbar-divider"></div>
       <div class="qt-formatting-toolbar-section relative">
+        <qt-tooltip content="Insert emoji (or type \`:\` and a name)">
         <button
           type="button"
           class="qt-formatting-button qt-formatting-button-emoji"
           [class.qt-formatting-button-active]="emojiPickerOpen()"
-          title="Insert emoji (or type \`:\` and a name)"
           aria-label="Insert emoji"
           aria-haspopup="dialog"
           [attr.aria-expanded]="emojiPickerOpen()"
@@ -185,6 +213,7 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
         >
           ☺
         </button>
+        </qt-tooltip>
         @if (emojiPickerOpen()) {
           <qt-emoji-picker-popover
             (pick)="insertChar.emit({ profile: emojiProfile, char: $event })"
@@ -197,11 +226,11 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
            emoji-specific — it sizes a GLYPH label the way the arrow-glyph
            buttons are sized, which is exactly what Ω needs (v4's note). -->
       <div class="qt-formatting-toolbar-section relative">
+        <qt-tooltip content="Insert a symbol (or type \`\\\` and a name)">
         <button
           type="button"
           class="qt-formatting-button qt-formatting-button-emoji"
           [class.qt-formatting-button-active]="unicodePickerOpen()"
-          title="Insert a symbol (or type \`\\\` and a name)"
           aria-label="Insert a symbol"
           aria-haspopup="dialog"
           [attr.aria-expanded]="unicodePickerOpen()"
@@ -211,6 +240,7 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
         >
           Ω
         </button>
+        </qt-tooltip>
         @if (unicodePickerOpen()) {
           <qt-unicode-picker-popover
             (pick)="insertChar.emit({ profile: unicodeProfile, char: $event })"
@@ -222,11 +252,11 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
       @if (showSourceToggle()) {
         <div class="qt-formatting-toolbar-divider"></div>
         <div class="qt-formatting-toolbar-section">
+          <qt-tooltip [content]="sourceTitle()">
           <button
             type="button"
             class="qt-formatting-button qt-formatting-button-source"
             [class.qt-formatting-button-active]="showSource()"
-            [title]="sourceTitle()"
             [attr.aria-label]="sourceTitle()"
             [attr.aria-pressed]="showSource()"
             [disabled]="disabled()"
@@ -235,6 +265,7 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
           >
             <qt-icon [name]="showSource() ? 'pencil' : 'code'" class="w-4 h-4" />
           </button>
+          </qt-tooltip>
         </div>
       }
     </div>
@@ -307,6 +338,11 @@ export class FormattingToolbar {
 
   protected tooltipFor(delimiter: TemplateDelimiter): string {
     return getDelimiterTooltip(delimiter);
+  }
+
+  /** The Markdown button's accessible name (v4 `markdownButtonName`). */
+  protected buttonName(btn: ButtonConfig): string {
+    return markdownButtonName(btn);
   }
 
   /** v4's title/aria-label strings, verbatim (`FormattingToolbar.tsx:437-438`). */

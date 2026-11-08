@@ -1,0 +1,31 @@
+{"id":"formats","kind":"formats","declaration":"function markdownButtonName(format: { label: string; tooltip: string }): string {\n  const { label, tooltip } = format\n  return /^[A-Za-z0-9]+$/.test(label) && !tooltip.toLowerCase().includes(label.toLowerCase())\n    ? `${tooltip} (${label})`\n    : tooltip\n}","formats":[{"label":"B","tooltip":"Bold","type":"bold"},{"label":"I","tooltip":"Italic","type":"italic"},{"label":"H1","tooltip":"Heading 1","type":"h1"},{"label":"H2","tooltip":"Heading 2","type":"h2"},{"label":"H3","tooltip":"Heading 3","type":"h3"},{"label":"H4","tooltip":"Heading 4","type":"h4"},{"label":"H5","tooltip":"Heading 5","type":"h5"},{"label":"H6","tooltip":"Heading 6","type":"h6"},{"label":"• …","tooltip":"Unordered List","type":"ul"},{"label":"1. …","tooltip":"Ordered List","type":"ol"},{"label":"“","tooltip":"Blockquote","type":"blockquote"}]}
+{"id":"format bold","kind":"name","label":"B","tooltip":"Bold","out":"Bold"}
+{"id":"format italic","kind":"name","label":"I","tooltip":"Italic","out":"Italic"}
+{"id":"format h1","kind":"name","label":"H1","tooltip":"Heading 1","out":"Heading 1 (H1)"}
+{"id":"format h2","kind":"name","label":"H2","tooltip":"Heading 2","out":"Heading 2 (H2)"}
+{"id":"format h3","kind":"name","label":"H3","tooltip":"Heading 3","out":"Heading 3 (H3)"}
+{"id":"format h4","kind":"name","label":"H4","tooltip":"Heading 4","out":"Heading 4 (H4)"}
+{"id":"format h5","kind":"name","label":"H5","tooltip":"Heading 5","out":"Heading 5 (H5)"}
+{"id":"format h6","kind":"name","label":"H6","tooltip":"Heading 6","out":"Heading 6 (H6)"}
+{"id":"format ul","kind":"name","label":"• …","tooltip":"Unordered List","out":"Unordered List"}
+{"id":"format ol","kind":"name","label":"1. …","tooltip":"Ordered List","out":"Ordered List"}
+{"id":"format blockquote","kind":"name","label":"“","tooltip":"Blockquote","out":"Blockquote"}
+{"id":"label already in tooltip","kind":"name","label":"Bold","tooltip":"Bold","out":"Bold"}
+{"id":"label as a word of the tooltip","kind":"name","label":"Bold","tooltip":"Make Bold","out":"Make Bold"}
+{"id":"case-insensitive containment","kind":"name","label":"b","tooltip":"Bold","out":"Bold"}
+{"id":"upper tooltip, lower label","kind":"name","label":"h4","tooltip":"HEADING H4","out":"HEADING H4"}
+{"id":"alphanumeric label not contained","kind":"name","label":"H7","tooltip":"Heading 7","out":"Heading 7 (H7)"}
+{"id":"digit-only label contained","kind":"name","label":"4","tooltip":"Heading 4","out":"Heading 4"}
+{"id":"digit-only label not contained","kind":"name","label":"9","tooltip":"Heading 4","out":"Heading 4 (9)"}
+{"id":"bullet label","kind":"name","label":"•","tooltip":"Unordered List","out":"Unordered List"}
+{"id":"ordered label with space","kind":"name","label":"1. …","tooltip":"Ordered List","out":"Ordered List"}
+{"id":"curly quote label","kind":"name","label":"“","tooltip":"Blockquote","out":"Blockquote"}
+{"id":"empty label","kind":"name","label":"","tooltip":"Bold","out":"Bold"}
+{"id":"empty tooltip","kind":"name","label":"B","tooltip":"","out":" (B)"}
+{"id":"both empty","kind":"name","label":"","tooltip":"","out":""}
+{"id":"astral label","kind":"name","label":"𝔄","tooltip":"Fraktur A","out":"Fraktur A"}
+{"id":"accented label","kind":"name","label":"É","tooltip":"Emphasis","out":"Emphasis"}
+{"id":"label with underscore","kind":"name","label":"H_1","tooltip":"Heading","out":"Heading"}
+{"id":"label with space","kind":"name","label":"H 1","tooltip":"Heading","out":"Heading"}
+{"id":"long alnum label","kind":"name","label":"Strikethrough2","tooltip":"Strike","out":"Strike (Strikethrough2)"}
+{"id":"dotted-i tooltip","kind":"name","label":"I","tooltip":"İtalic","out":"İtalic"}

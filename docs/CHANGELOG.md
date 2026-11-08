@@ -1110,6 +1110,24 @@ _Versions: SPA 0.5.973._
 
 P4.D384 items 2–7. `core-contract.ts`'s flat `ChatStreamFrame` bag becomes v4's `kind`-discriminated union (contract C3); the old bag is renamed `LegacyStreamBag` and kept for Help chat and the Brahma console, and `ScopedEvent` stays the loose raw-wire type (ruling P-1). New `core/stream-frames.ts` is the client's one parser (`parseFrame` / `parseFrameValue`, `doneLeavesNoReply`, `assertNever`): it strips unknown keys, emits schema key order, and WARNs a refused frame once per kind. A new 179-row oracle corpus recorded from v4's real `parseFrame` at `624d0d25c` pins output bytes, warns and issue texts. The stream reducer is now v4's two exhaustive switches (seat frames, then the stream's own), with the floor frames handled in both, which fixes the seat-tagged `handAnswered` the old fold swallowed. `FinalDoneInfo` gains `outcome` and derives the four legacy flags in one place. The old fold survives as `reduceLegacyChatFrame` for the Brahma console (ruling P-2), with the pre-frames spec kept over it. The swipe reader and Document Mode's `toolResult` reader move to frames. The raised hand is now v4's `RaisedHandStatus` machine (raised, asked, yielded, declined, unasked) computed from `handAsked` / `handAnswered` frames, and the "carried on regardless" toast is deleted. The reply's `raised` is no longer read. An established-fact send dispatches `isEstablishedFact: true` (absent otherwise) and refuses an attachment-only fact. The composer-side types are fenced `LANE-REMOVE` stand-ins until P4.D385 lands them.
 
+#### 2026-11-08 — feat(spa): P4.D385 commit 3 — the composer family moves from native titles to Quilltap tooltips with v4 accessible names (v4 624d0d25c)
+
+_Versions: SPA 0.5.975._
+
+P4.D385 items 13–15, 17 (v4 `df8d4d70a` / `94f041764`). Every composer
+control, the formatting toolbar (shared with Document Mode and the form
+fields), the RNG trigger and dice-count buttons, the pending-inform chips and
+the custom-tools trigger now show a `qt-tooltip` instead of a native `title`.
+The Markdown buttons are named by a port of v4's `markdownButtonName`
+("Heading 4 (H4)"), the code-block button gets `aria-label` + `aria-pressed`,
+the composition toggle is named "Switch to chat mode" / "Switch to
+composition mode", the attachment and tool-result removers name their item,
+the pending roll's prompt and result sit in an interactive tooltip, and the
+RNG Custom Roll item reports `aria-expanded`. New tier-1 corpus
+`markdown-button-name.oracle.ndjson` (31 rows) from the pin's own bytes of the
+function, plus the button table pinned to v4's `MARKDOWN_FORMATS`. New spec
+helper `src/testing/tooltip-content.ts`.
+
 #### 2026-11-08 — feat(spa): P4.D385 commit 2 — Deus Ex Machina in the composer and transcript, the raised-hand chip, the fact tab, the reveal-expand input (v4 624d0d25c)
 
 _Versions: SPA 0.5.974._

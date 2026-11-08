@@ -5,6 +5,7 @@ import emojiDataset from '../../../public/emoji/emoji-index.v1.json';
 import { stubFetch, type FetchStub } from './char-insert/char-typeahead-harness';
 import { EMOJI_PROFILE } from './char-insert/profiles/emoji';
 import { UNICODE_PROFILE } from './char-insert/profiles/unicode';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { FormattingToolbar, type CharInsert } from './formatting-toolbar';
 
 /**
@@ -50,11 +51,11 @@ describe('FormattingToolbar — the emoji and symbol pickers', () => {
 
   it('shows both glyph buttons with v4`s titles', () => {
     expect(button('Insert emoji').textContent!.trim()).toBe('☺');
-    expect(button('Insert emoji').getAttribute('title')).toBe(
+    expect(tooltipContentOf(fixture, button('Insert emoji'))).toBe(
       'Insert emoji (or type `:` and a name)',
     );
     expect(button('Insert a symbol').textContent!.trim()).toBe('Ω');
-    expect(button('Insert a symbol').getAttribute('title')).toBe(
+    expect(tooltipContentOf(fixture, button('Insert a symbol'))).toBe(
       'Insert a symbol (or type `\\` and a name)',
     );
   });
@@ -129,7 +130,7 @@ describe('FormattingToolbar — the markdownAsterisks input (P4.D352)', () => {
   function markdownButtons(f: ComponentFixture<FormattingToolbar>): HTMLButtonElement[] {
     return [
       ...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
-        '.qt-formatting-toolbar-section:first-child > button[class*="qt-formatting-button-"]',
+        '.qt-formatting-toolbar-section:first-child > qt-tooltip > button[class*="qt-formatting-button-"]',
       ),
     ].filter((b) => !/outdent|indent|code-block/.test(b.className));
   }
@@ -140,7 +141,7 @@ describe('FormattingToolbar — the markdownAsterisks input (P4.D352)', () => {
     f.detectChanges();
     const buttons = markdownButtons(f);
     expect(buttons).toHaveLength(11);
-    expect(buttons[0].getAttribute('title')).toBe('Bold');
+    expect(tooltipContentOf(f, buttons[0])).toBe('Bold');
   });
 
   it('withholds Bold — and only Bold — when the template says false', () => {
@@ -151,6 +152,74 @@ describe('FormattingToolbar — the markdownAsterisks input (P4.D352)', () => {
     const buttons = markdownButtons(f);
     expect(buttons).toHaveLength(10);
     expect(buttons[0].textContent!.trim()).toBe('I');
-    expect(buttons.some((b) => b.getAttribute('title') === 'Bold')).toBe(false);
+    expect(buttons.some((b) => tooltipContentOf(f, b) === 'Bold')).toBe(false);
+  });
+});
+
+/**
+ * v4 `df8d4d70a` / `94f041764`: every Markdown button named by
+ * `markdownButtonName` under a `qt-tooltip`, the code block's name and
+ * `aria-pressed`, and no native `title` left anywhere in the toolbar.
+ */
+describe('FormattingToolbar — accessible names and tooltips (v4 df8d4d70a)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function mount(inputs: Record<string, unknown> = {}): ComponentFixture<FormattingToolbar> {
+    TestBed.configureTestingModule({ imports: [FormattingToolbar] });
+    const f = TestBed.createComponent(FormattingToolbar);
+    for (const [k, v] of Object.entries(inputs)) f.componentRef.setInput(k, v);
+    f.detectChanges();
+    return f;
+  }
+
+  it('names the eleven Markdown buttons as v4 does', () => {
+    const f = mount();
+    const names = [
+      ...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.qt-formatting-toolbar-section:first-child > qt-tooltip > button',
+      ),
+    ]
+      .filter((b) => !/outdent|indent|code-block/.test(b.className))
+      .map((b) => b.getAttribute('aria-label'));
+    expect(names).toEqual([
+      'Bold',
+      'Italic',
+      'Heading 1 (H1)',
+      'Heading 2 (H2)',
+      'Heading 3 (H3)',
+      'Heading 4 (H4)',
+      'Heading 5 (H5)',
+      'Heading 6 (H6)',
+      'Unordered List',
+      'Ordered List',
+      'Blockquote',
+    ]);
+  });
+
+  it('names the code-block button and reports its state through aria-pressed', () => {
+    const f = mount();
+    const code = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.qt-formatting-button-code-block')!;
+    expect(code.getAttribute('aria-label')).toBe('Code block');
+    expect(code.getAttribute('aria-pressed')).toBe('false');
+    expect(tooltipContentOf(f, code)).toBe('Insert code block');
+    f.componentRef.setInput('inCodeBlock', true);
+    f.detectChanges();
+    expect(code.getAttribute('aria-pressed')).toBe('true');
+    expect(tooltipContentOf(f, code)).toBe('End code block');
+  });
+
+  it('tooltips outdent / indent / the delimiters / the source toggle, with no native title anywhere', () => {
+    const f = mount({
+      showSourceToggle: true,
+      delimiters: [{ kind: 'wrap', name: 'Thoughts', buttonName: 'Thought', delimiters: ['~', '~'], style: 'qt-thought' }],
+    });
+    const root = f.nativeElement as HTMLElement;
+    expect(tooltipContentOf(f, root.querySelector('.qt-formatting-button-outdent'))).toBe('Outdent list item (Shift+Tab)');
+    expect(tooltipContentOf(f, root.querySelector('.qt-formatting-button-indent'))).toBe('Indent list item (Tab)');
+    expect(tooltipContentOf(f, root.querySelector('.qt-formatting-button-source'))).toBe('Edit markdown source');
+    const delimiter = root.querySelector('.qt-rp-annotation-button');
+    expect(delimiter).not.toBeNull();
+    expect(tooltipContentOf(f, delimiter)).toMatch(/\(~\.\.\.~\)$/);
+    expect(root.querySelector('[title]')).toBeNull();
   });
 });

@@ -181,14 +181,16 @@ describe('ChatComposer — attach affordance', () => {
     await settle(fixture);
     const toggle = () =>
       fixture.nativeElement.querySelector(
-        'button[aria-label="Toggle composition mode"]',
+        'button[aria-label^="Switch to"]',
       ) as HTMLButtonElement;
 
     // Default (chat mode): Enter sends, mod-enter off; toggle inactive.
     expect(richEditor(fixture).submitOnEnter()).toBe(true);
     expect(richEditor(fixture).submitOnModEnter()).toBe(false);
     expect(toggle().classList.contains('qt-chat-toolbar-button-active')).toBe(false);
-    expect(toggle().getAttribute('title')).toContain('Switch to composition mode');
+    expect(tooltipContentOf(fixture, toggle())).toContain('Switch to composition mode');
+    // v4 df8d4d70a's accessible name names the mode a click switches INTO.
+    expect(toggle().getAttribute('aria-label')).toBe('Switch to composition mode');
 
     // A click emits the flipped value; the composer does not self-persist.
     let emitted: boolean | undefined;
@@ -202,7 +204,8 @@ describe('ChatComposer — attach affordance', () => {
     expect(richEditor(fixture).submitOnEnter()).toBe(false);
     expect(richEditor(fixture).submitOnModEnter()).toBe(true);
     expect(toggle().classList.contains('qt-chat-toolbar-button-active')).toBe(true);
-    expect(toggle().getAttribute('title')).toMatch(/^Switch to chat mode \(Enter to send\) · (Cmd|Ctrl)\+Shift\+Enter sends as established fact$/);
+    expect(toggle().getAttribute('aria-label')).toBe('Switch to chat mode');
+    expect(tooltipContentOf(fixture, toggle())).toMatch(/^Switch to chat mode \(Enter to send\) · (Cmd|Ctrl)\+Shift\+Enter sends as established fact$/);
   });
 
   it('opens the conflict dialog on a duplicate and resolves with a resolution', async () => {
@@ -483,8 +486,8 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     const envelope = fixture.nativeElement.querySelector(
       'button[aria-label="Post a letter"]',
     ) as HTMLButtonElement;
-    expect(megaphone.title).toBe('Insert announcement');
-    expect(envelope.title).toBe('Post a letter');
+    expect(tooltipContentOf(fixture, megaphone)).toBe('Insert announcement');
+    expect(tooltipContentOf(fixture, envelope)).toBe('Post a letter');
   });
 
   it('orders the gutter group by v4’s grid fill order', () => {
@@ -528,7 +531,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     const button = fixture.nativeElement.querySelector(
       'button[aria-label="Inform the cast"]',
     ) as HTMLButtonElement;
-    expect(button.title).toBe('Inform the cast');
+    expect(tooltipContentOf(fixture, button)).toBe('Inform the cast');
     button.click();
     expect(seen).toEqual(['inform']);
 
@@ -557,7 +560,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     const button = fixture.nativeElement.querySelector(
       'button[aria-label="Attach file from library"]',
     ) as HTMLButtonElement;
-    expect(button.title).toBe('Attach file from library');
+    expect(tooltipContentOf(fixture, button)).toBe('Attach file from library');
     button.click();
     expect(seen).toEqual(['library']);
   });
@@ -634,7 +637,18 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     const el = fixture.nativeElement.querySelector('.qt-chat-tool-result-chip') as HTMLElement;
     expect(el.textContent).toContain('d20: 17');
     expect(el.textContent).toContain('🎲');
-    expect(el.getAttribute('title')).toBe('Roll a d20\n\n🎲 Rolled 1d20: **17**');
+    // v4 df8d4d70a: the prompt + result in an INTERACTIVE tooltip (a
+    // template), opened here by focus as a keyboard reader would.
+    expect(el.hasAttribute('title')).toBe(false);
+    const anchor = el.querySelector('qt-tooltip')!;
+    expect(anchor.classList.contains('gap-2')).toBe(true);
+    anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    fixture.detectChanges();
+    const bubble = [...document.body.querySelectorAll('.qt-tooltip')].at(-1) as HTMLElement;
+    expect(bubble.getAttribute('data-interactive')).toBe('true');
+    expect(bubble.querySelector('.qt-tooltip-body')!.textContent).toBe('Roll a d20\n\n🎲 Rolled 1d20: **17**');
+    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    fixture.detectChanges();
   });
 
   it('reports the chip’s ✕ by id and leaves the removal to the Salon', () => {
@@ -644,7 +658,7 @@ describe('ChatComposer — the Post Office gutter entries (v4 ComposerGutterTool
     const seen: string[] = [];
     fixture.componentInstance.removePendingToolResult.subscribe((id: string) => seen.push(id));
     (
-      fixture.nativeElement.querySelector('[aria-label="Remove tool result"]') as HTMLButtonElement
+      fixture.nativeElement.querySelector('[aria-label^="Remove tool result"]') as HTMLButtonElement
     ).click();
     expect(seen).toEqual(['chip-9']);
     // Still rendered: the composer does not own the list.
@@ -715,9 +729,10 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
   });
 
   function sendTitle(fixture: ComponentFixture<ChatComposer>): string | null {
-    return (
-      fixture.nativeElement.querySelector('.qt-chat-composer-send') as HTMLButtonElement
-    ).getAttribute('title');
+    return tooltipContentOf(
+      fixture,
+      fixture.nativeElement.querySelector('.qt-chat-composer-send') as HTMLButtonElement,
+    );
   }
 
   async function armed(over: Record<string, unknown> = {}): Promise<ComponentFixture<ChatComposer>> {
@@ -1201,12 +1216,12 @@ describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () =
     expect(col.contains(sendBtn(f))).toBe(true);
     expect(col.contains(hand(f))).toBe(true);
     expect(col.contains(stopBtn(f))).toBe(true);
-    expect(sendBtn(f).title).toBe('Send message');
+    expect(tooltipContentOf(f, sendBtn(f))).toBe('Send message');
     expect(hand(f).disabled).toBe(true);
-    expect(hand(f).title).toBe('Raise your hand (while someone is speaking)');
+    expect(tooltipContentOf(f, hand(f))).toBe('Raise your hand (while someone is speaking)');
     expect(hand(f).getAttribute('aria-label')).toBe('Raise your hand to interrupt');
     expect(stopBtn(f).disabled).toBe(true);
-    expect(stopBtn(f).title).toBe('Stop (while someone is speaking)');
+    expect(tooltipContentOf(f, stopBtn(f))).toBe('Stop (while someone is speaking)');
     expect(stopBtn(f).getAttribute('aria-label')).toBe('Stop');
   });
 
@@ -1215,15 +1230,15 @@ describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () =
     expect(hand(f).disabled).toBe(false);
     expect(stopBtn(f).disabled).toBe(false);
     expect(sendBtn(f).disabled).toBe(true);
-    expect(sendBtn(f).title).toBe('Generating...');
-    expect(hand(f).title).toBe('Raise your hand — the next speaker may yield the floor to you');
-    expect(stopBtn(f).title).toBe('Stop — cut the reply off here and take the floor');
+    expect(tooltipContentOf(f, sendBtn(f))).toBe('Generating...');
+    expect(tooltipContentOf(f, hand(f))).toBe('Raise your hand — the next speaker may yield the floor to you');
+    expect(tooltipContentOf(f, stopBtn(f))).toBe('Stop — cut the reply off here and take the floor');
   });
 
   it('greys the hand, not Stop, when only one character is present', () => {
     const f = mount({ busy: true, canRaiseHand: false });
     expect(hand(f).disabled).toBe(true);
-    expect(hand(f).title).toBe(
+    expect(tooltipContentOf(f, hand(f))).toBe(
       'Only one character is present — the floor returns to you after this reply',
     );
     expect(stopBtn(f).disabled).toBe(false);
@@ -1234,7 +1249,7 @@ describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () =
     expect(hand(f).classList.contains('qt-chat-interrupt-button-raised')).toBe(true);
     expect(hand(f).getAttribute('aria-pressed')).toBe('true');
     expect(hand(f).getAttribute('aria-label')).toBe('Lower your hand');
-    expect(hand(f).title).toBe(
+    expect(tooltipContentOf(f, hand(f))).toBe(
       'Hand raised — the next speaker will be asked to yield. Click to lower it.',
     );
     f.componentRef.setInput('handRaised', false);
@@ -1247,9 +1262,9 @@ describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () =
     const f = mount({ busy: true, canRaiseHand: true, stopping: true });
     expect(hand(f).disabled).toBe(true);
     expect(stopBtn(f).disabled).toBe(true);
-    expect(stopBtn(f).title).toBe('Stopping\u2026');
+    expect(tooltipContentOf(f, stopBtn(f))).toBe('Stopping\u2026');
     // `stopping` is not in the hand's ladder — busy + canRaiseHand is the else arm.
-    expect(hand(f).title).toBe('Raise your hand — the next speaker may yield the floor to you');
+    expect(tooltipContentOf(f, hand(f))).toBe('Raise your hand — the next speaker may yield the floor to you');
   });
 
   it('emits toggleRaisedHand once on a hand click, without submitting or bubbling', () => {
@@ -1552,7 +1567,7 @@ describe('ChatComposer — Deus Ex Machina', () => {
 
   it('puts the fact arm into the Send tooltip ladder after the busy arm', async () => {
     const f = await composer();
-    const title = () => sendButton(f).getAttribute('title');
+    const title = () => tooltipContentOf(f, sendButton(f));
     expect(title()).toBe('Send message');
     toggle(f).click();
     f.detectChanges();
@@ -1589,7 +1604,7 @@ describe('ChatComposer — the composition toggle names the fact shortcut (v4 db
     Object.defineProperty(navigator, 'platform', { value: platform, configurable: true });
     const f = render();
     const t = () =>
-      (f.nativeElement as HTMLElement).querySelector('[aria-pressed][class*="qt-chat-toolbar-button"]')!.getAttribute('title');
+      tooltipContentOf(f, (f.nativeElement as HTMLElement).querySelector('[aria-pressed][class*="qt-chat-toolbar-button"]'));
     expect(t()).toBe(`Switch to composition mode (${mod}+Enter to send) · ${mod}+Shift+Enter sends as established fact`);
     f.componentRef.setInput('compositionMode', true);
     f.detectChanges();
@@ -1621,5 +1636,59 @@ describe('ChatComposer — the raised-hand chip (v4 9eab8d2da)', () => {
     root.querySelector<HTMLButtonElement>('qt-raised-hand-chip .qt-chat-attachment-chip-remove')!.click();
     expect(dismissed).toBe(1);
     expect(raised).toBe(1);
+  });
+});
+
+/**
+ * v4 `df8d4d70a` across the composer (P4.D385 item 14): every control's words
+ * are a `qt-tooltip`, no native `title` is left, and two removers name what
+ * they remove.
+ */
+describe('ChatComposer — tooltips, not titles (v4 df8d4d70a)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('carries no native title on any composer control', () => {
+    const f = render();
+    f.componentRef.setInput('speakingAs', { name: 'Charlie', avatarUrl: null });
+    f.componentRef.setInput('toolExecutionStatus', { tool: 'rng', status: 'success', message: 'Rolled' });
+    f.componentRef.setInput('pendingToolResults', [
+      {
+        id: 'r-1',
+        createdAt: '2026-07-26T00:00:00.000Z',
+        tool: 'rng',
+        icon: '🎲',
+        summary: 'd20: 17',
+        requestPrompt: 'Roll a d20',
+        formattedResult: '🎲 Rolled 1d20: **17**',
+        arguments: {},
+        result: {},
+        success: true,
+      } as unknown as PendingToolResultChip,
+    ]);
+    f.componentInstance.addAttachedFile({
+      id: 'f-1',
+      filename: 'map.png',
+      filepath: 'chat/map.png',
+      mimeType: 'image/png',
+      url: '/api/v1/files/f-1',
+    } as never);
+    f.detectChanges();
+    const root = f.nativeElement as HTMLElement;
+    const titled = [...root.querySelectorAll('[title]')].filter(
+      (n) => !n.closest('qt-custom-tools-popup qt-modal'),
+    );
+    expect(titled.map((n) => n.outerHTML.slice(0, 80))).toEqual([]);
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Dismiss notice"]'))).toBe('Dismiss');
+    const removeFile = root.querySelector('[aria-label="Remove attachment map.png"]');
+    expect(tooltipContentOf(f, removeFile)).toBe('Remove attachment');
+    const removeRoll = root.querySelector('[aria-label="Remove tool result d20: 17"]');
+    expect(tooltipContentOf(f, removeRoll)).toBe('Remove tool result');
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Generate image"]'))).toBe('Generate image');
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Attach file"]'))).toBe('Attach file');
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Continue"]'))).toBe(
+      'Continue — let the next character respond',
+    );
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Open document"]'))).toBe('Open document');
+    expect(tooltipContentOf(f, root.querySelector('[aria-label="Open terminal"]'))).toBe('Open terminal');
   });
 });

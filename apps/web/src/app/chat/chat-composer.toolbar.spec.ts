@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { selectAll } from 'prosemirror-commands';
 import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
@@ -84,9 +85,11 @@ function root(fixture: ComponentFixture<ChatComposer>): HTMLElement {
 }
 
 function delimiterButton(fixture: ComponentFixture<ChatComposer>, title: string): HTMLButtonElement {
-  const button = root(fixture).querySelector<HTMLButtonElement>(
-    `.qt-rp-annotation-button[title="${title}"]`,
-  );
+  // v4 df8d4d70a: the delimiter's words are its `qt-tooltip`, not a `title`.
+  const button =
+    [...root(fixture).querySelectorAll<HTMLButtonElement>('.qt-rp-annotation-button')].find(
+      (b) => tooltipContentOf(fixture, b) === title,
+    ) ?? null;
   if (!button) throw new Error(`no delimiter button titled ${title}`);
   return button;
 }

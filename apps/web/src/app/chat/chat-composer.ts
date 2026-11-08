@@ -230,15 +230,16 @@ export interface PendingToolResultChip extends RngPendingResult {
             <qt-icon name="alert-circle" class="w-5 h-5 flex-shrink-0" />
           }
           <span class="qt-label flex-1">{{ notice.message }}</span>
-          <button
-            type="button"
-            class="qt-button-ghost flex-shrink-0 p-1"
-            title="Dismiss"
-            aria-label="Dismiss notice"
-            (click)="dismissToolExecutionStatus.emit()"
-          >
-            <qt-icon name="close" class="w-4 h-4" />
-          </button>
+          <qt-tooltip content="Dismiss">
+            <button
+              type="button"
+              class="qt-button-ghost flex-shrink-0 p-1"
+              aria-label="Dismiss notice"
+              (click)="dismissToolExecutionStatus.emit()"
+            >
+              <qt-icon name="close" class="w-4 h-4" />
+            </button>
+          </qt-tooltip>
         </div>
       }
       <!-- Pending Informs — notes waiting on a seat's next turn. Sits with the
@@ -301,36 +302,42 @@ export interface PendingToolResultChip extends RngPendingResult {
                 />
               }
               <span class="text-foreground max-w-[150px] truncate">{{ file.filename }}</span>
-              <button
-                type="button"
-                class="qt-chat-attachment-chip-remove"
-                title="Remove attachment"
-                aria-label="Remove attachment"
-                (click)="removeAttachedFile(file.id)"
-              >
-                <qt-icon name="close" class="w-4 h-4" />
-              </button>
+              <qt-tooltip content="Remove attachment">
+                <button
+                  type="button"
+                  class="qt-chat-attachment-chip-remove"
+                  [attr.aria-label]="'Remove attachment ' + file.filename"
+                  (click)="removeAttachedFile(file.id)"
+                >
+                  <qt-icon name="close" class="w-4 h-4" />
+                </button>
+              </qt-tooltip>
             </div>
           }
 
           <!-- Pending tool results — a rolled-but-unsent RNG chip, tooltipped
                with v4's prompt + formatted result (v4 ChatComposer :284-302). -->
           @for (result of pendingToolResults(); track result.id) {
-            <div
-              class="qt-chat-tool-result-chip group relative"
-              [title]="result.requestPrompt + '\n\n' + result.formattedResult"
-            >
-              <span class="text-base leading-none">{{ result.icon }}</span>
-              <span class="text-foreground max-w-[200px] truncate">{{ result.summary }}</span>
-              <button
-                type="button"
-                class="qt-chat-attachment-chip-remove"
-                title="Remove tool result"
-                aria-label="Remove tool result"
-                (click)="removePendingToolResult.emit(result.id)"
-              >
-                <qt-icon name="close" class="w-4 h-4" />
-              </button>
+            <div class="qt-chat-tool-result-chip group relative">
+              <!-- v4 df8d4d70a: the prompt + result in an INTERACTIVE tooltip,
+                   so the roll can be read (and selected) at leisure. -->
+              <ng-template #rollTip>
+                <div class="qt-tooltip-body whitespace-pre-wrap">{{ toolResultTip(result) }}</div>
+              </ng-template>
+              <qt-tooltip [contentTemplate]="rollTip" interactive class="gap-2 min-w-0">
+                <span class="text-base leading-none">{{ result.icon }}</span>
+                <span class="text-foreground max-w-[200px] truncate">{{ result.summary }}</span>
+              </qt-tooltip>
+              <qt-tooltip content="Remove tool result">
+                <button
+                  type="button"
+                  class="qt-chat-attachment-chip-remove"
+                  [attr.aria-label]="'Remove tool result ' + result.summary"
+                  (click)="removePendingToolResult.emit(result.id)"
+                >
+                  <qt-icon name="close" class="w-4 h-4" />
+                </button>
+              </qt-tooltip>
             </div>
           }
         </div>
@@ -393,66 +400,71 @@ export interface PendingToolResultChip extends RngPendingResult {
             <div class="qt-composer-gutter-tools">
               <!-- Row 1, col 1: Insert Announcement (ComposerGutterTools :66-75),
                    down to its title, aria-label and megaphone glyph. -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Insert announcement"
-                aria-label="Insert announcement"
-                [disabled]="composerLocked()"
-                (click)="openAnnouncement.emit()"
-              >
-                <qt-icon name="megaphone" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Insert announcement">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Insert announcement"
+                  [disabled]="composerLocked()"
+                  (click)="openAnnouncement.emit()"
+                >
+                  <qt-icon name="megaphone" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Row 1, col 2: Compose Mail — pairs with the megaphone as
                    another "insert a special message" action (The Post Office). -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Post a letter"
-                aria-label="Post a letter"
-                [disabled]="composerLocked()"
-                (click)="openMail.emit()"
-              >
-                <qt-icon name="mail" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Post a letter">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Post a letter"
+                  [disabled]="composerLocked()"
+                  (click)="openMail.emit()"
+                >
+                  <qt-icon name="mail" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Row 2, col 1: Library file (:90-100). -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Attach file from library"
-                aria-label="Attach file from library"
-                [disabled]="composerLocked()"
-                (click)="openLibrary.emit()"
-              >
-                <qt-icon name="file-plus" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Attach file from library">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Attach file from library"
+                  [disabled]="composerLocked()"
+                  (click)="openLibrary.emit()"
+                >
+                  <qt-icon name="file-plus" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Row 2, col 2: Generate Image (:102-112). It is v4's ONLY
                    opener for the standalone generate dialog. -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Generate image"
-                aria-label="Generate image"
-                [disabled]="composerLocked()"
-                (click)="openGenerate.emit()"
-              >
-                <qt-icon name="camera" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Generate image">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Generate image"
+                  [disabled]="composerLocked()"
+                  (click)="openGenerate.emit()"
+                >
+                  <qt-icon name="camera" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Row 3, col 1: Attach File (:114-130), with v4's own title. -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Attach file"
-                aria-label="Attach file"
-                [disabled]="composerLocked() || uploading()"
-                (click)="fileInput.click()"
-              >
-                <qt-icon name="paperclip" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Attach file">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Attach file"
+                  [disabled]="composerLocked() || uploading()"
+                  (click)="fileInput.click()"
+                >
+                  <qt-icon name="paperclip" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Row 3, col 2: RNG (:132-139). Its rolls land as pending chips
                    above the box, not as messages. -->
@@ -479,16 +491,17 @@ export interface PendingToolResultChip extends RngPendingResult {
                    composer at all (its home there is the ParticipantCard), so
                    every placement is v5's; the grid's free cell is the one that
                    keeps v4's composer geometry exactly. -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button qt-composer-gutter-continue"
-                title="Continue — let the next character respond"
-                aria-label="Continue"
-                [disabled]="composerLocked() || !hasActiveCharacters()"
-                (click)="continue.emit()"
-              >
-                <qt-icon name="arrow-right" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Continue — let the next character respond">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button qt-composer-gutter-continue"
+                  aria-label="Continue"
+                  [disabled]="composerLocked() || !hasActiveCharacters()"
+                  (click)="continue.emit()"
+                >
+                  <qt-icon name="arrow-right" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
 
               <!-- Inform — a quiet word out of character, delivered to a seat
                    before it next speaks (v4 ComposerGutterTools :157-169,
@@ -497,55 +510,59 @@ export interface PendingToolResultChip extends RngPendingResult {
                    v5-only Continue, so Inform takes the next free cell (Row 5
                    Col 1) and keeps v4's ORDER — last in the gutter, after
                    Pascal — rather than v4's exact coordinates. -->
-              <button
-                type="button"
-                class="qt-composer-gutter-button"
-                title="Inform the cast"
-                aria-label="Inform the cast"
-                [disabled]="composerLocked()"
-                (click)="openInform.emit()"
-              >
-                <qt-icon name="info" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Inform the cast">
+                <button
+                  type="button"
+                  class="qt-composer-gutter-button"
+                  aria-label="Inform the cast"
+                  [disabled]="composerLocked()"
+                  (click)="openInform.emit()"
+                >
+                  <qt-icon name="info" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
             </div>
           </div>
 
           <!-- The composer-level toggles, in v4's vertical stack. -->
           <div class="qt-chat-toolbar">
-            <button
-              type="button"
-              class="qt-chat-toolbar-button"
-              [class.qt-chat-toolbar-button-active]="compositionMode()"
-              [title]="compositionToggleTitle()"
-              [attr.aria-pressed]="compositionMode()"
-              aria-label="Toggle composition mode"
-              (click)="toggleCompositionMode()"
-            >
-              <qt-icon name="file" class="w-5 h-5" />
-            </button>
-
-            @if (!documentActive()) {
+            <qt-tooltip [content]="compositionToggleTitle()">
               <button
                 type="button"
                 class="qt-chat-toolbar-button"
-                title="Open document"
-                aria-label="Open document"
-                (click)="openDocument.emit()"
+                [class.qt-chat-toolbar-button-active]="compositionMode()"
+                [attr.aria-pressed]="compositionMode()"
+                [attr.aria-label]="compositionMode() ? 'Switch to chat mode' : 'Switch to composition mode'"
+                (click)="toggleCompositionMode()"
               >
-                <qt-icon name="book" class="w-5 h-5" />
+                <qt-icon name="file" class="w-5 h-5" />
               </button>
+            </qt-tooltip>
+
+            @if (!documentActive()) {
+              <qt-tooltip content="Open document">
+                <button
+                  type="button"
+                  class="qt-chat-toolbar-button"
+                  aria-label="Open document"
+                  (click)="openDocument.emit()"
+                >
+                  <qt-icon name="book" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
             }
 
             @if (!terminalActive()) {
-              <button
-                type="button"
-                class="qt-chat-toolbar-button"
-                title="Open terminal"
-                aria-label="Open terminal"
-                (click)="openTerminal.emit()"
-              >
-                <qt-icon name="code" class="w-5 h-5" />
-              </button>
+              <qt-tooltip content="Open terminal">
+                <button
+                  type="button"
+                  class="qt-chat-toolbar-button"
+                  aria-label="Open terminal"
+                  (click)="openTerminal.emit()"
+                >
+                  <qt-icon name="code" class="w-5 h-5" />
+                </button>
+              </qt-tooltip>
             }
           </div>
         </div>
@@ -599,37 +616,40 @@ export interface PendingToolResultChip extends RngPendingResult {
              v4 ChatComposer.tsx:606-660; stacked per b8362beb5. All three are
              ALWAYS rendered — greyed, never swapped. -->
         <div class="qt-chat-composer-actions">
-          <button
-            type="submit"
-            class="qt-chat-composer-send"
-            [title]="sendTitle()"
-            [attr.aria-label]="factArmed() ? 'Send as established fact' : 'Send message'"
-            [disabled]="!canSend()"
-          >
-            <qt-icon name="send" class="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            class="qt-chat-composer-send qt-chat-interrupt-button"
-            [class.qt-chat-interrupt-button-raised]="handRaised()"
-            [attr.aria-pressed]="handRaised()"
-            [attr.aria-label]="raiseHandAriaLabel()"
-            [title]="raiseHandTitle()"
-            [disabled]="!canRaise()"
-            (click)="$event.stopPropagation(); toggleRaisedHand.emit()"
-          >
-            <qt-icon name="hand-raised" class="w-5 h-5" />
-          </button>
-          <button
-            type="button"
-            class="qt-chat-composer-send qt-chat-stop-button"
-            aria-label="Stop"
-            [title]="stopTitle()"
-            [disabled]="!canStop()"
-            (click)="$event.stopPropagation(); stop.emit()"
-          >
-            <qt-icon name="stop-sign" class="w-5 h-5" />
-          </button>
+          <qt-tooltip [content]="sendTitle()">
+            <button
+              type="submit"
+              class="qt-chat-composer-send"
+              [attr.aria-label]="factArmed() ? 'Send as established fact' : 'Send message'"
+              [disabled]="!canSend()"
+            >
+              <qt-icon name="send" class="w-5 h-5" />
+            </button>
+          </qt-tooltip>
+          <qt-tooltip [content]="raiseHandTitle()">
+            <button
+              type="button"
+              class="qt-chat-composer-send qt-chat-interrupt-button"
+              [class.qt-chat-interrupt-button-raised]="handRaised()"
+              [attr.aria-pressed]="handRaised()"
+              [attr.aria-label]="raiseHandAriaLabel()"
+              [disabled]="!canRaise()"
+              (click)="$event.stopPropagation(); toggleRaisedHand.emit()"
+            >
+              <qt-icon name="hand-raised" class="w-5 h-5" />
+            </button>
+          </qt-tooltip>
+          <qt-tooltip [content]="stopTitle()">
+            <button
+              type="button"
+              class="qt-chat-composer-send qt-chat-stop-button"
+              aria-label="Stop"
+              [disabled]="!canStop()"
+              (click)="$event.stopPropagation(); stop.emit()"
+            >
+              <qt-icon name="stop-sign" class="w-5 h-5" />
+            </button>
+          </qt-tooltip>
         </div>
       </form>
      </div>
@@ -1112,6 +1132,11 @@ export class ChatComposer implements OnInit {
     if (this.busy()) return 'Stop — cut the reply off here and take the floor';
     return 'Stop (while someone is speaking)';
   });
+
+  /** A pending roll's tooltip: the prompt, a blank line, the result (v4 ChatComposer :531-544). */
+  protected toolResultTip(result: PendingToolResultChip): string {
+    return `${result.requestPrompt}\n\n${result.formattedResult}`;
+  }
 
   /** Rules only take effect when the feature gate is on (v4). */
   protected readonly effectiveTextReplacementRules = computed(() =>

@@ -1,4 +1,5 @@
 import { Component, signal, viewChild } from '@angular/core';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { TextSelection } from 'prosemirror-state';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -95,9 +96,9 @@ describe('MarkdownField — shared form-field editor', () => {
 
   it('carries v4\'s indent/outdent titles verbatim (FormattingToolbar.tsx:437-449)', async () => {
     const fixture = await render('body');
-    expect(button(fixture, 'outdent').getAttribute('title')).toBe('Outdent list item (Shift+Tab)');
+    expect(tooltipContentOf(fixture, button(fixture, 'outdent'))).toBe('Outdent list item (Shift+Tab)');
     expect(button(fixture, 'outdent').getAttribute('aria-label')).toBe('Outdent list item');
-    expect(button(fixture, 'indent').getAttribute('title')).toBe('Indent list item (Tab)');
+    expect(tooltipContentOf(fixture, button(fixture, 'indent'))).toBe('Indent list item (Tab)');
     expect(button(fixture, 'indent').getAttribute('aria-label')).toBe('Indent list item');
   });
 
@@ -225,12 +226,12 @@ describe('MarkdownField — the source-mode toggle', () => {
   it('carries v4\'s titles and aria-pressed through the swap (:437-439)', async () => {
     const fixture = await render('body');
     const btn = button(fixture, 'source');
-    expect(btn.getAttribute('title')).toBe('Edit markdown source');
+    expect(tooltipContentOf(fixture, btn)).toBe('Edit markdown source');
     expect(btn.getAttribute('aria-label')).toBe('Edit markdown source');
     expect(btn.getAttribute('aria-pressed')).toBe('false');
 
     await toggleSource(fixture);
-    expect(btn.getAttribute('title')).toBe('Switch to rich text editor');
+    expect(tooltipContentOf(fixture, btn)).toBe('Switch to rich text editor');
     expect(btn.getAttribute('aria-label')).toBe('Switch to rich text editor');
     expect(btn.getAttribute('aria-pressed')).toBe('true');
   });
