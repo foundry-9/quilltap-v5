@@ -56,16 +56,16 @@ async fn prompt_template_edges() {
     .await;
     let client = reqwest::Client::new();
 
-    // --- GET list on a FRESH instance: the lazy seeding runs, 21 built-ins -----
+    // --- GET list on a FRESH instance: the lazy seeding runs, 22 built-ins -----
     let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
     assert_eq!(status, 200, "{body}");
     let templates = body["templates"].as_array().unwrap();
     assert_eq!(
         templates.len(),
-        21,
-        "the first list SEEDS v4's 21 sample prompts — {body}"
+        22,
+        "the first list SEEDS v4's 22 sample prompts — {body}"
     );
-    assert_eq!(body["count"], 21);
+    assert_eq!(body["count"], 22);
     // The registry's DISPLAY name, not the filename (the P4.83 measurement).
     assert_eq!(templates[0]["name"], "CLAUDE Companion");
     assert_eq!(
@@ -84,7 +84,7 @@ async fn prompt_template_edges() {
     // --- the SECOND list seeds nothing ---------------------------------------
     let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body["count"], 21, "the seeding is insert-if-absent");
+    assert_eq!(body["count"], 22, "the seeding is insert-if-absent");
 
     // --- POST create: 201 + {template}, with explicit nulls -------------------
     let (status, body) = send(
@@ -280,7 +280,7 @@ async fn prompt_template_edges() {
 
     // The built-ins survived both refusals; the user template is gone.
     let (_, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
-    assert_eq!(body["count"], 21, "{body}");
+    assert_eq!(body["count"], 22, "{body}");
 }
 
 /// The gap the P4.83 e2e beat's first live run found: an instance whose main
@@ -307,21 +307,21 @@ async fn a_bare_instance_gets_the_table_and_the_catalogue() {
     let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(
-        body["count"], 21,
-        "the first list must CREATE the table and seed v4's 21 sample prompts — {body}"
+        body["count"], 22,
+        "the first list must CREATE the table and seed v4's 22 sample prompts — {body}"
     );
     assert_eq!(body["templates"][0]["name"], "CLAUDE Companion");
 
     // Idempotent: the second list neither re-creates nor re-seeds.
     let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
     assert_eq!(status, 200, "{body}");
-    assert_eq!(body["count"], 21);
+    assert_eq!(body["count"], 22);
 }
 
 /// The same bare instance, but a v4-shaped client whose FIRST-ever prompt-
 /// templates op is a POST: v4's `_create` runs `ensureCollection` too
 /// (`base.repository.ts:100-114`), so the create answers 201 and the list that
-/// follows seeds the 21 built-ins beside it (22). Pre-fix v5 answered the create
+/// follows seeds the 22 built-ins beside it (23). Pre-fix v5 answered the create
 /// with `no such table` → 500 (the §3 unification review's catch).
 #[tokio::test]
 async fn a_bare_instance_creates_through_post_first() {
@@ -348,7 +348,7 @@ async fn a_bare_instance_creates_through_post_first() {
     let (status, body) = send(&client, &addr, reqwest::Method::GET, COLLECTION, None).await;
     assert_eq!(status, 200, "{body}");
     assert_eq!(
-        body["count"], 22,
-        "the user's template plus the 21 built-ins the first list seeds — {body}"
+        body["count"], 23,
+        "the user's template plus the 22 built-ins the first list seeds — {body}"
     );
 }
