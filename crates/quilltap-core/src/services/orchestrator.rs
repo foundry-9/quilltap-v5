@@ -1783,6 +1783,13 @@ where
             participant_id = %character_participant_id,
             "[TurnYield] Asking the next speaker whether to yield to the raised hand"
         );
+        // === P4.D366 === v4 `9eab8d2da` (`orchestrator.service.ts:605-608`):
+        // tell the stream who is being asked, right after the INFO.
+        sink.emit(ChatEvent::hand_asked(
+            &character_participant_id,
+            &character_name,
+        ));
+        // === end P4.D366 ===
     }
     // === end P4.D335 ===
 
@@ -3863,6 +3870,10 @@ where
                 participant_id = %character_participant_id,
                 // v4 `cleaned.length > 0` — whitespace logs `true` …
                 with_reply = !cleaned.is_empty(),
+                // === P4.D366 === v4 `9eab8d2da` `inferredFromGesture` — always
+                // present, `false` for a sentinel yield.
+                inferred_from_gesture = detection.is_inferred(),
+                // === end P4.D366 ===
                 tool_count = tool_messages.len(),
                 "[TurnYield] Character yielded the floor to the raised hand"
             );

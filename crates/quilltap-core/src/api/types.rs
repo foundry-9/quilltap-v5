@@ -5890,6 +5890,39 @@ mod p4d301_submission_ledger_wire {
         );
     }
 
+    // === P4.D366 ===
+    /// The carrier per dialect: the Salon's `kind:"error"` frame (v4 4.12's
+    /// `encodeErrorEvent`, `message` replacing `error`) vs the Help / Brahma
+    /// legacy bag (the payload's own bytes above), and the scope tag first.
+    #[test]
+    fn the_error_frame_per_dialect_on_the_envelope() {
+        use super::Event;
+        use crate::services::stream_frames::Dialect;
+        assert_eq!(
+            serde_json::to_string(&Event::chat_error_in(
+                "c1",
+                frame(Some(true), Some(false)),
+                Dialect::Frames
+            ))
+            .unwrap(),
+            r#"{"chatId":"c1","kind":"error","message":"Failed to generate response","errorType":"Error","details":"boom","userMessagePersisted":true,"pendingToolResultsPersisted":false}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Event::chat_error("c1", frame(None, None))).unwrap(),
+            r#"{"chatId":"c1","error":"Failed to generate response","errorType":"Error","details":"boom"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Event::chat_error_in(
+                "c1",
+                frame(None, None),
+                Dialect::Legacy
+            ))
+            .unwrap(),
+            r#"{"chatId":"c1","error":"Failed to generate response","errorType":"Error","details":"boom"}"#
+        );
+    }
+    // === end P4.D366 ===
+
     /// The dispatch envelope: `Response::Error`'s `data.submission`, camelCase,
     /// and NO key at all when `None` (every other rejection).
     #[test]
@@ -6211,13 +6244,19 @@ pub struct Event {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum EventPayload {
-    Chat(ChatEvent),
+    // === P4.D366 ===
+    /// A chat stream frame: the producer's [`ChatEvent`] rendered on the
+    /// sink's dialect (and seat) by `stream_frames::render` (ruling L1).
+    Chat(ChatFrame),
+    // === end P4.D366 ===
     /// v4's transport-shell error frame (`handleStreamError` →
     /// `encodeErrorEvent`: `{error, errorType, details}`). The ported
     /// `process_message` propagates its error to the caller; the TRANSPORT owns
     /// the frame — the spine driver emits this when the turn errors, exactly
     /// where v4's stream shell does.
-    ChatError(ChatErrorPayload),
+    // === P4.D366 === (the frame now carries its dialect)
+    ChatError(ChatErrorFrame),
+    // === end P4.D366 ===
     /// A chat-creation progress frame (D6, "The Green Room" —
     /// `services::creation_progress`), scope-tagged by `progress_id`. Serializes
     /// to v4's `{kind, …, ts}` frame shape; the [`Event`] envelope adds the
@@ -6375,26 +6414,98 @@ pub struct ChatErrorPayload {
     // === end P4.D301 ===
 }
 
+// === P4.D366 ===
+/// A chat frame on the wire: the producer event, the sink's dialect and its
+/// concurrent seat (P4.D366, ruling L1). Serializes through
+/// [`crate::services::stream_frames::render`] — the ONE renderer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatFrame {
+    pub event: ChatEvent,
+    pub dialect: crate::services::stream_frames::Dialect,
+    pub seat: Option<String>,
+}
+
+impl Serialize for ChatFrame {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        crate::services::stream_frames::render(&self.event, self.dialect, self.seat.as_deref())
+            .serialize(s)
+    }
+}
+
+/// The transport-shell error frame on the wire, with its dialect
+/// (`stream_frames::render_error`): the Salon's `kind:"error"` frame, or the
+/// Help / Brahma legacy `{error, errorType, details}` bag.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChatErrorFrame {
+    pub payload: ChatErrorPayload,
+    pub dialect: crate::services::stream_frames::Dialect,
+}
+
+impl Serialize for ChatErrorFrame {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        crate::services::stream_frames::render_error(&self.payload, self.dialect).serialize(s)
+    }
+}
+// === end P4.D366 ===
+
 impl Event {
-    /// A chat-scoped stream frame.
+    /// A chat-scoped stream frame in the LEGACY dialect (the pre-4.12 bag;
+    /// P4.D366 ruling L1 keeps this convenience's bytes). A Salon sink uses
+    /// [`Event::chat_in`] with `Dialect::Frames`.
     pub fn chat(chat_id: impl Into<String>, frame: ChatEvent) -> Event {
+        Event::chat_in(
+            chat_id,
+            frame,
+            crate::services::stream_frames::Dialect::Legacy,
+            None,
+        )
+    }
+
+    /// A chat-scoped transport-shell error frame (v4 `handleStreamError`) in
+    /// the LEGACY dialect — the Brahma / Help shells' three-key bag.
+    pub fn chat_error(chat_id: impl Into<String>, payload: ChatErrorPayload) -> Event {
+        Event::chat_error_in(
+            chat_id,
+            payload,
+            crate::services::stream_frames::Dialect::Legacy,
+        )
+    }
+
+    // === P4.D366 ===
+    /// A chat-scoped stream frame rendered on `dialect`, tagged with a
+    /// concurrent `seat` when one is given.
+    pub fn chat_in(
+        chat_id: impl Into<String>,
+        frame: ChatEvent,
+        dialect: crate::services::stream_frames::Dialect,
+        seat: Option<String>,
+    ) -> Event {
         Event {
             chat_id: Some(chat_id.into()),
             room_id: None,
             progress_id: None,
-            payload: EventPayload::Chat(frame),
+            payload: EventPayload::Chat(ChatFrame {
+                event: frame,
+                dialect,
+                seat,
+            }),
         }
     }
 
-    /// A chat-scoped transport-shell error frame (v4 `handleStreamError`).
-    pub fn chat_error(chat_id: impl Into<String>, payload: ChatErrorPayload) -> Event {
+    /// A chat-scoped transport-shell error frame rendered on `dialect`.
+    pub fn chat_error_in(
+        chat_id: impl Into<String>,
+        payload: ChatErrorPayload,
+        dialect: crate::services::stream_frames::Dialect,
+    ) -> Event {
         Event {
             chat_id: Some(chat_id.into()),
             room_id: None,
             progress_id: None,
-            payload: EventPayload::ChatError(payload),
+            payload: EventPayload::ChatError(ChatErrorFrame { payload, dialect }),
         }
     }
+    // === end P4.D366 ===
 
     /// A realtime invalidation hint (P4.D124). Carries no scope tag: hints are
     /// broadcast to every client, which each decide whether they care.

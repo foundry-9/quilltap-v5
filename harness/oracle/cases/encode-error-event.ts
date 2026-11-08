@@ -16,8 +16,15 @@
  * Sentinels (JSON cannot say `undefined`): `"__ABSENT__"` omits the `extras`
  * argument, `"__UNDEFINED__"` passes / sets a real `undefined`.
  *
- * Pure — no DB, no jest. One NDJSON row per case: `{ name, prefix, suffix, body }`
- * (`prefix` / `suffix` pin the `data: ` / `\n\n` framing the body sits in).
+ * P4.D366 (v4 `604a082c4`): at the `624d0d25c` pin `encodeErrorEvent` writes a
+ * `kind`-tagged FRAME — `{kind:'error', message, errorType, details, ...extras}`
+ * — rendered by `encodeFrame` on the encoder's dialect. Each case is therefore
+ * encoded TWICE: a plain `TextEncoder` (the Salon's `frames` dialect) and
+ * `legacyFrameEncoder()` (the Help / Brahma `legacy` bag, `toLegacyBag`).
+ *
+ * Pure — no DB, no jest. One NDJSON row per (case, dialect):
+ * `{ name, dialect, prefix, suffix, body }` (`prefix` / `suffix` pin the
+ * `data: ` / `\n\n` framing the body sits in).
  *
  * Regenerate (Node 24, from the v4 checkout — or the sweep driver's pin):
  *   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -33,6 +40,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { encodeErrorEvent, type ErrorEventExtras } from '@/lib/services/chat-message/streaming.service';
+import { legacyFrameEncoder } from '@/lib/chat/stream-frames';
 
 const UNDEFINED = '__UNDEFINED__';
 const ABSENT = '__ABSENT__';
@@ -58,28 +66,32 @@ const corpus = JSON.parse(
   fs.readFileSync(join(here, '..', 'fixtures', 'chat-error-frame.json'), 'utf8'),
 ) as { cases: Case[] };
 
-const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PREFIX = 'data: ';
 const SUFFIX = '\n\n';
 
 for (const c of corpus.cases) {
-  let bytes: Uint8Array;
-  if (c.extras === ABSENT) {
-    bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details);
-  } else if (c.extras === UNDEFINED) {
-    bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details, undefined);
-  } else if (typeof c.extras === 'object') {
-    bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details, toExtras(c.extras));
-  } else {
-    throw new Error(`case ${c.name}: unknown extras sentinel ${String(c.extras)}`);
+  for (const [dialect, encoder] of [
+    ['frames', new TextEncoder()],
+    ['legacy', legacyFrameEncoder()],
+  ] as const) {
+    let bytes: Uint8Array;
+    if (c.extras === ABSENT) {
+      bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details);
+    } else if (c.extras === UNDEFINED) {
+      bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details, undefined);
+    } else if (typeof c.extras === 'object') {
+      bytes = encodeErrorEvent(encoder, c.error, c.errorType, c.details, toExtras(c.extras));
+    } else {
+      throw new Error(`case ${c.name}: unknown extras sentinel ${String(c.extras)}`);
+    }
+    const text = decoder.decode(bytes);
+    if (!text.startsWith(PREFIX) || !text.endsWith(SUFFIX)) {
+      throw new Error(`case ${c.name}: frame lost its framing: ${JSON.stringify(text)}`);
+    }
+    const body = text.slice(PREFIX.length, text.length - SUFFIX.length);
+    process.stdout.write(
+      JSON.stringify({ name: c.name, dialect, prefix: PREFIX, suffix: SUFFIX, body }) + '\n',
+    );
   }
-  const text = decoder.decode(bytes);
-  if (!text.startsWith(PREFIX) || !text.endsWith(SUFFIX)) {
-    throw new Error(`case ${c.name}: frame lost its framing: ${JSON.stringify(text)}`);
-  }
-  const body = text.slice(PREFIX.length, text.length - SUFFIX.length);
-  process.stdout.write(
-    JSON.stringify({ name: c.name, prefix: PREFIX, suffix: SUFFIX, body }) + '\n',
-  );
 }

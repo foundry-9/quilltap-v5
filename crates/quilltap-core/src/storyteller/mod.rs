@@ -15,6 +15,5 @@ pub mod bid_parse;
 pub mod cards;
 pub mod invite;
 pub mod prompts;
-pub mod sse_tag;
 pub mod tiers;
 pub mod types;

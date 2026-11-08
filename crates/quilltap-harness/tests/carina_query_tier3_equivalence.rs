@@ -70,6 +70,7 @@ use quilltap_core::services::carina_query::{
 use quilltap_core::services::carina_runner::{CarinaResult, RunCarinaQueryOptions};
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::native_tool_loop::ToolCallDetector;
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_execution::{
     CannedToolRunner, ToolCall, ToolMetadata, ToolResult,
 };
@@ -774,7 +775,11 @@ async fn carina_query_tier3_matches_oracle() {
         assert_eq!(got, want, "{}: result diverges", case.name);
 
         // Event diff.
-        let events = sink.events_json();
+        // P4.D366: the Salon wire is frames — `{kind:"posted",
+        // what:"carinaAnswer", message}`. The oracle records v4's `onPosted`
+        // message wrapped as `{carinaAnswer: message}` (not an encoded frame),
+        // so the comparand is the posted message itself.
+        let events = sink.events_json_in(Dialect::Frames);
         let mut got_event = if case.expect_post {
             assert_eq!(
                 events.len(),
@@ -782,7 +787,13 @@ async fn carina_query_tier3_matches_oracle() {
                 "{}: expected exactly one carinaAnswer event",
                 case.name
             );
-            json!({ "carinaAnswer": events[0].get("carinaAnswer").cloned().unwrap_or(Value::Null) })
+            assert_eq!(
+                (events[0]["kind"].as_str(), events[0]["what"].as_str()),
+                (Some("posted"), Some("carinaAnswer")),
+                "{}: the Carina frame is a posted carinaAnswer",
+                case.name
+            );
+            json!({ "carinaAnswer": events[0].get("message").cloned().unwrap_or(Value::Null) })
         } else {
             assert!(
                 events.is_empty(),

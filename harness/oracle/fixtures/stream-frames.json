@@ -1,0 +1,841 @@
+{
+  "_comment": "P4.D366: the stream_frames_equivalence corpus, read by harness/oracle/cases/stream-frames.ts (v4's REAL encodeFrame / encodeDoneEvent / encodeTurnDoneEvent at 624d0d25c) AND crates/quilltap-harness/tests/stream_frames_equivalence.rs. \"__UNDEFINED__\" = a real undefined on the v4 side.",
+  "frames": [
+    {
+      "name": "content",
+      "frame": {
+        "kind": "content",
+        "text": "Hello, “dear” — world"
+      }
+    },
+    {
+      "name": "reasoning",
+      "frame": {
+        "kind": "reasoning",
+        "text": "Let me think"
+      }
+    },
+    {
+      "name": "status_two_keys",
+      "frame": {
+        "kind": "status",
+        "status": {
+          "stage": "sending",
+          "message": "Sending to Friday..."
+        }
+      }
+    },
+    {
+      "name": "status_five_keys",
+      "frame": {
+        "kind": "status",
+        "status": {
+          "stage": "tool_executing",
+          "message": "Running state...",
+          "toolName": "state",
+          "characterName": "Friday",
+          "characterId": "cc-1"
+        }
+      }
+    },
+    {
+      "name": "file_processing_plain",
+      "frame": {
+        "kind": "fileProcessing",
+        "info": [
+          {
+            "filename": "a.png",
+            "type": "image_description",
+            "usedImageDescriptionLLM": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "file_processing_with_error",
+      "frame": {
+        "kind": "fileProcessing",
+        "info": [
+          {
+            "filename": "b.pdf",
+            "type": "unsupported",
+            "usedImageDescriptionLLM": false,
+            "error": "no converter"
+          }
+        ]
+      }
+    },
+    {
+      "name": "tools_detected_none",
+      "frame": {
+        "kind": "toolsDetected",
+        "names": [],
+        "arguments": []
+      }
+    },
+    {
+      "name": "tools_detected_two",
+      "frame": {
+        "kind": "toolsDetected",
+        "names": [
+          "search",
+          "roll"
+        ],
+        "arguments": [
+          {
+            "query": "cats"
+          },
+          {
+            "sides": 6
+          }
+        ]
+      }
+    },
+    {
+      "name": "tool_result_success",
+      "frame": {
+        "kind": "toolResult",
+        "index": 0,
+        "name": "roll",
+        "success": true,
+        "result": [
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "name": "tool_result_failure_null",
+      "frame": {
+        "kind": "toolResult",
+        "index": 1,
+        "name": "search",
+        "success": false,
+        "result": null,
+        "error": "Error: boom"
+      }
+    },
+    {
+      "name": "tool_result_undefined_result",
+      "frame": {
+        "kind": "toolResult",
+        "index": 2,
+        "name": "search",
+        "success": false,
+        "result": "__UNDEFINED__",
+        "error": "Error: Unknown error"
+      }
+    },
+    {
+      "name": "turn_start",
+      "frame": {
+        "kind": "turnStart",
+        "participantId": "p-ada",
+        "characterName": "Ada",
+        "chainDepth": 0
+      }
+    },
+    {
+      "name": "turn_complete_skipped",
+      "frame": {
+        "kind": "turnComplete",
+        "participantId": "p-ada",
+        "messageId": "m-1",
+        "chainDepth": 1,
+        "skipped": false
+      }
+    },
+    {
+      "name": "turn_complete_no_skipped",
+      "frame": {
+        "kind": "turnComplete",
+        "participantId": "p-ada",
+        "messageId": "",
+        "chainDepth": 1
+      }
+    },
+    {
+      "name": "chain_complete_plain",
+      "frame": {
+        "kind": "chainComplete",
+        "reason": "user_turn",
+        "nextSpeakerId": null,
+        "chainDepth": 0
+      }
+    },
+    {
+      "name": "chain_complete_paused",
+      "frame": {
+        "kind": "chainComplete",
+        "reason": "yielded",
+        "nextSpeakerId": "p-bob",
+        "chainDepth": 2,
+        "paused": false
+      }
+    },
+    {
+      "name": "chain_complete_held",
+      "frame": {
+        "kind": "chainComplete",
+        "reason": "paused",
+        "nextSpeakerId": null,
+        "chainDepth": 0,
+        "paused": true,
+        "heldUserTurn": true
+      }
+    },
+    {
+      "name": "error_no_extras",
+      "frame": {
+        "kind": "error",
+        "message": "Oops",
+        "errorType": "processing_error",
+        "details": "d"
+      }
+    },
+    {
+      "name": "error_one_extra",
+      "frame": {
+        "kind": "error",
+        "message": "Failed to generate response",
+        "errorType": "Error",
+        "details": "boom",
+        "userMessagePersisted": true
+      }
+    },
+    {
+      "name": "error_two_extras",
+      "frame": {
+        "kind": "error",
+        "message": "Failed to generate response",
+        "errorType": "Error",
+        "details": "boom",
+        "userMessagePersisted": false,
+        "pendingToolResultsPersisted": true
+      }
+    },
+    {
+      "name": "pending_external_turn",
+      "frame": {
+        "kind": "pendingExternalTurn",
+        "messageId": "m-9",
+        "participantId": "p-ada",
+        "characterName": "Ada"
+      }
+    },
+    {
+      "name": "posted_carina",
+      "frame": {
+        "kind": "posted",
+        "what": "carinaAnswer",
+        "message": {
+          "type": "message",
+          "id": "carina-1",
+          "role": "ASSISTANT"
+        }
+      }
+    },
+    {
+      "name": "posted_host",
+      "frame": {
+        "kind": "posted",
+        "what": "hostAnnouncement",
+        "message": {
+          "type": "message",
+          "id": "host-1",
+          "systemSender": "host"
+        }
+      }
+    },
+    {
+      "name": "posted_pascal",
+      "frame": {
+        "kind": "posted",
+        "what": "pascalResult",
+        "message": {
+          "type": "message",
+          "id": "pascal-1",
+          "systemSender": "pascal"
+        }
+      }
+    },
+    {
+      "name": "storyteller_round",
+      "frame": {
+        "kind": "storytellerRound",
+        "round": {
+          "id": "r1",
+          "bids": []
+        }
+      }
+    },
+    {
+      "name": "storyteller_bid",
+      "frame": {
+        "kind": "storytellerBid",
+        "roundId": "r1",
+        "bid": {
+          "participantId": "p1",
+          "status": "pass"
+        }
+      }
+    },
+    {
+      "name": "round_open",
+      "frame": {
+        "kind": "roundOpen",
+        "roundId": "r1"
+      }
+    },
+    {
+      "name": "hand_asked",
+      "frame": {
+        "kind": "handAsked",
+        "participantId": "p-ada",
+        "characterName": "Ada"
+      }
+    },
+    {
+      "name": "hand_answered_yielded",
+      "frame": {
+        "kind": "handAnswered",
+        "participantId": "p-ada",
+        "characterName": "Ada",
+        "yielded": true
+      }
+    },
+    {
+      "name": "hand_answered_carried_on",
+      "frame": {
+        "kind": "handAnswered",
+        "participantId": "p-ada",
+        "characterName": "Ada",
+        "yielded": false
+      }
+    },
+    {
+      "name": "confirmation_unverified",
+      "frame": {
+        "kind": "confirmationResult",
+        "messageId": "m-1",
+        "confirmed": null,
+        "revised": false,
+        "notes": null
+      }
+    },
+    {
+      "name": "confirmation_revised",
+      "frame": {
+        "kind": "confirmationResult",
+        "messageId": "m-1",
+        "confirmed": false,
+        "revised": true,
+        "notes": "fixed",
+        "content": "Better."
+      }
+    }
+  ],
+  "done": [
+    {
+      "name": "done_finalizer_finished",
+      "data": {
+        "outcome": "finished",
+        "messageId": "m-1",
+        "participantId": "p-ada",
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": null,
+        "attachmentResults": {
+          "sent": [],
+          "failed": []
+        },
+        "toolsExecuted": false,
+        "turn": {
+          "nextSpeakerId": null,
+          "reason": "user_turn",
+          "cycleComplete": true,
+          "isUsersTurn": true
+        },
+        "provider": "ANTHROPIC",
+        "modelName": "claude",
+        "routeTrail": null,
+        "isSilentMessage": true,
+        "reasoningContent": null,
+        "reasoningSegments": [
+          {
+            "anchorOffset": 0,
+            "content": "hm",
+            "seq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "done_finalizer_skipped",
+      "data": {
+        "outcome": "skipped",
+        "messageId": "m-1",
+        "participantId": "p-ada",
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": null,
+        "attachmentResults": {
+          "sent": [],
+          "failed": []
+        },
+        "toolsExecuted": false,
+        "turn": {
+          "nextSpeakerId": null,
+          "reason": "user_turn",
+          "cycleComplete": true,
+          "isUsersTurn": true
+        },
+        "provider": "ANTHROPIC",
+        "modelName": "claude",
+        "routeTrail": null,
+        "isSilentMessage": true,
+        "reasoningContent": null,
+        "reasoningSegments": [
+          {
+            "anchorOffset": 0,
+            "content": "hm",
+            "seq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "done_finalizer_yielded",
+      "data": {
+        "outcome": "yielded",
+        "messageId": "m-1",
+        "participantId": "p-ada",
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": null,
+        "attachmentResults": {
+          "sent": [],
+          "failed": []
+        },
+        "toolsExecuted": false,
+        "turn": {
+          "nextSpeakerId": null,
+          "reason": "user_turn",
+          "cycleComplete": true,
+          "isUsersTurn": true
+        },
+        "provider": "ANTHROPIC",
+        "modelName": "claude",
+        "routeTrail": null,
+        "isSilentMessage": true,
+        "reasoningContent": null,
+        "reasoningSegments": [
+          {
+            "anchorOffset": 0,
+            "content": "hm",
+            "seq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "done_finalizer_stopped",
+      "data": {
+        "outcome": "stopped",
+        "messageId": "m-1",
+        "participantId": "p-ada",
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": null,
+        "attachmentResults": {
+          "sent": [],
+          "failed": []
+        },
+        "toolsExecuted": false,
+        "turn": {
+          "nextSpeakerId": null,
+          "reason": "user_turn",
+          "cycleComplete": true,
+          "isUsersTurn": true
+        },
+        "provider": "ANTHROPIC",
+        "modelName": "claude",
+        "routeTrail": null,
+        "isSilentMessage": true,
+        "reasoningContent": null,
+        "reasoningSegments": [
+          {
+            "anchorOffset": 0,
+            "content": "hm",
+            "seq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "done_finalizer_empty",
+      "data": {
+        "outcome": "empty",
+        "messageId": "m-1",
+        "participantId": "p-ada",
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": null,
+        "attachmentResults": {
+          "sent": [],
+          "failed": []
+        },
+        "toolsExecuted": false,
+        "turn": {
+          "nextSpeakerId": null,
+          "reason": "user_turn",
+          "cycleComplete": true,
+          "isUsersTurn": true
+        },
+        "provider": "ANTHROPIC",
+        "modelName": "claude",
+        "routeTrail": null,
+        "isSilentMessage": true,
+        "reasoningContent": null,
+        "reasoningSegments": [
+          {
+            "anchorOffset": 0,
+            "content": "hm",
+            "seq": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "done_recovery_finished",
+      "data": {
+        "outcome": "finished",
+        "messageId": "m-2",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "done_recovery_skipped",
+      "data": {
+        "outcome": "skipped",
+        "messageId": "m-2",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "done_recovery_yielded",
+      "data": {
+        "outcome": "yielded",
+        "messageId": "m-2",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "done_recovery_stopped",
+      "data": {
+        "outcome": "stopped",
+        "messageId": "m-2",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "done_recovery_empty",
+      "data": {
+        "outcome": "empty",
+        "messageId": "m-2",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "done_courier_finished",
+      "data": {
+        "outcome": "finished",
+        "messageId": "m-3",
+        "participantId": "p-ada",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "provider": "COURIER",
+        "modelName": "manual",
+        "pendingExternalTurn": true
+      }
+    },
+    {
+      "name": "done_courier_skipped",
+      "data": {
+        "outcome": "skipped",
+        "messageId": "m-3",
+        "participantId": "p-ada",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "provider": "COURIER",
+        "modelName": "manual",
+        "pendingExternalTurn": true
+      }
+    },
+    {
+      "name": "done_courier_yielded",
+      "data": {
+        "outcome": "yielded",
+        "messageId": "m-3",
+        "participantId": "p-ada",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "provider": "COURIER",
+        "modelName": "manual",
+        "pendingExternalTurn": true
+      }
+    },
+    {
+      "name": "done_courier_stopped",
+      "data": {
+        "outcome": "stopped",
+        "messageId": "m-3",
+        "participantId": "p-ada",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "provider": "COURIER",
+        "modelName": "manual",
+        "pendingExternalTurn": true
+      }
+    },
+    {
+      "name": "done_courier_empty",
+      "data": {
+        "outcome": "empty",
+        "messageId": "m-3",
+        "participantId": "p-ada",
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "provider": "COURIER",
+        "modelName": "manual",
+        "pendingExternalTurn": true
+      }
+    }
+  ],
+  "turnDone": [
+    {
+      "name": "turn_close_finished",
+      "streaming": {
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "finished",
+        "messageId": "t1",
+        "participantId": "p-ada",
+        "toolsExecuted": true
+      }
+    },
+    {
+      "name": "turn_close_skipped",
+      "streaming": {
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "skipped",
+        "messageId": null,
+        "participantId": "p-ada",
+        "toolsExecuted": false,
+        "skippedParticipantId": "p-ada"
+      }
+    },
+    {
+      "name": "turn_close_yielded",
+      "streaming": {
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "yielded",
+        "messageId": null,
+        "participantId": "p-ada",
+        "toolsExecuted": false,
+        "skippedParticipantId": "p-ada"
+      }
+    },
+    {
+      "name": "turn_close_stopped",
+      "streaming": {
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "stopped",
+        "messageId": null,
+        "participantId": "p-ada",
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "turn_close_empty",
+      "streaming": {
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "empty",
+        "messageId": null,
+        "participantId": "p-ada",
+        "toolsExecuted": false,
+        "emptyResponseReason": "Nothing came back."
+      }
+    },
+    {
+      "name": "turn_close_finished_real_usage",
+      "streaming": {
+        "usage": {
+          "promptTokens": 40,
+          "completionTokens": 12,
+          "totalTokens": 52
+        },
+        "cacheUsage": {
+          "cacheReadInputTokens": 3
+        },
+        "attachmentResults": null,
+        "provider": "ANTHROPIC",
+        "modelName": "claude"
+      },
+      "data": {
+        "outcome": "finished",
+        "messageId": "t2",
+        "participantId": "p-ada",
+        "toolsExecuted": true
+      }
+    }
+  ],
+  "tagged": [
+    {
+      "name": "participant_present",
+      "frame": {
+        "kind": "turnStart",
+        "participantId": "p-ada",
+        "characterName": "Ada",
+        "chainDepth": 0
+      }
+    },
+    {
+      "name": "participant_null",
+      "frame": {
+        "kind": "done",
+        "outcome": "finished",
+        "messageId": null,
+        "participantId": null,
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false
+      }
+    },
+    {
+      "name": "participant_absent",
+      "frame": {
+        "kind": "content",
+        "text": "hi"
+      }
+    },
+    {
+      "name": "participant_absent_done_yielded",
+      "frame": {
+        "kind": "done",
+        "outcome": "yielded",
+        "messageId": null,
+        "usage": null,
+        "cacheUsage": null,
+        "attachmentResults": null,
+        "toolsExecuted": false,
+        "skippedParticipantId": "p-ada"
+      }
+    }
+  ],
+  "swipe": [
+    {
+      "name": "swipe_status_nested_kind",
+      "frame": {
+        "kind": "status",
+        "status": {
+          "kind": "status",
+          "stage": "gathering",
+          "message": "Regenerating — gathering Bertie's memories and context...",
+          "characterName": "Bertie",
+          "characterId": "bb-1"
+        }
+      }
+    },
+    {
+      "name": "swipe_done",
+      "frame": {
+        "kind": "swipeDone",
+        "message": {
+          "id": "swipe-1",
+          "content": "the new line"
+        }
+      }
+    },
+    {
+      "name": "swipe_error",
+      "frame": {
+        "kind": "error",
+        "message": "Failed to generate alternative response",
+        "errorType": "regenerate_failed",
+        "details": "provider went quiet"
+      }
+    }
+  ]
+}

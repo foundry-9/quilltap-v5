@@ -225,18 +225,27 @@ pub fn scenario_tool_context(
 /// intact, handed to the run's frame callback.
 struct FrameSink<'a, F: Fn(Value) + Sync>(&'a F);
 
+// === P4.D366 === the Scenario Builder (and, through it, the one-shot loop)
+// renders the LEGACY dialect — v4 `scenario-builder.service.ts:127`'s
+// `legacyFrameEncoder()`.
 impl<F: Fn(Value) + Sync> EventSink for FrameSink<'_, F> {
     fn emit(&self, event: ChatEvent) {
-        if let Ok(v) = serde_json::to_value(&event) {
-            (self.0)(v);
-        }
+        (self.0)(crate::services::stream_frames::render(
+            &event,
+            crate::services::stream_frames::Dialect::Legacy,
+            None,
+        ));
     }
 }
 
 fn error_frame(sentence: &str, details: &str) -> Value {
-    serde_json::to_value(ChatEvent::error(sentence, SCENARIO_BUILDER_FAILED, details))
-        .unwrap_or(Value::Null)
+    crate::services::stream_frames::render(
+        &ChatEvent::error(sentence, SCENARIO_BUILDER_FAILED, details),
+        crate::services::stream_frames::Dialect::Legacy,
+        None,
+    )
 }
+// === end P4.D366 ===
 
 fn s<'v>(v: &'v Value, key: &str) -> Option<&'v str> {
     v.get(key).and_then(Value::as_str)
@@ -449,9 +458,12 @@ where
 
         let sink = FrameSink(frames);
         let mut on_reasoning = |reasoning: &str| {
-            if let Ok(v) = serde_json::to_value(ChatEvent::reasoning(reasoning)) {
-                frames(v);
-            }
+            // === P4.D366 === legacy dialect, through the one renderer.
+            frames(crate::services::stream_frames::render(
+                &ChatEvent::reasoning(reasoning),
+                crate::services::stream_frames::Dialect::Legacy,
+                None,
+            ));
         };
         let result = run_one_shot_tool_loop(
             &OneShotLoopDeps {

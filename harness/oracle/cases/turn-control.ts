@@ -29,6 +29,8 @@ type Row =
   | { kind: 'registry'; id: string; obs: unknown[]; logs: LogLine[] }
   | { kind: 'detect'; id: string; response: string; characterName?: string; aliases?: string[]; out: unknown }
   | { kind: 'note'; id: string; operatorName: string; out: string }
+  // P4.D366 (v4 `9eab8d2da`): `isGestureOnlyReply` over a UTF-16-hostile grid.
+  | { kind: 'gesture'; id: string; text: string; out: boolean }
   | { kind: 'constants'; id: string; out: { YIELD_SENTINEL: string; TURN_YIELD_SYSTEM_KIND: string } }
   | { kind: 'sentinelLine'; id: string; line: string; phrase: string; out: boolean }
   | { kind: 'watchdog'; id: string; seen: string[]; logs: LogLine[] }
@@ -368,6 +370,57 @@ async function main() {
   detect('wrapped-leading', '**[YIELD]** Pray continue.');
   detect('punct-leading', '[YIELD]... Pray continue.');
   detect('unbracketed-leading', 'YIELD Pray continue.');
+
+  // === P4.D366 (v4 `9eab8d2da`): gesture-only answers count as a yield ===
+  // The suite's own forms through `detectYieldSentinel` (with and without a
+  // name prefix), then `isGestureOnlyReply` over the UTF-16 grid: astral
+  // characters beside wrappers, layered runs, the 280-unit cap on both sides
+  // (incl. a body whose astral char crosses 280), CRLF / Unicode whitespace,
+  // every quote mark, letters only in Cyrillic / CJK / Devanagari, digits-only.
+  detect('gesture-suite-tilt', '*(a tilt of the head, one hand opening toward Tester — go on, then)*', 'Riya');
+  detect('gesture-suite-name-prefix', 'Riya: *steps back and sweeps a hand toward you*', 'Riya');
+  detect('gesture-no-name', '*steps aside with a small bow*');
+  detect('gesture-alias-prefix', '[Countess] *curtsies and gestures to the floor*', 'Ada', ['Countess']);
+  detect('gesture-spoken', '*nods* "Go on, then."');
+  detect('gesture-prose-between', '*nods* Go on, then. *smiles*');
+  detect('gesture-long', `*${'she works the knot loose and frowns at the water '.repeat(8)}*`);
+  detect('gesture-two-paragraphs', '*She looks up.*\n\n*She looks down again.*');
+  detect('gesture-content-block', '[{"type":"text","text":"*bows low*"}]');
+  detect('gesture-padded', '  \n *bows*  \n');
+  const gesture = (id: string, text: string) => {
+    rows.push({ kind: 'gesture', id, text, out: ys.isGestureOnlyReply(text) });
+  };
+  const ASTRAL = '\u{1D49C}'; // 𝒜 — a letter, two UTF-16 units
+  const grid: Array<[string, string]> = [
+    ['suite-star', '*bows*'], ['suite-underscore', '_bows_'], ['suite-paren', '(bows)'],
+    ['suite-bold', '**bows**'], ['suite-star-paren', '*(bows to Tester)*'],
+    ['suite-apostrophe', "*It's yours, the gesture says.*"],
+    ['suite-bare', 'bows'], ['suite-quoted', '"After you."'], ['suite-mixed', '*bows* "After you."'],
+    ['suite-empty-bold', '**'], ['suite-ellipsis', '*…*'], ['suite-between', '*nods* Fine. *smiles*'],
+    ['suite-empty', ''],
+    ['astral-lead', '*😀bows*'], ['astral-tail', '*bows😀*'], ['astral-only', '**😀**'],
+    ['astral-letter', `*${ASTRAL}*`], ['triple-x', '***x***'], ['paren-star', '(*x*)'],
+    ['star-paren', '*(a)*'], ['paren-star-a', '(*a*)'], ['two-wrappers', '_a_ *b*'],
+    ['odd-run', '***'], ['star-x-unbalanced', '**x*'], ['underscore-run', '__x__'],
+    ['nested-close', '(a (b) c)'], ['star-in-paren', '(a * b)'],
+    ['cap-280', `*${'a'.repeat(278)}*`], ['cap-281', `*${'a'.repeat(279)}*`],
+    ['cap-astral-280', `*${ASTRAL.repeat(139)}*`], ['cap-astral-282', `*${ASTRAL.repeat(140)}*`],
+    ['cap-astral-crosses', `*${'a'.repeat(277)}${ASTRAL}*`],
+    ['crlf-blank', '*a*\r\n\r\n*b*'], ['crlf-single', '*a\r\nb*'],
+    ['nbsp-blank', '*a*\n\u00A0\n*b*'], ['feff-pad', '\uFEFF*bows*\uFEFF'],
+    ['ls-pad', '\u2028*bows*\u2028'], ['nbsp-inner', '*\u00A0bows\u00A0*'],
+    ['nel-pad', '\u0085*bows*'],
+    ['quote-ascii', '*says "hi"*'], ['quote-left', '*says “hi*'], ['quote-right', '*says hi”*'],
+    ['quote-guillemet-l', '*says «hi*'], ['quote-guillemet-r', '*says hi»*'], ['quote-low', '*says „hi*'],
+    ['quote-single', "*says 'hi'*"],
+    ['cyrillic', '*кланяется*'], ['cjk', '*鞠躬*'], ['devanagari', '*झुकता*'],
+    ['digits', '*123*'], ['punct', '*!?*'],
+    ['mark-only', '*\u0301*'], ['roman-numeral', '*Ⅻ*'],
+    // (No lone-surrogate rows: a Rust `&str` cannot hold one, so a v5 reply
+    // can never carry it — and `serde_json` refuses the `\ud835` escape.)
+  ];
+  for (const [id, text] of grid) gesture(id, text);
+  // === end P4.D366 ===
 
   // ---- buildTurnYieldInstruction + constants ---------------------------------
   for (const [id, name] of [['charlie', 'Charlie'], ['the-user', 'The User'], ['unicode', 'Zoë Ōkami'], ['empty', '']] as const) {

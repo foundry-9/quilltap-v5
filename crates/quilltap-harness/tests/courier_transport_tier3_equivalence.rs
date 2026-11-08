@@ -52,6 +52,7 @@ use quilltap_core::services::courier_transport::{
     dispatch_courier_transport, DispatchCourierOptions,
 };
 use quilltap_core::services::message_context::FormattedMsg;
+use quilltap_core::services::stream_frames::Dialect;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -299,7 +300,7 @@ fn courier_transport_tier3_matches_oracle() {
 
         // --- events ---
         let got_events: Vec<Value> = sink
-            .events_json()
+            .events_json_in(Dialect::Frames)
             .into_iter()
             .map(|e| norm_message_id(e, &minted))
             .collect();

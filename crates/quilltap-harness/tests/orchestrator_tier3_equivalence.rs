@@ -151,6 +151,7 @@ use quilltap_core::services::orchestrator::{
     self, ExecuteTurnChainOptions, OrchestratorChatSettings, OrchestratorDeps, ProcessClock,
     ProcessMessageInput, SendMessageOptions,
 };
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_execution::CannedToolRunner;
 use quilltap_core::services::turn_orchestrator::ChainConfig;
 use quilltap_core::tools::ask_carina::{ErasedAskCarina, TypedAskCarina};
@@ -1492,7 +1493,10 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             // `{fileProcessing: …}` (`streaming.service.ts:575`), which v5 emits
             // since P4.140 (`ChatEvent::FileProcessing`) — it is KEPT and
             // compared in order.
-            if obj.contains_key("debugContext") || obj.contains_key("error") {
+            // P4.D366: the stream is v4's `kind`-tagged frames at the pin.
+            if obj.contains_key("debugContext")
+                || obj.get("kind").and_then(Value::as_str) == Some("error")
+            {
                 return false;
             }
             if let Some(status) = obj.get("status").and_then(Value::as_object) {
@@ -1510,10 +1514,15 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             if let Some(obj) = e.as_object_mut() {
                 // The Courier `pendingExternalTurn` frame also carries the minted
                 // placeholder id (W4.4a4).
-                if obj.contains_key("done")
-                    || obj.contains_key("turnComplete")
-                    || obj.contains_key("pendingExternalTurn")
-                {
+                let kind = obj
+                    .get("kind")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if matches!(
+                    kind.as_str(),
+                    "done" | "turnComplete" | "pendingExternalTurn"
+                ) {
                     if let Some(v) = obj.get_mut("messageId") {
                         if v.is_string() {
                             *v = Value::String("<msgid>".into());
@@ -1529,8 +1538,11 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
                 // on each side. Placeholder both; the rest (content / opaqueContent
                 // / systemSender / systemKind / hostEvent.participantId) is
                 // deterministic.
-                if let Some(msg) = obj
-                    .get_mut("hostAnnouncement")
+                // P4.D366: the three posted frames are `{kind:"posted", what,
+                // message}` — the one `message` carries the minted id / ts.
+                if let Some(msg) = (kind == "posted")
+                    .then(|| obj.get_mut("message"))
+                    .flatten()
                     .and_then(Value::as_object_mut)
                 {
                     if let Some(v) = msg.get_mut("id") {
@@ -1544,32 +1556,9 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
                         }
                     }
                 }
-                // P4.D305: the `pascalResult` frame (a triggered run's live
-                // `onPosted`) carries the posted Pascal message — a fresh
-                // minted `id` + `createdAt` on each side; the rest (content,
-                // `pascalMeta` incl. `invokedBy` / `triggerPhrase`) is
-                // deterministic.
-                if let Some(msg) = obj.get_mut("pascalResult").and_then(Value::as_object_mut) {
-                    for (k, placeholder) in [("id", "<msgid>"), ("createdAt", "<ts>")] {
-                        if let Some(v) = msg.get_mut(k) {
-                            if v.is_string() {
-                                *v = Value::String(placeholder.into());
-                            }
-                        }
-                    }
-                }
-                if let Some(msg) = obj.get_mut("carinaAnswer").and_then(Value::as_object_mut) {
-                    if let Some(v) = msg.get_mut("id") {
-                        if v.is_string() {
-                            *v = Value::String("<msgid>".into());
-                        }
-                    }
-                    if let Some(v) = msg.get_mut("createdAt") {
-                        if v.is_string() {
-                            *v = Value::String("<ts>".into());
-                        }
-                    }
-                }
+                // (P4.D305's `pascalResult` and W4.10a's `carinaAnswer` ride the
+                // same `posted.message` now — the block above placeholders all
+                // three: a fresh minted `id` + `createdAt` on each side.)
             }
             e
         })
@@ -2605,7 +2594,10 @@ fn orchestrator_tier3_matches_oracle() {
             call.name.clone(),
             json!({ "raises": raises, "stops": stops }),
         );
-        got_events.push((call.name.clone(), filter_events(&sink.events_json())));
+        got_events.push((
+            call.name.clone(),
+            filter_events(&sink.events_json_in(Dialect::Frames)),
+        ));
         if !call.inventory_objects.is_empty() {
             let rows = room_rows_in_rowid_order(&db, &call.chat_id);
             got_inventory_rows.insert(call.name.clone(), (inventory_rows_before, rows));
@@ -2648,8 +2640,10 @@ fn orchestrator_tier3_matches_oracle() {
         assert_events_eq(name, got, want);
         // The frame precedes the model leg (its first streamed `content`).
         let frame = |evs: &[Value]| {
-            let pascal = evs.iter().position(|e| e.get("pascalResult").is_some());
-            let tools = evs.iter().position(|e| e.get("content").is_some());
+            let pascal = evs
+                .iter()
+                .position(|e| e["kind"] == "posted" && e["what"] == "pascalResult");
+            let tools = evs.iter().position(|e| e["kind"] == "content");
             (pascal, tools)
         };
         let (pascal, tools) = frame(got);
@@ -2658,7 +2652,7 @@ fn orchestrator_tier3_matches_oracle() {
             "{name}: the pascalResult frame must precede the model leg ({pascal:?} vs {tools:?})"
         );
         let invoked = got[pascal.unwrap()]
-            .pointer("/pascalResult/pascalMeta/invokedBy")
+            .pointer("/message/pascalMeta/invokedBy")
             .cloned();
         assert_eq!(invoked, Some(json!("trigger")), "{name}: invokedBy");
         // The room's rows: v5 in INSERTION order (rowid) — user, Pascal, reply.
@@ -3284,7 +3278,7 @@ fn orchestrator_tier3_matches_oracle() {
         "pause_keyless_records_post",
     ];
     let held_frame = json!({
-        "chainComplete": true,
+        "kind": "chainComplete",
         "reason": "paused",
         "nextSpeakerId": null,
         "chainDepth": 0,
@@ -3297,7 +3291,7 @@ fn orchestrator_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         let chain_frames: Vec<&Value> = want
             .iter()
-            .filter(|e| e.get("chainComplete").is_some())
+            .filter(|e| e["kind"] == "chainComplete")
             .collect();
         assert_eq!(
             chain_frames.len(),
@@ -3310,7 +3304,7 @@ fn orchestrator_tier3_matches_oracle() {
         );
         for forbidden in ["content", "done", "turnComplete"] {
             assert!(
-                !want.iter().any(|e| e.get(forbidden).is_some()),
+                !want.iter().any(|e| e["kind"] == forbidden),
                 "{name}: v4 must not emit a `{forbidden}` frame on a held turn — the \
                  model was called, so this case is measuring the wrong thing"
             );
@@ -3326,12 +3320,12 @@ fn orchestrator_tier3_matches_oracle() {
             .get(name)
             .unwrap_or_else(|| panic!("oracle events missing for {name}"));
         assert!(
-            want.iter().any(|e| e.get("content").is_some()),
+            want.iter().any(|e| e["kind"] == "content"),
             "{name}: a summons into a paused room must still stream a reply"
         );
         let chain_frames: Vec<&Value> = want
             .iter()
-            .filter(|e| e.get("chainComplete").is_some())
+            .filter(|e| e["kind"] == "chainComplete")
             .collect();
         assert_eq!(chain_frames.len(), 1, "{name}: one chainComplete expected");
         assert!(
@@ -4895,17 +4889,16 @@ fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
         let w = serde_json::to_string_pretty(want).unwrap();
         panic!("event trace mismatch for {name}\n--- got ---\n{g}\n--- want ---\n{w}");
     } // P4.D348 (R-N): `Value` equality is ORDER-BLIND under `preserve_order`
-      // (an `IndexMap`), so the `done` frames' key order — which v4 `a8214b253`
-      // moved for the five non-finalizer closes (`encodeTurnDoneEvent`) — is
-      // pinned by BYTES here, frame for frame.
+      // (an `IndexMap`), so key order is pinned by BYTES here, frame for
+      // frame — P4.D366 widened it from the `done` frames to EVERY frame, since
+      // the `kind`-tagged union's key order (`kind` first, `outcome` second on
+      // a `done`, `seat` last) is the wire.
     for (i, (g, w)) in got.iter().zip(want).enumerate() {
-        if g.get("done").is_some() {
-            let (gb, wb) = (
-                serde_json::to_string(g).unwrap(),
-                serde_json::to_string(w).unwrap(),
-            );
-            assert_eq!(gb, wb, "{name}: done frame #{i} key order (bytes)");
-        }
+        let (gb, wb) = (
+            serde_json::to_string(g).unwrap(),
+            serde_json::to_string(w).unwrap(),
+        );
+        assert_eq!(gb, wb, "{name}: frame #{i} key order (bytes)");
     }
 }
 

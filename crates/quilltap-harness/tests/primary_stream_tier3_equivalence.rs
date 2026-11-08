@@ -145,6 +145,7 @@ use quilltap_core::services::provider_failover::{
     FailoverLogCtx, RouteResult, TextUnderstudy,
 };
 use quilltap_core::services::recovery::{self, RecoveryContext};
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::turn_control;
 use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
@@ -1582,7 +1583,7 @@ async fn primary_stream_tier3_matches_oracle() {
 
         // Defer the event-trace compare to the end: the `done` event's messageId
         // is minted, so it rides the shared first-appearance id map.
-        let got_events = Value::Array(sink.events_json());
+        let got_events = Value::Array(sink.events_json_in(Dialect::Frames));
         let want_events = oracle_events
             .remove(&name)
             .unwrap_or_else(|| panic!("oracle missing events for {name}"));
@@ -2027,7 +2028,7 @@ fn normalize_event_ids(events: &mut Value, id_map: &mut HashMap<String, String>)
     if let Some(arr) = events.as_array_mut() {
         for ev in arr.iter_mut() {
             if let Some(obj) = ev.as_object_mut() {
-                if obj.get("done").and_then(Value::as_bool) == Some(true) {
+                if obj.get("kind").and_then(Value::as_str) == Some("done") {
                     if let Some(Value::String(raw)) = obj.get("messageId") {
                         let t = token_for(id_map, raw);
                         obj.insert("messageId".into(), Value::String(t));

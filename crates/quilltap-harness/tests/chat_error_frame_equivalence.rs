@@ -17,6 +17,14 @@
 //! the key — the `undefined-extras` / `empty-extras` / `*-explicit-undefined`
 //! rows are what prove that is v4's answer too.
 //!
+//!
+//! P4.D366 (v4 `604a082c4`, the `624d0d25c` pin): the frame is now rendered by
+//! dialect. Each corpus row is compared TWICE — the Salon's `frames` dialect
+//! (`{kind:"error", message, errorType, details, …extras}`, v4's plain
+//! `TextEncoder`) and the Help / Brahma `legacy` bag (`legacyFrameEncoder()` →
+//! `toLegacyBag`, the old bytes) — through `stream_frames::render_error`, the
+//! one renderer the spine's `ChatErrorFrame` serializes through.
+//!
 //! Regenerate + run (a pure tsx oracle; the corpus is committed):
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -31,6 +39,7 @@
 use std::collections::HashMap;
 
 use quilltap_core::api::ChatErrorPayload;
+use quilltap_core::services::stream_frames::{render_error, Dialect};
 use serde_json::Value;
 
 fn corpus_path() -> std::path::PathBuf {
@@ -87,27 +96,40 @@ fn chat_error_frames_match_oracle() {
         let row: Value = serde_json::from_str(line).expect("oracle row");
         assert_eq!(row["prefix"], "data: ", "v4's frame prefix moved");
         assert_eq!(row["suffix"], "\n\n", "v4's frame suffix moved");
-        oracle.insert(row["name"].as_str().unwrap().to_string(), row);
+        oracle.insert(
+            format!(
+                "{}/{}",
+                row["name"].as_str().unwrap(),
+                row["dialect"].as_str().expect("a dialect per row")
+            ),
+            row,
+        );
     }
     assert_eq!(
         oracle.len(),
-        cases.len(),
-        "oracle row count != corpus case count — an empty or stale NDJSON?"
+        cases.len() * 2,
+        "oracle row count != 2 × corpus case count — an empty or stale NDJSON?"
     );
 
     let mut failures = Vec::new();
     for case in cases {
         let name = case["name"].as_str().unwrap();
-        let want = oracle[name]["body"].as_str().expect("body").to_string();
-        let got = serde_json::to_string(&payload_for(case)).expect("serialize");
-        if got != want {
-            failures.push(format!("{name}:\n  v4 {want}\n  v5 {got}"));
+        for (tag, dialect) in [("frames", Dialect::Frames), ("legacy", Dialect::Legacy)] {
+            let want = oracle[&format!("{name}/{tag}")]["body"]
+                .as_str()
+                .expect("body")
+                .to_string();
+            let got = serde_json::to_string(&render_error(&payload_for(case), dialect))
+                .expect("serialize");
+            if got != want {
+                failures.push(format!("{name}/{tag}:\n  v4 {want}\n  v5 {got}"));
+            }
         }
     }
     eprintln!(
         "chat_error_frame: {} of {} rows equal",
-        cases.len() - failures.len(),
-        cases.len()
+        cases.len() * 2 - failures.len(),
+        cases.len() * 2
     );
     assert!(
         failures.is_empty(),
@@ -129,8 +151,10 @@ fn chat_error_frame_identities_hold_in_the_oracle() {
     let by: HashMap<String, String> = body
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let row: Value = serde_json::from_str(l).unwrap();
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        // The identities are dialect-independent; read the Salon's frames.
+        .filter(|row| row["dialect"] == "frames")
+        .map(|row| {
             (
                 row["name"].as_str().unwrap().to_string(),
                 row["body"].as_str().unwrap().to_string(),

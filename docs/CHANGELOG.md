@@ -559,6 +559,21 @@ _Versions: core 0.0.1428._
 
 v4 `ba6c8fe0f` (the probation) and `db6190b44` on the memory-extraction prompt text. `harness/oracle/scripts/extract-memory-task-prompts.py` is taught two blocks: `REPAIRS_INSTRUCTION_BLOCK` (a plain constant) and `ESTABLISHED_FACT_INSTRUCTION_BLOCK`, whose one interpolation `${ESTABLISHED_FACT_TRANSCRIPT_RULE}` is read from ANOTHER v4 module (`lib/chat/established-fact.ts`) by a new `cross_module_string` that evaluates only a `'…' + "…"` concatenation of plain literals and aborts on a backslash, a `${`, a non-literal operand, a missing file, or a declaration found other than once. Self-tests: against `236c04e35` the taught script emits `prompt_text.rs` consts byte-identical to main's; the three planted mutants and the missing module abort. `memory_extraction/prompts/prompt_text.rs` and `consolidation_tasks/prompt_text.rs` (the bindery's two new rules, the `resolvedIds` parenthesis and OUTPUT sample) regenerated ONCE from the pin; `extract-consolidation-prompt.py` unchanged and byte-identical at the baseline. Core unit tests mirror v4's `repairs-prompt.test.ts` plus the AGREEMENTS → REPAIRS → ESTABLISHED FACTS order. `memory_tasks_equivalence` green from the pin (was 10 divergences); `consolidation_tasks_equivalence`'s prompt row green.
 
+#### 2026-11-08 — FRAMES: Salon kind-tagged stream frames rendered at the sink, gesture-only yields, handAsked (v4 624d0d25c)
+
+_Versions: core 0.0.1428, host 0.0.224._
+
+P4.D366 Tier 1 (the stacking commit P4.D368 branches from). Ports v4 `604a082c4` (the Salon stream as a `kind`-tagged union) and the server half of `9eab8d2da` (raised-hand status; gesture-only answers count as a yield), at the `624d0d25c` pin.
+
+- New `services::stream_frames`: `Dialect { Frames, Legacy }`, `DoneOutcome`, `render(&ChatEvent, Dialect, seat)` (one exhaustive match, `kind` first, `seat` last), `outcome_of`, `to_legacy_bag` (v4's `toLegacyBag` / `legacyBagOf` ported literally, including the seat merge), `render_error`, `swipe_status_frame`, `swipe_done_frame`.
+- `ChatEvent` stays the producer vocabulary (ruling R-G) and no longer derives `Serialize`: `render` is the only way an event reaches bytes. Adds `ChatEvent::HandAsked` + `hand_asked`. Removes `Tagged` / `TaggedEvent` / `TaggingSink` and `storyteller::sse_tag`.
+- `RecordingSink` records each event with its seat: `events_json_in(Dialect)`, `seated(pid)`; `events_json()` stays the legacy dialect.
+- The `Event` carrier: `EventPayload::Chat(ChatFrame)` / `ChatError(ChatErrorFrame)` serialize through the renderer; `Event::chat` / `Event::chat_error` keep their legacy bytes; new `Event::chat_in` / `Event::chat_error_in`.
+- Host `BroadcastSink` carries a dialect and seat (`frames`, `legacy`, `seated`): Salon send / continue / nudge, the enclave step and the Storyteller run render frames; Help chat and the Brahma console stay legacy. The Salon error shell now sends `{kind:"error", message, …}`.
+- The Scenario Builder renders legacy through the renderer (bytes unchanged). The swipe / "Try uncensored" stream sends frames (`status` with its nested `kind`, `content`, `reasoning`, `swipeDone`, `kind:"error"`).
+- `yield_signal`: `is_gesture_only_reply` (UTF-16 exact), `DetectYieldResult`'s `inferred`, the gesture arm, the re-wrapped Turn note. The orchestrator emits `handAsked` after the "Asking the next speaker" INFO, and the yield INFO gains `inferred_from_gesture`.
+- Harness: new tier-1 `stream_frames_equivalence` (v4's real `encodeFrame` in three profiles plus the six golden streams; 111 groups, 320 byte comparisons; carve `TOOL_RESULT_UNDEFINED_RESULT` = 1), new `stream_frames_chokepoint` census, `chat_error_frame_equivalence` split by dialect, `turn_control_equivalence` grows 53 gesture rows and 10 gesture detect rows. The Salon frames families are re-pointed to `events_json_in(Dialect::Frames)`.
+
 #### 2026-11-04 — REAIM: the IMPORT-DEAD / MOCK-INERT / STALE oracle re-aims at 624d0d25c — 9 C1 rows, 18 families load, 11 rows retired
 
 _No crate versions bumped._

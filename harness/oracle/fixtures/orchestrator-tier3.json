@@ -3526,6 +3526,62 @@
      "participantId": "1d151009-0000-4000-8000-0000000002a9"
     }
    ]
+  },
+  {
+   "id": "d3660001-0000-4000-8000-00000000d366",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3660110-0000-4000-8000-00000000d366",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3660111-0000-4000-8000-00000000d366",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3660119-0000-4000-8000-00000000d366",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3660111-0000-4000-8000-00000000d366"
+    }
+   ],
+   "_comment": "P4.D366: v4 9eab8d2da gesture yields — interrupt_yield_gesture"
+  },
+  {
+   "id": "d3660002-0000-4000-8000-00000000d366",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3660120-0000-4000-8000-00000000d366",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3660121-0000-4000-8000-00000000d366",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3660129-0000-4000-8000-00000000d366",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3660121-0000-4000-8000-00000000d366"
+    }
+   ],
+   "_comment": "P4.D366: v4 9eab8d2da gesture yields — interrupt_gesture_with_prose"
   }
  ],
  "calls": [
@@ -4908,6 +4964,30 @@
    "summaryCheck": false,
    "isEstablishedFact": true,
    "_comment": "P4.D372 (v4 db6190b44): the held post (turn-holds) writes the flag too; no turn runs."
+  },
+  {
+   "name": "interrupt_yield_gesture",
+   "kind": "chain",
+   "chatId": "d3660001-0000-4000-8000-00000000d366",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_yield_gesture",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3660110-0000-4000-8000-00000000d366",
+   "_comment": "P4.D366: v4 9eab8d2da — interrupt_yield_gesture"
+  },
+  {
+   "name": "interrupt_gesture_with_prose",
+   "kind": "chain",
+   "chatId": "d3660002-0000-4000-8000-00000000d366",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_gesture_with_prose",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3660120-0000-4000-8000-00000000d366",
+   "_comment": "P4.D366: v4 9eab8d2da — interrupt_gesture_with_prose"
   }
  ],
  "streams": {
@@ -7262,7 +7342,75 @@
     }
    ]
   ],
-  "deus_send_on_paused_chat": []
+  "deus_send_on_paused_chat": [],
+  "interrupt_yield_gesture": [
+   [
+    {
+     "content": "Friday clears her throat."
+    },
+    {
+     "raiseHand": true
+    },
+    {
+     "content": " Then she pauses."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ],
+   [
+    {
+     "content": "*steps aside with a small bow*"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 6,
+      "totalTokens": 66
+     }
+    }
+   ]
+  ],
+  "interrupt_gesture_with_prose": [
+   [
+    {
+     "content": "Friday clears her throat."
+    },
+    {
+     "raiseHand": true
+    },
+    {
+     "content": " Then she pauses."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ],
+   [
+    {
+     "content": "*nods* Go on, then. *smiles*"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 7,
+      "totalTokens": 67
+     }
+    }
+   ]
+  ]
  },
  "detection": {
   "failover_native_call": [

@@ -65,6 +65,7 @@ use quilltap_core::services::message_finalizer::{
     FinalizerProfile, FinalizerStreaming, NoAsyncCompression, NoCostTracking, ParticipantCharacter,
     ProcessMessageResult, RealAnswerConfirmation,
 };
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_execution::ToolMessage;
 use quilltap_core::tools::rng::FixedBytes;
 use quilltap_core::weighted_random::DrawSource;
@@ -762,7 +763,10 @@ fn answer_confirmation_tier3_matches_oracle() {
             .unwrap_or_else(|e| panic!("finalize {}: {e:?}", call.name));
 
         got_results.push((call.name.clone(), rust_result_to_value(&result)));
-        got_events.push((call.name.clone(), Value::Array(sink.events_json())));
+        got_events.push((
+            call.name.clone(),
+            Value::Array(sink.events_json_in(Dialect::Frames)),
+        ));
     }
 
     // The check + re-affirmation calls each wrote one ANSWER_CONFIRMATION row.

@@ -1066,7 +1066,7 @@ impl PostProsperoCarinaError for ThreadedProspero {
 // ===========================================================================
 
 /// The [`EventSink`] adapter: wraps each [`ChatEvent`] in
-/// `Event::chat(chat_id, frame)` and publishes on the engine broadcast. A
+/// `Event::chat_in(chat_id, frame, dialect, seat)` and publishes on the engine broadcast. A
 /// send with no subscribers is fine (fire-and-forget, per the sink contract).
 // === P4.D343: the Storyteller host half (a child module — it reuses this
 // file's private per-call assembly types). ===
@@ -1074,16 +1074,63 @@ impl PostProsperoCarinaError for ThreadedProspero {
 mod storyteller_spine;
 // === end P4.D343 ===
 
+// === P4.D366 ===
+/// The dialect is a property of the SINK (ruling R-G): `Frames` for the Salon
+/// send / continue / nudge, the enclave step and the Storyteller run;
+/// `Legacy` for Help chat and the Brahma console (v4 `legacyFrameEncoder()`).
+/// A concurrent Storyteller seat is [`BroadcastSink::seated`] — every frame it
+/// sends carries `seat` LAST.
 pub struct BroadcastSink {
     pub chat_id: String,
     pub tx: tokio::sync::broadcast::Sender<Event>,
+    pub dialect: quilltap_core::services::stream_frames::Dialect,
+    pub seat: Option<String>,
+}
+
+impl BroadcastSink {
+    /// A Salon-dialect sink (v4's plain `TextEncoder`).
+    pub fn frames(chat_id: String, tx: tokio::sync::broadcast::Sender<Event>) -> Self {
+        BroadcastSink {
+            chat_id,
+            tx,
+            dialect: quilltap_core::services::stream_frames::Dialect::Frames,
+            seat: None,
+        }
+    }
+
+    /// A legacy-dialect sink (v4 `legacyFrameEncoder()`).
+    pub fn legacy(chat_id: String, tx: tokio::sync::broadcast::Sender<Event>) -> Self {
+        BroadcastSink {
+            chat_id,
+            tx,
+            dialect: quilltap_core::services::stream_frames::Dialect::Legacy,
+            seat: None,
+        }
+    }
+
+    /// The same stream, every frame tagged with `participant_id`'s concurrent
+    /// seat (v4 `seatedFrameEncoder`).
+    pub fn seated(&self, participant_id: &str) -> BroadcastSink {
+        BroadcastSink {
+            chat_id: self.chat_id.clone(),
+            tx: self.tx.clone(),
+            dialect: self.dialect,
+            seat: Some(participant_id.to_string()),
+        }
+    }
 }
 
 impl EventSink for BroadcastSink {
     fn emit(&self, event: ChatEvent) {
-        let _ = self.tx.send(Event::chat(self.chat_id.clone(), event));
+        let _ = self.tx.send(Event::chat_in(
+            self.chat_id.clone(),
+            event,
+            self.dialect,
+            self.seat.clone(),
+        ));
     }
 }
+// === end P4.D366 ===
 
 // ===========================================================================
 // The spine driver
@@ -1498,10 +1545,9 @@ where
                 "[Orchestrator] Whisper send: single reply, no chain",
             );
         }
-        let sink = BroadcastSink {
-            chat_id: chat_id.clone(),
-            tx: self.events.clone(),
-        };
+        // === P4.D366 ===
+        let sink = BroadcastSink::frames(chat_id.clone(), self.events.clone());
+        // === end P4.D366 ===
 
         // Per-call clock + RNG (v4 Date.now() / Math.random()).
         let now_ms = now_unix_ms();
@@ -1871,10 +1917,9 @@ where
 
         let db = self.db.clone();
         let chat_id = req.chat_id.clone();
-        let sink = BroadcastSink {
-            chat_id: chat_id.clone(),
-            tx: self.events.clone(),
-        };
+        // === P4.D366 ===
+        let sink = BroadcastSink::legacy(chat_id.clone(), self.events.clone());
+        // === end P4.D366 ===
         let detector = RegistryToolCallDetector::built_in();
         let runner = self.tool_runner();
         let mut cost = PricingCostTracker {
@@ -2023,10 +2068,9 @@ where
 
         let db = self.db.clone();
         let chat_id = req.chat_id.clone();
-        let sink = BroadcastSink {
-            chat_id: chat_id.clone(),
-            tx: self.events.clone(),
-        };
+        // === P4.D366 ===
+        let sink = BroadcastSink::legacy(chat_id.clone(), self.events.clone());
+        // === end P4.D366 ===
         let detector = RegistryToolCallDetector::built_in();
         let runner = self.tool_runner();
         let mut cost = PricingCostTracker {
@@ -2110,10 +2154,9 @@ where
     ) -> Result<StepOutcome, DbError> {
         let db = self.db.clone();
         let chat_id = payload.chat_id.clone().unwrap_or_default();
-        let sink = BroadcastSink {
-            chat_id: chat_id.clone(),
-            tx: self.events.clone(),
-        };
+        // === P4.D366 ===
+        let sink = BroadcastSink::frames(chat_id.clone(), self.events.clone());
+        // === end P4.D366 ===
 
         let now_ms = now_unix_ms();
         let random01 = os_draw_source();
@@ -2560,7 +2603,9 @@ fn emit_send_error_frame(
         pendingToolResultsPersisted = submission.pending_tool_results_persisted,
         "[TurnStream] Emitting error frame",
     );
-    let _ = events.send(Event::chat_error(
+    // === P4.D366 === the Salon shells are frames-dialect (v4
+    // `turn-stream.ts:102-105`): `{kind:"error", message, …}`.
+    let _ = events.send(Event::chat_error_in(
         chat_id,
         ChatErrorPayload {
             error: "Failed to generate response".to_string(),
@@ -2569,7 +2614,9 @@ fn emit_send_error_frame(
             user_message_persisted: Some(submission.user_message_persisted),
             pending_tool_results_persisted: Some(submission.pending_tool_results_persisted),
         },
+        quilltap_core::services::stream_frames::Dialect::Frames,
     ));
+    // === end P4.D366 ===
 }
 // === end P4.D301 ===
 

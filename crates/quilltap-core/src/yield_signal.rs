@@ -24,7 +24,7 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::jsstr::{js_trim, JS_WS_CLASS};
+use crate::jsstr::{is_js_ws, js_trim, JS_WS_CLASS};
 use crate::message_formatter::{normalize_content_block_format, strip_character_name_prefix};
 use crate::skip_signal::matches_sentinel_line;
 
@@ -37,6 +37,89 @@ pub const YIELD_SENTINEL: &str = "[YIELD]";
 pub const TURN_YIELD_SYSTEM_KIND: &str = "turn-yield";
 
 const YIELD_PHRASE: &str = "yield";
+
+// === P4.D366 (v4 `9eab8d2da`: gesture-only answers count as a yield) ===
+/// Longest reply read as a gesture-only yield; past this it is a scene beat.
+/// UTF-16 code units (JS `String.length`).
+pub const GESTURE_ONLY_MAX_CHARS: usize = 280;
+
+/// Quotation marks: any of them means a word was spoken (v4 `SPOKEN_QUOTE`,
+/// `/["“”«»„]/`).
+const SPOKEN_QUOTES: [char; 6] = ['"', '\u{201C}', '\u{201D}', '\u{AB}', '\u{BB}', '\u{201E}'];
+
+/// Stage-direction wrappers: opening character → closing character (v4
+/// `GESTURE_WRAPPERS = { '*': '*', '_': '_', '(': ')' }`).
+fn gesture_close(open: u16) -> Option<u16> {
+    match open {
+        0x2A => Some(0x2A), // '*'
+        0x5F => Some(0x5F), // '_'
+        0x28 => Some(0x29), // '(' → ')'
+        _ => None,
+    }
+}
+
+/// v4's `/\n\s*\n/` with JS `\s` — a blank line between paragraphs.
+static BLANK_LINE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(&format!(r"\n{}*\n", JS_WS_CLASS)).expect("BLANK_LINE compiles"));
+
+/// v4's `/[\p{L}]/u` — General_Category Letter.
+static A_LETTER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\p{L}").expect("A_LETTER compiles"));
+
+/// JS `trim` over UTF-16 code units (every JS whitespace is one BMP unit).
+fn trim_units(s: &[u16]) -> &[u16] {
+    let ws = |u: &u16| char::from_u32(u32::from(*u)).is_some_and(is_js_ws);
+    let start = s.iter().position(|u| !ws(u)).unwrap_or(s.len());
+    let end = s.iter().rposition(|u| !ws(u)).map_or(start, |i| i + 1);
+    &s[start..end.max(start)]
+}
+
+/// v4 `isGestureOnlyReply`: is this reply nothing but one stage direction —
+/// wrapped whole in `*…*`, `_…_` or `(…)` (layered as the model likes), on one
+/// paragraph, short, with no quotation marks? A closing wrapper inside a layer
+/// means prose sits between two directions (`*nods* Fine. *smiles*`), which is
+/// not a gesture.
+///
+/// Every index, the length cap and the `run < s.length / 2` compare are v4's
+/// UTF-16 code-unit arithmetic (a char-indexed port differs on astral text).
+pub fn is_gesture_only_reply(text: &str) -> bool {
+    let trimmed = js_trim(text);
+    let units: Vec<u16> = trimmed.encode_utf16().collect();
+    if units.is_empty() || units.len() > GESTURE_ONLY_MAX_CHARS {
+        return false;
+    }
+    if BLANK_LINE.is_match(trimmed) || trimmed.contains(&SPOKEN_QUOTES[..]) {
+        return false;
+    }
+
+    let mut s: &[u16] = &units;
+    let mut peeled = false;
+    while let Some((first, close)) = s.first().and_then(|&f| gesture_close(f).map(|c| (f, c))) {
+        if s.len() < 2 || s[s.len() - 1] != close {
+            break;
+        }
+        let mut run = 1usize;
+        if close == first {
+            // `**bold**`-style runs peel together. `run < s.length / 2` is a
+            // FLOAT compare in JS: `2 * run < len`.
+            while 2 * run < s.len() && s[run] == first && s[s.len() - 1 - run] == close {
+                run += 1;
+            }
+        }
+        // JS `slice(start, end)` with start ≥ end is the empty string.
+        let end = s.len() - run;
+        let inner = if run < end { &s[run..end] } else { &s[0..0] };
+        let inner = trim_units(inner);
+        if inner.contains(&close) {
+            return false;
+        }
+        s = inner;
+        peeled = true;
+    }
+    // A lone surrogate decodes to U+FFFD, which is not a letter — as in V8.
+    peeled && A_LETTER.is_match(&String::from_utf16_lossy(s))
+}
+// === end P4.D366 ===
 
 /// A bracketed `[YIELD]` opening a line that carries more prose after it.
 ///
@@ -53,7 +136,8 @@ static LEADING_BRACKETED_YIELD: LazyLock<Regex> = LazyLock::new(|| {
     .expect("LEADING_BRACKETED_YIELD compiles")
 });
 
-/// v4 `DetectYieldResult` — `{ yielded: true, cleaned }` / `{ yielded: false }`.
+/// v4 `DetectYieldResult` — `{ yielded: true, cleaned, inferred?: true }` /
+/// `{ yielded: false }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum DetectYieldResult {
@@ -61,6 +145,12 @@ pub enum DetectYieldResult {
         /// Always `true` on the wire (v4's discriminant).
         yielded: TrueFlag,
         cleaned: String,
+        // === P4.D366 ===
+        /// No sentinel; the reply was a gesture-only yield (v4 `9eab8d2da`).
+        /// ABSENT unless true (v4's `inferred?: true`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        inferred: Option<TrueFlag>,
+        // === end P4.D366 ===
     },
     NotYielded {
         yielded: FalseFlag,
@@ -90,8 +180,22 @@ impl DetectYieldResult {
         DetectYieldResult::Yielded {
             yielded: TrueFlag,
             cleaned,
+            inferred: None,
         }
     }
+
+    // === P4.D366 ===
+    /// Was the yield inferred from a gesture-only reply (no sentinel)?
+    pub fn is_inferred(&self) -> bool {
+        matches!(
+            self,
+            DetectYieldResult::Yielded {
+                inferred: Some(_),
+                ..
+            }
+        )
+    }
+    // === end P4.D366 ===
 
     fn not_yielded() -> Self {
         DetectYieldResult::NotYielded { yielded: FalseFlag }
@@ -180,6 +284,17 @@ pub fn detect_yield_sentinel(
         return DetectYieldResult::yielded(js_trim(&kept.join("\n")).to_string());
     }
 
+    // === P4.D366 ===
+    // No sentinel, but nothing spoken either: a gesture handing over the floor.
+    if is_gesture_only_reply(&normalized) {
+        return DetectYieldResult::Yielded {
+            yielded: TrueFlag,
+            cleaned: js_trim(&normalized).to_string(),
+            inferred: Some(TrueFlag),
+        };
+    }
+    // === end P4.D366 ===
+
     DetectYieldResult::not_yielded()
 }
 
@@ -199,9 +314,12 @@ To yield, reply with exactly this line:
 {YIELD_SENTINEL}
 
 You may follow it with a brief in-character line (a gesture inviting them to
-speak, say), but keep it short \u{2014} the floor will be theirs. To carry on
-instead, write your reply as normal and ignore this note entirely; do not
-mention the raised hand unless you choose to acknowledge it in character."
+speak, say), but keep it short \u{2014} the floor will be theirs. A reply that is
+only a gesture, with no words spoken aloud, is also taken as yielding.
+
+To carry on instead, write your reply as normal and ignore this note entirely;
+do not mention the raised hand unless you choose to acknowledge it in
+character."
     )
 }
 
@@ -377,6 +495,97 @@ mod tests {
             "an unlisted `\"turn-yield\"` reader appeared"
         );
     }
+
+    // === P4.D366: v4 `9eab8d2da`'s `it`s, verbatim ===
+    #[test]
+    fn reads_a_gesture_only_reply_as_an_inferred_yield_keeping_the_gesture() {
+        let gesture = "*(a tilt of the head, one hand opening toward Tester \u{2014} go on, then)*";
+        assert_eq!(
+            serde_json::to_string(&y(gesture, Some("Riya"))).unwrap(),
+            serde_json::json!({"yielded": true, "cleaned": gesture, "inferred": true}).to_string()
+        );
+        let r = y(
+            "Riya: *steps back and sweeps a hand toward you*",
+            Some("Riya"),
+        );
+        assert_eq!(
+            serde_json::to_string(&r).unwrap(),
+            r#"{"yielded":true,"cleaned":"*steps back and sweeps a hand toward you*","inferred":true}"#
+        );
+        assert!(r.is_inferred());
+        assert!(!y("[YIELD] Go.", None).is_inferred());
+    }
+
+    #[test]
+    fn reads_a_reply_with_spoken_words_or_a_long_beat_as_carrying_on() {
+        let long = format!(
+            "*{}*",
+            "she works the knot loose and frowns at the water ".repeat(8)
+        );
+        for r in [
+            "*nods* \"Go on, then.\"",
+            "*nods* Go on, then. *smiles*",
+            long.as_str(),
+            "*She looks up.*\n\n*She looks down again.*",
+        ] {
+            assert_eq!(
+                serde_json::to_string(&y(r, None)).unwrap(),
+                r#"{"yielded":false}"#,
+                "{r:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_a_single_wrapped_stage_direction_in_any_of_the_usual_wrappers() {
+        for form in [
+            "*bows*",
+            "_bows_",
+            "(bows)",
+            "**bows**",
+            "*(bows to Tester)*",
+            "*It's yours, the gesture says.*",
+        ] {
+            assert!(is_gesture_only_reply(form), "{form:?}");
+        }
+    }
+
+    #[test]
+    fn refuses_bare_prose_quoted_speech_empty_wrappers_and_prose_between_directions() {
+        for form in [
+            "bows",
+            "\"After you.\"",
+            "*bows* \"After you.\"",
+            "**",
+            "*\u{2026}*",
+            "*nods* Fine. *smiles*",
+            "",
+        ] {
+            assert!(!is_gesture_only_reply(form), "{form:?}");
+        }
+    }
+
+    /// The UTF-16 arithmetic: an astral letter is two units — so 140 of them
+    /// wrapped (282 units) is past the cap even though it is 142 chars.
+    #[test]
+    fn the_cap_and_indices_are_utf16_code_units() {
+        let astral = format!("*{}*", "\u{1D49C}".repeat(139)); // 280 units
+        assert!(is_gesture_only_reply(&astral));
+        let over = format!("*{}*", "\u{1D49C}".repeat(140)); // 282 units
+        assert!(!is_gesture_only_reply(&over));
+        assert!(!is_gesture_only_reply("*123*"));
+        assert!(is_gesture_only_reply("***x***"));
+    }
+
+    #[test]
+    fn the_note_tells_the_model_a_gesture_yields() {
+        let n = build_turn_yield_instruction("Charlie");
+        assert!(n.contains("only a gesture"));
+        assert!(n.ends_with(
+            "the floor will be theirs. A reply that is\nonly a gesture, with no words spoken aloud, is also taken as yielding.\n\nTo carry on instead, write your reply as normal and ignore this note entirely;\ndo not mention the raised hand unless you choose to acknowledge it in\ncharacter."
+        ));
+    }
+    // === end P4.D366 ===
 
     #[test]
     fn the_note_names_the_operator_and_carries_the_sentinel_alone() {

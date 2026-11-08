@@ -67,6 +67,7 @@ use quilltap_core::services::primary_stream::ReasoningSegment;
 use quilltap_core::services::route_trail::{
     RouteAttempt, RouteAttemptEvidence, RouteAttemptOutcome, RouteAttemptVia,
 };
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_execution::{GeneratedImage, ToolMessage};
 use quilltap_core::tools::rng::FixedBytes;
 use quilltap_core::weighted_random::DrawSource;
@@ -951,7 +952,10 @@ fn message_finalizer_tier3_matches_oracle() {
             .unwrap_or_else(|e| panic!("finalize {} failed: {e:?}", call.name));
 
         got_results.push((call.name.clone(), rust_result_to_value(&result)));
-        got_events.push((call.name.clone(), Value::Array(sink.events_json())));
+        got_events.push((
+            call.name.clone(),
+            Value::Array(sink.events_json_in(Dialect::Frames)),
+        ));
     }
 
     // --- 1. results ---
@@ -1075,14 +1079,16 @@ fn message_finalizer_tier3_matches_oracle() {
             .expect("the trigger-phrase-reply call ran")
             .1;
         let frames = events.as_array().expect("an event array");
-        let pascal = frames.iter().position(|e| e.get("pascalResult").is_some());
-        let done = frames.iter().position(|e| e.get("done").is_some());
+        let pascal = frames
+            .iter()
+            .position(|e| e["kind"] == "posted" && e["what"] == "pascalResult");
+        let done = frames.iter().position(|e| e["kind"] == "done");
         assert!(
             pascal.is_some() && pascal < done,
             "trigger-phrase-reply: the pascalResult frame precedes done ({pascal:?} vs {done:?})"
         );
         assert_eq!(
-            frames[pascal.unwrap()].pointer("/pascalResult/pascalMeta/invokedBy"),
+            frames[pascal.unwrap()].pointer("/message/pascalMeta/invokedBy"),
             Some(&json!("trigger"))
         );
     }

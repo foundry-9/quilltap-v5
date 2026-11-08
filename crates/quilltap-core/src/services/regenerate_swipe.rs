@@ -123,17 +123,29 @@ impl RegenerateSwipeProgress {
                 message,
                 character_name,
                 character_id,
-            } => json!({
-                "status": {
-                    "kind": "status",
-                    "stage": stage,
-                    "message": message,
-                    "characterName": character_name,
-                    "characterId": character_id,
-                }
-            }),
-            RegenerateSwipeProgress::Delta { content } => json!({ "content": content }),
-            RegenerateSwipeProgress::Reasoning { reasoning } => json!({ "reasoning": reasoning }),
+                // === P4.D366 === the swipe stream is frames-dialect at 4.12 (v4
+                // `regenerate-swipe-stream.ts:34`'s plain `TextEncoder`): the
+                // status frame wraps the WHOLE progress event (its own `kind` kept,
+                // first), and the deltas are `content` / `reasoning` frames.
+            } => crate::services::stream_frames::swipe_status_frame(&json!({
+                "kind": "status",
+                "stage": stage,
+                "message": message,
+                "characterName": character_name,
+                "characterId": character_id,
+            })),
+            RegenerateSwipeProgress::Delta { content } => crate::services::stream_frames::render(
+                &crate::services::chat_events::ChatEvent::content(content.clone()),
+                crate::services::stream_frames::Dialect::Frames,
+                None,
+            ),
+            RegenerateSwipeProgress::Reasoning { reasoning } => {
+                crate::services::stream_frames::render(
+                    &crate::services::chat_events::ChatEvent::reasoning(reasoning.clone()),
+                    crate::services::stream_frames::Dialect::Frames,
+                    None,
+                )
+            } // === end P4.D366 ===
         }
     }
 }
@@ -239,18 +251,25 @@ impl SwipeProgressEmitter {
     /// route (`route.ts:347-350`) rather than by the service — so v5 emits it
     /// from [`crate::api::salon::message_swipe_generate`], v4's own placement.
     pub fn emit_done(&self, message: &Value) {
-        self.emit_frame(json!({ "done": true, "message": message }));
+        // === P4.D366 === v4 `{ kind: 'swipeDone', message: newSwipe }` (`:51`).
+        self.emit_frame(crate::services::stream_frames::swipe_done_frame(message));
     }
 
     /// v4's `encodeErrorEvent(encoder, 'Failed to generate alternative
     /// response', 'regenerate_failed', <message>)` (`route.ts:356-364`) — a
     /// failure AFTER the stream opened, because the headers are long gone.
     pub fn emit_error(&self, details: &str) {
-        self.emit_frame(json!({
-            "error": "Failed to generate alternative response",
-            "errorType": "regenerate_failed",
-            "details": details,
-        }));
+        // === P4.D366 === now `{kind:"error", message, errorType, details}`.
+        self.emit_frame(crate::services::stream_frames::render_error(
+            &crate::api::types::ChatErrorPayload {
+                error: "Failed to generate alternative response".to_string(),
+                error_type: "regenerate_failed".to_string(),
+                details: details.to_string(),
+                user_message_persisted: None,
+                pending_tool_results_persisted: None,
+            },
+            crate::services::stream_frames::Dialect::Frames,
+        ));
     }
 
     /// The four status beats, each with v4's sentence and both character
@@ -1240,7 +1259,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&f.to_v4_frame()).unwrap(),
-            r#"{"status":{"kind":"status","stage":"gathering","message":"Regenerating — gathering Bertie's memories and context...","characterName":"Bertie","characterId":"bb-1"}}"#
+            r#"{"kind":"status","status":{"kind":"status","stage":"gathering","message":"Regenerating — gathering Bertie's memories and context...","characterName":"Bertie","characterId":"bb-1"}}"#
         );
     }
 
@@ -1256,7 +1275,7 @@ mod tests {
                 .to_v4_frame()
             )
             .unwrap(),
-            r#"{"content":"the new "}"#
+            r#"{"kind":"content","text":"the new "}"#
         );
         assert_eq!(
             serde_json::to_string(
@@ -1266,7 +1285,7 @@ mod tests {
                 .to_v4_frame()
             )
             .unwrap(),
-            r#"{"reasoning":"thinking about it"}"#
+            r#"{"kind":"reasoning","text":"thinking about it"}"#
         );
     }
 
@@ -1282,11 +1301,11 @@ mod tests {
         let err = rx.try_recv().expect("an error frame");
         assert_eq!(
             serde_json::to_string(&done).unwrap(),
-            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"done":true,"message":{"id":"swipe-1","content":"the new line"}}}"#
+            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"kind":"swipeDone","message":{"id":"swipe-1","content":"the new line"}}}"#
         );
         assert_eq!(
             serde_json::to_string(&err).unwrap(),
-            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"error":"Failed to generate alternative response","errorType":"regenerate_failed","details":"provider went quiet"}}"#
+            r#"{"progressId":"msg-1","type":"swipeProgress","frame":{"kind":"error","message":"Failed to generate alternative response","errorType":"regenerate_failed","details":"provider went quiet"}}"#
         );
     }
 

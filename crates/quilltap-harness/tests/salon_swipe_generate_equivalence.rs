@@ -549,7 +549,8 @@ fn salon_swipe_generate_matches_oracle() {
             // object the 201 body carries — not a re-read of the row.
             match frames.last() {
                 Some(last) => {
-                    let done_msg = last.get("done").and_then(Value::as_bool) == Some(true);
+                    // P4.D366 (v4 `604a082c4`): `{kind:"swipeDone", message}`.
+                    let done_msg = last.get("kind").and_then(Value::as_str) == Some("swipeDone");
                     let same = last.get("message") == got_body.get("message");
                     if !done_msg || !same {
                         eprintln!(

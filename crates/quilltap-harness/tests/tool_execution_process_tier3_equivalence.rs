@@ -28,6 +28,7 @@
 //!     cargo test -p quilltap-harness --test tool_execution_process_tier3_equivalence
 
 use quilltap_core::services::chat_events::RecordingSink;
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_execution::{
     create_tool_context, process_tool_calls, CannedToolRunner, GeneratedImage, StatusContext,
     ToolCall, ToolMessage, ToolResult,
@@ -229,7 +230,7 @@ async fn tool_execution_process_tier3_matches_oracle() {
 
         let got = json!({
             "name": batch.name,
-            "frames": sink.events_json(),
+            "frames": sink.events_json_in(Dialect::Frames),
             "toolMessages": out.tool_messages.iter().map(tool_message_value).collect::<Vec<_>>(),
             "generatedImagePaths": out.generated_image_paths.iter().map(generated_image_value).collect::<Vec<_>>(),
         });

@@ -64,6 +64,7 @@ use quilltap_core::services::native_tool_loop::{
 use quilltap_core::services::primary_stream::{
     EffectiveProfile, PreservePartialOnError, StreamingState,
 };
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::tool_call_threading::ThreadedMessage;
 use quilltap_core::services::tool_execution::{
     canned_tool_key, create_tool_context, CannedToolRunner, ToolCall, ToolMessage, ToolResult,
@@ -632,7 +633,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
             c.name
         );
 
-        let got_events = Value::Array(sink.events_json());
+        let got_events = Value::Array(sink.events_json_in(Dialect::Frames));
         let want_events = oracle_events
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle events missing for {}", c.name));

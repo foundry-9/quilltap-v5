@@ -81,6 +81,10 @@ enum OracleRow {
         operator_name: String,
         out: String,
     },
+    // === P4.D366 ===
+    #[serde(rename = "gesture")]
+    Gesture { id: String, text: String, out: bool },
+    // === end P4.D366 ===
     #[serde(rename = "constants")]
     Constants { id: String, out: Value },
     #[serde(rename = "sentinelLine")]
@@ -548,6 +552,15 @@ fn turn_control_equivalence() {
                     failures.push(format!("note {id}: v5 {got:?} != v4 {out:?}"));
                 }
             }
+            // === P4.D366: v4 `9eab8d2da` `isGestureOnlyReply` (UTF-16 exact) ===
+            OracleRow::Gesture { id, text, out } => {
+                *counts.entry("gesture").or_default() += 1;
+                let got = quilltap_core::yield_signal::is_gesture_only_reply(&text);
+                if got != out {
+                    failures.push(format!("gesture {id} {text:?}: v5 {got} != v4 {out}"));
+                }
+            }
+            // === end P4.D366 ===
             OracleRow::Constants { id, out } => {
                 *counts.entry("constants").or_default() += 1;
                 let got = json!({
@@ -633,6 +646,7 @@ fn turn_control_equivalence() {
     );
     assert_eq!(counts.get("sentinelLine"), Some(&40), "{counts:?}");
     assert_eq!(counts.get("note"), Some(&4), "{counts:?}");
+    assert_eq!(counts.get("gesture"), Some(&GESTURE_ROWS), "{counts:?}"); // P4.D366
     assert_eq!(counts.get("wait"), Some(&6), "{counts:?}");
     assert_eq!(counts.get("whisper"), Some(&15), "{counts:?}");
     assert!(
@@ -642,3 +656,6 @@ fn turn_control_equivalence() {
         failures.join("\n")
     );
 }
+
+/// P4.D366: the `isGestureOnlyReply` grid's row count (`cases/turn-control.ts`).
+const GESTURE_ROWS: usize = 53;

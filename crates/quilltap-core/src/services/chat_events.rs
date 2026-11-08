@@ -307,15 +307,15 @@ pub struct DoneReasoningSegment {
     pub seq: u64,
 }
 
-/// One streamed chat event — a typed `Event` variant on the push channel. Each
-/// variant serializes to v4's matching single-key SSE JSON frame (see the module
-/// docs): the enum is `untagged` so `Content("hi")` → `{"content":"hi"}` (not a
-/// `{"Content":…}` wrapper), and `Done` flattens its payload beside `done: true`.
+/// One streamed chat event — the PRODUCER vocabulary (P4.D366, ruling R-G).
+/// It derives no `Serialize`: bytes come only from
+/// [`crate::services::stream_frames::render`], which renders the event on the
+/// sink's dialect (v4's `kind`-tagged frames, or the pre-4.12 single-key bag
+/// each variant's doc still names).
 // `Eq` is intentionally NOT derived: the `CarinaAnswer` variant carries a
 // `serde_json::Value` (which is not `Eq`). `PartialEq` is enough for the tests /
 // differential (they compare via `events_json()` anyway).
-#[derive(Clone, Debug, PartialEq, Serialize)]
-#[serde(untagged)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ChatEvent {
     /// `{status:{…}}`
     Status { status: StatusPayload },
@@ -328,34 +328,26 @@ pub enum ChatEvent {
     /// mid-turn (v4 `encodeCarinaAnswerEvent`). The value is the full posted
     /// `MessageEvent` object (kept as a raw `Value` — the message shape is owned
     /// by the carina writer, which produces it).
-    CarinaAnswer {
-        #[serde(rename = "carinaAnswer")]
-        carina_answer: serde_json::Value,
-    },
+    CarinaAnswer { carina_answer: serde_json::Value },
     /// `{confirmationResult: {…}}` — the answer-confirmation state for a
     /// just-streamed message (v4 `encodeConfirmationResultEvent`). The finalizer
     /// emits it whenever a verdict (incl. `null`) was resolved — the user-driven
     /// skip path emits `confirmed: null`; the active path (wave 4) emits the real
     /// verdict (and the replacement `content` on a revision).
     ConfirmationResult {
-        #[serde(rename = "confirmationResult")]
         confirmation_result: ConfirmationResultPayload,
     },
     /// `{turnStart: true, participantId, characterName, chainDepth}` (v4
     /// `encodeTurnStartEvent`). Emitted by `processMessage` (chainDepth 0, the
     /// first-turn analog) and by the chain driver before each chained turn.
     TurnStart {
-        #[serde(rename = "turnStart")]
         turn_start: TrueBool,
-        #[serde(flatten)]
         payload: TurnStartPayload,
     },
     /// `{turnComplete: true, participantId, messageId, chainDepth}` (v4
     /// `encodeTurnCompleteEvent`). Emitted by the chain driver after a chained turn.
     TurnComplete {
-        #[serde(rename = "turnComplete")]
         turn_complete: TrueBool,
-        #[serde(flatten)]
         payload: TurnCompletePayload,
     },
     /// `{handAnswered: true, participantId, characterName, yielded}` (P4.D335 —
@@ -364,17 +356,13 @@ pub enum ChatEvent {
     /// the hand is down; the Salon lowers its button and, on a decline, says
     /// who carried on. Emitted before any save.
     HandAnswered {
-        #[serde(rename = "handAnswered")]
         hand_answered: TrueBool,
-        #[serde(flatten)]
         payload: HandAnsweredPayload,
     },
     /// `{chainComplete: true, reason, nextSpeakerId, chainDepth}` (v4
     /// `encodeChainCompleteEvent`). Emitted by the chain driver when the chain ends.
     ChainComplete {
-        #[serde(rename = "chainComplete")]
         chain_complete: TrueBool,
-        #[serde(flatten)]
         payload: ChainCompletePayload,
     },
     /// `{toolsDetected, toolNames, toolArguments}` — the tool-detection frame v4
@@ -382,28 +370,20 @@ pub enum ChatEvent {
     /// a single-key wrapper). `tool_arguments` carries each call's raw arguments
     /// object (order-preserving `Value`).
     ToolsDetected {
-        #[serde(rename = "toolsDetected")]
         tools_detected: usize,
-        #[serde(rename = "toolNames")]
         tool_names: Vec<String>,
-        #[serde(rename = "toolArguments")]
         tool_arguments: Vec<serde_json::Value>,
     },
     /// `{toolResult:{index, name, success, result, error?}}` — the per-tool result
     /// frame v4 `processToolCalls` enqueues after each dispatch. `result` is the
     /// raw tool result (`unknown`); `error` is present ONLY on failure (v4 carries
     /// the human-readable error text there).
-    ToolResult {
-        #[serde(rename = "toolResult")]
-        tool_result: ToolResultPayload,
-    },
+    ToolResult { tool_result: ToolResultPayload },
     /// `{pendingExternalTurn:true, messageId, participantId, characterName}` — the
     /// Courier parked-placeholder frame (v4 `encodePendingExternalTurnEvent`). Emitted
     /// by `dispatch_courier_transport` right before its `done` frame.
     PendingExternalTurn {
-        #[serde(rename = "pendingExternalTurn")]
         pending_external_turn: TrueBool,
-        #[serde(flatten)]
         payload: PendingExternalTurnPayload,
     },
     /// `{hostAnnouncement: <message>}` — a Host announcement persisted mid-turn
@@ -412,7 +392,6 @@ pub enum ChatEvent {
     /// Carries the full posted `MessageEvent` object (a raw `Value` — the
     /// message shape is owned by the Host writer, which produces it).
     HostAnnouncement {
-        #[serde(rename = "hostAnnouncement")]
         host_announcement: serde_json::Value,
     },
     /// `{pascalResult: <message>}` — a Pascal `run_custom` outcome persisted
@@ -420,10 +399,7 @@ pub enum ChatEvent {
     /// croupier's bubble in the instant it lands rather than waiting for the
     /// post-turn refetch. Carries the full posted `MessageEvent` object (a raw
     /// `Value` — the shape is owned by the Pascal writer).
-    PascalResult {
-        #[serde(rename = "pascalResult")]
-        pascal_result: serde_json::Value,
-    },
+    PascalResult { pascal_result: serde_json::Value },
     /// `{fileProcessing:[…]}` — v4 `encodeFallbackInfo`
     /// (`streaming.service.ts:563-576`): one entry per attachment
     /// `loadAndProcessFiles` processed, sent once from `processMessage`
@@ -432,7 +408,6 @@ pub enum ChatEvent {
     /// never on the courier path. v4's client has no handler for it (nor does
     /// v5's — the reducer returns the previous state); it is wire parity.
     FileProcessing {
-        #[serde(rename = "fileProcessing")]
         file_processing: Vec<FileProcessingEntry>,
     },
     /// `{error, errorType, details}` — v4 `encodeErrorEvent(error, errorType,
@@ -443,7 +418,6 @@ pub enum ChatEvent {
     /// for the failures a loop reports and survives. Same bytes as v4's frame.
     Error {
         error: String,
-        #[serde(rename = "errorType")]
         error_type: String,
         details: String,
     },
@@ -455,43 +429,42 @@ pub enum ChatEvent {
         /// Always `true` — present so the serialized object carries the `done`
         /// key (`#[serde(flatten)]` on the payload puts the rest beside it).
         done: DoneBool,
-        #[serde(flatten)]
         payload: Box<DonePayload>,
     },
     /// `{done:true, usage, …}` — a non-finalizer turn close on v4's
     /// `encodeTurnDoneEvent` key order ([`TurnDonePayload`], P4.D348 R-N).
     TurnDone {
         done: DoneBool,
-        #[serde(flatten)]
         payload: Box<TurnDonePayload>,
     },
     // === P4.D343 (v4 `b15fe9404` — R-9: the Storyteller frames, ONE block) ===
     /// `{storytellerRound: StorytellerRound}` (v4 `encodeStorytellerRoundEvent`)
     /// — the round a storyteller post opened, with its pending cards.
     StorytellerRound {
-        #[serde(rename = "storytellerRound")]
         storyteller_round: serde_json::Value,
     },
     /// `{storytellerBid: {roundId, bid}}` (v4 `encodeStorytellerBidEvent`) —
     /// one seat's bid landed (or failed, or passed).
     StorytellerBid {
-        #[serde(rename = "storytellerBid")]
         storyteller_bid: StorytellerBidFrame,
     },
     /// `{roundOpen: true, roundId}` (v4 `encodeRoundOpenEvent`) — the board is
     /// the operator's; the send closes after it.
     RoundOpen {
-        #[serde(rename = "roundOpen")]
         round_open: TrueBool,
-        #[serde(rename = "roundId")]
         round_id: String,
     },
-    /// A frame a CONCURRENT storyteller turn wrote (v4 `taggingController`):
-    /// the inner frame's keys, then `participantId` (only when the frame lacks
-    /// one), then `concurrent: true` — v4's spread order. A non-object frame
-    /// (none exists today) passes through untouched.
-    Tagged(TaggedEvent),
     // === end P4.D343 ===
+    // === P4.D366 ===
+    /// `{kind:"handAsked", participantId, characterName}` (v4 `9eab8d2da`
+    /// `encodeHandAskedEvent`): the operator's raised hand was taken — this
+    /// character is being asked whether to yield. Emitted once, right after
+    /// the `[TurnYield] Asking the next speaker…` INFO.
+    HandAsked {
+        hand_asked: TrueBool,
+        payload: HandAskedPayload,
+    },
+    // === end P4.D366 ===
 }
 
 // === P4.D343 ===
@@ -501,36 +474,6 @@ pub enum ChatEvent {
 pub struct StorytellerBidFrame {
     pub round_id: String,
     pub bid: serde_json::Value,
-}
-
-/// [`ChatEvent::Tagged`]'s body: the inner frame and the seat it belongs to.
-#[derive(Clone, Debug, PartialEq)]
-pub struct TaggedEvent {
-    pub inner: Box<ChatEvent>,
-    pub participant_id: String,
-}
-
-impl Serialize for TaggedEvent {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        let inner = serde_json::to_value(&*self.inner).map_err(serde::ser::Error::custom)?;
-        crate::storyteller::sse_tag::tag_frame(inner, &self.participant_id).serialize(s)
-    }
-}
-
-/// A sink that tags every frame with one concurrent turn's participant and
-/// forwards it (v4 `taggingController`). Closing is the round's, not a turn's.
-pub struct TaggingSink<'a> {
-    pub inner: &'a dyn EventSink,
-    pub participant_id: String,
-}
-
-impl EventSink for TaggingSink<'_> {
-    fn emit(&self, event: ChatEvent) {
-        self.inner.emit(ChatEvent::Tagged(TaggedEvent {
-            inner: Box::new(event),
-            participant_id: self.participant_id.clone(),
-        }));
-    }
 }
 
 /// A sink that discards everything — a bid streams nothing (v4
@@ -544,16 +487,28 @@ impl EventSink for DiscardSink {
 #[cfg(test)]
 mod storyteller_frame_tests {
     use super::*;
+    use crate::services::stream_frames::{render, Dialect};
     use serde_json::json;
 
+    fn bytes(ev: &ChatEvent, d: Dialect) -> String {
+        serde_json::to_string(&render(ev, d, None)).unwrap()
+    }
+
+    /// The three plain storyteller frames, legacy bytes UNCHANGED from the
+    /// pre-P4.D366 serde pins, plus their frames twins (P4.D366 retired the
+    /// `Tagged` seat — `stream_frames`' seat tests carry it).
     #[test]
-    fn the_three_frames_and_the_tag_in_bytes() {
+    fn the_three_frames_in_bytes() {
         let round = ChatEvent::StorytellerRound {
             storyteller_round: json!({"id": "r1", "bids": []}),
         };
         assert_eq!(
-            serde_json::to_string(&round).unwrap(),
+            bytes(&round, Dialect::Legacy),
             r#"{"storytellerRound":{"id":"r1","bids":[]}}"#
+        );
+        assert_eq!(
+            bytes(&round, Dialect::Frames),
+            r#"{"kind":"storytellerRound","round":{"id":"r1","bids":[]}}"#
         );
         let bid = ChatEvent::StorytellerBid {
             storyteller_bid: StorytellerBidFrame {
@@ -562,38 +517,24 @@ mod storyteller_frame_tests {
             },
         };
         assert_eq!(
-            serde_json::to_string(&bid).unwrap(),
+            bytes(&bid, Dialect::Legacy),
             r#"{"storytellerBid":{"roundId":"r1","bid":{"participantId":"p1"}}}"#
+        );
+        assert_eq!(
+            bytes(&bid, Dialect::Frames),
+            r#"{"kind":"storytellerBid","roundId":"r1","bid":{"participantId":"p1"}}"#
         );
         let open = ChatEvent::RoundOpen {
             round_open: TrueBool,
             round_id: "r1".into(),
         };
         assert_eq!(
-            serde_json::to_string(&open).unwrap(),
+            bytes(&open, Dialect::Legacy),
             r#"{"roundOpen":true,"roundId":"r1"}"#
         );
-        let tagged = ChatEvent::Tagged(TaggedEvent {
-            inner: Box::new(ChatEvent::Content {
-                content: "hi".into(),
-            }),
-            participant_id: "p1".into(),
-        });
         assert_eq!(
-            serde_json::to_string(&tagged).unwrap(),
-            r#"{"content":"hi","participantId":"p1","concurrent":true}"#
-        );
-        let already = ChatEvent::Tagged(TaggedEvent {
-            inner: Box::new(ChatEvent::turn_start(TurnStartPayload {
-                participant_id: "p0".into(),
-                character_name: "Ada".into(),
-                chain_depth: 0,
-            })),
-            participant_id: "p1".into(),
-        });
-        assert_eq!(
-            serde_json::to_string(&already).unwrap(),
-            r#"{"turnStart":true,"participantId":"p0","characterName":"Ada","chainDepth":0,"concurrent":true}"#
+            bytes(&open, Dialect::Frames),
+            r#"{"kind":"roundOpen","roundId":"r1"}"#
         );
     }
 }
@@ -666,6 +607,16 @@ pub struct HandAnsweredPayload {
     pub character_name: String,
     pub yielded: bool,
 }
+
+// === P4.D366 ===
+/// The `handAsked` frame payload (v4 `encodeHandAskedEvent`'s `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HandAskedPayload {
+    pub participant_id: String,
+    pub character_name: String,
+}
+// === end P4.D366 ===
 
 /// The `turnComplete` frame payload (v4 `encodeTurnCompleteEvent`'s `data`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -866,6 +817,19 @@ impl ChatEvent {
         }
     }
 
+    // === P4.D366 ===
+    /// A `handAsked` event (v4 `9eab8d2da` `encodeHandAskedEvent`).
+    pub fn hand_asked(participant_id: &str, character_name: &str) -> Self {
+        ChatEvent::HandAsked {
+            hand_asked: TrueBool,
+            payload: HandAskedPayload {
+                participant_id: participant_id.to_string(),
+                character_name: character_name.to_string(),
+            },
+        }
+    }
+    // === end P4.D366 ===
+
     /// A `chainComplete` event.
     pub fn chain_complete(payload: ChainCompletePayload) -> Self {
         ChatEvent::ChainComplete {
@@ -935,10 +899,18 @@ pub trait EventSink {
 /// appends every emitted event in order. Cheap-clone (shares one `Vec` behind a
 /// mutex) so the same sink can be handed by reference to a service and read back
 /// afterwards.
+///
+/// Each event is recorded with the concurrent seat (if any) of the handle that
+/// recorded it (P4.D366): [`RecordingSink::seated`] shares the SAME buffer and
+/// tags what it records, so one trace holds a concurrent round's interleaving.
 #[derive(Clone, Default)]
 pub struct RecordingSink {
-    events: std::sync::Arc<std::sync::Mutex<Vec<ChatEvent>>>,
+    events: std::sync::Arc<std::sync::Mutex<RecordedEvents>>,
+    seat: Option<String>,
 }
+
+/// Each recorded event with the seat of the handle that recorded it.
+type RecordedEvents = Vec<(ChatEvent, Option<String>)>;
 
 impl RecordingSink {
     /// A fresh sink with no recorded events.
@@ -948,17 +920,48 @@ impl RecordingSink {
 
     /// A snapshot of the events emitted so far, in emission order.
     pub fn events(&self) -> Vec<ChatEvent> {
-        self.events.lock().expect("recording sink poisoned").clone()
-    }
-
-    /// The events serialized to their SSE-frame JSON (one `Value` per event, in
-    /// order) — the form the differential compares against v4's recorded frames.
-    pub fn events_json(&self) -> Vec<serde_json::Value> {
-        self.events()
+        self.events
+            .lock()
+            .expect("recording sink poisoned")
             .iter()
-            .map(|e| serde_json::to_value(e).expect("event serializes"))
+            .map(|(e, _)| e.clone())
             .collect()
     }
+
+    // === P4.D366 ===
+    /// The events rendered on `dialect` (one `Value` per event, in order, each
+    /// with its recorded seat) — the form a differential compares against v4's
+    /// recorded frames.
+    pub fn events_json_in(
+        &self,
+        dialect: crate::services::stream_frames::Dialect,
+    ) -> Vec<serde_json::Value> {
+        self.events
+            .lock()
+            .expect("recording sink poisoned")
+            .iter()
+            .map(|(e, seat)| crate::services::stream_frames::render(e, dialect, seat.as_deref()))
+            .collect()
+    }
+
+    /// The events in the LEGACY dialect (ruling L3): the pre-4.12 single-key
+    /// bags, which the Help chat / Brahma / Scenario Builder families compare.
+    /// A Salon frames family reads [`RecordingSink::events_json_in`] with
+    /// `Dialect::Frames` — one left on this method fails loudly against v4's
+    /// frames rather than passing silently.
+    pub fn events_json(&self) -> Vec<serde_json::Value> {
+        self.events_json_in(crate::services::stream_frames::Dialect::Legacy)
+    }
+
+    /// A handle on the SAME buffer whose every recorded event carries
+    /// `participant_id`'s concurrent seat (v4 `seatedFrameEncoder`).
+    pub fn seated(&self, participant_id: &str) -> RecordingSink {
+        RecordingSink {
+            events: self.events.clone(),
+            seat: Some(participant_id.to_string()),
+        }
+    }
+    // === end P4.D366 ===
 }
 
 impl EventSink for RecordingSink {
@@ -966,13 +969,36 @@ impl EventSink for RecordingSink {
         self.events
             .lock()
             .expect("recording sink poisoned")
-            .push(event);
+            .push((event, self.seat.clone()));
     }
 }
 
 #[cfg(test)]
 mod tests {
+    // The legacy-parity pins pass both owned and borrowed events to the two
+    // helpers below (they kept their pre-P4.D366 call shapes).
+    #![allow(clippy::needless_borrows_for_generic_args)]
     use super::*;
+    use crate::services::stream_frames::{render, Dialect};
+
+    // P4.D366 (ruling L2 + item 12): `ChatEvent` derives no `Serialize`, so
+    // every byte pin below renders through the ONE renderer in the LEGACY
+    // dialect with its expected string UNCHANGED — the legacy-parity proof.
+    // (`Result` so the pins' `.unwrap()` reads as before.)
+    fn legacy_json(
+        ev: impl std::borrow::Borrow<ChatEvent>,
+    ) -> Result<serde_json::Value, std::convert::Infallible> {
+        Ok(render(ev.borrow(), Dialect::Legacy, None))
+    }
+
+    fn legacy_text(
+        ev: impl std::borrow::Borrow<ChatEvent>,
+    ) -> Result<String, std::convert::Infallible> {
+        Ok(
+            serde_json::to_string(&render(ev.borrow(), Dialect::Legacy, None))
+                .expect("a Value serializes"),
+        )
+    }
 
     /// The `fileProcessing` frame's BYTES (P4.140): the differential compares
     /// decoded `Value`s, which are key-order-blind, so v4's field order and the
@@ -989,7 +1015,7 @@ mod tests {
             error: None,
         }]);
         assert_eq!(
-            serde_json::to_string(&native).unwrap(),
+            legacy_text(&native).unwrap(),
             r#"{"fileProcessing":[{"filename":"lb_fit_a.webp","type":"unsupported","usedImageDescriptionLLM":false}]}"#
         );
         let two = ChatEvent::file_processing(vec![
@@ -1007,7 +1033,7 @@ mod tests {
             },
         ]);
         assert_eq!(
-            serde_json::to_string(&two).unwrap(),
+            legacy_text(&two).unwrap(),
             r#"{"fileProcessing":[{"filename":"map.png","type":"image_description","usedImageDescriptionLLM":true},{"filename":"Unknown","type":"unsupported","usedImageDescriptionLLM":false,"error":"no vision profile"}]}"#
         );
     }
@@ -1060,7 +1086,7 @@ mod tests {
             character_id: Some("char-1".into()),
         });
         assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
+            legacy_json(&ev).unwrap(),
             json!({
                 "status": {
                     "stage": "sending",
@@ -1075,11 +1101,11 @@ mod tests {
     #[test]
     fn content_and_reasoning_are_bare_single_key_frames() {
         assert_eq!(
-            serde_json::to_value(ChatEvent::content("Hel")).unwrap(),
+            legacy_json(ChatEvent::content("Hel")).unwrap(),
             json!({ "content": "Hel" })
         );
         assert_eq!(
-            serde_json::to_value(ChatEvent::reasoning("thinking...")).unwrap(),
+            legacy_json(ChatEvent::reasoning("thinking...")).unwrap(),
             json!({ "reasoning": "thinking..." })
         );
     }
@@ -1097,7 +1123,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
+            legacy_json(&ev).unwrap(),
             json!({
                 "done": true,
                 "messageId": "msg-9",
@@ -1152,7 +1178,7 @@ mod tests {
             }]),
         });
         assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
+            legacy_json(&ev).unwrap(),
             json!({
                 "done": true,
                 "messageId": "m1",
@@ -1193,6 +1219,12 @@ mod tests {
         }
     }
 
+    // P4.D366 (L5, item 12): these were v4's PRE-4.12 Salon bytes. At the
+    // pin the Salon renders FRAMES (`stream_frames`' five-outcome pins), and
+    // the legacy dialect is v4's `toLegacyBag` — which moves a non-finished
+    // close's flags to the END (`{ done: true, ...rest, ...flags }`). No legacy
+    // route emits a non-finished done (measured: 0), so the three re-pinned
+    // strings below are `toLegacyBag`'s bytes, never on a wire today.
     const TURN_DONE_HEAD: &str = "{\"done\":true,\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\",";
 
     #[test]
@@ -1203,8 +1235,8 @@ mod tests {
             ..turn_done_base(None, false)
         });
         assert_eq!(
-            serde_json::to_string(&ev).unwrap(),
-            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\"}}")
+            legacy_text(&ev).unwrap(),
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skippedParticipantId\":\"p9\",\"skipped\":true}}")
         );
     }
 
@@ -1217,8 +1249,8 @@ mod tests {
             ..turn_done_base(None, false)
         });
         assert_eq!(
-            serde_json::to_string(&ev).unwrap(),
-            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"yielded\":true}}")
+            legacy_text(&ev).unwrap(),
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skippedParticipantId\":\"p9\",\"skipped\":true,\"yielded\":true}}")
         );
     }
 
@@ -1226,7 +1258,7 @@ mod tests {
     fn turn_done_tools_only_frame_matches_v4_close_tools_only_bytes() {
         let ev = ChatEvent::turn_done(turn_done_base(Some("t1"), true));
         assert_eq!(
-            serde_json::to_string(&ev).unwrap(),
+            legacy_text(&ev).unwrap(),
             format!("{TURN_DONE_HEAD}\"messageId\":\"t1\",\"participantId\":\"p9\",\"toolsExecuted\":true}}")
         );
     }
@@ -1238,7 +1270,7 @@ mod tests {
             ..turn_done_base(None, false)
         });
         assert_eq!(
-            serde_json::to_string(&ev).unwrap(),
+            legacy_text(&ev).unwrap(),
             format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"stopped\":true}}")
         );
     }
@@ -1251,8 +1283,8 @@ mod tests {
             ..turn_done_base(None, false)
         });
         assert_eq!(
-            serde_json::to_string(&ev).unwrap(),
-            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"emptyResponse\":true,\"emptyResponseReason\":\"empty\"}}")
+            legacy_text(&ev).unwrap(),
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"emptyResponseReason\":\"empty\",\"emptyResponse\":true}}")
         );
     }
 
@@ -1267,7 +1299,7 @@ mod tests {
             }),
             ..turn_done_base(None, false)
         });
-        assert!(serde_json::to_string(&ev)
+        assert!(legacy_text(&ev)
             .unwrap()
             .starts_with("{\"done\":true,\"usage\":{\"promptTokens\":1,\"completionTokens\":2,\"totalTokens\":3},\"cacheUsage\":null,"));
     }
@@ -1275,11 +1307,11 @@ mod tests {
     #[test]
     fn hand_answered_frame_matches_v4_bytes() {
         assert_eq!(
-            serde_json::to_string(&ChatEvent::hand_answered("p9", "Ada", true)).unwrap(),
+            legacy_text(&ChatEvent::hand_answered("p9", "Ada", true)).unwrap(),
             "{\"handAnswered\":true,\"participantId\":\"p9\",\"characterName\":\"Ada\",\"yielded\":true}"
         );
         assert_eq!(
-            serde_json::to_string(&ChatEvent::hand_answered("p9", "Ada", false)).unwrap(),
+            legacy_text(&ChatEvent::hand_answered("p9", "Ada", false)).unwrap(),
             "{\"handAnswered\":true,\"participantId\":\"p9\",\"characterName\":\"Ada\",\"yielded\":false}"
         );
     }
@@ -1287,7 +1319,7 @@ mod tests {
     #[test]
     fn yielded_and_stopped_chain_complete_frames_match_v4_bytes() {
         let close = |reason: &str, paused: bool| {
-            serde_json::to_string(&ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_text(&ChatEvent::chain_complete(ChainCompletePayload {
                 reason: reason.into(),
                 next_speaker_id: None,
                 chain_depth: 1,
@@ -1310,10 +1342,7 @@ mod tests {
     fn carina_answer_is_a_single_key_frame() {
         let msg = json!({ "type": "message", "id": "carina-1", "role": "ASSISTANT" });
         let ev = ChatEvent::carina_answer(msg.clone());
-        assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
-            json!({ "carinaAnswer": msg })
-        );
+        assert_eq!(legacy_json(&ev).unwrap(), json!({ "carinaAnswer": msg }));
     }
 
     #[test]
@@ -1321,16 +1350,13 @@ mod tests {
         // v4 `encodePascalResultEvent` → `{pascalResult: <message>}`.
         let msg = json!({ "type": "message", "id": "pascal-1", "systemSender": "pascal" });
         let ev = ChatEvent::pascal_result(msg.clone());
-        assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
-            json!({ "pascalResult": msg })
-        );
+        assert_eq!(legacy_json(&ev).unwrap(), json!({ "pascalResult": msg }));
     }
 
     #[test]
     fn turn_frames_serialize_as_v4_single_key_frames() {
         assert_eq!(
-            serde_json::to_value(ChatEvent::turn_start(TurnStartPayload {
+            legacy_json(ChatEvent::turn_start(TurnStartPayload {
                 participant_id: "p1".into(),
                 character_name: "Friday".into(),
                 chain_depth: 0,
@@ -1339,7 +1365,7 @@ mod tests {
             json!({ "turnStart": true, "participantId": "p1", "characterName": "Friday", "chainDepth": 0 })
         );
         assert_eq!(
-            serde_json::to_value(ChatEvent::turn_complete(TurnCompletePayload {
+            legacy_json(ChatEvent::turn_complete(TurnCompletePayload {
                 participant_id: "p1".into(),
                 message_id: "m1".into(),
                 chain_depth: 1,
@@ -1352,7 +1378,7 @@ mod tests {
         // `user_turn` emit and the help-chat orchestrator's `cycle_complete`
         // still send, because v4 left both untouched at `fef7ce4f7`.
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "cycle_complete".into(),
                 next_speaker_id: None,
                 chain_depth: 2,
@@ -1365,7 +1391,7 @@ mod tests {
         // …and the two present arms, byte-for-byte as v4's `JSON.stringify` of
         // `{ chainComplete: true, ...data }` renders them (bug 123).
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "paused".into(),
                 next_speaker_id: None,
                 chain_depth: 0,
@@ -1376,7 +1402,7 @@ mod tests {
             json!({ "chainComplete": true, "reason": "paused", "nextSpeakerId": null, "chainDepth": 0, "paused": true })
         );
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "error".into(),
                 next_speaker_id: None,
                 chain_depth: 3,
@@ -1390,7 +1416,7 @@ mod tests {
         // the shape ALL FIVE of the pre-existing emits keep, so the frames above
         // are byte-identical before and after the field existed.
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "paused".into(),
                 next_speaker_id: None,
                 chain_depth: 0,
@@ -1404,7 +1430,7 @@ mod tests {
         // (`{ chainComplete: true, ...data }` over the literal at
         // `orchestrator.service.ts:1837-1843`).
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "paused".into(),
                 next_speaker_id: None,
                 chain_depth: 0,
@@ -1424,7 +1450,7 @@ mod tests {
         // The key is never sent as `false`: v4 either passes `true` or omits it.
         // Pinned so a future `Some(false)` spelling has to be a deliberate choice.
         assert_eq!(
-            serde_json::to_value(ChatEvent::chain_complete(ChainCompletePayload {
+            legacy_json(ChatEvent::chain_complete(ChainCompletePayload {
                 reason: "error".into(),
                 next_speaker_id: None,
                 chain_depth: 1,
@@ -1532,7 +1558,7 @@ mod tests {
             vec![json!({ "query": "cats" }), json!({ "sides": 6 })],
         );
         assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
+            legacy_json(&ev).unwrap(),
             json!({
                 "toolsDetected": 2,
                 "toolNames": ["search", "roll"],
@@ -1548,7 +1574,7 @@ mod tests {
             error: None,
         });
         assert_eq!(
-            serde_json::to_value(&ok).unwrap(),
+            legacy_json(&ok).unwrap(),
             json!({ "toolResult": { "index": 0, "name": "roll", "success": true, "result": [1, 2, 3] } })
         );
         // Failure result frame: `error` present, `result` often null.
@@ -1560,7 +1586,7 @@ mod tests {
             error: Some("Error: boom".into()),
         });
         assert_eq!(
-            serde_json::to_value(&err).unwrap(),
+            legacy_json(&err).unwrap(),
             json!({ "toolResult": { "index": 1, "name": "search", "success": false, "result": null, "error": "Error: boom" } })
         );
     }

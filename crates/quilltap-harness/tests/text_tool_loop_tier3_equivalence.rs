@@ -55,6 +55,7 @@ use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::primary_stream::{
     EffectiveProfile, PreservePartialOnError, StreamingState,
 };
+use quilltap_core::services::stream_frames::Dialect;
 use quilltap_core::services::text_tool_loop::{
     run_text_tool_pass, ProviderTextMarkersStrategy, RunTextToolPassOptions, SimpleJsonStrategy,
     TextBlockStrategy, TextToolStrategy,
@@ -582,7 +583,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
             c.name
         );
 
-        let got_events = Value::Array(sink.events_json());
+        let got_events = Value::Array(sink.events_json_in(Dialect::Frames));
         let want_events = oracle_events
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle events missing for {}", c.name));

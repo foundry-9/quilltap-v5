@@ -596,10 +596,7 @@ where
     ) -> Result<(), CoreError> {
         let registration = turn_control::register_active_turn(&req.chat_id);
         let handle = registration.handle();
-        let sink = BroadcastSink {
-            chat_id: req.chat_id.clone(),
-            tx: self.events.clone(),
-        };
+        let sink = BroadcastSink::frames(req.chat_id.clone(), self.events.clone()); // === P4.D366 (L8) ===
         let mut runner = SpineRoundRunner {
             spine: self,
             sink: &sink,
