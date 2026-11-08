@@ -71,7 +71,7 @@ const P4D87_HAIR_SLOT_LANDED = true;
 // FLIPPED at the round's unification (2026-08-25): P4.D112's server half is on
 // main. P4.D130 gave this instance its Quilltap General store, which retired
 // the beat's old `hasGeneralStore` park — and immediately uncovered the REAL
-// blocker underneath it, so the beat now parks on `hasTransferDestinations`
+// blocker underneath it, so the beat now parks on `hasContainerCatalogue`
 // instead (see that probe for the measurement). The component-travel semantics
 // stay tier-2-proven in `wardrobe_transfers_tier2_equivalence` meanwhile.
 const P4D112_TRANSFER_COMPONENTS_LANDED = true;
@@ -246,7 +246,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     );
     // P4.69 — the same materialization, for the two tables the TRANSFER
     // destinations enumerator reads. The committed `characters-main.db` carries
-    // neither, so `wardrobeTransferDestinations` failed WHOLE (not per-tier) and
+    // neither, so the (since retired) destinations verb failed WHOLE (not per-tier) and
     // the Move dialog could offer nothing; the component-transfer beat parked on
     // that and the Copy arm's `option[value^="character:"]` count sat vacuously
     // at 0 because the fetch never returned.
@@ -872,7 +872,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // The item's known home — Aria's own vault — is dropped from the list, but
     // every OTHER character's vault is on offer.
     //
-    // P4.69: this asserted 0 and was vacuously green — `wardrobeTransferDestinations`
+    // P4.69: this asserted 0 and was vacuously green — the (since retired) destinations verb
     // died whole on the missing `projects`/`groups` tables, so the select had no
     // options of any kind and "no character option" measured nothing. With both
     // tables materialized in `beforeAll` the enumerator returns the real answer:
@@ -932,14 +932,12 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     test.setTimeout(90_000);
     await page.goto(`${BASE_URL}/characters`);
     await unlockIfLocked(page);
-    // P4.69 UN-PARKED. This used to `test.skip` on the probe because the
-    // committed `characters-main.db` has no `projects`/`groups` tables and
-    // `wardrobeTransferDestinations` failed whole. `beforeAll` now materializes
-    // both, so the probe is an ASSERTION rather than a park — if the enumerator
-    // ever breaks again this beat says so instead of quietly not running.
+    // P4.69 UN-PARKED; P4.D386 re-aimed (C12): the dialog lists the container
+    // catalogue, so its three LIST reads must answer — an ASSERTION, not a
+    // park, so a broken read says so instead of quietly not running.
     expect(
-      await hasTransferDestinations(page),
-      'wardrobeTransferDestinations must answer — see the projects/groups materialization in beforeAll',
+      await hasContainerCatalogue(page),
+      'the container catalogue (characterList / projectList / groupList) must answer — see the projects/groups materialization in beforeAll',
     ).toBe(true);
     await openAriaDetail(page);
     await openWardrobeDialog(page);
@@ -2252,36 +2250,27 @@ async function hasGeneralStore(page: Page): Promise<boolean> {
 /**
  * Can the Move/Copy dialog offer anything at all?
  *
- * P4.D130, MEASURED server-side with no browser: `wardrobeTransferDestinations`
- * answers `Failed to load transfer destinations` on this fixture — with AND
- * without the General store — because `enumerate_destinations` reads `projects`
- * and `groups`, and the committed `characters-main.db` has NEITHER table (nor
- * `instance_settings`; only `characters`). One missing table fails the whole
- * verb, so the destination `<select>` renders with no options and no
- * destination can be chosen.
+ * P4.D386 (C12, v4 `b2b783b47`): the dialog no longer reads a destinations
+ * verb — v4 retired `GET /api/v1/wardrobe/transfers` and the SPA's transfer
+ * dialog now lists the CONTAINER CATALOGUE (`characterList` / `projectList` /
+ * `groupList`, `item-browser/container-catalogue.ts`) in the shared
+ * `qt-container-select`, with Quilltap General always offered. The probe is
+ * re-aimed onto those three reads: each must answer (not an error) for the
+ * select to hold its four groups.
  *
- * That is the SECOND, independent blocker on the component-transfer beat, and
- * it was hidden behind the General-store park until P4.D130 lifted it. It is a
- * pre-existing fixture-vintage gap, not something this lane introduced.
- *
- * CLOSED at P4.69. `beforeAll` materializes empty `projects`/`groups` from
- * `fresh_schema.json`, so the verb answers and the probe below is an assertion,
- * not a park. P4.D130's two predicted consequences both materialized and were
- * fixed with it: the Copy arm's `option[value^="character:"]` count really is 4
- * (its `0` had been vacuously green — the fetch never returned), now asserted
- * by NAME as well as count; and the move beat, run in the serial chain it
- * belongs to, walks green. No third blocker surfaced (memory note
- * `lifting-a-park-is-a-measurement` — it was expected to, and did not).
+ * History (kept for the reasoning): P4.D130 measured the retired verb failing
+ * WHOLE on this fixture because the committed `characters-main.db` has no
+ * `projects` / `groups` tables; P4.69 closed that by materializing both in
+ * `beforeAll`. The catalogue's `projectList` / `groupList` read those same
+ * tables, so the materialization still earns its keep.
  */
-async function hasTransferDestinations(page: Page): Promise<boolean> {
-  const res = await page.request.post(`${BASE_URL}/api/dispatch`, {
-    data: { type: 'wardrobeTransferDestinations' },
-  });
-  const body = (await res.json().catch(() => null)) as {
-    type?: string;
-    data?: { destinations?: unknown };
-  } | null;
-  return body?.type !== 'error' && body?.data?.destinations != null;
+async function hasContainerCatalogue(page: Page): Promise<boolean> {
+  for (const type of ['characterList', 'projectList', 'groupList']) {
+    const res = await page.request.post(`${BASE_URL}/api/dispatch`, { data: { type } });
+    const body = (await res.json().catch(() => null)) as { type?: string } | null;
+    if (!body || body.type === 'error') return false;
+  }
+  return true;
 }
 
 function runCliWrite(cli: string, sql: string): void {

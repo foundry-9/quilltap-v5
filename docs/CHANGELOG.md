@@ -1231,6 +1231,18 @@ _Versions: SPA 0.5.973._
 
 P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
 
+#### 2026-11-08 — test(e2e): `item-browser-flow` on its own instance (4363) and `wardrobe-flow`'s probe re-aimed onto the container catalogue (C12)
+
+_No crate versions bumped._
+
+P4.D386 commit 4 (items 13–14).
+
+- NEW `e2e/item-browser-flow.spec.ts`: its own instance on 4363. The mock-LLM port 45361 is reserved but never started, since no beat needs a turn.
+  - Ungated beats: (a) the ⋮ by keyboard, fixed and inside the viewport, with Escape leaving the dialog open; (b) the transfer dialog's catalogue groups with the home absent, and no request for the retired destinations read; (c) a folder made and an item filed into it, with the toast crumb.
+  - Gated on `P4D377_SERVER_LANDED`: (d) Duplicate in a group store; (e) the `wardrobe` topic across two pages.
+  - Green by file: 3 passed, 2 skipped (gated).
+- `wardrobe-flow.spec.ts`: `hasTransferDestinations` becomes `hasContainerCatalogue` (`characterList` / `projectList` / `groupList`). `grep -rn "wardrobeTransferDestinations\|TransferDestinations" apps/web/src apps/web/e2e` finds 0 matches.
+
 #### 2026-11-08 — feat(spa): Duplicate through `?action=duplicate`, the `wardrobe` realtime topic, one dialog-service base, the shared transfer footer, and the Inventory dialogs on the container catalogue (v4 624d0d25c)
 
 _Versions: SPA 0.5.975._
