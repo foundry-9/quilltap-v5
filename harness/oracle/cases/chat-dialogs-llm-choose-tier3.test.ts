@@ -56,6 +56,23 @@ const MERGE_SOURCE = 'c2000000-0000-4000-8000-000000000008';
 
 const RealDate = Date;
 
+/**
+ * P4.D373 (v4 `4efea65e5`): the Green Room spread. An inline canned reply
+ * (the shared spec stays untouched): Pip's patched coat under `top` ONLY,
+ * boots in `footwear` — with `seedDress` making the coat a top+bottom
+ * garment, v4 spreads it into `bottom` and logs the DEBUG once.
+ */
+const SPREAD_REPLIES: Record<string, Canned> = {
+  pipCoatTopOnly: {
+    content:
+      '{"top": ["00000000-0000-4000-8000-0000000000b1"], "bottom": [], "footwear": ["00000000-0000-4000-8000-0000000000b2"], "accessories": []}',
+    promptTokens: 180,
+    completionTokens: 30,
+  },
+};
+const SPREAD_LINE = '[applyOutfitSelections] Spread multi-slot picks across every slot they cover';
+let spreadLines: unknown[] = [];
+
 let currentReply: Canned | null = null;
 let providerThrows = false;
 let seenMessages: Array<Array<{ role: string; content: string }>> = [];
@@ -233,6 +250,9 @@ interface CaseSpec {
    *  the FIRST `Wardrobe/*.md` of its own vault (by `relativePath`, code-unit
    *  order) gains `pronounGuidance: [he]` — so the green room holds it back. */
   seedPronouns?: true;
+  /** [P4.D373 / v4 `4efea65e5`] Raw plant on the fresh copy: Pip's patched
+   *  coat (`…b1`, `top`) becomes a `top` + `bottom` garment — a dress. */
+  seedDress?: true;
 }
 
 async function runCase(
@@ -242,7 +262,8 @@ async function runCase(
   fixtures: { main: string; mount: string },
 ): Promise<Record<string, unknown>> {
   jest.resetModules();
-  currentReply = c.reply ? spec.cannedOutfits[c.reply] : null;
+  currentReply = c.reply ? (SPREAD_REPLIES[c.reply] ?? spec.cannedOutfits[c.reply]) : null;
+  spreadLines = [];
   providerThrows = !!c.throws;
   seenMessages = [];
   applyMocks(spec);
@@ -364,6 +385,23 @@ async function runCase(
       .prepare('UPDATE doc_mount_documents SET content = ? WHERE id = ?')
       .run(first.content.replace(/^---\n/, '---\npronounGuidance: [he]\n'), first.did);
   }
+  if (c.seedDress) {
+    const midb = (await import('@/lib/database/backends/sqlite/mount-index-client')).getRawMountIndexDatabase();
+    if (!midb) throw new Error('mount-index handle unavailable');
+    const coat = midb
+      .prepare(
+        `SELECT d.id AS did, d.content AS content FROM doc_mount_file_links l
+           JOIN doc_mount_documents d ON d.fileId = l.fileId
+          WHERE l.relativePath = 'Wardrobe/Pip’s patched coat.md'`,
+      )
+      .all() as Array<{ did: string; content: string }>;
+    if (coat.length !== 1 || !coat[0].content.includes('types:\n  - top\n')) {
+      throw new Error(`seedDress: expected one top-only coat document, found ${coat.length}`);
+    }
+    midb
+      .prepare('UPDATE doc_mount_documents SET content = ? WHERE id = ?')
+      .run(coat[0].content.replace('types:\n  - top\n', 'types:\n  - top\n  - bottom\n'), coat[0].did);
+  }
   if (c.archiveTier) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     const { getRepositories } = await import('@/lib/repositories/factory');
@@ -420,6 +458,16 @@ async function runCase(
     }
   } as unknown as DateConstructor;
 
+  // P4.D373: capture the spread DEBUG (the shared logger, whatever LOG_LEVEL).
+  const loggerModule = (await import('@/lib/logger')) as {
+    logger: Record<string, (...a: unknown[]) => unknown>;
+  };
+  const debugSpy = jest
+    .spyOn(loggerModule.logger as never, 'debug' as never)
+    .mockImplementation(((message: string, context?: unknown) => {
+      if (message === SPREAD_LINE) spreadLines.push(context ?? null);
+    }) as never);
+
   try {
     if (c.action === 'apply-outfit-selections') {
       const { getRepositories } = await import('@/lib/repositories/factory');
@@ -434,6 +482,7 @@ async function runCase(
         body: {},
         llmMessages: seenMessages,
         tables: await readTables(c.chatId),
+        spreadLines,
       };
     }
     const route = (await import('@/app/api/v1/chats/[id]/route')) as never as Record<
@@ -467,8 +516,10 @@ async function runCase(
       body: reduced,
       llmMessages: seenMessages,
       tables: await readTables(c.chatId),
+      spreadLines,
     };
   } finally {
+    debugSpy.mockRestore();
     global.Date = RealDate;
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -849,6 +900,56 @@ async function main(): Promise<void> {
         selectedSubpromptIds: ['gone'],
         subprompts: [],
       },
+    },
+    // ── P4.D373 / v4 `4efea65e5` — the Green Room spread ─────────────────
+    // A dress picked under `top` alone is worn in `bottom` too, on all three
+    // LLM-pick paths (the joined chat, the merge's TARGET, the create-spine
+    // apply), with the DEBUG once; the silence legs: the dress already in
+    // every slot it covers (the composite dissolves it into both), and every
+    // pre-existing case (single-slot picks — `spreadLines` empty).
+    {
+      name: 'add_llm_choose_spread_dress_under_top',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipCoatTopOnly',
+      seedDress: true,
+    },
+    {
+      name: 'merge_llm_choose_spread_dress_under_top',
+      action: 'merge-conversation',
+      chatId: MERGE_TARGET,
+      body: {
+        sourceChatId: MERGE_SOURCE,
+        outfitSelections: [{ characterId: PIP, mode: 'llm_choose' }],
+      },
+      reply: 'pipCoatTopOnly',
+      seedDress: true,
+    },
+    {
+      name: 'apply_llm_choose_spread_dress_under_top',
+      action: 'apply-outfit-selections',
+      chatId: MERGE_TARGET,
+      body: [{ characterId: PIP, mode: 'llm_choose' }],
+      reply: 'pipCoatTopOnly',
+      seedDress: true,
+      seedSeat: { characterId: PIP, controlledBy: 'llm', selectedSubpromptIds: [], subprompts: [] },
+    },
+    {
+      name: 'add_llm_choose_spread_already_in_every_slot',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      seedDress: true,
     },
   ];
 

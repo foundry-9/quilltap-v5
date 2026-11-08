@@ -482,6 +482,7 @@ pub async fn apply_chat_merge(
                         match resolve_llm_pick(
                             main,
                             mount,
+                            &target, // === P4.D373 === the TARGET chat (v4 `targetChatId`)
                             &selection.character_id,
                             &mounts,
                             picked,

@@ -1512,9 +1512,11 @@ async fn dress_added_participant(
             let picked = chosen.and_then(|slots| {
                 let cid = character_id.to_string();
                 let mounts = project_mount_point_ids.clone();
+                // === P4.D373 === the joined chat (v4 `participants.ts:212`).
+                let chat = chat_id.to_string();
                 read_main_mount(db, |main, mount| {
                     crate::services::outfit_selections::resolve_llm_pick(
-                        main, mount, &cid, &mounts, &slots,
+                        main, mount, &chat, &cid, &mounts, &slots,
                     )
                 })
                 .ok()

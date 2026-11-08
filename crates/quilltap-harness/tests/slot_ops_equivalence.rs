@@ -24,9 +24,9 @@ use std::collections::{HashMap, HashSet};
 use quilltap_core::db::wardrobe_wear_stats::WornBundle;
 use quilltap_core::slot_ops::{
     add_item_to_slot, analyze_composite, compute_displaced_slots, dissolve_composite_to_leaves,
-    dissolve_composites_in_slots, lay_leaves_into_slots, wear_item_into_slots, worn_bundles_for,
-    worn_bundles_for_mode, ComputeDisplacedOptions, DisplacementMode, DissolvedLeaf,
-    WearableLookup, WearableNode,
+    dissolve_composites_in_slots, lay_leaves_into_slots, spread_across_covered_slots,
+    wear_item_into_slots, worn_bundles_for, worn_bundles_for_mode, ComputeDisplacedOptions,
+    DisplacementMode, DissolvedLeaf, WearableLookup, WearableNode,
 };
 use quilltap_core::wardrobe::{is_composite, Slots};
 use serde::Deserialize;
@@ -178,6 +178,18 @@ enum Row {
         #[serde(rename = "sameObject")]
         same_object: bool,
     },
+    /// P4.D373 (v4 `4efea65e5`): `spreadAcrossCoveredSlots`.
+    #[serde(rename = "spread")]
+    Spread {
+        id: String,
+        current: WireSlots,
+        lookup: Vec<String>,
+        out: WireSlots,
+        #[serde(rename = "inputUntouched")]
+        input_untouched: bool,
+        #[serde(rename = "sameObject")]
+        same_object: bool,
+    },
 }
 
 fn assert_slots(got: &Slots, want: &WireSlots, label: &str) {
@@ -240,6 +252,7 @@ fn slot_ops_match_oracle() {
     let (mut composites, mut analyzes, mut lays, mut wears, mut adds, mut worn_fors) =
         (0, 0, 0, 0, 0, 0);
     let (mut computes, mut in_slots) = (0, 0);
+    let mut spreads = 0usize;
     let mut modes_seen: HashSet<String> = HashSet::new();
     let (mut fallback_rows, mut only_rows, mut flagged_analyses, mut non_empty_claims) =
         (0, 0, 0, 0);
@@ -476,6 +489,26 @@ fn slot_ops_match_oracle() {
                 }
                 in_slots += 1;
             }
+            Row::Spread {
+                id,
+                current,
+                lookup,
+                out,
+                input_untouched,
+                same_object,
+            } => {
+                assert!(input_untouched, "spread '{id}': v4 mutated its input?");
+                // v4 always CLONES (`cloneEquippedSlots`) — never hands the
+                // input back.
+                assert!(!same_object, "spread '{id}': v4 returned its input?");
+                let map = lookup_of(&universe, Some(&lookup)).expect("spread lookup");
+                let input = current.to_slots();
+                let before = input.clone();
+                let got = spread_across_covered_slots(&input, &map);
+                assert_slots(&got, &out, &format!("spread '{id}'"));
+                assert_eq!(input, before, "spread '{id}': input mutated");
+                spreads += 1;
+            }
         }
     }
 
@@ -501,6 +534,7 @@ fn slot_ops_match_oracle() {
         "missing item/slot fallbacks: {fallback_rows}"
     );
     assert!(in_slots >= 11, "in_slots cases: {in_slots}");
+    assert!(spreads >= 17, "spread cases: {spreads}");
     assert!(only_rows >= 4, "`only` rows: {only_rows}");
     assert!(
         non_empty_claims >= 8,

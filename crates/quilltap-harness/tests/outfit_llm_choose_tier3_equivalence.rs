@@ -67,6 +67,75 @@ struct Spec {
 
 /// The mocked model boundary — records every message list, then answers the
 /// canned reply or fails (both sides share the reply via the spec).
+/// P4.D373 (v4 `4efea65e5`): the oracle's inline `SPREAD_REPLIES` — the
+/// shared spec stays untouched.
+fn canned_reply(spec: &Spec, key: &str) -> Canned {
+    match key {
+        "pipCoatTopOnly" => Canned {
+            content: r#"{"top": ["00000000-0000-4000-8000-0000000000b1"], "bottom": [], "footwear": ["00000000-0000-4000-8000-0000000000b2"], "accessories": []}"#.to_string(),
+            prompt_tokens: 180,
+            completion_tokens: 30,
+        },
+        other => spec.canned_outfits[other].clone(),
+    }
+}
+
+/// P4.D373: the spread DEBUG, captured process-wide (the merge site runs on
+/// the WRITER thread — memory note `capture-rig-writer-thread`). This binary
+/// holds ONE test, so one global subscriber is safe; the buffer is cleared
+/// per case.
+mod spread_capture {
+    use std::sync::Mutex;
+
+    pub const LINE: &str =
+        "[applyOutfitSelections] Spread multi-slot picks across every slot they cover";
+    static BUF: Mutex<Vec<serde_json::Value>> = Mutex::new(Vec::new());
+
+    struct V {
+        message: Option<String>,
+        fields: serde_json::Map<String, serde_json::Value>,
+    }
+    impl tracing::field::Visit for V {
+        fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+            self.fields
+                .insert(f.name().to_string(), serde_json::json!(v));
+        }
+        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+            if f.name() == "message" {
+                self.message = Some(format!("{v:?}"));
+            } else {
+                self.fields
+                    .insert(f.name().to_string(), serde_json::json!(format!("{v:?}")));
+            }
+        }
+    }
+    struct Layer;
+    impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Layer {
+        fn on_event(&self, e: &tracing::Event<'_>, _c: tracing_subscriber::layer::Context<'_, S>) {
+            let mut v = V {
+                message: None,
+                fields: serde_json::Map::new(),
+            };
+            e.record(&mut v);
+            if v.message.as_deref() == Some(LINE) && *e.metadata().level() == tracing::Level::DEBUG
+            {
+                // v4's bag `{chatId, characterId}` under v5's snake fields.
+                BUF.lock().unwrap().push(serde_json::json!({
+                    "chatId": v.fields.get("chat_id").cloned().unwrap_or_default(),
+                    "characterId": v.fields.get("character_id").cloned().unwrap_or_default(),
+                }));
+            }
+        }
+    }
+    pub fn install() {
+        use tracing_subscriber::layer::SubscriberExt;
+        let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry().with(Layer));
+    }
+    pub fn take() -> serde_json::Value {
+        serde_json::Value::Array(std::mem::take(&mut *BUF.lock().unwrap()))
+    }
+}
+
 struct CannedOutfitProvider {
     reply: Option<Canned>,
     throws: bool,
@@ -380,6 +449,9 @@ fn outfit_llm_choose_matches_oracle() {
         /// [P4.D349 / v4 `eb90d9ed8`] The oracle's `seedPronouns` raw plants
         /// (see [`seed_pronouns`]).
         seed_pronouns: bool,
+        /// [P4.D373 / v4 `4efea65e5`] The oracle's `seedDress` raw plant
+        /// (see [`seed_dress`]).
+        seed_dress: bool,
         /// [P4.D164 / v4 `2f4254b42`] `Some` = the `apply-outfit-selections`
         /// action: seed a seat for `character` on the TARGET carrying these
         /// ids (raw participants-cell update on the fresh copy) + plant the
@@ -400,6 +472,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -411,6 +484,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -422,6 +496,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -433,6 +508,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -444,6 +520,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
@@ -460,6 +537,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
@@ -480,6 +558,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // The validator used to drop any id outside the character's own vault,
@@ -493,6 +572,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // Naked on purpose — honoured, no default fallback.
@@ -505,6 +585,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // The same empty answer with no flag reads as a failure to choose.
@@ -517,6 +598,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // ── P4.D120 / v4 `d25dacc1` ───────────────────────────────────────
@@ -534,6 +616,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: Some("character"),
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -545,6 +628,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: Some("general"),
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -556,6 +640,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: Some("group"),
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -567,6 +652,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: true,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -580,6 +666,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: Some("all"),
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────
@@ -600,6 +687,7 @@ fn outfit_llm_choose_matches_oracle() {
             )),
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // The merge entrance, same seed.
@@ -615,6 +703,7 @@ fn outfit_llm_choose_matches_oracle() {
             )),
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         Case {
@@ -629,6 +718,7 @@ fn outfit_llm_choose_matches_oracle() {
             )),
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // A whitespace-only file counts as absent: the user message must be
@@ -642,6 +732,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: Some(("character", "   \n  ")),
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // Only a real boolean counts.
@@ -654,6 +745,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: None,
         },
         // ── P4.D164 / v4 `2f4254b42` — the green-room subprompts note ────
@@ -673,6 +765,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "llm",
                 ids: &["oilskins", "QUIET"],
@@ -695,6 +788,7 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "user",
                 ids: &["oilskins"],
@@ -714,15 +808,76 @@ fn outfit_llm_choose_matches_oracle() {
             seed_instructions: None,
             archive_tier: None,
             seed_pronouns: false,
+            seed_dress: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "llm",
                 ids: &["gone"],
                 subprompts: &[],
             }),
         },
+        // ── P4.D373 / v4 `4efea65e5` — the Green Room spread ─────────────
+        // The dress (`seed_dress`) picked under `top` alone is worn in
+        // `bottom` too on all three LLM-pick paths, with the DEBUG once; the
+        // silence leg: the composite dissolves it into both slots already.
+        Case {
+            name: "add_llm_choose_spread_dress_under_top",
+            add: true,
+            reply: Some("pipCoatTopOnly"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_pronouns: false,
+            seed_dress: true,
+            seed_seat: None,
+        },
+        Case {
+            name: "merge_llm_choose_spread_dress_under_top",
+            add: false,
+            reply: Some("pipCoatTopOnly"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_pronouns: false,
+            seed_dress: true,
+            seed_seat: None,
+        },
+        Case {
+            name: "apply_llm_choose_spread_dress_under_top",
+            add: false,
+            reply: Some("pipCoatTopOnly"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_pronouns: false,
+            seed_dress: true,
+            seed_seat: Some(SeedSeat {
+                controlled_by: "llm",
+                ids: &[],
+                subprompts: &[],
+            }),
+        },
+        Case {
+            name: "add_llm_choose_spread_already_in_every_slot",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_pronouns: false,
+            seed_dress: true,
+            seed_seat: None,
+        },
     ];
 
+    spread_capture::install();
+    let mut spread_rows = 0usize;
     for c in cases {
+        // P4.D373: every case is a spread comparand (most a silence leg).
+        let _ = spread_capture::take();
         if let Some(seed) = &c.seed_seat {
             drive_apply_case(
                 &spec,
@@ -730,6 +885,7 @@ fn outfit_llm_choose_matches_oracle() {
                 c.character,
                 c.reply,
                 c.throws,
+                c.seed_dress,
                 seed,
                 &rt,
                 &oracle,
@@ -748,8 +904,15 @@ fn outfit_llm_choose_matches_oracle() {
         if c.seed_pronouns {
             seed_pronouns(&db, c.character);
         }
+        if c.seed_dress {
+            db.write_blocking(|w| {
+                seed_dress_on(w.mount_index().expect("mount writer").connection());
+                Ok(())
+            })
+            .expect("seed dress");
+        }
         let provider = Arc::new(CannedOutfitProvider {
-            reply: c.reply.map(|k| spec.canned_outfits[k].clone()),
+            reply: c.reply.map(|k| canned_reply(&spec, k)),
             throws: c.throws,
             seen: Mutex::new(Vec::new()),
         });
@@ -855,6 +1018,19 @@ fn outfit_llm_choose_matches_oracle() {
             eprintln!("[{}] llm messages OK.", c.name);
         }
 
+        // P4.D373: the spread DEBUG (or its silence).
+        let got_spread = spread_capture::take();
+        if norm(&got_spread) != norm(&want["spreadLines"]) {
+            eprintln!(
+                "[{}] SPREAD LINES MISMATCH: v5 {got_spread} v4 {}",
+                c.name, want["spreadLines"]
+            );
+            failed.push(format!("{}_spread_lines", c.name));
+        }
+        if got_spread.as_array().is_some_and(|a| !a.is_empty()) {
+            spread_rows += 1;
+        }
+
         // The outfit + reduced cast.
         let got_tables = dump_tables(&db, MERGE_TARGET);
         if norm(&got_tables) != norm(&want["tables"]) {
@@ -880,6 +1056,36 @@ fn outfit_llm_choose_matches_oracle() {
         failed.is_empty(),
         "llm-choose tier-3 mismatches: {failed:?}"
     );
+    // P4.D373: the joined-chat and merge spreads (the apply arm's is checked
+    // in `drive_apply_case`).
+    assert!(spread_rows >= 2, "spread DEBUG rows {spread_rows}");
+}
+
+/// [P4.D373 / v4 `4efea65e5`] The oracle's `seedDress` raw plant: Pip's
+/// patched coat (`…b1`, `top`) becomes a `top` + `bottom` garment.
+fn seed_dress_on(mount: &rusqlite::Connection) {
+    let (did, content): (String, String) = mount
+        .query_row(
+            "SELECT d.id, d.content FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             WHERE l.relativePath = 'Wardrobe/Pip’s patched coat.md'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("the coat document");
+    assert!(
+        content.contains("types:\n  - top\n"),
+        "seed_dress: a top-only coat"
+    );
+    mount
+        .execute(
+            "UPDATE doc_mount_documents SET content = ?1 WHERE id = ?2",
+            rusqlite::params![
+                content.replacen("types:\n  - top\n", "types:\n  - top\n  - bottom\n", 1),
+                did
+            ],
+        )
+        .expect("plant the dress");
 }
 
 /// [P4.D164] A seat seeded on the target for the `apply-outfit-selections` arm.
@@ -902,6 +1108,7 @@ fn drive_apply_case(
     character_id: &str,
     reply: Option<&str>,
     throws: bool,
+    seed_dress: bool,
     seed: &SeedSeat,
     rt: &tokio::runtime::Runtime,
     oracle: &HashMap<String, Value>,
@@ -924,6 +1131,9 @@ fn drive_apply_case(
     quilltap_core::test_support::ensure_chat_wardrobe_history_on(main_w.connection());
     let main = main_w.connection();
     let mount = mount_w.connection();
+    if seed_dress {
+        seed_dress_on(mount);
+    }
 
     // The seat, on the TARGET's participants cell (a raw update — never a
     // route), and the vault files through the REAL document-store writer.
@@ -980,7 +1190,7 @@ fn drive_apply_case(
     .expect("seed seat");
 
     let provider = CannedOutfitProvider {
-        reply: reply.map(|k| spec.canned_outfits[k].clone()),
+        reply: reply.map(|k| canned_reply(spec, k)),
         throws,
         seen: Mutex::new(Vec::new()),
     };
@@ -1037,6 +1247,15 @@ fn drive_apply_case(
         failed.push(format!("{name}_llm_messages"));
     } else {
         eprintln!("[{name}] llm messages OK.");
+    }
+    // P4.D373: the create-spine arm's spread DEBUG (or its silence).
+    let got_spread = spread_capture::take();
+    if norm(&got_spread) != norm(&want["spreadLines"]) {
+        eprintln!(
+            "[{name}] SPREAD LINES MISMATCH: v5 {got_spread} v4 {}",
+            want["spreadLines"]
+        );
+        failed.push(format!("{name}_spread_lines"));
     }
     let got_tables = dump_tables_conn(main, MERGE_TARGET);
     if norm(&got_tables) != norm(&want["tables"]) {

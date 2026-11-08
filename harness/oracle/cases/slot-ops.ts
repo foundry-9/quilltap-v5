@@ -30,6 +30,7 @@ import {
   dissolveCompositeToLeaves,
   dissolveCompositesInSlots,
   layLeavesIntoSlots,
+  spreadAcrossCoveredSlots,
   wearItemIntoSlots,
   wornBundlesFor,
   wornBundlesForMode,
@@ -104,6 +105,15 @@ const ITEMS: WardrobeItem[] = [
   makeItem('chain-5', ['top'], ['shirt']),
   makeItem('yin', ['top'], ['yang', 'shirt']),
   makeItem('yang', ['bottom'], ['yin', 'trousers']),
+  // P4.D373 (v4 `4efea65e5`): the Green Room spread's universe.
+  makeItem('dress', ['top', 'bottom']),
+  makeItem('slip', ['bottom']),
+  makeItem('jumpsuit', ['top', 'bottom', 'footwear']),
+  makeItem('cloak', ['accessories', 'cape', 'top']),
+  makeItem('typeless', []),
+  makeItem('archived-dress', ['top', 'bottom'], [], { archivedAt: '2025-12-01T00:00:00.000Z' }),
+  makeItem('wig', ['hair']),
+  makeItem('braids-and-pins', ['hair', 'accessories']),
 ];
 
 const BY_ID = new Map(ITEMS.map((i) => [i.id, i]));
@@ -369,5 +379,57 @@ for (const c of inSlotsCases) {
     out: result,
     // v4 hands the INPUT object back when nothing dissolved.
     sameObject: result.slots === c.current,
+  });
+}
+
+// ── P4.D373: spreadAcrossCoveredSlots (v4 `4efea65e5`) ──────────────────────
+// v4's three `it`s (`slot-ops.test.ts`) plus the edges: a non-wardrobe type
+// filtered by `slotsOf`; an item listed under a slot NOT in its types (stays
+// there AND spreads to its own); listed twice in one slot; resolvable with
+// `types: []`; a composite id that survived the dissolve (spread over its own
+// types); an archived item (the pool's lookup is archived-inclusive); all
+// slots empty; a hair item; the input never mutated.
+
+interface SpreadCase {
+  id: string;
+  current: EquippedSlots;
+  lookup: string[];
+}
+
+const spreadCases: SpreadCase[] = [
+  { id: 'jest-named-under-one-slot', current: slots(['dress']), lookup: ['dress'] },
+  { id: 'jest-appends-outermost-keeps-order', current: slots(['dress'], ['slip']), lookup: ['dress', 'slip'] },
+  { id: 'jest-unknown-and-placed-untouched', current: slots(['mystery', 'shirt'], ['trousers']), lookup: WARDROBE },
+  { id: 'listed-under-bottom-only', current: slots([], ['dress']), lookup: ['dress'] },
+  { id: 'jumpsuit-three-slots', current: slots(['shirt'], [], ['jumpsuit']), lookup: ['shirt', 'jumpsuit'] },
+  { id: 'non-wardrobe-type-filtered', current: slots([], [], [], ['cloak']), lookup: ['cloak'] },
+  { id: 'under-a-slot-not-its-own', current: slots([], [], ['dress']), lookup: ['dress'] },
+  { id: 'listed-twice-in-one-slot', current: slots(['dress', 'dress']), lookup: ['dress'] },
+  { id: 'already-in-every-slot', current: slots(['dress'], ['dress']), lookup: ['dress'] },
+  { id: 'typeless-stays', current: slots(['typeless']), lookup: ['typeless'] },
+  { id: 'surviving-composite-spreads', current: slots(['top-only-bottom-too']), lookup: ['top-only-bottom-too'] },
+  { id: 'archived-still-spreads', current: slots(['archived-dress']), lookup: ['archived-dress'] },
+  { id: 'all-empty', current: empty(), lookup: ALL },
+  { id: 'hair-item', current: slots([], [], [], [], ['wig']), lookup: ['wig'] },
+  { id: 'hair-and-accessories', current: slots([], [], [], [], ['braids-and-pins']), lookup: ['braids-and-pins'] },
+  { id: 'two-spreaders-order', current: slots(['jumpsuit', 'dress'], ['slip']), lookup: ['jumpsuit', 'dress', 'slip'] },
+  {
+    id: 'after-dissolve-chain',
+    current: dissolveCompositesInSlots(slots(['gala']), lookupOf(ALL) as never).slots,
+    lookup: ALL,
+  },
+];
+
+for (const c of spreadCases) {
+  const input = JSON.parse(JSON.stringify(c.current)) as EquippedSlots;
+  const out = spreadAcrossCoveredSlots(input, lookupOf(c.lookup) as never);
+  emit({
+    kind: 'spread',
+    id: c.id,
+    current: c.current,
+    lookup: c.lookup,
+    out,
+    inputUntouched: JSON.stringify(input) === JSON.stringify(c.current),
+    sameObject: out === input,
   });
 }

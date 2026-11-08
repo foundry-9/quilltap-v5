@@ -72,7 +72,8 @@ use crate::wearable_pool::{
     is_archived_truthy, load_wearable_pool, LoadWearablePoolOptions, SharedTierLoader, WearablePool,
 };
 
-/// v4 `OUTFIT_SELECTION_PROMPT` (byte-exact).
+/// v4 `OUTFIT_SELECTION_PROMPT` (byte-exact; the multi-slot paragraph from
+/// `4efea65e5`, P4.D373).
 const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a roleplay character. Your job is to choose what a character should wear at the start of a scene, based on:
 - The character's available wardrobe items
 - The scenario/setting description
@@ -83,6 +84,8 @@ const OUTFIT_SELECTION_PROMPT: &str = "You are a wardrobe assistant for a rolepl
 Choose items that are contextually appropriate. For example, formal wear for a business meeting, casual clothes for relaxing at home, or era-appropriate costume for a historical setting.
 
 You MUST respond with ONLY a JSON object mapping slot names to ARRAYS of wardrobe item IDs. Valid slots are: \"top\", \"bottom\", \"footwear\", \"accessories\", \"hair\". Use an empty array [] for any slot you want to leave empty. The \"hair\" slot holds a hairstyle or hairdo (braided, permed, elegantly coiffed, a wig) — not the hair itself. Leave \"hair\" empty for the character's natural, unstyled hair.
+
+An item that covers more than one slot (its \"covers\" list names several — a dress covering top and bottom, a jumpsuit, a full-body costume) is worn in ALL of the slots it covers. List it under each of them; do not also choose something else for a slot it already fills unless you mean it to be layered with it.
 
 You may put multiple items in the same slot to layer them (e.g. a t-shirt under a sweater); list them inner-to-outer.
 
@@ -272,20 +275,65 @@ pub fn manual_worn_bundles(worn_bundle_ids: &[String], pool: &WearablePool) -> V
 /// output type is spelled by the host), so the two out-of-create consumers
 /// — the added participant and the merge — dissolve it here, over the same
 /// three-tier pool the runner consulted.
+///
+/// P4.D373 (v4 `4efea65e5`): then spread — every garment into every slot it
+/// covers — through [`dissolve_and_spread_llm_pick`], the ONE arm both v5
+/// LLM-pick sites share (v4 has one `applyOutfitSelections`). `chat_id` is
+/// the chat the pick dresses (the merge's TARGET, the joined chat), for that
+/// arm's DEBUG.
+// === P4.D373 ===
 pub fn resolve_llm_pick(
     main: &Connection,
     mount: &Connection,
+    chat_id: &str,
     character_id: &str,
     project_mount_point_ids: &[String],
     picked: &Slots,
 ) -> Result<ResolvedOutfit, DbError> {
     let pool = resolve_wearable_pool(main, mount, character_id, project_mount_point_ids)?;
-    let (slots, worn_bundles) = dissolve_composites_in_slots(picked, pool.by_id(), None);
-    Ok(ResolvedOutfit {
-        slots,
-        worn_bundles,
-    })
+    Ok(dissolve_and_spread_llm_pick(
+        picked,
+        pool.by_id(),
+        chat_id,
+        character_id,
+    ))
 }
+
+/// v4 `outfitSlotCount(slots)` — total slot placements in a snapshot, for
+/// logging whether a pass changed it.
+fn outfit_slot_count(slots: &Slots) -> usize {
+    crate::wardrobe::WARDROBE_SLOT_TYPES
+        .iter()
+        .map(|slot| slots.slot(slot).len())
+        .sum()
+}
+
+/// v4 `applyOutfitSelections`'s LLM-pick arm (`4efea65e5`): dissolve the
+/// model's composites, then make each garment occupy every slot it covers —
+/// "the model often lists a dress only under \"top\", which left the bottom
+/// slot reading as bare". The worn-bundle credit is the dissolve's,
+/// untouched. DEBUG only when the spread moved the placement count.
+pub(crate) fn dissolve_and_spread_llm_pick(
+    picked: &Slots,
+    by_id: &crate::slot_ops::WearableLookup,
+    chat_id: &str,
+    character_id: &str,
+) -> ResolvedOutfit {
+    let (dissolved, worn_bundles) = dissolve_composites_in_slots(picked, by_id, None);
+    let spread = crate::slot_ops::spread_across_covered_slots(&dissolved, by_id);
+    if outfit_slot_count(&spread) != outfit_slot_count(&dissolved) {
+        tracing::debug!(
+            chat_id,
+            character_id,
+            "[applyOutfitSelections] Spread multi-slot picks across every slot they cover"
+        );
+    }
+    ResolvedOutfit {
+        slots: spread,
+        worn_bundles,
+    }
+}
+// === /P4.D373 ===
 
 /// One character's wearable pool outside a batch (v4 `loadWearablePool(repos,
 /// characterId, projectMountPointIds)` — the project tier as given, the group
@@ -1439,12 +1487,15 @@ async fn resolve_llm_choose<C: CompletionProvider>(
                 // pool's archived-INCLUSIVE `by_id` (v4 `9ecebf986`): a picked
                 // composite's ARCHIVED part goes on with it — ported as v4 has
                 // it (R-K's second half; a v4-filing candidate, recorded).
-                let (slots, worn_bundles) =
-                    dissolve_composites_in_slots(&slots, pool.by_id(), None);
-                chosen = Some(ResolvedOutfit {
-                    slots,
-                    worn_bundles,
-                });
+                // === P4.D373 === then spread every garment into every
+                // slot it covers (v4 `4efea65e5`).
+                chosen = Some(dissolve_and_spread_llm_pick(
+                    &slots,
+                    pool.by_id(),
+                    chat_id,
+                    character_id,
+                ));
+                // === /P4.D373 ===
                 deliberately_unclothed = bare;
             }
             None => {
@@ -2197,3 +2248,59 @@ mod p4d349_green_room_tests {
         assert!(!lines.iter().any(|l| l.contains(LINE)), "{lines:?}");
     }
 }
+
+// === P4.D373 ===
+/// v4 `apply-outfit-selections.tiers.test.ts` (`4efea65e5`): a multi-slot
+/// pick named under one slot fills every slot it covers, with the DEBUG; a
+/// pick already in place logs nothing.
+#[cfg(test)]
+mod spread_tests {
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const LINE: &str =
+        "[applyOutfitSelections] Spread multi-slot picks across every slot they cover";
+
+    fn lookup() -> crate::slot_ops::WearableLookup {
+        [
+            ("general-dress", serde_json::json!({"id": "general-dress", "types": ["top", "bottom"], "componentItemIds": []})),
+            ("shirt", serde_json::json!({"id": "shirt", "types": ["top"], "componentItemIds": []})),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect()
+    }
+
+    #[test]
+    fn puts_a_multi_slot_pick_into_every_slot_it_covers() {
+        let picked = Slots {
+            top: vec!["general-dress".into()],
+            ..Default::default()
+        };
+        let (out, lines) =
+            captured_with(|| dissolve_and_spread_llm_pick(&picked, &lookup(), "chat-1", "char-1"));
+        assert_eq!(out.slots.top, ["general-dress"]);
+        assert_eq!(out.slots.bottom, ["general-dress"]);
+        assert!(out.worn_bundles.is_empty());
+        let hits: Vec<&String> = lines.iter().filter(|l| l.contains(LINE)).collect();
+        assert_eq!(hits.len(), 1, "{lines:?}");
+        assert!(
+            hits[0].starts_with("DEBUG ")
+                && hits[0].contains("chat_id=chat-1")
+                && hits[0].contains("character_id=char-1")
+        );
+    }
+
+    #[test]
+    fn single_slot_picks_log_nothing() {
+        let picked = Slots {
+            top: vec!["shirt".into()],
+            ..Default::default()
+        };
+        let (out, lines) =
+            captured_with(|| dissolve_and_spread_llm_pick(&picked, &lookup(), "chat-1", "char-1"));
+        assert_eq!(out.slots, picked);
+        assert!(!lines.iter().any(|l| l.contains(LINE)), "{lines:?}");
+    }
+}
+// === /P4.D373 ===
