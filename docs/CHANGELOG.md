@@ -559,6 +559,12 @@ _Versions: core 0.0.1428._
 
 v4 `ba6c8fe0f` (the probation) and `db6190b44` on the memory-extraction prompt text. `harness/oracle/scripts/extract-memory-task-prompts.py` is taught two blocks: `REPAIRS_INSTRUCTION_BLOCK` (a plain constant) and `ESTABLISHED_FACT_INSTRUCTION_BLOCK`, whose one interpolation `${ESTABLISHED_FACT_TRANSCRIPT_RULE}` is read from ANOTHER v4 module (`lib/chat/established-fact.ts`) by a new `cross_module_string` that evaluates only a `'…' + "…"` concatenation of plain literals and aborts on a backslash, a `${`, a non-literal operand, a missing file, or a declaration found other than once. Self-tests: against `236c04e35` the taught script emits `prompt_text.rs` consts byte-identical to main's; the three planted mutants and the missing module abort. `memory_extraction/prompts/prompt_text.rs` and `consolidation_tasks/prompt_text.rs` (the bindery's two new rules, the `resolvedIds` parenthesis and OUTPUT sample) regenerated ONCE from the pin; `extract-consolidation-prompt.py` unchanged and byte-identical at the baseline. Core unit tests mirror v4's `repairs-prompt.test.ts` plus the AGREEMENTS → REPAIRS → ESTABLISHED FACTS order. `memory_tasks_equivalence` green from the pin (was 10 divergences); `consolidation_tasks_equivalence`'s prompt row green.
 
+#### 2026-11-08 — test(web): P4.D366 — the Salon SSE wire tests read v4's kind-tagged frames; ChatEvent module doc names the renderer
+
+_Versions: core 0.0.1429, web 0.0.257._
+
+The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
+
 #### 2026-11-08 — FRAMES: Salon kind-tagged stream frames rendered at the sink, gesture-only yields, handAsked (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._

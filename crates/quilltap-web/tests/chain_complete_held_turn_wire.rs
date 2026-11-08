@@ -25,6 +25,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use quilltap_core::api::types::Event;
 use quilltap_core::services::chat_events::{ChainCompletePayload, ChatEvent};
+use quilltap_core::services::stream_frames::Dialect;
 use serde_json::Value;
 
 /// Read `data:` frames off the SSE stream until one satisfies `want`, returning
@@ -80,7 +81,7 @@ async fn the_held_chain_complete_reaches_api_events_with_v4s_six_keys() {
 
     let host = state.host().expect("a booted host");
     // `finish_held_user_turn`'s frame, published exactly as the spine publishes it.
-    let _ = host.core().event_sender().send(Event::chat(
+    let _ = host.core().event_sender().send(Event::chat_in(
         "chat-held",
         ChatEvent::chain_complete(ChainCompletePayload {
             reason: "paused".to_string(),
@@ -89,15 +90,17 @@ async fn the_held_chain_complete_reaches_api_events_with_v4s_six_keys() {
             paused: Some(true),
             held_user_turn: Some(true),
         }),
+        Dialect::Frames, // the Salon spine's sink (P4.D366)
+        None,
     ));
 
-    let (payload, frame) = next_matching(events, |v| v.get("chainComplete").is_some())
+    let (payload, frame) = next_matching(events, |v| v["kind"] == "chainComplete")
         .await
         .expect("a chainComplete frame within 10s — does /api/events filter chat frames?");
 
     assert_eq!(
         payload,
-        r#"{"chatId":"chat-held","chainComplete":true,"reason":"paused","nextSpeakerId":null,"chainDepth":0,"paused":true,"heldUserTurn":true}"#,
+        r#"{"chatId":"chat-held","kind":"chainComplete","reason":"paused","nextSpeakerId":null,"chainDepth":0,"paused":true,"heldUserTurn":true}"#,
         "v4's `{{ chainComplete: true, ...data }}` key order under the chatId scope tag"
     );
     assert_eq!(frame["heldUserTurn"], Value::Bool(true));
@@ -125,7 +128,7 @@ async fn a_chain_complete_that_was_not_held_carries_no_held_user_turn_key() {
 
     let host = state.host().expect("a booted host");
     // The chain's own paused stop (P4.D160) — `paused: true`, no `heldUserTurn`.
-    let _ = host.core().event_sender().send(Event::chat(
+    let _ = host.core().event_sender().send(Event::chat_in(
         "chat-chain",
         ChatEvent::chain_complete(ChainCompletePayload {
             reason: "paused".to_string(),
@@ -134,15 +137,17 @@ async fn a_chain_complete_that_was_not_held_carries_no_held_user_turn_key() {
             paused: Some(true),
             held_user_turn: None,
         }),
+        Dialect::Frames, // the Salon spine's sink (P4.D366)
+        None,
     ));
 
-    let (payload, frame) = next_matching(events, |v| v.get("chainComplete").is_some())
+    let (payload, frame) = next_matching(events, |v| v["kind"] == "chainComplete")
         .await
         .expect("a chainComplete frame within 10s");
 
     assert_eq!(
         payload,
-        r#"{"chatId":"chat-chain","chainComplete":true,"reason":"paused","nextSpeakerId":null,"chainDepth":0,"paused":true}"#,
+        r#"{"chatId":"chat-chain","kind":"chainComplete","reason":"paused","nextSpeakerId":null,"chainDepth":0,"paused":true}"#,
         "the key must be ABSENT, not `false` — five of v4's six emit sites omit it"
     );
     assert!(

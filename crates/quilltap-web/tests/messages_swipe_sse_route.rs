@@ -249,7 +249,7 @@ async fn the_sse_edge_matches_v4s_real_route() {
     // Every frame but the terminal `done` is byte-identical: same beats, same
     // sentences, same `kind`, same deltas.
     for (i, (got, want)) in got_frames.iter().zip(want_frames.iter()).enumerate() {
-        if want.get("done").is_some() {
+        if want["kind"] == "swipeDone" {
             continue;
         }
         assert_eq!(
@@ -262,7 +262,8 @@ async fn the_sse_edge_matches_v4s_real_route() {
     // cannot quietly make the comparison vacuous.
     let deltas: Vec<&str> = got_frames
         .iter()
-        .filter_map(|f| f.get("content").and_then(Value::as_str))
+        .filter(|f| f["kind"] == "content")
+        .filter_map(|f| f.get("text").and_then(Value::as_str))
         .collect();
     assert_eq!(deltas, SWIPE_DELTAS.to_vec());
 
@@ -270,8 +271,9 @@ async fn the_sse_edge_matches_v4s_real_route() {
     // minted, so the comparand is everything else.
     let got_done = got_frames.last().expect("a terminal frame");
     let want_done = want_frames.last().expect("v4's terminal frame");
-    assert_eq!(got_done.get("done").and_then(Value::as_bool), Some(true));
-    assert_eq!(want_done.get("done").and_then(Value::as_bool), Some(true));
+    // P4.D366 (v4 `604a082c4`): `{kind:"swipeDone", message}`.
+    assert_eq!(got_done["kind"], "swipeDone");
+    assert_eq!(want_done["kind"], "swipeDone");
     for field in [
         "role",
         "content",

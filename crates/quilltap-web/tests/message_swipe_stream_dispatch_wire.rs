@@ -223,7 +223,8 @@ async fn the_stream_flag_narrates_a_generate_and_is_ignored_by_a_switch() {
     );
     let deltas: Vec<&str> = mine
         .iter()
-        .filter_map(|f| f.get("content").and_then(Value::as_str))
+        .filter(|f| f["kind"] == "content")
+        .filter_map(|f| f.get("text").and_then(Value::as_str))
         .collect();
     assert_eq!(
         deltas,
@@ -232,9 +233,8 @@ async fn the_stream_flag_narrates_a_generate_and_is_ignored_by_a_switch() {
     );
     let done = mine.last().expect("a terminal frame");
     assert_eq!(
-        done.get("done").and_then(Value::as_bool),
-        Some(true),
-        "the LAST frame is the route's `done`: {done:?}"
+        done["kind"], "swipeDone",
+        "the LAST frame is the route's `swipeDone` (v4 `604a082c4`): {done:?}"
     );
     assert_eq!(
         done.pointer("/message/content").and_then(Value::as_str),
@@ -484,8 +484,14 @@ async fn a_failure_after_the_stream_opened_is_an_error_frame() {
     // The TERMINAL frame is v4's error encoding, all three keys.
     let last = mine.last().expect("a terminal frame");
     assert_eq!(
-        last.get("error").and_then(Value::as_str),
-        Some("Failed to generate alternative response"),
+        (
+            last["kind"].as_str(),
+            last.get("message").and_then(Value::as_str)
+        ),
+        (
+            Some("error"),
+            Some("Failed to generate alternative response")
+        ),
         "v4's hardcoded sentence: {last:?}"
     );
     assert_eq!(
@@ -501,7 +507,7 @@ async fn a_failure_after_the_stream_opened_is_an_error_frame() {
     );
     // No `done` frame, and no persisted swipe to carry one.
     assert!(
-        !mine.iter().any(|f| f.get("done").is_some()),
+        !mine.iter().any(|f| f["kind"] == "swipeDone"),
         "a failed generation must not emit v4's terminal `done`: {mine:?}"
     );
 

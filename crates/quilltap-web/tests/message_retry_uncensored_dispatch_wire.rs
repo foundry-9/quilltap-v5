@@ -346,7 +346,7 @@ async fn a_streamed_retry_lands_on_the_understudy_with_the_concierge_trail() {
         "the swipe's four beats on the SAME channel, keyed by the target: {mine:?}"
     );
     let done = mine.last().expect("a terminal frame");
-    assert_eq!(done["done"], true, "{done}");
+    assert_eq!(done["kind"], "swipeDone", "{done}");
     let message = &done["message"];
     assert_eq!(message["content"], SWIPE_DELTAS.concat());
     assert_eq!(

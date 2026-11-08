@@ -416,8 +416,11 @@ fn send(content: &str) -> Value {
 }
 
 fn five_key_frame(details: &str, user: bool, tools: bool) -> String {
+    // P4.D366 (v4 `604a082c4`): the Salon shell is a `kind`-tagged frame
+    // (`turn-stream.ts:102-105`) — `message` replaces the old `error` key.
     serde_json::to_string(&json!({
-        "error": "Failed to generate response",
+        "kind": "error",
+        "message": "Failed to generate response",
         "errorType": "Error",
         "details": details,
         "userMessagePersisted": user,

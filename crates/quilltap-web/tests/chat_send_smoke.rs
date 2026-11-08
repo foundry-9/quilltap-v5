@@ -292,7 +292,7 @@ async fn m2_chat_send_end_to_end() {
                     }
                 }
                 if frames.iter().any(|f| {
-                    f.get("done").is_some()
+                    f["kind"] == "done"
                         && f.get("messageId").and_then(Value::as_str) == Some(&message_id)
                 }) {
                     break 'collect;
@@ -325,14 +325,13 @@ async fn m2_chat_send_end_to_end() {
         .iter()
         .all(|f| f.get("chatId").and_then(Value::as_str) == Some(SMOKE_CHAT_ID)));
     assert!(
-        chat_frames
-            .iter()
-            .any(|f| f.get("content").and_then(Value::as_str) == Some(SMOKE_REPLY)),
+        chat_frames.iter().any(|f| f["kind"] == "content"
+            && f.get("text").and_then(Value::as_str) == Some(SMOKE_REPLY)),
         "no content frame: {frames:#?}"
     );
     let done = frames
         .iter()
-        .find(|f| f.get("done").is_some())
+        .find(|f| f["kind"] == "done")
         .expect("done frame");
     assert_eq!(done["messageId"], message_id.as_str());
 

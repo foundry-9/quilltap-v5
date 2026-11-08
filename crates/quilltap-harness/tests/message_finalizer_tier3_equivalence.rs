@@ -330,7 +330,13 @@ fn normalize_pascal_frames(events: &Value) -> Value {
     let mut events = events.clone();
     if let Some(frames) = events.as_array_mut() {
         for frame in frames {
-            if let Some(msg) = frame.get_mut("pascalResult").and_then(Value::as_object_mut) {
+            // P4.D366: `{kind:"posted", what:"pascalResult", message}`.
+            let pascal = frame["kind"] == "posted" && frame["what"] == "pascalResult";
+            if let Some(msg) = pascal
+                .then(|| frame.get_mut("message"))
+                .flatten()
+                .and_then(Value::as_object_mut)
+            {
                 for (k, placeholder) in [("id", "<msgid>"), ("createdAt", "<ts>")] {
                     if msg.get(k).is_some_and(Value::is_string) {
                         msg.insert(k.to_string(), Value::String(placeholder.into()));

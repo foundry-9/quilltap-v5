@@ -25,18 +25,26 @@
 //! keep-alive) belongs to a service not yet ported and is deliberately absent —
 //! it lands with its emitter.
 //!
-//! ## Byte-fidelity with v4's SSE payloads
+//! ## Bytes come only from `stream_frames::render` (P4.D366, ruling R-G)
 //!
-//! Each variant serializes (via serde) to the SAME single-key JSON object v4's
-//! `encode*Event` helper builds — so the tier-3 differential can decode both the
-//! Rust [`RecordingSink`] trace and v4's recorded SSE `data:` frames to JSON and
-//! compare byte-for-byte. The field names / omission rules match v4 exactly:
-//! `characterName` / `characterId` on a status are `skip_serializing_if` (v4
-//! omits them when the caller passes `undefined`), and the whole `done` payload
-//! spreads its fields at the top level next to `done: true` (v4's
-//! `{ done: true, ...data }`), with `usage`/`cacheUsage`/`attachmentResults`
-//! always present as explicit `null` on the recovery paths.
+//! This enum is the PRODUCER vocabulary: services emit typed events and never
+//! build frame bytes. [`ChatEvent`] derives no `Serialize`; the one renderer,
+//! [`crate::services::stream_frames::render`], turns an event into bytes on
+//! the SINK's dialect:
 //!
+//! - `Dialect::Frames` — v4 4.12's `kind`-tagged union (`{kind:"content",
+//!   text}`, `{kind:"done", outcome, …}`, an optional `seat` last), used by
+//!   the Salon send / continue / nudge, the enclave step, the Storyteller run
+//!   and the swipe / "Try uncensored" stream;
+//! - `Dialect::Legacy` — v4's `toLegacyBag` of the same frame: the pre-4.12
+//!   single-key bags each variant's doc above still names (`{content}`,
+//!   `{done:true, …}`), used by Help chat, the Brahma console, the Scenario
+//!   Builder and (through it) the one-shot tool loop.
+//!
+//! The field names / omission rules on the payload structs are v4's: an
+//! `undefined` v4 field is `skip_serializing_if`, an explicit `null` is
+//! written, and the payload's declaration order is the frame's key order.
+
 //! ## The sink seam
 //!
 //! [`EventSink`] is the v5 form of v4's `controller` + `encoder` pair: v4
