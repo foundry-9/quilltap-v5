@@ -200350,3 +200350,86 @@ core **0.0.1433** (from 0.0.1429 at `CATALOG`; +1 per C1–C4). No other crate w
 - The pin worktree was removed and pruned.
 - The lane's `target/` was deleted whole.
 - `/tmp/p4d375/` is left for the unifier (`gate-env.sh` + `gate/`).
+
+## P4.D366 — lane record (FRAMES: Salon kind-tagged stream frames at the sink; gesture yields; handAsked)
+
+**Branch:** `claude/p4.d366-salon-stream-frames-0f49c7` (pushed), cut from `REAIM` `0eaa5d4fb` (the session started in worktree `p4-d366-frames-0f49c7` on `claude/p4-d366-frames-0f49c7` at `0eaa5d4fb`, clean; it switched to the lane branch name before the first commit — same base, no move). Pin `/tmp/qt-v4-pin-p4d366-624d0d25c` at `624d0d25c6cbb68…` (verified before every regen batch).
+
+**Commits:** `1fd8481ce` **FRAMES** (Tier 1 items 2–11, 13, 14, 16, 18, the item-15 re-points and two new orchestrator rows); `a4f3e31b0` the sha in the order's status header; `a19761cf9` web wire tests (item 17) + the finalizer's posted placeholders + Tier 2 item 22 (module doc); the lane-close docs commit.
+
+### §R.2 probe (observation, 2026-11-07 23:38 CST)
+- v4 checkout on `main`, tree CLEAN. v4 moved: `main` 27 commits past `624d0d25c` (HEAD `b941280d5` "feat: Turns mode for the Salon; Paused renamed Manual", incl. `c9b281ec9` release 4.12.2); `bugfix` 11 commits past `997657639`. Pin usable (`4.13.0-dev.8`). Not ported, recorded for `/driftcheck`.
+- Pin `npm ci --offline` succeeded first try; `npm rebuild better-sqlite3` ok. Versions: better-sqlite3 13.0.3, openai 7.47.0, @openrouter/sdk 1.5.34, zod 4.6.7, mermaid 12.3.0. Plugin floors (`.claude/pin-plugin-sdks.sh`): @anthropic-ai/sdk 1.4.0, @google/genai 2.32.0, openai 7.47.0, @openrouter/sdk 1.5.34, plugin-utils 2.7.3, plugin-types 2.10.0.
+
+### REAIM's `storyteller-pure` choice (item 10)
+REAIM REMOVED the `sse-0`…`sse-6` rows (its record). Nothing in `storyteller_pure_equivalence` imported `tag_frame` any more; the seated inputs are covered by `stream_frames_equivalence`'s `seated` / `legacySeated` profiles (every corpus row) and its `tagged` section. `storyteller_pure` green (112 rows).
+
+### Red-first (item 1) — on REAIM, every oracle regenerated once from the pin (outputs `/tmp/p4d366/`)
+- turn_control: RED (detect/note — the note re-wrap; the gesture rows are new, measured on the grown oracle: 53 gesture + 10 gesture-detect rows, 6 `inferred:true`).
+- chat_error_frame: RED 1/2 (every frames row `{"kind":"error","message":…}`).
+- orchestrator_tier3: RED — first trace `trigger_phrase` (`{"kind":"status",…}` vs `{"status":…}`); 81 canned-stream misses in the run (request drift — sibling).
+- message_finalizer_tier3: RED `clean-happy` done (`kind`/`outcome` absent on v5).
+- primary_stream_tier3: RED `clean_stream` (`{"kind":"status",…}`).
+- courier_transport_tier3: RED `first_send_full_bundle` (`kind:"pendingExternalTurn"`).
+- native_tool_loop_tier3: regen FAILED at the pin (canned tool-result miss: `no canned tool result for …`) — P4.D370's preamble (§R.13).
+- text_tool_loop_tier3: RED `c1_simple_json_single` (`kind:"toolsDetected", names, arguments`).
+- tool_execution_process_tier3: RED `success_with_status`.
+- answer_confirmation_tier3: RED `gate_chat_off_beats_project_on` (done frame).
+- carina_query_tier3: GREEN (its oracle wraps v4's `onPosted` message itself — not an encoded frame; re-pointed to the frames `posted.message`).
+- enclave_step_tier3: RED on STORED_BYTE_DIVERGENCES (llm_logs brotli 0 vs 2) — compares no frames; not this lane's comparand.
+- tool_wire_call_site 7/7, tool_loop_leg_logging, refusal_ledger, ollama_think_retry, plan_storyteller_run (23 cases, 0 mismatches), storyteller_pure: GREEN — no frame comparand (measured: zero events/frame reads).
+- regenerate_swipe_tier3: RED (canned miss `first_regen` — request drift, sibling); retry_uncensored_tier3 GREEN (its comparand reads no frame bytes).
+- LEGACY families on REAIM: help_chat_orchestrator RED 4/5 (canned misses; `text_block_turn` frames OK (6)), brahma_orchestrator RED (canned misses), scenario_builder RED (canned misses) — all request-body drift (P4.D370 native-tools preamble / P4.D373 prompts), NOT frame bytes.
+
+### After the port (lane branch)
+- GREEN by name: `stream_frames_equivalence` (111 groups: frames 32, done 15, turnDone 6, tagged 4, swipe 3, golden 51; 320 byte comparisons), `turn_control_equivalence` (gesture 53, detect 50, note 4), `chat_error_frame_equivalence` (28/28 = 14 rows × 2 dialects), `stream_frames_chokepoint` (3/3), `message_finalizer_tier3`, `primary_stream_tier3`, `courier_transport_tier3`, `text_tool_loop_tier3`, `tool_execution_process_tier3`, `answer_confirmation_tier3`, `carina_query_tier3`, `retry_uncensored_tier3`, `salon_swipe_generate_equivalence` (NOT in the order's list — it shares the swipe oracle with `messages_swipe_sse_route`; its terminal check moved to `swipeDone`), `storyteller_pure`, `plan_storyteller_run` (item 21: unmoved, no frame comparand), web `chain_complete_held_turn_wire`, `chat_send_smoke`, `chat_send_submission_ledger` (6/6 — Salon rows `kind:"error"`, the Brahma row's legacy three keys unchanged), `messages_swipe_sse_route`, `message_swipe_stream_dispatch_wire`, `message_retry_uncensored_dispatch_wire`, `scenario_builder_midstream_failure`, `scenario_builder_dispatch_wire`, `help_web_routes`.
+- `orchestrator_tier3` (item 29, sibling drift): measured with a temporary (uncommitted, reverted) per-row survey of all 96 calls: **13 byte-EQUAL** (incl. `courier_send`, the eight `paused_hold_*`, `pause_rich_fair_rotation`, `pause_keyless_records_post`); **79 a byte-identical PREFIX of v4's trace** ending at a canned-stream miss — the system prompt differs (v5 4,435 chars vs v4 5,030: v4 `c69a08882`'s GROUP-SCENE DISCIPLINE → **P4.D373**; a scratch union with P4.D373 units 1–3 (`c433f4491`, `619e81e86`, `99f21d38f`) moved v5 to 4,837 chars and still missed — the remaining ~190 chars belong to another prompt lane, P4.D370 / P4.D372, not attributed further); **4 DIFF**, none in frame shape: three `danger_*` / `route_via_concierge` token estimates "~16k" vs "~17k" (the same prompt growth), and `empty_content_image_on_vision_seat`'s `fileProcessing` frame (v4 no longer emits it there — the image budget, **P4.D367**). So the new `interrupt_yield_gesture` / `interrupt_gesture_with_prose` rows and the existing raised-hand rows stop at the miss on this branch; their `handAsked` / `handAnswered` frames and the `inferredFromGesture` capture (v4's oracle records `withReply:true, inferredFromGesture:true` on the gesture row, `false` on `interrupt_yield_bare`) are proven on the union (H4). The family's per-frame BYTE compare was widened from `done` frames to every frame.
+- Legacy families (`help_chat_orchestrator`, `brahma_orchestrator`, `scenario_builder_tier3`) and `regenerate_swipe_tier3`, `enclave_step_tier3`: RED on REAIM and RED identically after the port (failure signatures byte-identical) — all canned-stream misses (request drift: P4.D370's native-tools preamble / the prompt lanes) except `enclave_step` (`STORED_BYTE_DIVERGENCES` 0 vs 2 on llm_logs brotli bytes — no frame comparand, not this lane's). Where rows reach the frames comparand they match (`help_chat` `text_block_turn` frames OK (6)).
+- `native_tool_loop_tier3`: the oracle cannot regenerate at the pin (`no canned tool result for …` — the canned key includes P4.D370's preamble, §R.13). Re-pointed; stays red for P4.D370.
+
+### Legacy parity (item 12)
+- `chat_events.rs`' byte pins re-pointed to `render(&ev, Dialect::Legacy, None)` with expected strings UNCHANGED, except three `TurnDone` pins (pass / bare yield / empty) whose flags move to the END under v4's `toLegacyBag` (`{done:true, ...rest, ...flags}`) — L5. **Measured: 0 legacy-route emitters of a non-`finished` done** (grep of help_chat / brahma_console / agent_loop / scenario_builder for `stopped|skipped|yielded|empty_response: Some` / `turn_done(`), so those bytes are on no wire.
+- `ChatErrorPayload` legacy pins unchanged + one `ChatErrorFrame` pin per dialect on the envelope.
+
+### Carves / measurements
+- `TOOL_RESULT_UNDEFINED_RESULT` NEEDED (item 24): v4's `ToolResult.result` is `unknown` (an `undefined` value is admissible and dropped by `JSON.stringify`); v5's `ToolResultPayload.result` is a `Value`. Pinned at 1 row both ways.
+- `GOLDEN_SCHEMA_ORDER` declared and pinned at **0**: v4's `fromLegacyBag` re-orders through `StreamFrameSchema.parse` (measured: Zod 4 rebuilds in schema order), yet every golden frame byte-matched v5's producer order.
+- The six goldens: v4's invariant `toLegacyBag(fromLegacyBag(bag)) == bag` HOLDS at the pin (the oracle throws otherwise); 51 bags.
+- `tagged` section drives `to_legacy_bag` directly for the `participantId: null` arm (no v5 producer builds a `done` with an explicit null participant).
+- Gesture grid: 53 rows. UTF-16 vs char-indexed: `cap-astral-282` (`*` + 140 × U+1D49C + `*` = 282 units, 142 chars) is `false` in v4 / v5 and would be `true` in a char-indexed port; likewise `cap-astral-crosses` (281 units). Lone-surrogate rows dropped (a Rust `&str` cannot hold one; `serde_json` refuses the escape).
+- Ledger correction confirmed: the `handAnswered` FRAME is unchanged; only the INFO gains `inferredFromGesture`.
+
+### Census (item 18) — `stream_frames_chokepoint`, mutation proofs (run the built binary against mutated sources, reverted)
+(1) `Serialize` added to `ChatEvent`'s derive → `chat_event_derives_no_serialize` red; (2) `// TaggingSink` in `spine.rs` → `the_retired_seat_and_hand_built_frames_are_gone` red; (3) `json!({ "done": true })` in `regenerate_swipe.rs` → same test red; (4) `Event::chat(` in `spine.rs` → `the_legacy_conveniences_have_only_the_two_named_callers` red. (5) the scanned-file floor (> 30) is asserted; not mutation-proven (it would need moving the tree). The `json!({ "kind"` pattern is narrowed to the 20 frame kinds (the announcer's `{kind:"character"}` sender is no frame).
+
+### The `orchestrator.rs` hunks (§R.10 (a))
+- (a-1) inside `if offer_yield { … }` right after the `[TurnYield] Asking the next speaker…` INFO: `sink.emit(ChatEvent::hand_asked(&character_participant_id, &character_name));` (both bindings in scope — `character_name` is used at the turn-skip block above).
+- (a-2) the yield INFO gains `inferred_from_gesture = detection.is_inferred(),` between `with_reply` and `tool_count`. Both fenced `// === P4.D366 ===`; P4.D367's `:3707` path, P4.D370's `:1437-1445…` and P4.D372's `record_operator_post` sites untouched.
+- `storyteller_spine.rs:599` (L8): `let sink = BroadcastSink::frames(req.chat_id.clone(), self.events.clone()); // === P4.D366 (L8) ===`.
+- §R.10 (j): `realtime/types.rs` untouched (measured — `EventPayload::Chat(_)` / `ChatError(_)` arms still match).
+
+### Deviations / notes
+- C3 names landed exactly; additions: `RecordingSink::seated` (L7), `BroadcastSink::{frames, legacy}`, `Event::{chat_in, chat_error_in}`, `stream_frames::{DoneOutcome, to_legacy_bag, render_error, swipe_status_frame, swipe_done_frame}`.
+- Item 15's order text said the gesture row's done is the bare-yield `outcome:"yielded"`; v4 `9eab8d2da`'s own test ("a gesture-only reply yields by inference and is kept as the reply") and the oracle show a gesture yield is a REPLY (`withReply: true`) — the hunk wins (§R.4).
+- Item 19's core capture unit test was NOT added: its home is `orchestrator.rs`'s test module, outside this lane's two fenced hunks (§R.10 (a)). The line is capture-pinned both ways by `orchestrator_tier3`'s `interruptLog` rows, which run past the canned miss only on the union (H4).
+- Tier 2 item 20 (`interrupt_gesture_tools_only`) NOT added: every tool-bearing orchestrator row is a canned miss until P4.D370's preamble lands (§R.13), so the row could not be measured here — OPEN for the follow-ups round / union.
+- The FRAMES commit ran a targeted gate (fmt, both clippy sets, core + host suites 4,548 / 1, the new harness families); the full workspace gate ran at lane close (below). The one core+host red, `host_boot_p4d292_builtin_help_embed` (38 then 126 of 137 docs embedded in 122 s), is a load-sensitive deadline (load average 44–64 during this round's parallel gates); this lane touches no help/embedding code.
+
+### Gate (lane close)
+- First lane-close attempt (2026-11-08) died at LINK time: `/Volumes/External 1` hit 100% (196 MiB free) under the round's parallel gates — `could not compile` from `ld`, not code. This lane deleted its `target/`, re-cloned main's (`cp -cR`) at 47 GiB free, and re-ran with no other workspace gate running.
+- `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D warnings` 0; the same with `--features quilltap-core/native-transport` 0 (`apps/web/dist` built in the lane after `npm ci`).
+- `cargo test --workspace --no-fail-fast` (env block: every family's run vars under `/tmp/p4d366/` + `QT_ORACLE_STREAM_FRAMES` / `QT_ORACLE_TURN_CONTROL` / `QT_ORACLE_CHAT_ERROR_FRAME`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **895 binaries / 6,029 passed / 13 failed / 3 ignored.** Every red NAMED and OWNED: `orchestrator_tier3`, `regenerate_swipe_tier3` (×2), `help_chat_orchestrator_tier3`, `brahma_orchestrator_tier3`, `scenario_builder_tier3`, `native_tool_loop_tier3` (no oracle at the pin) — sibling request drift, item 29 / H4; `enclave_step_tier3` (`STORED_BYTE_DIVERGENCES`, not a frame comparand); `builtin_prompt_templates_guard` (21 vs 22 prompts → P4.D373); `provider_sdk_version_guard` (→ P4.D364); `qtap_schema_embed_guard` (export schema → P4.D362); `spelling_guard` (fixed on main `a11fbe767`, this base predates it); `cli_differential` (env block lacks `QT_NODE` — the standing env artifact). `host_boot_p4d292_builtin_help_embed` GREEN in this run. No SPA / Playwright (no `apps/web` file moved; H1).
+
+### HANDOFFs
+| id | to | measurable |
+|---|---|---|
+| H1 | P4.D384 | C3 wire as quoted; on `/api/events` and the Tauri pump `chatId` precedes `kind`; the swipe frames ride `{"progressId","type":"swipeProgress","frame":{…}}`; `CreationProgressFrame` also has a top-level `kind`. Salon e2e specs RED on this branch alone (not run). |
+| H2 | P4.D368 | `BroadcastSink::seated(pid)`, `RecordingSink::seated(pid)`, `render(_, _, Some(pid))` with `seat` LAST — at `1fd8481ce`; the L8 line converted; `simultaneous` refusal untouched. Note in the shared notes folder. |
+| H3 | P4.D382 | `help/interrupting.md`, `docs/developer/API.md` at the pin (none edited here). |
+| H4 | unifier | `stream_frames_chokepoint` on the union; `orchestrator_tier3` (incl. the two new `interrupt_*gesture*` rows + `inferredFromGesture` both values), the legacy families, `regenerate_swipe_tier3`, `native_tool_loop_tier3` re-run on the union; `services/mod.rs` `pub mod stream_frames;` line; fences in `api/types.rs`, `spine.rs`, `orchestrator.rs`, `chat_events.rs`, `yield_signal.rs`, `regenerate_swipe.rs`, `scenario_builder/mod.rs` stripped. |
+| H5 | P4.D367 / P4.D370 / P4.D372 | the two `orchestrator.rs` hunks, `spine.rs`'s sink + error-shell region, `api/types.rs`' carrier — disjoint from theirs. |
+
+### 💸 for the owed dogfood pass
+As the order lists (Salon send / continue / nudge / chain; swipe + "Try uncensored"; raise a hand → `handAsked`, a gesture yield logging `inferredFromGesture: true`; a forced Salon send failure → `kind:"error"` with the two flags vs Brahma's three-key bag; Help / Brahma / Scenario Builder unchanged).
+
+**Versions at close:** core 0.0.1429, host 0.0.224, web 0.0.257 (cli 0.0.38, tauri 0.0.9, sys 0.1.0, SPA 0.5.971 unchanged; harness frozen 0.0.1110).
