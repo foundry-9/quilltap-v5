@@ -343,6 +343,54 @@ describe('resolveMessageAuthor — the customAnnouncer character arm', () => {
     );
     expect(author.name).toBe('The Management');
   });
+
+  /**
+   * P4.D385 (v4 `27fb3ec77`): `characterId` / `avatarFileId` exactly where v4's
+   * `getMessageAvatar` (`SalonView.tsx:1303-1400` at the pin) sets
+   * `characterId` — measured arm by arm. v4 sets NONE on the off-scene
+   * announcer card, Staff, a custom name, the off-scene Carina answerer or the
+   * bare user.
+   */
+  describe('characterId / avatarFileId per arm (v4 27fb3ec77)', () => {
+    const pic = { id: 'file-friday', filepath: 'f.webp', url: null };
+    const cast = () =>
+      participant({
+        character: { id: 'char-cast', name: 'Friday', title: null, avatarUrl: '/a.webp', defaultImageId: 'file-friday', defaultImage: pic },
+      });
+    const ids = (a: { characterId: string | null; avatarFileId: string | null }) => [a.characterId, a.avatarFileId];
+
+    it('a cast announcer carries the character and its picture', () => {
+      expect(ids(resolveMessageAuthor(announcement('char-cast'), chatDetail({ participants: [cast()] })))).toEqual([
+        'char-cast',
+        'file-friday',
+      ]);
+    });
+    it('an off-scene announcer card carries none (v4 sets none there)', () => {
+      const chat = chatDetail({ offSceneCharacters: [{ id: 'char-x', name: 'X', title: null, avatarUrl: null }] });
+      expect(ids(resolveMessageAuthor(announcement('char-x'), chat))).toEqual([null, null]);
+      expect(ids(resolveMessageAuthor(announcement('char-gone'), chat))).toEqual([null, null]);
+    });
+    it('a custom name and a Staff sender carry none', () => {
+      expect(ids(resolveMessageAuthor(msg({ customAnnouncer: { kind: 'custom', displayName: 'Narrator' } }), chatDetail()))).toEqual([null, null]);
+      expect(ids(resolveMessageAuthor(msg({ systemSender: 'lantern', systemKind: 'image' }), chatDetail()))).toEqual([null, null]);
+    });
+    it('a Carina answerer in the cast carries the character; elsewhere none', () => {
+      const carina = (answererId: string) =>
+        msg({ systemSender: 'carina', systemKind: 'carina-response', carinaMeta: { answererId, question: 'q' } });
+      expect(ids(resolveMessageAuthor(carina('char-cast'), chatDetail({ participants: [cast()] })))).toEqual(['char-cast', 'file-friday']);
+      expect(ids(resolveMessageAuthor(carina('char-elsewhere'), chatDetail()))).toEqual([null, null]);
+    });
+    it('the participant, the user character and the first character carry it', () => {
+      const chat = chatDetail({ participants: [cast()] });
+      expect(ids(resolveMessageAuthor(msg({ participantId: 'p-cast' }), chat))).toEqual(['char-cast', 'file-friday']);
+      expect(ids(resolveMessageAuthor(msg({ role: 'ASSISTANT', participantId: null }), chat))).toEqual(['char-cast', 'file-friday']);
+      const userChat = chatDetail({ participants: [participant({ id: 'p-u', controlledBy: 'user', character: { id: 'char-u', name: 'Ada', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null } })] });
+      expect(ids(resolveMessageAuthor(msg({ role: 'USER', participantId: null }), userChat))).toEqual(['char-u', null]);
+    });
+    it('the bare user (no user character) carries none', () => {
+      expect(ids(resolveMessageAuthor(msg({ role: 'USER', participantId: null }), chatDetail({ participants: [] })))).toEqual([null, null]);
+    });
+  });
 });
 
 /**

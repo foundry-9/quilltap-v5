@@ -1110,6 +1110,23 @@ _Versions: SPA 0.5.973._
 
 P4.D384 items 2–7. `core-contract.ts`'s flat `ChatStreamFrame` bag becomes v4's `kind`-discriminated union (contract C3); the old bag is renamed `LegacyStreamBag` and kept for Help chat and the Brahma console, and `ScopedEvent` stays the loose raw-wire type (ruling P-1). New `core/stream-frames.ts` is the client's one parser (`parseFrame` / `parseFrameValue`, `doneLeavesNoReply`, `assertNever`): it strips unknown keys, emits schema key order, and WARNs a refused frame once per kind. A new 179-row oracle corpus recorded from v4's real `parseFrame` at `624d0d25c` pins output bytes, warns and issue texts. The stream reducer is now v4's two exhaustive switches (seat frames, then the stream's own), with the floor frames handled in both, which fixes the seat-tagged `handAnswered` the old fold swallowed. `FinalDoneInfo` gains `outcome` and derives the four legacy flags in one place. The old fold survives as `reduceLegacyChatFrame` for the Brahma console (ruling P-2), with the pre-frames spec kept over it. The swipe reader and Document Mode's `toolResult` reader move to frames. The raised hand is now v4's `RaisedHandStatus` machine (raised, asked, yielded, declined, unasked) computed from `handAsked` / `handAnswered` frames, and the "carried on regardless" toast is deleted. The reply's `raised` is no longer read. An established-fact send dispatches `isEstablishedFact: true` (absent otherwise) and refuses an attachment-only fact. The composer-side types are fenced `LANE-REMOVE` stand-ins until P4.D385 lands them.
 
+#### 2026-11-08 — feat(spa): P4.D385 commit 4 — the Salon avatar opens full size and shows carried Inventory glyphs through one shared query (v4 27fb3ec77 at 624d0d25c)
+
+_Versions: SPA 0.5.976._
+
+P4.D385 items 16, 18–21 (v4 `27fb3ec77`). `qt-avatar` gains `zoomable` +
+`imageClick`: the picture alone becomes a "View <name>'s picture full size"
+button (never for an initial or with Salon Images hidden). All three message-row
+avatar sites open the Salon's image viewer through the existing `imageClick`,
+with the picture's file id — `MessageAuthor` now carries `characterId` and
+`avatarFileId`, set exactly at the arms where v4's `getMessageAvatar` sets
+`characterId`. Under each avatar, the character's equipped Inventory items show
+as glyphs (name + description tooltip), read through ONE TanStack entry per
+chat (`chatKeys.inventory`, under the `chats` topic's prefix) via the new
+`injectChatCarriedItems`. `qt-inventory-glyph` gains the `abbreviation`
+fallback (a port of `inventoryAbbreviation`, tier-1 corpus of 38 rows from v4's
+real module) and drops the emoji's `title`.
+
 #### 2026-11-08 — feat(spa): P4.D385 commit 3 — the composer family moves from native titles to Quilltap tooltips with v4 accessible names (v4 624d0d25c)
 
 _Versions: SPA 0.5.975._

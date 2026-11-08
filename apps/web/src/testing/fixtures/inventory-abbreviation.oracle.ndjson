@@ -1,0 +1,38 @@
+{"id":"v4 pocket watch","kind":"abbr","label":"Pocket Watch","out":"PW"}
+{"id":"v4 lantern","kind":"abbr","label":"lantern","out":"LA"}
+{"id":"empty","kind":"abbr","label":"","out":"?"}
+{"id":"whitespace only","kind":"abbr","label":"   \t\n ","out":"?"}
+{"id":"punctuation-only words","kind":"abbr","label":"— —","out":"?"}
+{"id":"ampersand word then word","kind":"abbr","label":"& Co","out":"CO"}
+{"id":"leading-punctuation word","kind":"abbr","label":"\"Lucky\" coin","out":"LC"}
+{"id":"three words","kind":"abbr","label":"Brass Pocket Watch","out":"BP"}
+{"id":"digits first","kind":"abbr","label":"3 coins","out":"3C"}
+{"id":"letter then digit","kind":"abbr","label":"x9","out":"X9"}
+{"id":"digits only","kind":"abbr","label":"1925","out":"19"}
+{"id":"mixed scripts latin diacritic","kind":"abbr","label":"Ñandú feather","out":"ÑF"}
+{"id":"cyrillic","kind":"abbr","label":"Карманные часы","out":"КЧ"}
+{"id":"cyrillic one word","kind":"abbr","label":"фонарь","out":"ФО"}
+{"id":"cjk one word","kind":"abbr","label":"懐中時計","out":"懐中"}
+{"id":"cjk two words","kind":"abbr","label":"懐中 時計","out":"懐時"}
+{"id":"astral fraktur","kind":"abbr","label":"𝔄𝔅 Box","out":"𝔄B"}
+{"id":"astral one word","kind":"abbr","label":"𝔄𝔅𝔆","out":"𝔄𝔅"}
+{"id":"precomposed e acute","kind":"abbr","label":"éclair","out":"ÉC"}
+{"id":"decomposed e acute","kind":"abbr","label":"éclair","out":"EC"}
+{"id":"leading combining mark word","kind":"abbr","label":"́x","out":"X"}
+{"id":"one-letter word","kind":"abbr","label":"a","out":"A"}
+{"id":"one-letter words","kind":"abbr","label":"a b","out":"AB"}
+{"id":"sharp s","kind":"abbr","label":"ßtraße","out":"SST"}
+{"id":"sharp s two words","kind":"abbr","label":"ß x","out":"SSX"}
+{"id":"turkish dotted capital","kind":"abbr","label":"İstanbul key","out":"İK"}
+{"id":"turkish dotless","kind":"abbr","label":"ıron","out":"IR"}
+{"id":"lowercase two words","kind":"abbr","label":"brass key","out":"BK"}
+{"id":"leading and trailing spaces","kind":"abbr","label":"  Brass key  ","out":"BK"}
+{"id":"nbsp separated","kind":"abbr","label":"Brass key","out":"BK"}
+{"id":"tab separated","kind":"abbr","label":"Brass\tkey","out":"BK"}
+{"id":"hyphenated","kind":"abbr","label":"Jack-in-the-box","out":"JA"}
+{"id":"apostrophe word","kind":"abbr","label":"Captain's log","out":"CL"}
+{"id":"underscore word","kind":"abbr","label":"snake_case thing","out":"ST"}
+{"id":"emoji word then word","kind":"abbr","label":"🎩 hat","out":"HA"}
+{"id":"emoji only","kind":"abbr","label":"🎩","out":"?"}
+{"id":"punctuation then letters in one word","kind":"abbr","label":"...abc","out":"AB"}
+{"id":"greek","kind":"abbr","label":"Ωmega pendant","out":"ΩP"}

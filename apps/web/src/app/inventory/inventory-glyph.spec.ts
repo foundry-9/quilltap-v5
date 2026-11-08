@@ -12,6 +12,7 @@ import { InventoryGlyph, InventoryPicture, inventorySvgDataUri } from './invento
   imports: [InventoryGlyph, InventoryPicture],
   template: `
     <div class="glyph"><qt-inventory-glyph [item]="item()" [size]="size()" /></div>
+    <div class="abbr"><qt-inventory-glyph [item]="item()" [size]="size()" fallback="abbreviation" /></div>
     <div class="picture"><qt-inventory-picture [item]="item()" [size]="pictureSize()" /></div>
   `,
 })
@@ -50,13 +51,13 @@ describe('InventoryGlyph', () => {
     expect(glyph().querySelector('[data-testid="inventory-picture"]')).toBeNull();
   });
 
-  it('an emoji, titled with the label; small size', () => {
+  it('an emoji, with NO title since v4 27fb3ec77; small size', () => {
     const { fixture, glyph } = render(RING);
     fixture.componentInstance.size.set('sm');
     fixture.detectChanges();
     const span = glyph().querySelector('[data-testid="inventory-glyph-emoji"]')!;
     expect(span.textContent).toBe('💍');
-    expect(span.getAttribute('title')).toBe('signet ring');
+    expect(span.hasAttribute('title')).toBe(false);
     expect(span.getAttribute('class')).toBe('w-5 h-5 text-sm flex-shrink-0 inline-flex items-center justify-center');
   });
 
@@ -86,5 +87,38 @@ describe('InventoryPicture', () => {
     const box = picture().querySelector('span') as HTMLElement;
     expect(box.style.width).toBe('48px');
     expect(box.querySelector('[data-testid="inventory-glyph-emoji"]')).not.toBeNull();
+  });
+});
+
+/** v4 `27fb3ec77`: the abbreviation fallback, after SVG and emoji, before the default icon. */
+describe('InventoryGlyph — the abbreviation fallback', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const abbr = (r: ReturnType<typeof render>) => r.el.querySelector('.abbr')!;
+
+  it('keeps SVG and emoji ahead of the abbreviation', () => {
+    expect(abbr(render(SWORD)).querySelector('[data-testid="inventory-glyph-svg"]')).not.toBeNull();
+    TestBed.resetTestingModule();
+    expect(abbr(render(RING)).querySelector('[data-testid="inventory-glyph-emoji"]')).not.toBeNull();
+  });
+
+  it('abbreviates title || name where the icon would have been, in both sizes', () => {
+    const r = render({ ...LAMP, title: 'Pocket Watch', svg: null, emoji: null });
+    const span = abbr(r).querySelector('[data-testid="inventory-glyph-abbreviation"]')!;
+    expect(span.textContent!.trim()).toBe('PW');
+    expect(span.getAttribute('aria-hidden')).toBe('true');
+    expect(span.getAttribute('class')).toBe(
+      'w-8 h-8 text-lg flex-shrink-0 inline-flex items-center justify-center rounded border qt-border-default qt-bg-muted qt-text-secondary font-semibold text-[10px] leading-none',
+    );
+    expect(abbr(r).querySelector('[data-testid="inventory-glyph-default"]')).toBeNull();
+    r.fixture.componentInstance.size.set('sm');
+    r.fixture.detectChanges();
+    expect(abbr(r).querySelector('[data-testid="inventory-glyph-abbreviation"]')!.getAttribute('class')!.startsWith('w-5 h-5 text-sm ')).toBe(true);
+    // The default fallback is still the icon.
+    expect(r.el.querySelector('.glyph [data-testid="inventory-glyph-default"]')).not.toBeNull();
+  });
+
+  it('falls back to the name with no title', () => {
+    const r = render({ ...LAMP, name: 'lantern', title: null, svg: null, emoji: null });
+    expect(abbr(r).querySelector('[data-testid="inventory-glyph-abbreviation"]')!.textContent!.trim()).toBe('LA');
   });
 });

@@ -12,6 +12,27 @@ export function inventorySvgDataUri(svg: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+/**
+ * `Pocket Watch` → `PW`, `lantern` → `LA`: up to two letters for an object with
+ * no SVG or emoji (v4 `inventory-glyph.tsx:23-32`, `27fb3ec77`, transcribed —
+ * the `u`-flag `\p{L}` / `\p{N}` classes; `match(/…/gu)` yields code points,
+ * so an astral letter counts once). Pinned by the tier-1 corpus
+ * `inventory-abbreviation.oracle.ndjson`.
+ */
+export function inventoryAbbreviation(label: string): string {
+  const words = label
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /[\p{L}\p{N}]/u.test(w));
+  if (words.length === 0) return '?';
+  const initial = (w: string) => w.match(/[\p{L}\p{N}]/u)?.[0] ?? '';
+  const letters =
+    words.length === 1
+      ? (words[0].match(/[\p{L}\p{N}]/gu) ?? []).slice(0, 2).join('')
+      : initial(words[0]) + initial(words[1]);
+  return letters.toUpperCase();
+}
+
 type GlyphItem = Pick<ResolvedInventoryItem, 'svg' | 'emoji' | 'kind' | 'name' | 'title'>;
 
 /**
@@ -19,7 +40,8 @@ type GlyphItem = Pick<ResolvedInventoryItem, 'svg' | 'emoji' | 'kind' | 'name' |
  * inventory-glyph.tsx` (`322a5488e`). What every row, chip and pane shows:
  * the object's SVG (drawn through an `<img>` data URI, so it is an icon and
  * nothing inside it can run), else its emoji, else a default glyph (`layers`
- * for a kit, `tag` otherwise). **Never the picture** — the picture is for
+ * for a kit, `tag` otherwise — or, where asked, an abbreviation of its name,
+ * `27fb3ec77`). The emoji span carries no `title` since `27fb3ec77`. **Never the picture** — the picture is for
  * choosing, shown only by {@link InventoryPicture}.
  */
 @Component({
@@ -40,8 +62,17 @@ type GlyphItem = Pick<ResolvedInventoryItem, 'svg' | 'emoji' | 'kind' | 'name' |
         [attr.class]="box() + ' flex-shrink-0 inline-flex items-center justify-center'"
         aria-hidden="true"
         data-testid="inventory-glyph-emoji"
-        [attr.title]="label()"
         >{{ item().emoji }}</span
+      >
+    } @else if (fallback() === 'abbreviation') {
+      <span
+        [attr.class]="
+          box() +
+          ' flex-shrink-0 inline-flex items-center justify-center rounded border qt-border-default qt-bg-muted qt-text-secondary font-semibold text-[10px] leading-none'
+        "
+        aria-hidden="true"
+        data-testid="inventory-glyph-abbreviation"
+        >{{ abbreviation() }}</span
       >
     } @else {
       <span
@@ -57,10 +88,16 @@ type GlyphItem = Pick<ResolvedInventoryItem, 'svg' | 'emoji' | 'kind' | 'name' |
 export class InventoryGlyph {
   readonly item = input.required<GlyphItem>();
   readonly size = input<'sm' | 'md'>('md');
+  /**
+   * What to draw with neither SVG nor emoji: the default icon, or the name's
+   * abbreviation (v4 `27fb3ec77` — the Salon's carried-items row asks for it).
+   */
+  readonly fallback = input<'icon' | 'abbreviation'>('icon');
 
   protected readonly dataUri = inventorySvgDataUri;
   protected readonly box = computed(() => (this.size() === 'sm' ? 'w-5 h-5 text-sm' : 'w-8 h-8 text-lg'));
   protected readonly label = computed(() => this.item().title || this.item().name);
+  protected readonly abbreviation = computed(() => inventoryAbbreviation(this.label()));
 }
 
 /**

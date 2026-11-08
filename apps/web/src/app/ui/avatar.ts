@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import { injectImagesHidden } from '../chat/hidden-image/images-hidden';
 
@@ -36,7 +36,20 @@ const SIZE_CONFIGS: Record<AvatarSize, SizeConfig> = {
     <div class="relative flex-shrink-0" [style.width.px]="config().w" [style.height.px]="config().h">
       <div [class]="frameClass()" style="width: 100%; height: 100%;">
         @if (avatarSrc(); as source) {
-          <img class="w-full h-full object-cover" [src]="source" [alt]="name()" />
+          @if (zoomable()) {
+            <!-- v4 27fb3ec77 (Avatar.tsx:175-184): the PICTURE alone opens full
+                 size; an initial (no picture, or images hidden) is no button. -->
+            <button
+              type="button"
+              class="block cursor-zoom-in w-full h-full"
+              [attr.aria-label]="zoomLabel()"
+              (click)="imageClick.emit(source)"
+            >
+              <img class="w-full h-full object-cover" [src]="source" [alt]="name()" />
+            </button>
+          } @else {
+            <img class="w-full h-full object-cover" [src]="source" [alt]="name()" />
+          }
         } @else {
           <span [class]="'font-bold qt-text-secondary ' + config().text">{{ initial() }}</span>
         }
@@ -50,11 +63,21 @@ export class Avatar {
   readonly size = input<AvatarSize>('md');
   readonly circular = input(false);
   readonly active = input(false);
+  /**
+   * The picture opens full size (v4 `27fb3ec77`'s `onImageClick`, "ignored when
+   * there is no picture to show"). Angular cannot ask whether an output is
+   * bound, so the affordance is this explicit input (ruling PL-6).
+   */
+  readonly zoomable = input(false);
+  /** The picture's src, clicked (v4 `onImageClick(src)`). */
+  readonly imageClick = output<string>();
 
   private readonly imagesHidden = injectImagesHidden();
 
   /** v4 `avatarSrc = imagesHidden ? null : getAvatarSrc(src)`. */
   protected readonly avatarSrc = computed(() => (this.imagesHidden() ? null : this.src()));
+  /** v4's `View ${name}'s picture full size`. */
+  protected readonly zoomLabel = computed(() => `View ${this.name()}'s picture full size`);
   protected readonly config = computed(() => SIZE_CONFIGS[this.size()]);
   protected readonly initial = computed(() => (this.name()[0] ?? '?').toUpperCase());
   protected readonly frameClass = computed(() => {

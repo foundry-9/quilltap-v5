@@ -10,7 +10,11 @@ import {
 } from '@angular/core';
 
 import type { ChatDetail, ChatSettingsDto, MessageAttachment, MessageDto } from '../core/core-contract';
+import { NgTemplateOutlet } from '@angular/common';
 import { Avatar } from '../ui/avatar';
+import { injectChatCarriedItems } from '../inventory/chat-inventory-data';
+import { inventoryDisplayName } from '../inventory/inventory-display';
+import { InventoryGlyph } from '../inventory/inventory-glyph';
 import { Icon } from '../ui/icon';
 import { Tooltip } from '../ui/tooltip';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
@@ -66,6 +70,8 @@ export interface ImageClickEvent {
   imports: [
     Avatar,
     Icon,
+    InventoryGlyph,
+    NgTemplateOutlet,
     Tooltip,
     ConfirmationBadge,
     CourierBubble,
@@ -99,7 +105,14 @@ export interface ImageClickEvent {
           <!-- v4 MessageRow.tsx:232-236 — the courier row's assistant avatar
                takes dangerous={isDangerousChat}. -->
           <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
-            <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+            <qt-avatar
+              [name]="author().name"
+              [src]="author().avatarUrl"
+              size="chat"
+              [zoomable]="true"
+              (imageClick)="onAvatarClick($event)"
+            />
+            <ng-container [ngTemplateOutlet]="carriedGlyphs" />
             <!-- v4 MessageDesktopAvatar.tsx:35-39 — RouteTrailBadge replaces the
                  plain badge when a trail is present; a one-row trail renders
                  pixel-identical to the plain badge (P4.D177). -->
@@ -127,7 +140,14 @@ export interface ImageClickEvent {
         <!-- v4 MessageRow.tsx:278-282 — the regular row's assistant avatar takes
              dangerous={isDangerousChat}. -->
         <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
-          <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+          <qt-avatar
+            [name]="author().name"
+            [src]="author().avatarUrl"
+            size="chat"
+            [zoomable]="true"
+            (imageClick)="onAvatarClick($event)"
+          />
+          <ng-container [ngTemplateOutlet]="carriedGlyphs" />
           <!-- v4 MessageDesktopAvatar.tsx:35-39 — RouteTrailBadge replaces the
                plain badge when a trail is present; a one-row trail renders
                pixel-identical to the plain badge (P4.D177). -->
@@ -536,11 +556,50 @@ export interface ImageClickEvent {
 
       @if (showAvatar() && author().isUser) {
         <div class="qt-chat-desktop-avatar">
-          <qt-avatar [name]="author().name" [src]="author().avatarUrl" size="chat" />
+          <qt-avatar
+            [name]="author().name"
+            [src]="author().avatarUrl"
+            size="chat"
+            [zoomable]="true"
+            (imageClick)="onAvatarClick($event)"
+          />
+          <ng-container [ngTemplateOutlet]="carriedGlyphs" />
         </div>
       }
       }
     </div>
+
+    <!-- What the avatar's character carries in this chat (v4 27fb3ec77,
+         MessageDesktopAvatar's CarriedGlyphs): under the picture, before the
+         badge (v5's avatar column shows no name/title — ruling PL-7). Each
+         glyph names itself and tooltips its name + description. -->
+    <ng-template #carriedGlyphs>
+      @if (carried().length > 0) {
+        <ul
+          class="flex flex-wrap justify-center gap-1 w-32 mt-1"
+          aria-label="Carrying"
+          data-testid="salon-avatar-carried"
+        >
+          @for (item of carried(); track item.id) {
+            <li>
+              <ng-template #carriedTip>
+                <span class="block">
+                  <span class="block font-semibold">{{ carriedName(item) }}</span>
+                  @if (item.description) {
+                    <span class="block mt-1 whitespace-pre-line">{{ item.description }}</span>
+                  }
+                </span>
+              </ng-template>
+              <qt-tooltip placement="bottom" bubbleClassName="max-w-xs" [contentTemplate]="carriedTip">
+                <span tabindex="0" role="img" [attr.aria-label]="carriedName(item)" class="inline-flex">
+                  <qt-inventory-glyph [item]="item" size="sm" fallback="abbreviation" />
+                </span>
+              </qt-tooltip>
+            </li>
+          }
+        </ul>
+      }
+    </ng-template>
   `,
 })
 // v4's `MessageRow` is wrapped in `React.memo` with a hand-written comparator
@@ -660,6 +719,24 @@ export class MessageRow {
   }
 
   protected readonly author = computed(() => resolveMessageAuthor(this.message(), this.chat()));
+
+  // === P4.D385 (27fb3ec77) ===
+  /**
+   * What the author's character carries in this chat — ONE shared query per
+   * chat (`chatKeys.inventory`), so N rows cost one `chatInventoryGet`.
+   */
+  protected readonly carried = injectChatCarriedItems(
+    () => this.chat().id,
+    () => this.author().characterId,
+  );
+  protected readonly carriedName = inventoryDisplayName;
+
+  /** The avatar's picture opens the Salon's image viewer (v4 `onImageClick`). */
+  protected onAvatarClick(src: string): void {
+    const author = this.author();
+    this.imageClick.emit({ src, filename: author.name, fileId: author.avatarFileId ?? undefined });
+  }
+  // === end P4.D385 ===
 
   /** A pending manual/clipboard turn renders the Courier bubble (v4). */
   protected readonly isCourier = computed(() => this.message().pendingExternalPrompt != null);

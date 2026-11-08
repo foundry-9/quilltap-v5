@@ -773,3 +773,20 @@ Drives `app/editor/formatting-toolbar.oracle.spec.ts`: v4's
   (the SLICE idiom, ruling PL-11).
 - **Recorder:** `apps/web/oracle/markdown-button-name.recorder.ts`. Expect 31
   lines; a second run reproduces the file byte for byte (`cmp` — measured).
+
+## `inventory-abbreviation.oracle.ndjson`
+
+**38 rows** — one `abbr` per label. Drives
+`app/inventory/inventory-glyph.oracle.spec.ts`: v4's `inventoryAbbreviation`
+(`components/inventory/inventory-glyph.tsx:23-32`, `27fb3ec77`), the
+two-letter glyph an Inventory object with neither SVG nor emoji shows under a
+Salon avatar. The corpus crosses empty / whitespace / punctuation-only words,
+leading punctuation, three words, digits, Latin-with-diacritics / Cyrillic /
+CJK / astral Fraktur, precomposed vs decomposed accents, one-letter words, `ß`
+(→ `SS`), Turkish İ / ı, NBSP and tab separators, an emoji word.
+
+- **Provenance:** recorded 2026-11-08 by P4.D385 at the round pin `624d0d25c`
+  (`4.13.0-dev.8`), Node 24.13.1, by IMPORTING v4's real `.tsx` module under
+  tsx (the import idiom — no slice needed).
+- **Recorder:** `apps/web/oracle/inventory-abbreviation.recorder.ts`. Expect 38
+  lines; a second run reproduces the file byte for byte (`cmp` — measured).

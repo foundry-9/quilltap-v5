@@ -53,6 +53,18 @@ export const chatKeys = {
    * publishes `chats` explicitly. See `realtime-topic-map.ts`.
    */
   informs: (chatId: string) => ['chat', chatId, 'informs'] as const,
+  // === P4.D385 (27fb3ec77) ===
+  /**
+   * What the chat's cast carries (v4 `queryKeys.inventory.equipped`) — the ONE
+   * entry every Salon avatar's carried-items row selects from
+   * (`injectChatCarriedItems`), so N avatars cost one `chatInventoryGet`.
+   *
+   * Like {@link informs} it sits under {@link detail}'s prefix, so the `chats`
+   * realtime topic — which the server publishes on every equip / unequip
+   * (`inventory/equip.rs`) — refetches it with no row of its own.
+   */
+  inventory: (chatId: string) => ['chat', chatId, 'inventory'] as const,
+  // === end P4.D385 ===
   // === P4.D344: Storyteller mode ===
   /**
    * The chat's storyteller round — open, running or the last one closed (v4

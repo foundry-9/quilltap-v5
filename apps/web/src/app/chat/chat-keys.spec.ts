@@ -27,6 +27,7 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
       ['chat', 'chat-1', 'cost', 3],
       chatKeys.gallery('chat-1'),
       chatKeys.informs('chat-1'),
+      chatKeys.inventory('chat-1'),
       chatKeys.scenarioSource('chat-1'),
       chatKeys.absentMentions('chat-1'),
       chatKeys.wardrobeHistories('chat-1'),
@@ -57,6 +58,14 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
 
     it('is a per-chat key, not reachable from the bare collection prefix', () => {
       expect(chatKeys.gallery('chat-1')[0]).not.toBe(chatKeys.all[0]);
+    });
+  });
+
+  describe('inventory (P4.D385 — v4 `queryKeys.inventory.equipped`, `27fb3ec77`)', () => {
+    it("sits under the 'chats' topic's prefix, so an equip / unequip refetches every avatar's glyphs", () => {
+      expect(chatKeys.inventory('chat-1')).toEqual(['chat', 'chat-1', 'inventory']);
+      const prefix = chatKeys.detail('chat-1');
+      expect(chatKeys.inventory('chat-1').slice(0, prefix.length)).toEqual([...prefix]);
     });
   });
 

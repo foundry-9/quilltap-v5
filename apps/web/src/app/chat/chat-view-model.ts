@@ -83,7 +83,22 @@ export interface MessageAuthor {
   title: string | null;
   avatarUrl: string | null;
   isUser: boolean;
+  // === P4.D385 (27fb3ec77) ===
+  /**
+   * The CHARACTER behind the bubble, for what they carry in the chat — set
+   * exactly where v4's `getMessageAvatar` sets `characterId` (a cast
+   * announcer, a Carina answerer in the cast, the participant, the user's
+   * character, the first character); null for Staff, custom names, off-scene
+   * cards and the bare user (v4 sets none there).
+   */
+  characterId: string | null;
+  /** The picture's file id (v4 `defaultImage?.id`), for the image viewer. */
+  avatarFileId: string | null;
+  // === end P4.D385 ===
 }
+
+/** The two P4.D385 fields an author with no character carries. */
+const NO_CHARACTER = { characterId: null, avatarFileId: null } as const;
 
 /**
  * Resolve a message's author name / avatar (v4 `getMessageAvatar`, the branches
@@ -111,6 +126,8 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
         title: participant.character.title,
         avatarUrl: normalizeAvatarSrc(participant.character.avatarUrl),
         isUser: false,
+        characterId: participant.character.id,
+        avatarFileId: participant.character.defaultImage?.id ?? null,
       };
     }
     // Not in the cast — the server ships these alongside the messages precisely
@@ -122,11 +139,12 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
         title: offScene.title,
         avatarUrl: normalizeAvatarSrc(offScene.avatarUrl),
         isUser: false,
+        ...NO_CHARACTER,
       };
     }
     // The character was deleted; keep the bubble legible rather than silently
     // borrowing someone else's identity (v4 :1086).
-    return { name: 'Off-scene character', title: null, avatarUrl: null, isUser: false };
+    return { name: 'Off-scene character', title: null, avatarUrl: null, isUser: false, ...NO_CHARACTER };
   }
 
   // Announcement with a custom label.
@@ -136,6 +154,7 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
       title: null,
       avatarUrl: null,
       isUser: false,
+      ...NO_CHARACTER,
     };
   }
 
@@ -157,6 +176,7 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
         title: null,
         avatarUrl: '/images/avatars/brahma-avatar.webp',
         isUser: false,
+        ...NO_CHARACTER,
       };
     }
     if (answererId) {
@@ -167,6 +187,8 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
           title: participant.character.title,
           avatarUrl: normalizeAvatarSrc(participant.character.avatarUrl),
           isUser: false,
+          characterId: participant.character.id,
+          avatarFileId: participant.character.defaultImage?.id ?? null,
         };
       }
       const offScene = chat.offSceneCharacters?.find((c) => c.id === answererId);
@@ -176,15 +198,16 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
           title: offScene.title,
           avatarUrl: normalizeAvatarSrc(offScene.avatarUrl),
           isUser: false,
+          ...NO_CHARACTER,
         };
       }
     }
-    return { name: 'Carina', title: null, avatarUrl: null, isUser: false };
+    return { name: 'Carina', title: null, avatarUrl: null, isUser: false, ...NO_CHARACTER };
   }
   if (message.systemSender) {
     const staff = STAFF_AVATARS[message.systemSender];
     if (staff) {
-      return { ...staff, isUser: false };
+      return { ...staff, isUser: false, ...NO_CHARACTER };
     }
   }
 
@@ -197,6 +220,8 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
         title: p.character.title,
         avatarUrl: normalizeAvatarSrc(p.character.avatarUrl),
         isUser: p.controlledBy === 'user',
+        characterId: p.character.id,
+        avatarFileId: p.character.defaultImage?.id ?? null,
       };
     }
   }
@@ -212,6 +237,8 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
         title: userChar.character.title,
         avatarUrl: normalizeAvatarSrc(userChar.character.avatarUrl),
         isUser: true,
+        characterId: userChar.character.id,
+        avatarFileId: userChar.character.defaultImage?.id ?? null,
       };
     }
     return {
@@ -219,6 +246,7 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
       title: null,
       avatarUrl: normalizeAvatarSrc(chat.user.image),
       isUser: true,
+      ...NO_CHARACTER,
     };
   }
 
@@ -228,6 +256,8 @@ export function resolveMessageAuthor(message: MessageDto, chat: ChatDetail): Mes
     title: firstChar?.character?.title ?? null,
     avatarUrl: normalizeAvatarSrc(firstChar?.character?.avatarUrl),
     isUser: false,
+    characterId: firstChar?.character?.id ?? null,
+    avatarFileId: firstChar?.character?.defaultImage?.id ?? null,
   };
 }
 

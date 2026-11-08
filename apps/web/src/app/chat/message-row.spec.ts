@@ -2,7 +2,10 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+
 import { CoreClient } from '../core/core-client';
+import { coreStreamStub } from '../core/core-client.testing';
 import type {
   AbsentMention,
   ChatDetail,
@@ -1559,5 +1562,179 @@ describe('MessageRow — established facts (v4 db6190b44)', () => {
     expect(el.querySelector('.qt-chat-established-fact-row')).toBeNull();
     expect(el.querySelector('.qt-chat-established-fact-band')).toBeNull();
     expect(el.querySelector('.qt-chat-desktop-avatar')).not.toBeNull();
+  });
+});
+
+/**
+ * v4 `27fb3ec77` on the Salon avatar (P4.D385 items 20–21): the picture opens
+ * the image viewer through the row's existing `imageClick`, and the author's
+ * character's equipped Inventory items show as glyphs under it — ONE
+ * `chatInventoryGet` per chat however many rows render (the shared
+ * `chatKeys.inventory` entry), refetched by an invalidate of the chat's prefix.
+ */
+describe('MessageRow — the avatar (v4 27fb3ec77)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const pic = { id: 'file-lorian', filepath: 'lorian.webp', url: null };
+  const lorian = participant({
+    id: 'p1',
+    character: { id: 'char1', name: 'Lorian', title: null, avatarUrl: '/files/lorian.webp', defaultImageId: 'file-lorian', defaultImage: pic },
+  });
+  const bertha = participant({
+    id: 'p2',
+    controlledBy: 'user',
+    character: { id: 'char2', name: 'Bertha', title: null, avatarUrl: '/files/bertha.webp', defaultImageId: null, defaultImage: null },
+  });
+  const chat = (): ChatDetail => ({ ...chatDetail(), participants: [lorian, bertha] });
+
+  const item = (id: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name: id,
+    title: null,
+    description: null,
+    svg: null,
+    emoji: null,
+    kind: 'item',
+    ...over,
+  });
+
+  interface Rig {
+    calls: () => number;
+    client: QueryClient;
+    fixtures: ComponentFixture<MessageRow>[];
+  }
+
+  async function rig(rows: MessageDto[], inventory: Record<string, unknown>): Promise<Rig> {
+    let calls = 0;
+    const dispatchData = vi.fn(async (req: Record<string, unknown>) => {
+      if (req['type'] === 'chatInventoryGet') {
+        calls += 1;
+        return { inventory, projectId: null };
+      }
+      return {};
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [
+        provideTanStackQuery(client),
+        { provide: CoreClient, useValue: { ...coreStreamStub(), dispatch: vi.fn(), dispatchData } },
+      ],
+    });
+    const fixtures = rows.map((m) => {
+      const f = TestBed.createComponent(MessageRow);
+      f.componentRef.setInput('message', m);
+      f.componentRef.setInput('chat', chat());
+      f.detectChanges();
+      return f;
+    });
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixtures.forEach((f) => f.detectChanges());
+    }
+    return { calls: () => calls, client, fixtures };
+  }
+
+  const glyphs = (f: ComponentFixture<MessageRow>) =>
+    [...(f.nativeElement as HTMLElement).querySelectorAll('[data-testid="salon-avatar-carried"] li')];
+
+  it('opens the picture in the viewer from the assistant and the user avatars', () => {
+    for (const [m, expected] of [
+      [message({ id: 'a', participantId: 'p1' }), { src: '/files/lorian.webp', filename: 'Lorian', fileId: 'file-lorian' }],
+      [message({ id: 'u', role: 'USER', participantId: 'p2' }), { src: '/files/bertha.webp', filename: 'Bertha', fileId: undefined }],
+    ] as const) {
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({ imports: [MessageRow], providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }] });
+      const f = TestBed.createComponent(MessageRow);
+      f.componentRef.setInput('message', m);
+      f.componentRef.setInput('chat', chat());
+      f.detectChanges();
+      const events: ImageClickEvent[] = [];
+      f.componentInstance.imageClick.subscribe((e) => events.push(e));
+      const zoom = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.qt-chat-desktop-avatar button')!;
+      expect(zoom.getAttribute('aria-label')).toBe(`View ${expected.filename}'s picture full size`);
+      zoom.click();
+      expect(events).toEqual([expected]);
+    }
+  });
+
+  it('opens the courier row’s avatar too', () => {
+    TestBed.configureTestingModule({ imports: [MessageRow], providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }] });
+    const f = TestBed.createComponent(MessageRow);
+    f.componentRef.setInput('message', message({ id: 'c', participantId: 'p1', pendingExternalPrompt: 'Ahoy' }));
+    f.componentRef.setInput('chat', chat());
+    f.detectChanges();
+    const events: ImageClickEvent[] = [];
+    f.componentInstance.imageClick.subscribe((e) => events.push(e));
+    const zoom = (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.qt-chat-desktop-avatar button');
+    expect(zoom).not.toBeNull();
+    zoom!.click();
+    expect(events[0]!.fileId).toBe('file-lorian');
+  });
+
+  it('shows what each character carries, at ONE chatInventoryGet for three rows of two characters', async () => {
+    const r = await rig(
+      [
+        message({ id: 'a1', participantId: 'p1' }),
+        message({ id: 'u1', role: 'USER', participantId: 'p2' }),
+        message({ id: 'a2', participantId: 'p1' }),
+      ],
+      {
+        char1: { equipped: [item('pocket', { title: 'Pocket Watch', description: 'Ticks.\nLoudly.' }), item('ring', { emoji: '💍' })], kits: {} },
+        char2: { equipped: [], kits: {} },
+      },
+    );
+    expect(r.calls()).toBe(1);
+    const [a1, u1, a2] = r.fixtures;
+    expect(glyphs(a1!)).toHaveLength(2);
+    expect(glyphs(a2!)).toHaveLength(2);
+    expect(glyphs(u1!)).toHaveLength(0);
+    expect((u1!.nativeElement as HTMLElement).querySelector('[data-testid="salon-avatar-carried"]')).toBeNull();
+    const list = (a1!.nativeElement as HTMLElement).querySelector('[data-testid="salon-avatar-carried"]')!;
+    expect(list.getAttribute('aria-label')).toBe('Carrying');
+    // Under the picture, before the badge.
+    expect(list.previousElementSibling!.tagName.toLowerCase()).toBe('qt-avatar');
+    const first = glyphs(a1!)[0]!.querySelector('[role="img"]')!;
+    expect(first.getAttribute('aria-label')).toBe('Pocket Watch (pocket)');
+    expect(first.getAttribute('tabindex')).toBe('0');
+    expect(first.querySelector('[data-testid="inventory-glyph-abbreviation"]')!.textContent!.trim()).toBe('PW');
+    expect(glyphs(a1!)[1]!.querySelector('[data-testid="inventory-glyph-emoji"]')).not.toBeNull();
+    // The tooltip: the bold name, then the description.
+    const anchor = glyphs(a1!)[0]!.querySelector('qt-tooltip')!;
+    anchor.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+    a1!.detectChanges();
+    const bubble = [...document.body.querySelectorAll('.qt-tooltip')].at(-1) as HTMLElement;
+    expect(bubble.querySelector('.font-semibold')!.textContent).toBe('Pocket Watch (pocket)');
+    expect(bubble.querySelector('.whitespace-pre-line')!.textContent).toBe('Ticks.\nLoudly.');
+    anchor.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+  });
+
+  it("refetches on an invalidate of the chat's prefix (the 'chats' topic)", async () => {
+    const r = await rig([message({ id: 'a1', participantId: 'p1' })], { char1: { equipped: [item('pocket')], kits: {} } });
+    expect(r.calls()).toBe(1);
+    await r.client.invalidateQueries({ queryKey: ['chat', 'chat-1'] });
+    expect(r.calls()).toBe(2);
+    expect(r.client.getQueryData(['chat', 'chat-1', 'inventory'])).toEqual({
+      inventory: { char1: { equipped: [item('pocket')], kits: {} } },
+      projectId: null,
+    });
+  });
+
+  it('asks nothing for a row with no character (the bare user)', async () => {
+    let calls = 0;
+    const dispatchData = vi.fn(async () => ((calls += 1), {}));
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [
+        provideTanStackQuery(new QueryClient()),
+        { provide: CoreClient, useValue: { ...coreStreamStub(), dispatch: vi.fn(), dispatchData } },
+      ],
+    });
+    const f = TestBed.createComponent(MessageRow);
+    f.componentRef.setInput('message', message({ id: 'u', role: 'USER', participantId: null }));
+    f.componentRef.setInput('chat', { ...chatDetail(), participants: [] });
+    f.detectChanges();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toBe(0);
   });
 });
