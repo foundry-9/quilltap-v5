@@ -8,6 +8,7 @@ import { ErrorAlert } from '../../../ui/error-alert';
 import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { getModelClass, normalizeProfileName } from './model-classes';
+import { providerTakesSamplingParameters } from './profile-form';
 import { ProfileModal } from './profile-modal';
 
 interface Badge {
@@ -127,9 +128,13 @@ interface Badge {
                           <p class="qt-text-small">Base URL: {{ profile.baseUrl }}</p>
                         }
                         <div class="qt-text-xs mt-2">
-                          Temperature: {{ paramOf(profile, 'temperature', 0.7) }} • Max Tokens:
-                          {{ paramOf(profile, 'max_tokens', 1000) }} • Top P:
-                          {{ paramOf(profile, 'top_p', 1) }}
+                          @if (providerTakesSamplingParameters(profile.provider)) {
+                            Temperature: {{ paramOf(profile, 'temperature', 0.7) }} • Max Tokens:
+                            {{ paramOf(profile, 'max_tokens', 1000) }} • Top P:
+                            {{ paramOf(profile, 'top_p', 1) }}
+                          } @else {
+                            Max Tokens: {{ paramOf(profile, 'max_tokens', 1000) }}
+                          }
                         </div>
                         @if (profile.tags && profile.tags.length > 0) {
                           <div class="mt-3 flex flex-wrap gap-2">
@@ -262,6 +267,14 @@ export class ConnectionProfilesCard {
       this.providers().find((p) => p.name === providerName)?.configRequirements?.requiresApiKey ??
       true
     );
+  }
+
+  /**
+   * Whether a provider takes temperature / top_p; unknown providers show them
+   * (v4 `ProfileList.tsx:69-72`, `544c7ab1e`).
+   */
+  protected providerTakesSamplingParameters(providerName: string): boolean {
+    return providerTakesSamplingParameters(this.providers().find((p) => p.name === providerName));
   }
 
   protected missingApiKey(profile: ConnectionProfileDto): boolean {

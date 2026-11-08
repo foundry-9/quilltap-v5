@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — feat(spa): the profile editor hides sampling a provider declines, and edits the per-profile image cap (v4 544c7ab1e, d439f6dc9)
+
+_Versions: SPA 0.5.974._
+
+P4.D388 unit (ii), contract C9. `profile-form.ts` gains `providerTakesSamplingParameters` (the one read of `capabilities.samplingParameters`, unknown providers taking them) and `outboundSamplingParameters`, which sends `max_tokens` and then `temperature` / `top_p` only where the provider takes them. That is v4's new key order for every provider, used by both the save body and the test message. The modal hides Temperature and Top P for such a provider, shows v4's note and a one-column grid, and keeps the hidden values in the form. The Connection Profiles card shows "Max Tokens" alone there. New `max-images-per-request.ts` ports v4's two constants and its `resolve` / `parse` twins verbatim. The form loads the cap as a string, the save body carries the parsed value (an invalid entry saves 4) right after `supportsImageUpload`, the Courier body carries none, and the modal shows v4's "Most images per request" field under the vision checkbox. New tier-1 corpus `spa-smalls.oracle.ndjson` (85 rows) is recorded by `tooling/record-spa-smalls.mts` from v4's real `kind.ts` and `connection-profile-utils.ts` at the pin and replayed by two corpus specs. New `connection-profiles-card.spec.ts`.
+
 #### 2026-11-08 — feat(spa): the "Kind of character" card on both Details tabs, with the SPA kind module and its census (v4 b09ca46bb)
 
 _Versions: SPA 0.5.973._

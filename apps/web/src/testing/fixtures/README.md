@@ -790,3 +790,37 @@ CJK / astral Fraktur, precomposed vs decomposed accents, one-letter words, `ß`
   tsx (the import idiom — no slice needed).
 - **Recorder:** `apps/web/oracle/inventory-abbreviation.recorder.ts`. Expect 38
   lines; a second run reproduces the file byte for byte (`cmp` — measured).
+
+## P4.D388 — `spa-smalls.oracle.ndjson` (the character kind + the per-profile image cap)
+
+Recorded 2026-11-08 at the pin `624d0d25c` (a detached worktree,
+`/tmp/qt-v4-pin-p4.d388-624d0d25c`, root `npm ci --offline --ignore-scripts`;
+zod 4.6.7; no `npm rebuild better-sqlite3`, since the recorder opens no
+database) through v4's REAL `lib/characters/kind.ts` (`b09ca46bb`) and
+`lib/llm/connection-profile-utils.ts` (`d439f6dc9`). The measured import graph
+(`require.cache` after loading both) is fourteen v4 `lib/` modules
+(`kind.ts`, `connection-profile-utils.ts`, `schemas/profile.types.ts`,
+`schemas/common.types.ts`, `themes/types.ts`, `logger.ts`, the five
+`logging/transports/*`, `env.ts`, `paths.ts`, `llm/attachment-support.ts`)
+plus 95 zod files. No plugin SDK loads, so there is no plugin floor install.
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `spa-smalls.oracle.ndjson` | 85: 13 `characterKindOrDefault`, 16 `resolveCharacterKind`, 16 `isAssistantCharacter`, 15 `resolveMaxImagesPerRequest`, 25 `parseMaxImagesPerRequest` | `2aae63da1a24b407f2c8c3beac6c719a829915d0b2637e9d509b1e000563bd42` | `lib/characters/kind.ts` + `lib/llm/connection-profile-utils.ts` (pin `624d0d25c`) | `app/core/character-kind.corpus.spec.ts` (the kind rows) + `app/screens/settings/providers/max-images-per-request.corpus.spec.ts` (the cap rows) |
+
+- **Row shape:** `{kind, args, expected}`. `args` is the argument list as JSON
+  (`"__undefined__"`, `"__nan__"`, `"__inf__"` at any depth; an object that
+  omits a key stands for an absent key); `expected` is the `JSON.stringify`'d
+  result.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  cd <pin> && QT_V4_ROOT=$PWD PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx <V5>/apps/web/tooling/record-spa-smalls.mts \
+    > <V5>/apps/web/src/testing/fixtures/spa-smalls.oracle.ndjson
+  ```
+- **A coercion worth knowing:** `'0b11'` parses as 3 (`Number()` reads binary
+  literals as well as hex), so a typed `0b11` saves a cap of 3.
+- **Cross-check (free):** P4.D362's Rust twins of the same two cap functions
+  record their own oracle; the unifier may diff the `parseMaxImagesPerRequest`
+  and `resolveMaxImagesPerRequest` rows.

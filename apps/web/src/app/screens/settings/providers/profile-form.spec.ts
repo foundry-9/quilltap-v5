@@ -7,6 +7,8 @@ import {
   loadProfileIntoForm,
   outboundApiKeyId,
   outboundBaseUrl,
+  outboundSamplingParameters,
+  providerTakesSamplingParameters,
   type ProfileFormData,
 } from './profile-form';
 
@@ -538,5 +540,109 @@ describe('profile form — the fallback pair', () => {
     );
     expect(body['fallbackProfileId']).toBeNull();
     expect(body['allowTierFallback']).toBe(false);
+  });
+});
+
+/**
+ * P4.D388 (C9): v4 `544c7ab1e` + `d439f6dc9`'s `useProfileForm` hunks at the pin
+ * `624d0d25c` — the sampling keys a provider declines, the outbound key order,
+ * and the per-profile image cap.
+ */
+describe('profile form — sampling parameters (v4 544c7ab1e)', () => {
+  const NO_SAMPLING: ProviderInfo = {
+    ...providerInfo('ANTHROPIC', false),
+    capabilities: {
+      chat: true,
+      imageGeneration: false,
+      embeddings: false,
+      webSearch: false,
+      samplingParameters: false,
+    } as ProviderInfo['capabilities'],
+  };
+  const WITH = [...PROVIDERS, NO_SAMPLING];
+
+  it('providerTakesSamplingParameters: false only where the capability says so (v4 `?? true`)', () => {
+    expect(providerTakesSamplingParameters(NO_SAMPLING)).toBe(false);
+    expect(providerTakesSamplingParameters(PROVIDERS[0])).toBe(true);
+    expect(providerTakesSamplingParameters(undefined)).toBe(true);
+    expect(providerTakesSamplingParameters({ ...PROVIDERS[0], capabilities: undefined })).toBe(true);
+  });
+
+  it('a provider that declines sampling sends max_tokens only (v4 useProfileForm.ts:53-61)', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'ANTHROPIC', temperature: 0.4, maxTokens: 2048, topP: 0.9 }),
+      WITH,
+    );
+    expect(body['parameters']).toEqual({ max_tokens: 2048 });
+  });
+
+  it('a provider without the key sends all three, in v4\'s NEW order', () => {
+    const body = buildProfileRequestBody(form({ temperature: 0.4, maxTokens: 2048, topP: 0.9 }), WITH);
+    const params = body['parameters'] as Record<string, unknown>;
+    expect(params).toEqual({ max_tokens: 2048, temperature: 0.4, top_p: 0.9 });
+    expect(Object.keys(params)).toEqual(['max_tokens', 'temperature', 'top_p']);
+  });
+
+  it('a bag key still spreads over the sampling keys', () => {
+    const body = buildProfileRequestBody(
+      form({ provider: 'ANTHROPIC', maxTokens: 10, parameters: { enableZDR: true, max_tokens: 99 } }),
+      WITH,
+    );
+    expect(body['parameters']).toEqual({ max_tokens: 99, enableZDR: true });
+  });
+
+  it('outboundSamplingParameters is the same helper the test message reads', () => {
+    expect(outboundSamplingParameters(form({ provider: 'ANTHROPIC', maxTokens: 7 }), WITH)).toEqual({
+      max_tokens: 7,
+    });
+    expect(
+      Object.keys(outboundSamplingParameters(form({ provider: 'OPENAI' }), WITH)),
+    ).toEqual(['max_tokens', 'temperature', 'top_p']);
+  });
+});
+
+describe('profile form — most images per request (v4 d439f6dc9)', () => {
+  it('a new form starts at 4 (v4 types.ts `String(DEFAULT_MAX_IMAGES_PER_REQUEST)`)', () => {
+    expect(initialFormState.maxImagesPerRequest).toBe('4');
+  });
+
+  it.each([
+    [9, '9'],
+    [1, '1'],
+    [50, '50'],
+    [null, '4'],
+    [0, '4'],
+    [51, '4'],
+    [2.5, '4'],
+    ['7', '4'],
+    [undefined, '4'],
+  ])('a stored cap of %p loads as %p (resolveMaxImagesPerRequest)', (stored, shown) => {
+    const loaded = loadProfileIntoForm(
+      profile({ maxImagesPerRequest: stored as unknown as number | null }),
+    );
+    expect(loaded.maxImagesPerRequest).toBe(shown);
+  });
+
+  it.each([
+    ['7', 7],
+    [' 12 ', 12],
+    ['abc', 4],
+    ['0', 4],
+    ['51', 4],
+    ['', 4],
+    ['2.5', 4],
+  ])('a typed %p saves as %p — an invalid entry SILENTLY saves 4 (v4 :242-243)', (typed, saved) => {
+    const body = buildProfileRequestBody(form({ maxImagesPerRequest: typed }), PROVIDERS);
+    expect(body['maxImagesPerRequest']).toBe(saved);
+  });
+
+  it('the key sits right after supportsImageUpload, sent whether or not vision is ticked', () => {
+    const keys = Object.keys(buildProfileRequestBody(form({ supportsImageUpload: false }), PROVIDERS));
+    expect(keys[keys.indexOf('supportsImageUpload') + 1]).toBe('maxImagesPerRequest');
+  });
+
+  it('the Courier body carries no maxImagesPerRequest', () => {
+    const body = buildProfileRequestBody(form({ transport: 'courier', maxImagesPerRequest: '9' }), PROVIDERS);
+    expect('maxImagesPerRequest' in body).toBe(false);
   });
 });

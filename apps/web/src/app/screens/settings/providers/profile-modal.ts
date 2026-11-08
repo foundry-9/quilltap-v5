@@ -36,7 +36,10 @@ import {
   outboundBaseUrl,
   type ProfileFormData,
   type ProviderRequirements,
+  outboundSamplingParameters,
+  providerTakesSamplingParameters,
 } from './profile-form';
+import { MAX_IMAGES_PER_REQUEST_CEILING } from './max-images-per-request';
 import { ProfileTagEditor } from './profile-tag-editor';
 import { ProviderOptionsPanel } from './provider-options-panel';
 import type { ProviderOptionsSchema } from './provider-options-schema';
@@ -407,7 +410,18 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
           <!-- Model parameters -->
           <div class="border-t qt-border-default pt-4">
             <h4 class="font-medium text-sm mb-3">Model Parameters (Optional)</h4>
-            <div class="grid grid-cols-3 gap-4">
+            @if (!reqs().supportsSamplingParameters) {
+              <p class="qt-text-xs mb-3">
+                This provider chooses its own temperature and Top P; only the token ceiling is
+                yours to set.
+              </p>
+            }
+            <div
+              [attr.class]="
+                reqs().supportsSamplingParameters ? 'grid grid-cols-3 gap-4' : 'grid grid-cols-1 gap-4'
+              "
+            >
+              @if (reqs().supportsSamplingParameters) {
               <div>
                 <label for="qt-pf-temp" class="block qt-text-label mb-2"
                   >Temperature ({{ form().temperature }})</label
@@ -424,6 +438,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 />
                 <p class="qt-text-xs mt-1">0 = deterministic, 2 = creative</p>
               </div>
+              }
               <div>
                 <label for="qt-pf-maxtokens" class="block qt-text-label mb-2">Max Tokens</label>
                 <input
@@ -436,6 +451,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 />
                 <p class="qt-text-xs mt-1">Max output tokens</p>
               </div>
+              @if (reqs().supportsSamplingParameters) {
               <div>
                 <label for="qt-pf-topp" class="block qt-text-label mb-2"
                   >Top P ({{ form().topP }})</label
@@ -452,6 +468,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
                 />
                 <p class="qt-text-xs mt-1">Nucleus sampling (0-1)</p>
               </div>
+              }
             </div>
           </div>
 
@@ -577,6 +594,32 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
               />
               <span class="text-sm">Supports image attachments (vision input)</span>
             </label>
+            @if (form().supportsImageUpload) {
+              <!-- v4 d439f6dc9 (ProfileModal.tsx:958-980). The ids are v4's, not this
+                   modal's qt-pf-* convention: they are what aria-describedby names and
+                   what the e2e selects. -->
+              <div class="ml-6">
+                <label for="maxImagesPerRequest" class="block qt-text-label mb-2"
+                  >Most images per request</label
+                >
+                <input
+                  type="number"
+                  id="maxImagesPerRequest"
+                  name="maxImagesPerRequest"
+                  min="1"
+                  [max]="maxImagesCeiling"
+                  step="1"
+                  class="qt-input"
+                  aria-describedby="maxImagesPerRequest-hint"
+                  [value]="form().maxImagesPerRequest"
+                  (input)="setField('maxImagesPerRequest', $any($event.target).value)"
+                />
+                <p id="maxImagesPerRequest-hint" class="qt-text-xs mt-1">
+                  Some models refuse a request with more than a handful of pictures. When a turn
+                  gathers more than this, the newest are sent and the rest are described in words.
+                </p>
+              </div>
+            }
             <label class="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -831,8 +874,12 @@ export class ProfileModal implements OnInit {
       requiresBaseUrl: p?.configRequirements?.requiresBaseUrl ?? false,
       supportsWebSearch: p?.capabilities?.webSearch ?? false,
       supportsToolUse: p?.capabilities?.toolUse ?? false,
+      supportsSamplingParameters: providerTakesSamplingParameters(p),
     };
   });
+
+  /** v4 `MAX_IMAGES_PER_REQUEST_CEILING` — the cap input's `max`. */
+  protected readonly maxImagesCeiling = MAX_IMAGES_PER_REQUEST_CEILING;
 
   protected readonly keysForProvider = computed(() =>
     this.apiKeys().filter((k) => k.provider === this.form().provider),
@@ -1195,11 +1242,7 @@ export class ProfileModal implements OnInit {
           apiKeyId: this.outboundKey() || undefined,
           baseUrl: this.outbound() || undefined,
           modelName: f.modelName,
-          parameters: {
-            temperature: parseFloat(String(f.temperature)),
-            max_tokens: parseInt(String(f.maxTokens), 10),
-            top_p: parseFloat(String(f.topP)),
-          },
+          parameters: outboundSamplingParameters(f, this.providers()),
         },
       });
       if (data['success'] === true) {

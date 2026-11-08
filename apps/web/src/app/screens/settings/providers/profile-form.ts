@@ -1,5 +1,15 @@
-import type { ApiKeyDto, ConnectionProfileDto, ProviderInfo } from '../../../core/core-contract';
+import type {
+  ApiKeyDto,
+  ConnectionProfileDto,
+  ProviderInfo,
+  ProviderSamplingCapability,
+} from '../../../core/core-contract';
 import { providerAcceptsApiKey } from './api-key-support';
+import {
+  DEFAULT_MAX_IMAGES_PER_REQUEST,
+  parseMaxImagesPerRequest,
+  resolveMaxImagesPerRequest,
+} from './max-images-per-request';
 import { defaultMultiCharacterPrefill } from './multi-character-prefill';
 
 /** The connection-profile modal's editable form (v4 `types.ts` `ProfileFormData`). */
@@ -28,6 +38,12 @@ export interface ProfileFormData {
    */
   multiCharacterPrefill: boolean;
   supportsImageUpload: boolean;
+  /**
+   * The most images one request may carry (v4 `d439f6dc9`, `types.ts`), as the
+   * number input's STRING — parsed on the way out, where an invalid entry
+   * silently saves the default (v4 `useProfileForm.ts:242-243`).
+   */
+  maxImagesPerRequest: string;
   allowWebSearch: boolean;
   useNativeWebSearch: boolean;
   modelClass: string;
@@ -75,6 +91,7 @@ export const initialFormState: ProfileFormData = {
   pseudoToolMode: 'auto',
   multiCharacterPrefill: true,
   supportsImageUpload: false,
+  maxImagesPerRequest: String(DEFAULT_MAX_IMAGES_PER_REQUEST),
   allowWebSearch: false,
   useNativeWebSearch: false,
   modelClass: '',
@@ -136,6 +153,7 @@ export function loadProfileIntoForm(profile: ConnectionProfileDto): ProfileFormD
     multiCharacterPrefill:
       profile.multiCharacterPrefill ?? defaultMultiCharacterPrefill(profile.provider),
     supportsImageUpload: profile.supportsImageUpload ?? false,
+    maxImagesPerRequest: String(resolveMaxImagesPerRequest(profile)),
     allowWebSearch: profile.allowWebSearch ?? false,
     useNativeWebSearch: profile.useNativeWebSearch ?? false,
     modelClass: profile.modelClass ?? '',
@@ -233,6 +251,49 @@ export function outboundApiKeyId(
   return stored;
 }
 
+/**
+ * Whether a provider takes `temperature` / `top_p` (v4 `544c7ab1e`,
+ * `getProviderRequirements` `:41` and `ProfileList.tsx:69-72`): false only
+ * where its listing declares `capabilities.samplingParameters: false`; an
+ * unknown provider, or one without the key, takes them (`?? true`).
+ *
+ * The ONE read of the capability: `ProviderInfo.capabilities` is an inline
+ * object type that the contract's declaration merging cannot widen, so the
+ * key is read here through one cast (P4.D388 PR-1; the unifier may fold
+ * `ProviderSamplingCapability` into `ProviderInfo` and drop it — H5).
+ */
+export function providerTakesSamplingParameters(provider: ProviderInfo | undefined): boolean {
+  return (
+    (
+      provider?.capabilities as
+        | (NonNullable<ProviderInfo['capabilities']> & ProviderSamplingCapability)
+        | undefined
+    )?.samplingParameters ?? true
+  );
+}
+
+/**
+ * The editor's sampling controls as they are allowed to leave the form (v4
+ * `useProfileForm.ts:46-61` `outboundSamplingParameters`). `temperature` /
+ * `top_p` are dropped for a provider that declares
+ * `capabilities.samplingParameters: false` (the sliders are hidden there);
+ * `max_tokens` always goes — and goes FIRST, v4's key order for every
+ * provider. The save body and the test message both read it.
+ */
+export function outboundSamplingParameters(
+  form: Pick<ProfileFormData, 'provider' | 'temperature' | 'maxTokens' | 'topP'>,
+  providers: readonly ProviderInfo[],
+): Record<string, number> {
+  const out: Record<string, number> = {
+    max_tokens: parseInt(String(form.maxTokens)),
+  };
+  if (providerTakesSamplingParameters(providers.find((p) => p.name === form.provider))) {
+    out['temperature'] = parseFloat(String(form.temperature));
+    out['top_p'] = parseFloat(String(form.topP));
+  }
+  return out;
+}
+
 /** Build the create/update request body (v4 `useProfileForm.buildRequestBody`). */
 export function buildProfileRequestBody(
   form: ProfileFormData,
@@ -270,15 +331,15 @@ export function buildProfileRequestBody(
     };
   }
 
-  // v4 `:122-127`: the sampling controls first, then the provider-option keys
-  // spread over them — same order. NOTE the later spread WINS in a JS object
-  // literal, so a bag that somehow carried a sampling key would override the
-  // form's control — in v4 and v5 alike. Unreachable in practice: the load
-  // path strips the three sampling keys out of the bag first.
+  // Base parameters carry sampling controls; provider-specific options
+  // come from the schema-driven `parameters` form field, which already
+  // matches the wire-side key names each plugin reads (v4 `:220-226`). NOTE
+  // the later spread WINS in a JS object literal, so a bag that somehow
+  // carried a sampling key would override the form's control — in v4 and v5
+  // alike. Unreachable in practice: the load path strips the three sampling
+  // keys out of the bag first.
   const parameters: Record<string, unknown> = {
-    temperature: parseFloat(String(form.temperature)),
-    max_tokens: parseInt(String(form.maxTokens), 10),
-    top_p: parseFloat(String(form.topP)),
+    ...outboundSamplingParameters(form, providers),
     ...form.parameters,
   };
 
@@ -294,6 +355,8 @@ export function buildProfileRequestBody(
     pseudoToolMode: form.pseudoToolMode,
     multiCharacterPrefill: form.multiCharacterPrefill,
     supportsImageUpload: form.supportsImageUpload,
+    maxImagesPerRequest:
+      parseMaxImagesPerRequest(form.maxImagesPerRequest) ?? DEFAULT_MAX_IMAGES_PER_REQUEST,
     allowWebSearch: form.allowWebSearch,
     useNativeWebSearch: form.useNativeWebSearch,
     modelClass: form.modelClass || null,
@@ -333,4 +396,6 @@ export interface ProviderRequirements {
   requiresBaseUrl: boolean;
   supportsWebSearch: boolean;
   supportsToolUse: boolean;
+  /** v4 `544c7ab1e`: read through {@link providerTakesSamplingParameters}. */
+  supportsSamplingParameters: boolean;
 }

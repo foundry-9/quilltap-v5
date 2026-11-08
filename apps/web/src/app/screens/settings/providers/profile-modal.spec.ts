@@ -2027,3 +2027,181 @@ describe('ProfileModal — the sampling slider readouts (P4.69, v4 ProfileModal.
     expect(labelFor(fixture, 'qt-pf-temp')).toBe('Temperature (1.7)');
   });
 });
+
+/**
+ * P4.D388 (C9): v4 `544c7ab1e`'s sampling hide and `d439f6dc9`'s image cap in
+ * `ProfileModal.tsx` at the pin `624d0d25c` (`:753-798`, `:958-980`).
+ */
+describe('ProfileModal — sampling parameters and the image cap (P4.D388, v4 544c7ab1e / d439f6dc9)', () => {
+  const OPENAI = provider({});
+  const ANTHROPIC = provider({
+    id: 'ANTHROPIC',
+    name: 'ANTHROPIC',
+    displayName: 'Anthropic',
+    capabilities: {
+      chat: true,
+      imageGeneration: false,
+      embeddings: false,
+      webSearch: false,
+      samplingParameters: false,
+    } as ProviderInfo['capabilities'],
+  });
+  const PROVIDERS = [OPENAI, ANTHROPIC];
+  const NOTE =
+    'This provider chooses its own temperature and Top P; only the token ceiling is yours to set.';
+
+  function recorder(): { client: Partial<CoreClient>; seen: CoreRequest[] } {
+    const seen: CoreRequest[] = [];
+    const client = stubClient({
+      dispatchExpect: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return req.type === 'modelFetch'
+          ? { type: 'models', data: { models: [] } }
+          : { type: 'connectionProfile', data: { profile: { id: 'new' } } };
+      }) as unknown as CoreClient['dispatchExpect'],
+      dispatchData: vi.fn(async (req: CoreRequest) => {
+        seen.push(req);
+        return { valid: true, message: 'ok', success: true };
+      }) as unknown as CoreClient['dispatchData'],
+    });
+    return { client, seen };
+  }
+
+  function first(seen: CoreRequest[], type: string): Record<string, unknown> {
+    const found = seen.find((r) => r.type === type);
+    if (!found) throw new Error(`no ${type} dispatched (saw ${seen.map((r) => r.type).join(', ')})`);
+    return found as unknown as Record<string, unknown>;
+  }
+
+  function selectProvider(fixture: ComponentFixture<ProfileModal>, name: string): void {
+    const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+      '#qt-pf-provider',
+    )!;
+    select.value = name;
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+  }
+
+  const el = (f: ComponentFixture<ProfileModal>) => f.nativeElement as HTMLElement;
+  const paramsBlock = (f: ComponentFixture<ProfileModal>) =>
+    Array.from(el(f).querySelectorAll('h4')).find(
+      (h) => h.textContent?.trim() === 'Model Parameters (Optional)',
+    )!.parentElement!;
+
+  it('a provider that declines sampling: no Temperature / Top P, v4\'s note, a one-column grid', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    selectProvider(fixture, 'ANTHROPIC');
+    expect(el(fixture).querySelector('#qt-pf-temp')).toBeNull();
+    expect(el(fixture).querySelector('#qt-pf-topp')).toBeNull();
+    expect(el(fixture).querySelector('#qt-pf-maxtokens')).not.toBeNull();
+    const note = paramsBlock(fixture).querySelector('p.qt-text-xs.mb-3');
+    expect(note?.textContent?.trim()).toBe(NOTE);
+    expect(note?.className).toBe('qt-text-xs mb-3');
+    expect(paramsBlock(fixture).querySelector('div.grid')!.className).toBe('grid grid-cols-1 gap-4');
+  });
+
+  it('a provider without the capability key keeps all three controls, no note, three columns', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    expect(el(fixture).querySelector('#qt-pf-temp')).not.toBeNull();
+    expect(el(fixture).querySelector('#qt-pf-topp')).not.toBeNull();
+    expect(paramsBlock(fixture).textContent).not.toContain(NOTE);
+    expect(paramsBlock(fixture).querySelector('div.grid')!.className).toBe('grid grid-cols-3 gap-4');
+  });
+
+  it('switching an open NEW profile to Anthropic hides the controls but keeps their values (v4 formData)', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    fixture.componentInstance['setField']('temperature', 0.3);
+    selectProvider(fixture, 'ANTHROPIC');
+    expect(el(fixture).querySelector('#qt-pf-temp')).toBeNull();
+    expect(fixture.componentInstance['form']().temperature).toBe(0.3);
+    selectProvider(fixture, 'OPENAI');
+    expect((el(fixture).querySelector('#qt-pf-temp') as HTMLInputElement).value).toBe('0.3');
+  });
+
+  it('the test message sends max_tokens alone for Anthropic, all three in v4 order otherwise', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+    fixture.componentInstance['setField']('maxTokens', 321);
+    await fixture.componentInstance['testMessage']();
+    const openai = (first(seen, 'connectionProfileTestMessage')['profile'] as Record<string, unknown>)[
+      'parameters'
+    ] as Record<string, unknown>;
+    expect(Object.keys(openai)).toEqual(['max_tokens', 'temperature', 'top_p']);
+    seen.length = 0;
+    selectProvider(fixture, 'ANTHROPIC');
+    fixture.componentInstance['setField']('modelName', 'claude');
+    await fixture.componentInstance['testMessage']();
+    expect(
+      (first(seen, 'connectionProfileTestMessage')['profile'] as Record<string, unknown>)['parameters'],
+    ).toEqual({ max_tokens: 321 });
+  });
+
+  function visionBox(f: ComponentFixture<ProfileModal>): HTMLInputElement {
+    return Array.from(el(f).querySelectorAll('label'))
+      .find((l) => l.textContent?.trim() === 'Supports image attachments (vision input)')!
+      .querySelector('input') as HTMLInputElement;
+  }
+
+  it('"Most images per request" appears only once vision is ticked, wired to its hint', async () => {
+    const fixture = await render({ providers: PROVIDERS });
+    expect(el(fixture).querySelector('#maxImagesPerRequest')).toBeNull();
+    const box = visionBox(fixture);
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    const input = el(fixture).querySelector('#maxImagesPerRequest') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.type).toBe('number');
+    expect(input.name).toBe('maxImagesPerRequest');
+    expect([input.min, input.max, input.step]).toEqual(['1', '50', '1']);
+    expect(input.className).toBe('qt-input');
+    expect(input.value).toBe('4');
+    expect(input.getAttribute('aria-describedby')).toBe('maxImagesPerRequest-hint');
+    const label = el(fixture).querySelector('label[for="maxImagesPerRequest"]')!;
+    expect(label.className).toBe('block qt-text-label mb-2');
+    expect(label.textContent?.trim()).toBe('Most images per request');
+    const hint = el(fixture).querySelector('#maxImagesPerRequest-hint')!;
+    expect(hint.className).toBe('qt-text-xs mt-1');
+    expect(hint.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'Some models refuse a request with more than a handful of pictures. When a turn gathers more than this, the newest are sent and the rest are described in words.',
+    );
+    expect(input.parentElement!.className).toBe('ml-6');
+    // Directly after the vision row (v4 :955-958).
+    expect(box.closest('label')!.nextElementSibling).toBe(input.parentElement);
+  });
+
+  it('typing a cap writes the STRING and the save body carries the parsed number', async () => {
+    const { client, seen } = recorder();
+    const fixture = await render({ providers: PROVIDERS }, client);
+    fixture.componentInstance['setField']('name', 'Vision');
+    fixture.componentInstance['setField']('modelName', 'gpt-4');
+    fixture.componentInstance['setField']('supportsImageUpload', true);
+    fixture.detectChanges();
+    const input = el(fixture).querySelector('#maxImagesPerRequest') as HTMLInputElement;
+    input.value = '7';
+    input.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(fixture.componentInstance['form']().maxImagesPerRequest).toBe('7');
+    await fixture.componentInstance['submit']();
+    const body = first(seen, 'connectionProfileCreate')['profile'] as Record<string, unknown>;
+    expect(body['maxImagesPerRequest']).toBe(7);
+  });
+
+  it('editing a profile loads its stored cap into the field', async () => {
+    const fixture = await render({
+      providers: PROVIDERS,
+      profile: {
+        id: 'cp1',
+        name: 'Seer',
+        provider: 'OPENAI',
+        modelName: 'gpt-4',
+        parameters: {},
+        isDefault: false,
+        supportsImageUpload: true,
+        maxImagesPerRequest: 9,
+      },
+    });
+    expect((el(fixture).querySelector('#maxImagesPerRequest') as HTMLInputElement).value).toBe('9');
+  });
+});
