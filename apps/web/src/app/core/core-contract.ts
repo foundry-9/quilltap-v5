@@ -3106,8 +3106,11 @@ export type CoreRequest =
   // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---
   | AutonomousRoomRequest
   // === P4.D330: the Inventory SPA (append-only) ===
-  | InventoryRequest;
+  | InventoryRequest
   // === end P4.D330 ===
+  // === P4.D388 ===
+  | ChatCustomToolPresetsRequest;
+  // === end P4.D388 ===
 
 export type RequestType = CoreRequest['type'];
 
@@ -10472,3 +10475,87 @@ export type InventoryRequest =
   | ChatInventoryUnequipRequest
   | ChatInventoryResetDefaultsRequest;
 // === end P4.D330 ===
+
+// === P4.D388: SPA smalls (C5 / C9 / C10 / C11) ===
+// Declaration-merged members (PR-1): TypeScript merges a re-declared
+// interface's new members into the original, so these widen the DTOs above
+// without an in-place edit. The unifier may fold them in (P4.D388 H5).
+
+/** v4 `lib/characters/kind.ts` `CharacterKind` on the wire (C5). Read every
+ * value through `core/character-kind.ts`'s `resolveCharacterKind` — a v4 store
+ * can hold anything. */
+export type CharacterKindWire = 'roleplay' | 'assistant';
+
+export interface CharacterDetail {
+  kind?: CharacterKindWire;
+}
+
+export interface DetailCharacter {
+  kind?: CharacterKindWire;
+}
+
+export interface CharacterListItem {
+  kind?: CharacterKindWire;
+}
+
+/** v4 `d439f6dc9` — the per-profile image cap (C9). */
+export interface ConnectionProfileDto {
+  maxImagesPerRequest?: number | null;
+}
+
+/** v4 `c539c82e0` — the inline Brahma engine (C10): absent keeps, `null`
+ * clears, an id sets. */
+export interface BrahmaConsoleSettingsUpdateRequest {
+  inlineConnectionProfileId?: string | null;
+}
+
+/** v4 `c539c82e0` — a project's own inline Brahma engine (C10). */
+export interface ProjectUpdatePatch {
+  brahmaConnectionProfileId?: string | null;
+}
+
+export interface ProjectDetail {
+  brahmaConnectionProfileId?: string | null;
+}
+
+/** v4 `544c7ab1e` — `ProviderInfo.capabilities.samplingParameters` (C9).
+ * `capabilities` is an inline object type that declaration merging cannot
+ * widen, so this is read through ONE accessor,
+ * `profile-form.ts` `providerTakesSamplingParameters` (PR-1). */
+export interface ProviderSamplingCapability {
+  samplingParameters?: boolean;
+}
+
+/** v4 `fd165fce0` `CustomToolRunDialog.tsx` `PresetStore` (C11). */
+export interface CustomToolPresetStore {
+  tier: string;
+  mountPointId: string;
+  mountName: string;
+}
+
+export interface CustomToolPreset extends CustomToolPresetStore {
+  name: string;
+  path: string;
+  shadows: CustomToolPresetStore[];
+}
+
+export interface CustomToolPresetUnread extends CustomToolPresetStore {
+  reason: string;
+}
+
+/** v4 `ToolPresetPoolResponse` (C11). */
+export interface CustomToolPresetPool {
+  presets: CustomToolPreset[];
+  stores: CustomToolPresetStore[];
+  unread: CustomToolPresetUnread[];
+}
+
+/** `GET …/custom-tools?action=presets` as a dispatch (C11; P4.D379) →
+ * `{type: 'customToolPresets', data: CustomToolPresetPool}`. */
+export interface ChatCustomToolPresetsRequest {
+  type: 'chatCustomToolPresets';
+  chatId: string;
+  tool?: string;
+  asCharacterId?: string;
+}
+// === end P4.D388 ===

@@ -193,6 +193,15 @@ describe('CharacterEdit', () => {
     expect(fixture.nativeElement.querySelector('#name')).toBeTruthy();
   });
 
+  it('P4.D388: the Details tab carries the kind card ABOVE the diagrams card (v4 CharacterEditView.tsx:260)', async () => {
+    const fixture = await render(stubClient(character({ kind: 'assistant' })));
+    const el = fixture.nativeElement as HTMLElement;
+    const kind = el.querySelector('qt-character-kind-card');
+    expect(kind).not.toBeNull();
+    expect(kind!.nextElementSibling).toBe(el.querySelector('qt-can-draw-diagrams-card'));
+    expect((kind!.querySelector('input[value="assistant"]') as HTMLInputElement).checked).toBe(true);
+  });
+
   it('the dirty guard confirms before navigating away on Cancel', async () => {
     const fixture = await render(stubClient(character()));
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);

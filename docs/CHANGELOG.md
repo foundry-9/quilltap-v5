@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — feat(spa): the "Kind of character" card on both Details tabs, with the SPA kind module and its census (v4 b09ca46bb)
+
+_Versions: SPA 0.5.973._
+
+P4.D388 unit (i), contract C5. New `core/character-kind.ts` is the client half of v4's `lib/characters/kind.ts` (`CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, `characterKindOrDefault`, `resolveCharacterKind`, `isAssistantCharacter`); v4's policy types stay server-side. New `core/character-kind.census.spec.ts` runs v4's chokepoint regex verbatim over `src/app` and holds two `StreamMessage.kind` sites in a named allowlist (`STREAM_MESSAGE_KIND_SITES`), matched by line text, with a stale-entry check. New `screens/characters/character-kind-card.ts` ports `CharacterKindPicker` and `save-character-kind.ts`: v4's markup and strings, a per-instance radio-group name (the view and edit tabs stay mounted together), one `characterUpdate {kind}` dispatch, v4's two success toasts and its fixed refusal sentence. The choice is optimistic and snaps back on a failed save. The card sits above the diagrams card on the view and edit Details tabs. `core-contract.ts` gains the P4.D388 block: `kind`, `maxImagesPerRequest`, the two inline-Brahma ids, `ProviderSamplingCapability` and the C11 preset types by declaration merging, plus one `ChatCustomToolPresetsRequest` union line.
+
 #### 2026-11-04 — CSS: the 624d0d25c qt-components / packs re-vendor, check-css-vars, Deus + conversation-search CSS and icons (v4 624d0d25c)
 
 _Versions: SPA 0.5.972._

@@ -159,6 +159,17 @@ describe('CharacterDetail', () => {
     }
   });
 
+  it('P4.D388: the Details tab carries the kind card ABOVE the diagrams card (v4 CharacterDetailView.tsx:245)', async () => {
+    const fixture = await render(stubClient(character({ kind: 'assistant' })));
+    const el = fixture.nativeElement as HTMLElement;
+    const kind = el.querySelector('qt-character-kind-card');
+    const diagrams = el.querySelector('qt-can-draw-diagrams-card');
+    expect(kind).not.toBeNull();
+    expect(kind!.nextElementSibling).toBe(diagrams);
+    expect(kind!.classList.contains('mt-6')).toBe(true);
+    expect((kind!.querySelector('input[value="assistant"]') as HTMLInputElement).checked).toBe(true);
+  });
+
   it('dispatches characterFavorite when the favorite star is toggled', async () => {
     const seen: string[] = [];
     const fixture = await render(
