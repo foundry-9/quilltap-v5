@@ -295,6 +295,29 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
         2,
         "v4 `sync/apply-store.ts:100` (text) and `:126` (blob / pdf / docx).",
     ),
+    (
+        "crates/quilltap-core/src/services/mount_index/folder_ops.rs",
+        "publish_mount_change(&",
+        9,
+        "v4 `folder-ops.ts`'s nine `publishMountChange` calls: `deleteFolder` \
+         (empty, recursive), `copyFolder` (the undo arm, success), `moveFolder` \
+         (within one store; the move-back arm's source + destination; success's \
+         source + destination).",
+    ),
+    (
+        "crates/quilltap-core/src/services/mount_index/folder_ops.rs",
+        "emit_document_moved(&",
+        1,
+        "v4 `folder-ops.ts:181`: the filesystem folder move's per-link emit.",
+    ),
+    (
+        "crates/quilltap-core/src/api/mount_files.rs",
+        "realtime::publish_mount_change(",
+        3,
+        "the folders route's success (v4 `folders/route.ts:59` / `:96`, one v5 \
+         arm) and unlink's two (`[id]/route.ts:778` this store; `:782` each \
+         sibling in ANOTHER store on a dissolve).",
+    ),
     // === /P4.D381 ===
 ];
 

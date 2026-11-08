@@ -53,6 +53,24 @@ pub fn list_filesystem_folders(base_path: &str, exclude_patterns: &[String]) -> 
     results
 }
 
+/// Node's `fs.readdir` ORDER (P4.D381, measured): libuv's `scandir` sorts the
+/// entries by `strcmp` of their names (`uv__fs_scandir_sort`) — byte order —
+/// where `std::fs::read_dir` answers the filesystem's raw order (APFS hands
+/// back e.g. `z.xyz` before `blank.md`). v4's walkers all read through
+/// `fs.readdir` (`lib/files/walk.ts`'s `walkTree`), so every v5 twin walks in
+/// this order: the scanner's `walk_directory` (which fixes the link-insertion
+/// order a no-`ORDER BY` listing reads back), `list_filesystem_folders`, and
+/// the folder ops' stray scan.
+pub(crate) fn read_dir_node_order(path: &str) -> std::io::Result<Vec<std::fs::DirEntry>> {
+    let mut entries: Vec<std::fs::DirEntry> = std::fs::read_dir(path)?.flatten().collect();
+    entries.sort_by(|a, b| {
+        a.file_name()
+            .as_encoded_bytes()
+            .cmp(b.file_name().as_encoded_bytes())
+    });
+    Ok(entries)
+}
+
 fn walk_folders(
     base_path: &str,
     exclude_patterns: &[String],
@@ -64,11 +82,11 @@ fn walk_folders(
     } else {
         format!("{base_path}/{current_relative}")
     };
-    let entries = match std::fs::read_dir(&current_absolute) {
+    let entries = match read_dir_node_order(&current_absolute) {
         Ok(e) => e,
         Err(_) => return, // v4 logs + returns [] on unreadable dirs.
     };
-    for entry in entries.flatten() {
+    for entry in entries {
         // v4 skips symlinks and non-directories.
         let file_type = match entry.file_type() {
             Ok(t) => t,

@@ -125,8 +125,10 @@ pub(crate) fn mtime_iso(meta: &std::fs::Metadata) -> String {
 
 /// v4 `walkDirectory`: recursive, symlinks skipped, exclude patterns tested on
 /// every entry (dirs prune the recursion), include patterns on files (empty =
-/// include all). Returns `(relative, absolute)` pairs. Directory order follows
-/// `fs.readdir` (normalized downstream by the differentials).
+/// include all). Returns `(relative, absolute)` pairs. Directory order is
+/// Node's `fs.readdir` order — libuv-sorted, byte order — through
+/// [`super::list::read_dir_node_order`] (P4.D381: the raw `read_dir` order
+/// minted links in a different rowid order than v4's scan did).
 fn walk_directory(
     base_path: &str,
     include_patterns: &[String],
@@ -139,7 +141,7 @@ fn walk_directory(
     } else {
         format!("{base_path}/{current_relative}")
     };
-    let entries = match std::fs::read_dir(&current_absolute) {
+    let entries = match super::list::read_dir_node_order(&current_absolute) {
         Ok(e) => e,
         Err(e) => {
             // v4 `walkTree`'s `onReadError` (`scanner.ts:141-146`, P4.D381
@@ -154,7 +156,7 @@ fn walk_directory(
             return;
         }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
         let file_type = match entry.file_type() {
             Ok(t) => t,
             Err(_) => continue,
@@ -857,7 +859,8 @@ mod g2g3_fallback_tests {
 }
 
 // === P4.D381 (v4 bf7a457f6): the cloud-placeholder scan + the scanner lines ===
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 mod p4d381_cloud_tests {
     use super::*;
     use crate::services::mount_index::cloud_placeholder::AllocationStat;

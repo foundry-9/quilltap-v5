@@ -1692,6 +1692,7 @@ mod mount_store_publish_sites {
     use crate::inventory::lint_scope::TitleLintScope;
     use crate::services::mount_index::file_ops;
     use crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing;
+    use rusqlite::Connection;
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -2035,6 +2036,137 @@ mod mount_store_publish_sites {
             "{r:?}"
         );
         assert_eq!(cap.drain_expecting(1).await, vec![mp(&a)]);
+    }
+
+    // ── the folder ops (`folder-ops.ts`) and unlink (`[id]/route.ts:762-792`) ──
+
+    fn deps(
+        fx: &Fx,
+    ) -> (
+        std::sync::Arc<dyn crate::services::mount_index::converters::DocumentTextExtractor>,
+        &Connection,
+    ) {
+        (ex(), fx.main.connection())
+    }
+
+    #[tokio::test]
+    async fn the_folder_ops_publish_their_stores_and_a_refusal_nothing() {
+        use crate::services::mount_index::folder_ops::{
+            copy_folder, delete_folder, move_folder, FolderOpDeps,
+        };
+        let fx = fixture();
+        let (e, main) = deps(&fx);
+        let d = FolderOpDeps {
+            main,
+            extractor: e.as_ref(),
+            webp: blob_codec_or_refusing(None),
+        };
+        let mut cap = HintCapture::start();
+        // A refused delete (non-empty, not recursive) announces nothing.
+        assert!(delete_folder(fx.mount.connection(), &fx.a, "notes", false).is_err());
+        assert!(cap.drain().await.is_empty(), "a refused delete announced");
+        // A copy into another store: the destination only (the per-file copies
+        // publish the same key; coalesced).
+        copy_folder(
+            fx.mount.connection(),
+            &d,
+            &fx.a,
+            "notes",
+            Some(&fx.b),
+            "copied",
+        )
+        .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.b)]);
+        // A move between stores: both.
+        move_folder(
+            fx.mount.connection(),
+            &d,
+            &fx.b,
+            "copied",
+            Some(&fx.a),
+            "back",
+        )
+        .unwrap();
+        let mut want = vec![mp(&fx.a), mp(&fx.b)];
+        want.sort();
+        assert_eq!(cap.drain_sorted_expecting(2).await, want);
+        // Within one store, and the recursive delete: that store.
+        move_folder(fx.mount.connection(), &d, &fx.a, "back", None, "again").unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        delete_folder(fx.mount.connection(), &fx.a, "again", true).unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
+    #[tokio::test]
+    async fn unlink_publishes_its_store_and_on_a_dissolve_the_other_members_store() {
+        let Fx {
+            dir,
+            main,
+            mount,
+            a,
+            b,
+            ..
+        } = fixture();
+        {
+            let e = ex();
+            file_ops::link_file(
+                mount.connection(),
+                &a,
+                "notes/one.md",
+                &b,
+                "linked/one.md",
+                e.as_ref(),
+            )
+            .unwrap();
+        }
+        drop((main, mount));
+        let path = dir.path().to_path_buf();
+        let db = crate::db::runtime::Db::open(
+            crate::db::runtime::DbPaths {
+                main: path.join("quilltap.db"),
+                mount_index: Some(path.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let mut cap = HintCapture::start();
+        cap.arm_writer_thread(&db).await;
+        // Ungrouped (the fixture's untouched dedup-free `notes/one.md` after the
+        // dissolve below is the same shape): self only. First the dissolve —
+        // the member left behind lives in the OTHER store.
+        let r = crate::api::mount_files::mount_file_unlink(
+            &db,
+            &b,
+            Some(serde_json::json!("linked/one.md")),
+            "u-1",
+        )
+        .await;
+        assert!(
+            matches!(r, crate::api::types::Response::MountFile(_)),
+            "{r:?}"
+        );
+        let mut want = vec![mp(&a), mp(&b)];
+        want.sort();
+        assert_eq!(cap.drain_sorted_expecting(2).await, want);
+        // Now ungrouped: self only, no sibling hint.
+        crate::api::mount_files::mount_file_unlink(
+            &db,
+            &a,
+            Some(serde_json::json!("notes/one.md")),
+            "u-1",
+        )
+        .await;
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&a)]);
+        // A missing path announces nothing.
+        crate::api::mount_files::mount_file_unlink(
+            &db,
+            &a,
+            Some(serde_json::json!("nope.md")),
+            "u-1",
+        )
+        .await;
+        assert!(cap.drain().await.is_empty(), "a 404 unlink announced");
     }
 }
 // === /P4.D381 ===

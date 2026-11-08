@@ -398,7 +398,7 @@ const OVERRIDES: &[(&str, &str, &str, &str)] = &[
     // the disk rename has happened; the links keep the old paths and success is reported — the next scan drops them with their chunks, embeddings and descriptions.
     (
         "quilltap-core/src/services/mount_index/folder_ops.rs",
-        "move_folder",
+        "move_folder_within_mount",
         "find_by_mount_point_id",
         "strict-by-ruling(write-path)",
     ),
@@ -616,6 +616,10 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/api/characters.rs", "character_stats", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "converted"),
     ("quilltap-core/src/api/chat_media.rs", "chat_attach_mount_file", "find_by_mount_point_and_path", "other-repo"),
+    // === P4.D381 ===
+    ("quilltap-core/src/api/mount_files.rs", "mount_file_unlink", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/api/mount_files.rs", "mount_file_links", "find_by_mount_point_and_path_or_none", "converted"),
+    // === /P4.D381 ===
     ("quilltap-core/src/api/mount_files.rs", "mount_file_update", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_files.rs", "mount_blob_update", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/api/mount_points.rs", "mount_point_list", "count_embedded_by_mount_point_ids_or_empty", "converted"),
@@ -740,7 +744,15 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/services/mount_index/file_ops.rs", "delete_at_dest", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "move_file_unpublished", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/file_ops.rs", "link_file_unpublished", "find_by_mount_point_and_path", "swallowed-by-other-means"),
-    ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
+    // === P4.D381 (v4 `aec626eff` / `c34986421`): the folder family's reads
+    // (v4's fallbacks, converted) and the per-file GET / unlink handlers ===
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "delete_empty_folder", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder_within_mount", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "move_folder_within_mount", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "read_folder_tree", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "read_folder_tree", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/services/mount_index/folder_ops.rs", "read_folder_tree", "find_by_mount_point_and_path_or_none", "converted"),
+    // === /P4.D381 ===
     ("quilltap-core/src/services/mount_index/general_state.rs", "ensure_general_state_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/services/mount_index/link_groups.rs", "reindex_inner", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/services/mount_index/list.rs", "mount_files_list", "find_by_mount_point_id", "converted"),
@@ -845,7 +857,12 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
-/// - **163 direct call sites in all** = 85 + 14 + 19 + 1 + 13 + 5 + 1 + 20 + 5
+/// - **P4.D381**: 181 = 102 + 14 + 20 + 1 + 13 + 5 + 1 + 20 + 5 — +7 converted:
+///   the folder family's v4 fallbacks (`delete_empty_folder`'s folder-row read,
+///   `move_folder_within_mount`'s folder rows, `read_folder_tree` × 3) and the
+///   unlink / `?action=links` path reads. `move_folder`'s strict link read moved
+///   with its body into `move_folder_within_mount` (same class).
+/// - (before P4.D381) **163 direct call sites in all** = 85 + 14 + 19 + 1 + 13 + 5 + 1 + 20 + 5
 ///   (P4.D264: +1 strict-in-v4 (import) — the picture re-mint's path read).
 /// - (before P4.D264) 162 = 85 + 14 + 19 + 0 + 13 + 5 + 1 + 20 + 5
 ///   (P4.D255: +2 converted — the item-image cleanup's link read + delete).
@@ -959,7 +976,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (96, 14, 20, 1, 13, 5, 1, 20, 5);
+) = (103, 14, 20, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`

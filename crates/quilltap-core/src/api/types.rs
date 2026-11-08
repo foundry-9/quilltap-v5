@@ -1984,21 +1984,71 @@ pub enum Request {
         mount_point_id: String,
         path: String,
     },
-    /// v4 `?action=delete-folder` → `{mountPointId, path}` (`CONFLICT` when
-    /// non-empty).
+    /// v4 `?action=delete-folder` → `{mountPointId, path, deletedFiles}`
+    /// (`CONFLICT` when non-empty without `recursive`). `recursive` is RAW
+    /// (P4.D381, v4 `aec626eff`): v4's `z.boolean().optional()` — absent is the
+    /// empty delete, a bool is itself, `null` or any other type is the 400
+    /// `Delete folder requires a non-empty path`.
     #[serde(rename_all = "camelCase")]
     MountFolderDelete {
         mount_point_id: String,
         path: String,
+        #[serde(default, deserialize_with = "double_option")]
+        recursive: Option<Option<serde_json::Value>>,
     },
-    /// v4 `?action=move-folder` → `{mountPointId, fromPath, toPath}`
-    /// (same-mount only).
+    /// v4 `?action=move-folder` → `{mountPointId, fromPath, toPath,
+    /// destMountPointId}` within one store, or the six-key transfer result
+    /// across stores (P4.D381). `destMountPointId` is RAW against
+    /// `z.string().min(1).optional()` (`null` / `""` / a non-string → `Move
+    /// folder requires fromPath and toPath`). The string `fromPath` / `toPath`
+    /// keys are a recorded pre-existing narrowing.
     #[serde(rename_all = "camelCase")]
     MountFolderMove {
         mount_point_id: String,
         from_path: String,
         to_path: String,
+        #[serde(default, deserialize_with = "double_option")]
+        dest_mount_point_id: Option<Option<serde_json::Value>>,
     },
+    // === P4.D381 (v4 `aec626eff`) ===
+    /// v4 `?action=copy-folder` → v4's `FolderTransferResult`. Parsed with v4's
+    /// `moveFolderSchema` (so `destMountPointId` is accepted), with its own
+    /// failure text: every key RAW, so a missing or wrong-typed one answers
+    /// `Copy folder requires fromPath and toPath`, never serde's sentence.
+    #[serde(rename_all = "camelCase")]
+    MountFolderCopy {
+        mount_point_id: String,
+        #[serde(default)]
+        from_path: Option<serde_json::Value>,
+        #[serde(default)]
+        to_path: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "double_option")]
+        dest_mount_point_id: Option<Option<serde_json::Value>>,
+    },
+    /// v4 `?action=unlink-file` → `{mountPointId, path, groupId, dissolved}`.
+    /// `path` RAW against `z.string().min(1)` → `Unlink requires a non-empty
+    /// path`.
+    #[serde(rename_all = "camelCase")]
+    MountFileUnlink {
+        mount_point_id: String,
+        #[serde(default)]
+        path: Option<serde_json::Value>,
+    },
+    /// v4 per-file GET `?action=links` → `{linkGroupId, locations}`.
+    #[serde(rename_all = "camelCase")]
+    MountFileLinks {
+        mount_point_id: String,
+        path: String,
+    },
+    /// v4 per-file GET `?action=render-html` → `{html}` in v4; in v5 a `.docx`
+    /// is the named 422 refusal `DOCX_RENDER_HTML_REFUSED` (R-E), and every
+    /// other arm is v4's.
+    #[serde(rename_all = "camelCase")]
+    MountFileRenderHtml {
+        mount_point_id: String,
+        path: String,
+    },
+    // === /P4.D381 ===
     /// v4 item-route PATCH (rename and/or describe; ≥1 required; rename runs
     /// FIRST; descriptions are blob-only) → `{mountPointId, relativePath,
     /// renamed, descriptionUpdated, fileType?}`.

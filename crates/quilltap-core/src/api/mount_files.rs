@@ -207,17 +207,6 @@ fn map_file_op_only(e: MountFileError, failed_msg: &str) -> Response {
     }
 }
 
-/// The folder handlers' arm: `FileOpError` OR `DatabaseStoreError` → coded.
-fn map_file_or_store(e: MountFileError, failed_msg: &str) -> Response {
-    match &e {
-        MountFileError::FileOp(_) | MountFileError::Store(_) => map_error(e),
-        other => {
-            eprintln!("[Mount Points v1] {failed_msg}: {other}");
-            Response::error(ErrorKind::Internal, failed_msg)
-        }
-    }
-}
-
 /// Run a mount-partition mutation on the writer, returning the service-level
 /// result out of the closure (infrastructure `DbError`s become the generic
 /// failure message).
@@ -379,58 +368,601 @@ pub async fn mount_file_delete(db: &Db, mount_point_id: &str, path: &str) -> Res
     }
 }
 
-/// v4 `?action=delete-folder` (`handleDeleteFolder`) — refuses non-empty
-/// folders (`CONFLICT`/`NOT_EMPTY`).
-pub async fn mount_folder_delete(db: &Db, mount_point_id: &str, path: &str) -> Response {
+// === P4.D381 (v4 `aec626eff` / `c34986421`): the folder family, unlink, links,
+// render-html ===
+
+/// A raw JSON key against v4's `z.boolean().optional()`: absent → `Ok(None)`,
+/// a bool → itself, `null` or any other type → `Err`.
+fn optional_bool(raw: Option<Option<serde_json::Value>>) -> Result<Option<bool>, ()> {
+    match raw {
+        None => Ok(None),
+        Some(Some(serde_json::Value::Bool(b))) => Ok(Some(b)),
+        Some(_) => Err(()),
+    }
+}
+
+/// A raw JSON key against v4's `z.string().min(1).optional()`.
+fn optional_nonempty_string(raw: Option<Option<serde_json::Value>>) -> Result<Option<String>, ()> {
+    match raw {
+        None => Ok(None),
+        Some(Some(serde_json::Value::String(s))) if !s.is_empty() => Ok(Some(s)),
+        Some(_) => Err(()),
+    }
+}
+
+/// A raw JSON key against v4's `z.string().min(1)` (required).
+fn required_nonempty_string(raw: Option<serde_json::Value>) -> Result<String, ()> {
+    match raw {
+        Some(serde_json::Value::String(s)) if !s.is_empty() => Ok(s),
+        _ => Err(()),
+    }
+}
+
+/// v4's folder-handler catch (`handleDeleteFolder` / `handleMoveFolder`) and
+/// `fileOpFailure` (`handleCopyFolder`): a `FileOpError` / `DatabaseStoreError`
+/// answers `{error, code}` at `fileOpStatus`; anything else is the handler's
+/// ERROR `{mountPointId}` (the error's message riding as `error`) + 500.
+fn folder_failure(
+    e: MountFileError,
+    mount_point_id: &str,
+    error_line: &'static str,
+    failed_msg: &'static str,
+) -> Response {
+    match &e {
+        MountFileError::FileOp(_) | MountFileError::Store(_) => map_error(e),
+        other => {
+            log_route_failure(error_line, mount_point_id, &other.to_string());
+            Response::error(ErrorKind::Internal, failed_msg)
+        }
+    }
+}
+
+/// The ONE emitter of the folder handlers' ERROR lines (the message is one of
+/// v4's three literals, so each stays a static `tracing` callsite).
+fn log_route_failure(error_line: &'static str, mount_point_id: &str, error: &str) {
+    match error_line {
+        "[Mount Points v1] Error deleting folder" => tracing::error!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %mount_point_id,
+            error = %error,
+            "[Mount Points v1] Error deleting folder"
+        ),
+        "[Mount Points v1] Error moving folder" => tracing::error!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %mount_point_id,
+            error = %error,
+            "[Mount Points v1] Error moving folder"
+        ),
+        _ => tracing::error!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %mount_point_id,
+            error = %error,
+            "[Mount Points v1] Error trying to copy folder"
+        ),
+    }
+}
+
+type WebpArc =
+    Option<std::sync::Arc<dyn crate::services::mount_index::blob_transcode::WebpTranscoder>>;
+
+/// Run a folder op on the writer with the per-file ops' dependencies.
+async fn run_folder_op<F>(
+    db: &Db,
+    webp: WebpArc,
+    f: F,
+) -> Result<Result<serde_json::Value, MountFileError>, DbError>
+where
+    F: FnOnce(
+            &rusqlite::Connection,
+            &crate::services::mount_index::folder_ops::FolderOpDeps<'_>,
+        ) -> Result<serde_json::Value, MountFileError>
+        + Send
+        + 'static,
+{
+    db.write(move |ws| {
+        let mount = mount_conn(ws)?;
+        let extractor = default_text_extractor();
+        let deps = crate::services::mount_index::folder_ops::FolderOpDeps {
+            main: ws.main().connection(),
+            extractor: extractor.as_ref(),
+            webp: crate::services::mount_index::normalize_blob_image::blob_codec_or_refusing(
+                webp.as_deref(),
+            ),
+        };
+        Ok(f(mount, &deps))
+    })
+    .await
+}
+
+/// v4 `?action=delete-folder` (`handleDeleteFolder`) — `{path, recursive?}`.
+/// Without `recursive` the folder must be empty; with it, the per-file deletes
+/// then the folders. Answers `{mountPointId, path, deletedFiles}` and logs INFO
+/// `[Mount Points v1] Deleted folder {...result, userId}`.
+pub async fn mount_folder_delete(
+    db: &Db,
+    mount_point_id: &str,
+    path: &str,
+    recursive: Option<Option<serde_json::Value>>,
+    user_id: &str,
+) -> Response {
+    let Ok(recursive) = optional_bool(recursive) else {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Delete folder requires a non-empty path",
+        );
+    };
+    if path.is_empty() {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Delete folder requires a non-empty path",
+        );
+    }
     let (mp, p) = (mount_point_id.to_string(), path.to_string());
     let out = run_mount_op(db, move |conn| {
-        crate::services::mount_index::folder_ops::delete_folder(conn, &mp, &p)
+        crate::services::mount_index::folder_ops::delete_folder(
+            conn,
+            &mp,
+            &p,
+            recursive.unwrap_or(false),
+        )
     })
     .await;
     match out {
-        Ok(Ok(v)) => Response::MountFile(v),
-        Ok(Err(e)) => map_file_or_store(e, "Failed to delete folder"),
+        Ok(Ok(v)) => {
+            tracing::info!(
+                target: "quilltap::api::mount_files",
+                mountPointId = v["mountPointId"].as_str().unwrap_or_default(),
+                path = v["path"].as_str().unwrap_or_default(),
+                deletedFiles = v["deletedFiles"].as_u64().unwrap_or_default(),
+                userId = %user_id,
+                "[Mount Points v1] Deleted folder"
+            );
+            Response::MountFile(v)
+        }
+        Ok(Err(e)) => folder_failure(
+            e,
+            mount_point_id,
+            "[Mount Points v1] Error deleting folder",
+            "Failed to delete folder",
+        ),
         Err(e) => {
-            eprintln!("[Mount Points v1] Error deleting folder: {e}");
+            log_route_failure(
+                "[Mount Points v1] Error deleting folder",
+                mount_point_id,
+                &e.to_string(),
+            );
             Response::error(ErrorKind::Internal, "Failed to delete folder")
         }
     }
 }
 
-/// v4 `?action=move-folder` (`handleMoveFolder`) — same-mount only; fs mounts
-/// rename on disk + rewrite the affected links' path prefixes.
+/// The route INFO for a `FolderTransferResult` (`{...result, userId}`): the
+/// within-store shape (`mountPointId, fromPath, toPath, destMountPointId`) or
+/// the transfer shape (`mountPointId, fromPath, destMountPointId, toPath,
+/// files, folders`), each in its own key order.
+fn log_transfer(v: &serde_json::Value, user_id: &str, copied: bool) {
+    let s = |k: &str| v[k].as_str().unwrap_or_default().to_string();
+    let n = |k: &str| v[k].as_u64().unwrap_or_default();
+    match (copied, v.get("files").is_some()) {
+        (true, _) => tracing::info!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %s("mountPointId"),
+            fromPath = %s("fromPath"),
+            destMountPointId = %s("destMountPointId"),
+            toPath = %s("toPath"),
+            files = n("files"),
+            folders = n("folders"),
+            userId = %user_id,
+            "[Mount Points v1] Copied folder"
+        ),
+        (false, true) => tracing::info!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %s("mountPointId"),
+            fromPath = %s("fromPath"),
+            destMountPointId = %s("destMountPointId"),
+            toPath = %s("toPath"),
+            files = n("files"),
+            folders = n("folders"),
+            userId = %user_id,
+            "[Mount Points v1] Moved folder"
+        ),
+        (false, false) => tracing::info!(
+            target: "quilltap::api::mount_files",
+            mountPointId = %s("mountPointId"),
+            fromPath = %s("fromPath"),
+            toPath = %s("toPath"),
+            destMountPointId = %s("destMountPointId"),
+            userId = %user_id,
+            "[Mount Points v1] Moved folder"
+        ),
+    }
+}
+
+/// v4 `?action=move-folder` (`handleMoveFolder`) — `{fromPath, toPath,
+/// destMountPointId?}`: within one store the old single move (now carrying a
+/// filesystem store's folder rows — `c34986421`); across stores the per-file
+/// moves with a move-back undo.
+#[allow(clippy::too_many_arguments)]
 pub async fn mount_folder_move(
     db: &Db,
     mount_point_id: &str,
     from_path: &str,
     to_path: &str,
+    dest_mount_point_id: Option<Option<serde_json::Value>>,
+    user_id: &str,
+    webp: WebpArc,
 ) -> Response {
+    let Ok(dest) = optional_nonempty_string(dest_mount_point_id) else {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Move folder requires fromPath and toPath",
+        );
+    };
+    if from_path.is_empty() || to_path.is_empty() {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Move folder requires fromPath and toPath",
+        );
+    }
     let (mp, fp, tp) = (
         mount_point_id.to_string(),
         from_path.to_string(),
         to_path.to_string(),
     );
-    let out = db
-        .write(move |ws| {
-            let mount = mount_conn(ws)?;
-            Ok(crate::services::mount_index::folder_ops::move_folder(
-                ws.main().connection(),
-                mount,
-                &mp,
-                &fp,
-                &tp,
-            ))
-        })
-        .await;
+    let out = run_folder_op(db, webp, move |conn, deps| {
+        crate::services::mount_index::folder_ops::move_folder(
+            conn,
+            deps,
+            &mp,
+            &fp,
+            dest.as_deref(),
+            &tp,
+        )
+    })
+    .await;
     match out {
-        Ok(Ok(v)) => Response::MountFile(v),
-        Ok(Err(e)) => map_file_or_store(e, "Failed to move folder"),
+        Ok(Ok(v)) => {
+            log_transfer(&v, user_id, false);
+            Response::MountFile(v)
+        }
+        Ok(Err(e)) => folder_failure(
+            e,
+            mount_point_id,
+            "[Mount Points v1] Error moving folder",
+            "Failed to move folder",
+        ),
         Err(e) => {
-            eprintln!("[Mount Points v1] Error moving folder: {e}");
+            log_route_failure(
+                "[Mount Points v1] Error moving folder",
+                mount_point_id,
+                &e.to_string(),
+            );
             Response::error(ErrorKind::Internal, "Failed to move folder")
         }
     }
 }
+
+/// v4 `?action=copy-folder` (`handleCopyFolder`) — parsed with v4's
+/// `moveFolderSchema` (correction 5: no third schema) and its own failure text;
+/// failures through `fileOpFailure(err, 'copy folder', id)`.
+pub async fn mount_folder_copy(
+    db: &Db,
+    mount_point_id: &str,
+    from_path: Option<serde_json::Value>,
+    to_path: Option<serde_json::Value>,
+    dest_mount_point_id: Option<Option<serde_json::Value>>,
+    user_id: &str,
+    webp: WebpArc,
+) -> Response {
+    let parsed = (|| {
+        Ok::<_, ()>((
+            required_nonempty_string(from_path)?,
+            required_nonempty_string(to_path)?,
+            optional_nonempty_string(dest_mount_point_id)?,
+        ))
+    })();
+    let Ok((fp, tp, dest)) = parsed else {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Copy folder requires fromPath and toPath",
+        );
+    };
+    let mp = mount_point_id.to_string();
+    let out = run_folder_op(db, webp, move |conn, deps| {
+        crate::services::mount_index::folder_ops::copy_folder(
+            conn,
+            deps,
+            &mp,
+            &fp,
+            dest.as_deref(),
+            &tp,
+        )
+    })
+    .await;
+    match out {
+        Ok(Ok(v)) => {
+            log_transfer(&v, user_id, true);
+            Response::MountFile(v)
+        }
+        Ok(Err(e)) => folder_failure(
+            e,
+            mount_point_id,
+            "[Mount Points v1] Error trying to copy folder",
+            "Failed to copy folder",
+        ),
+        Err(e) => {
+            log_route_failure(
+                "[Mount Points v1] Error trying to copy folder",
+                mount_point_id,
+                &e.to_string(),
+            );
+            Response::error(ErrorKind::Internal, "Failed to copy folder")
+        }
+    }
+}
+
+/// v4 `?action=unlink-file` (`handleUnlinkFile`) — take a file out of its
+/// hard-link group. It keeps its content and forks on its next write; a group
+/// left with one member dissolves. v4's order: find → 404 → `clearLinkGroup`
+/// → publish this store → on a dissolve, publish every sibling's OTHER store
+/// (the one member left behind lives in some store; it changed too) → INFO →
+/// `{mountPointId, path, groupId, dissolved}`. v4 has no try/catch here and
+/// every read is a fallback, so no failure arm is reachable but the
+/// infrastructure 500.
+pub async fn mount_file_unlink(
+    db: &Db,
+    mount_point_id: &str,
+    path: Option<serde_json::Value>,
+    user_id: &str,
+) -> Response {
+    let Ok(path) = required_nonempty_string(path) else {
+        return Response::error(ErrorKind::BadRequest, "Unlink requires a non-empty path");
+    };
+    let id = mount_point_id.to_string();
+    let out = db
+        .write(move |ws| {
+            let links =
+                crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(mount_conn(ws)?);
+            let Some(link) = links.find_by_mount_point_and_path_or_none(&id, &path) else {
+                return Ok(None);
+            };
+            let result = links.clear_link_group_or_default(&link.id);
+            crate::services::mount_index::realtime::publish_mount_change(&id);
+            if result.dissolved && result.group_id.is_some() {
+                for sibling in links.find_by_file_id_or_empty(&link.file_id) {
+                    if sibling.mount_point_id != id {
+                        crate::services::mount_index::realtime::publish_mount_change(
+                            &sibling.mount_point_id,
+                        );
+                    }
+                }
+            }
+            Ok(Some((link.relative_path, result)))
+        })
+        .await;
+    match out {
+        Ok(Some((rel, result))) => {
+            // `groupId: null` is omitted from the line (the file layer's
+            // absent-field rendering); the body carries the `null`.
+            tracing::info!(
+                target: "quilltap::api::mount_files",
+                mountPointId = %mount_point_id,
+                path = %rel,
+                groupId = result.group_id.as_deref(),
+                dissolved = result.dissolved,
+                userId = %user_id,
+                "[Mount Points v1] Unlinked file from its hard-link group"
+            );
+            Response::MountFile(serde_json::json!({
+                "mountPointId": mount_point_id,
+                "path": rel,
+                "groupId": result.group_id,
+                "dissolved": result.dissolved,
+            }))
+        }
+        Ok(None) => Response::error(ErrorKind::NotFound, "File not found"),
+        Err(e) => Response::error(ErrorKind::Internal, e.to_string()),
+    }
+}
+
+/// The per-file GET handlers' catch (`handleFileOpError`, `files/[...path]/
+/// route.ts:55-61`): a `FileOpError` / `DatabaseStoreError` answers `{error,
+/// code}` at `fileOpStatus`; anything else is ERROR `[Mount Points v1] Error
+/// <action>` (sic — no "trying to") `{mountPointId, relativePath}` + 500
+/// `Failed to <action>`.
+fn file_get_failure(
+    e: MountFileError,
+    mount_point_id: &str,
+    relative_path: &str,
+    links: bool,
+) -> Response {
+    match &e {
+        MountFileError::FileOp(_) | MountFileError::Store(_) => map_error(e),
+        other => {
+            let error = other.to_string();
+            if links {
+                tracing::error!(
+                    target: "quilltap::api::mount_files",
+                    mountPointId = %mount_point_id,
+                    relativePath = %relative_path,
+                    error = %error,
+                    "[Mount Points v1] Error list file locations"
+                );
+                Response::error(ErrorKind::Internal, "Failed to list file locations")
+            } else {
+                tracing::error!(
+                    target: "quilltap::api::mount_files",
+                    mountPointId = %mount_point_id,
+                    relativePath = %relative_path,
+                    error = %error,
+                    "[Mount Points v1] Error render file"
+                );
+                Response::error(ErrorKind::Internal, "Failed to render file")
+            }
+        }
+    }
+}
+
+/// v4 per-file GET `?action=links` (`handleLinks`) — every place this file's
+/// content appears, and which are hard-linked to it.
+pub fn mount_file_links(db: &Db, mount_point_id: &str, relative_path: &str) -> Response {
+    let (id, rel) = (mount_point_id.to_string(), relative_path.to_string());
+    let read = db.read_mount_index(move |conn| {
+        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(conn);
+        let Some(link) = links.find_by_mount_point_and_path_or_none(&id, &rel) else {
+            return Ok(None);
+        };
+        let siblings = links.find_by_file_id_or_empty(&link.file_id);
+        let grouped = match &link.link_group_id {
+            Some(g) => links.find_by_link_group_id_or_empty(g),
+            None => Vec::new(),
+        };
+        // A grouped sibling normally shares the content row; one mid-write may
+        // not yet, so the group is unioned in — v4's `Map` semantics: the FIRST
+        // position, the LAST value.
+        let mut by_id: Vec<crate::db::doc_mount_file_links::LinkRow> = Vec::new();
+        for l in siblings.into_iter().chain(grouped) {
+            match by_id.iter_mut().find(|x| x.id == l.id) {
+                Some(slot) => *slot = l,
+                None => by_id.push(l),
+            }
+        }
+        let points = DocMountPointsRepository::new(conn);
+        let mut names: Vec<(String, String)> = Vec::new();
+        for l in &by_id {
+            if names.iter().any(|(m, _)| *m == l.mount_point_id) {
+                continue;
+            }
+            let name = crate::db::fallback::find_by_id_or_none(
+                "doc_mount_points",
+                &l.mount_point_id,
+                || points.find_service_info_by_id(&l.mount_point_id),
+            )
+            .map(|mp| mp.name)
+            .unwrap_or_else(|| "Unknown store".to_string());
+            names.push((l.mount_point_id.clone(), name));
+        }
+        let name_of = |m: &str| {
+            names
+                .iter()
+                .find(|(k, _)| k == m)
+                .map(|(_, n)| n.clone())
+                .unwrap_or_else(|| "Unknown store".to_string())
+        };
+        let mut locations: Vec<(bool, String, String, serde_json::Value)> = by_id
+            .iter()
+            .map(|l| {
+                let me = l.id == link.id;
+                let name = name_of(&l.mount_point_id);
+                let grouped = link.link_group_id.is_some() && l.link_group_id == link.link_group_id;
+                (
+                    me,
+                    name.clone(),
+                    l.relative_path.clone(),
+                    serde_json::json!({
+                        "linkId": l.id,
+                        "mountPointId": l.mount_point_id,
+                        "mountPointName": name,
+                        "relativePath": l.relative_path,
+                        "grouped": grouped,
+                        "self": me,
+                    }),
+                )
+            })
+            .collect();
+        // v4: `Number(b.self) - Number(a.self) || name.localeCompare || path
+        // .localeCompare` — V8's sort is stable, as `sort_by` is.
+        locations.sort_by(|a, b| {
+            b.0.cmp(&a.0)
+                .then_with(|| crate::collation::locale_compare(&a.1, &b.1))
+                .then_with(|| crate::collation::locale_compare(&a.2, &b.2))
+        });
+        let locations: Vec<serde_json::Value> = locations.into_iter().map(|t| t.3).collect();
+        Ok(Some((link.link_group_id.clone(), locations)))
+    });
+    match read {
+        Ok(Some((group, locations))) => {
+            tracing::debug!(
+                target: "quilltap::api::mount_files",
+                mountPointId = %mount_point_id,
+                relativePath = %relative_path,
+                count = locations.len(),
+                "[Mount Points v1] Listed file locations"
+            );
+            Response::MountFile(serde_json::json!({
+                "linkGroupId": group,
+                "locations": locations,
+            }))
+        }
+        Ok(None) => Response::error(ErrorKind::NotFound, "File not found"),
+        Err(e) => file_get_failure(MountFileError::Db(e), mount_point_id, relative_path, true),
+    }
+}
+
+/// v4 per-file GET `?action=render-html` (`handleRenderHtml`) — v4's ORDER
+/// around the named refusal (R-P2): `readMountFileBytes` FIRST (a missing file
+/// is that read's refusal), then the non-DOCX 400, then — for a DOCX — the
+/// `DOCX_RENDER_HTML_REFUSED` 422 (R-E; `services/mount_index/docx_html.rs`).
+pub fn mount_file_render_html(db: &Db, mount_point_id: &str, relative_path: &str) -> Response {
+    use crate::services::mount_index::read_file::read_mount_file_bytes;
+    let id = mount_point_id.to_string();
+    let mp = db.read_mount_index(move |conn| {
+        DocMountPointsRepository::new(conn).find_service_info_by_id(&id)
+    });
+    let mp = match mp {
+        Ok(Some(mp)) => mp,
+        Ok(None) => {
+            return map_error(MountFileError::FileOp(
+                crate::services::mount_index::file_op_error::FileOpError::new(
+                    format!("Mount point not found: {mount_point_id}"),
+                    crate::services::mount_index::file_op_error::FileOpErrorCode::MountNotFound,
+                ),
+            ))
+        }
+        Err(e) => {
+            return file_get_failure(MountFileError::Db(e), mount_point_id, relative_path, false)
+        }
+    };
+    let rel = match crate::services::mount_index::path_utils::normalise_relative_path(relative_path)
+    {
+        Ok(r) => r,
+        Err(e) => {
+            return file_get_failure(
+                MountFileError::FileOp(e),
+                mount_point_id,
+                relative_path,
+                false,
+            )
+        }
+    };
+    let bytes = match read_mount_file_bytes(db, &mp, &rel) {
+        Ok(b) => b,
+        Err(e) => return file_get_failure(e, mount_point_id, relative_path, false),
+    };
+    if bytes.file_type != "docx" && !relative_path.to_lowercase().ends_with(".docx") {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Only .docx files can be rendered to HTML",
+        );
+    }
+    match crate::services::mount_index::docx_html::render_docx_to_html(&bytes.bytes) {
+        Ok(html) => Response::MountFile(serde_json::json!({ "html": html })),
+        Err(_refused) => {
+            // v5's own line (R-P4): v4 has no arm it refuses.
+            tracing::debug!(
+                target: "quilltap::api::mount_files",
+                mountPointId = %mount_point_id,
+                relativePath = %relative_path,
+                "[Mount Points v1] Refused to render DOCX for viewing"
+            );
+            Response::error(
+                ErrorKind::Unprocessable,
+                crate::services::mount_index::docx_html::DocxRenderRefusal::MESSAGE,
+            )
+        }
+    }
+}
+// === /P4.D381 ===
 
 /// v4 item-route PATCH — rename and/or set description. Rename runs FIRST (so
 /// a description update lands on the new path); descriptions are BLOB-only (a
@@ -1362,8 +1894,12 @@ mod tests {
     /// refusal's 409.
     #[test]
     fn the_untyped_arm_is_the_routes_500() {
-        let r = map_file_or_store(
+        // P4.D381: the folder handlers' arm is `folder_failure` (the coded
+        // FileOp / Store arm, else the handler's ERROR + 500).
+        let r = folder_failure(
             MountFileError::Other("title rejected: \"Lantern\"".into()),
+            "mp-1",
+            "[Mount Points v1] Error moving folder",
             "Failed to move folder",
         );
         let text = format!("{r:?}");

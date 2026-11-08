@@ -19,6 +19,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/mount-ops.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/mounts.json" "$TMPO/fixtures/"
+ *   cp "$V5W/harness/oracle/fixtures/docx-sample.b64" "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_MOUNTS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/mounts-main.db \
  *   QT_FIXTURE_MOUNTS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/mounts-mount.db \
@@ -167,6 +168,12 @@ interface CaseSpec {
    * standard rewrite, and only to MP_FS (MP_OBS keeps the tree).
    */
   basePath?: string;
+  // === P4.D381 ===
+  /** In-case plant on this case's fs-tree copy (before the run). */
+  plant?: (treeWork: string) => void;
+  /** Undo the plant AFTER the dump (modes restored before the copy goes). */
+  unplant?: (treeWork: string) => void;
+  // === /P4.D381 ===
 }
 
 // [ed8934f1] The planted base-path conditions for the folder-create refusals.
@@ -241,6 +248,10 @@ async function runCase(
   cpSync(fixtures.tree, treeWork, { recursive: true });
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+  // === P4.D381 === the level BEFORE any module reads it; the capture after.
+  process.env.LOG_LEVEL = 'debug';
+  const logs = await installP4d381Capture();
+  // === /P4.D381 ===
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
@@ -260,17 +271,100 @@ async function runCase(
     midb.prepare('UPDATE doc_mount_points SET basePath = ? WHERE id = ?').run(c.basePath, MP_FS);
   }
 
+  // === P4.D381 ===
+  process.env.QT_P4D381_TREE = treeWork;
+  c.plant?.(treeWork);
+  logs.length = 0; // only the case's own lines
+  // === /P4.D381 ===
   try {
     const out = await c.run();
     await drain();
     const tables = await dumpTables();
-    return { name: c.name, status: out.status, body: out.body, tables };
+    // === P4.D381 === the on-disk tree of this case's fs-tree copy.
+    const tree = listTree(treeWork);
+    c.unplant?.(treeWork);
+    return { name: c.name, status: out.status, body: out.body, tables, tree, logs };
+    // === /P4.D381 ===
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
     rmSync(work, { recursive: true, force: true });
   }
 }
+
+// === P4.D381 (v4 aec626eff / c34986421): helpers ===
+/** The fs-tree copy, recursively: `dir/` for a directory, `file:<size>` for a
+ *  file, sorted by code unit (both sides list the same way). */
+function listTree(root: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    const abs = rel ? join(root, rel) : root;
+    let names: string[];
+    try {
+      names = fs.readdirSync(abs);
+    } catch {
+      out.push(`${rel}/<unreadable>`);
+      return;
+    }
+    for (const name of names) {
+      const childRel = rel ? `${rel}/${name}` : name;
+      const st = fs.lstatSync(join(root, childRel));
+      if (st.isDirectory()) {
+        out.push(`${childRel}/`);
+        walk(childRel);
+      } else {
+        out.push(`${childRel}:${st.size}`);
+      }
+    }
+  };
+  walk('');
+  return out.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+const p4d381Tree = (): string => process.env.QT_P4D381_TREE ?? '';
+/** The lines the store-browser rows compare, by message (`MountIndex:FolderOps`,
+ *  the action / files routes, the repository's clear DEBUG). */
+const P4D381_LINES = new Set([
+  'Removed filesystem folder row with the folder',
+  'Moved filesystem folder rows with the folder',
+  'Deleted folder recursively',
+  'Folder copy failed; undoing',
+  'Copied folder',
+  'Folder move failed; moving back',
+  'Could not move a file back after a failed folder move',
+  'Moved folder between stores',
+  '[Mount Points v1] Deleted folder',
+  '[Mount Points v1] Moved folder',
+  '[Mount Points v1] Copied folder',
+  '[Mount Points v1] Unlinked file from its hard-link group',
+  '[Mount Points v1] Error deleting folder',
+  '[Mount Points v1] Error moving folder',
+  '[Mount Points v1] Error trying to copy folder',
+  '[Mount Points v1] Error render file',
+  '[Mount Points v1] Listed files for browser',
+  'Cleared hard-link group from link',
+]);
+async function installP4d381Capture(): Promise<Array<{ level: string; message: string; fields: Record<string, unknown> }>> {
+  const { logger } = await import('@/lib/logger');
+  const lines: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+      if (!P4D381_LINES.has(data.message)) return;
+      const { service: _s, environment: _e, module: _m, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+      if (data.error) fields.error = data.error.message;
+      lines.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
+  });
+  return lines;
+}
+const docxSample = (): Buffer => {
+  const here = dirname(fileURLToPath(new URL(`file://${__filename}`).href));
+  const text = fs.readFileSync(join(here, '..', 'fixtures', 'docx-sample.b64'), 'utf8');
+  const payload = text.split('\n').filter((l) => l && !l.startsWith('#')).join('');
+  return Buffer.from(payload, 'base64');
+};
+// === /P4.D381 ===
 
 const B = 'http://localhost/api/v1/mount-points';
 const idRoute = () => loadRoute('@/app/api/v1/mount-points/[id]/route');
@@ -290,6 +384,39 @@ const patch = (id: string, path: string[], body: unknown) => async () =>
       itemParams(id, path),
     ),
   );
+// === P4.D381 ===
+const filesRoute = () => loadRoute('@/app/api/v1/mount-points/[id]/files/route');
+const getReq = (url: string): unknown => ({
+  method: 'GET',
+  url,
+  nextUrl: new URL(url),
+  headers: new Headers(),
+});
+const itemGet = (id: string, path: string[], query: string) => async () =>
+  respond(
+    await (await itemRoute()).GET(
+      getReq(`${B}/${id}/files/${path.join('/')}${query}`),
+      itemParams(id, path),
+    ),
+  );
+const listFiles = (id: string) => async () =>
+  respond(await (await filesRoute()).GET(getReq(`${B}/${id}/files`), params(id)));
+/** Run `steps` in order and answer the LAST one's response. */
+const seq = (...steps: Array<() => Promise<{ status: number; body: unknown }>>) => async () => {
+  let last: { status: number; body: unknown } = { status: 0, body: null };
+  for (const step of steps) last = await step();
+  return last;
+};
+const chmodIn = (rel: string, mode: number) => async () => {
+  fs.chmodSync(join(p4d381Tree(), rel), mode);
+  return { status: 0, body: null };
+};
+const writeIn = (rel: string, data: string | Buffer) => async () => {
+  fs.mkdirSync(dirname(join(p4d381Tree(), rel)), { recursive: true });
+  fs.writeFileSync(join(p4d381Tree(), rel), data);
+  return { status: 0, body: null };
+};
+// === /P4.D381 ===
 const mkFolder = (id: string, body: unknown) => async () =>
   respond(
     await (await foldersRoute()).POST(mockRequest(`${B}/${id}/folders`, body), params(id)),
@@ -384,6 +511,126 @@ function cases(): CaseSpec[] {
         return act(MP_DB, 'delete-folder', { path: 'scratch' })();
       },
     },
+    // === P4.D381 (v4 aec626eff / c34986421): the store-browser API rows ===
+    // ── item 5: the browser listing with a non-trivial group ──
+    {
+      name: 'files_list_grouped',
+      run: seq(act(MP_DB, 'link-file', mv('notes/intro.md', MP_EMPTY, 'linked/intro.md')), listFiles(MP_DB)),
+    },
+    // ── item 6: filesystem folder rows follow the folder (c34986421) ──
+    {
+      name: 'folder_move_fs_nested_to_top',
+      run: seq(act(MP_FS, 'scan'), act(MP_FS, 'move-folder', { fromPath: 'notes/sub', toPath: 'sub' })),
+    },
+    {
+      name: 'folder_delete_fs_empty_with_row',
+      run: seq(
+        act(MP_FS, 'scan'),
+        act(MP_FS, 'delete-file', { path: 'notes/sub/deep.md' }),
+        act(MP_FS, 'delete-folder', { path: 'notes/sub' }),
+      ),
+    },
+    // ── item 7: the folder family ──
+    { name: 'folder_delete_db_recursive', run: act(MP_DB, 'delete-folder', { path: 'notes', recursive: true }) },
+    {
+      name: 'folder_delete_fs_recursive',
+      run: seq(act(MP_FS, 'scan'), act(MP_FS, 'delete-folder', { path: 'notes/sub', recursive: true })),
+    },
+    {
+      // After a scan, `notes/blank.md` (empty → never indexed) and a planted
+      // `notes/z.xyz` are the strays: two names.
+      name: 'folder_delete_fs_recursive_strays',
+      run: seq(
+        act(MP_FS, 'scan'),
+        writeIn('notes/z.xyz', 'stray'),
+        act(MP_FS, 'delete-folder', { path: 'notes', recursive: true }),
+      ),
+    },
+    {
+      // No scan: every file under `notes/` is a stray (five) → three names + `, …`.
+      name: 'folder_delete_fs_recursive_strays_many',
+      run: act(MP_FS, 'delete-folder', { path: 'notes', recursive: true }),
+    },
+    { name: 'folder_copy_db_db', run: act(MP_DB, 'copy-folder', { fromPath: 'notes', toPath: 'imported', destMountPointId: MP_EMPTY }) },
+    {
+      name: 'folder_copy_fs_db',
+      run: seq(act(MP_FS, 'scan'), act(MP_FS, 'copy-folder', { fromPath: 'notes/sub', toPath: 'fromfs', destMountPointId: MP_DB })),
+    },
+    { name: 'folder_copy_db_fs', run: act(MP_DB, 'copy-folder', { fromPath: 'notes', toPath: 'fromdb', destMountPointId: MP_FS }) },
+    { name: 'folder_copy_into_itself', run: act(MP_DB, 'copy-folder', { fromPath: 'notes', toPath: 'notes/inner' }) },
+    { name: 'folder_copy_dest_exists', run: act(MP_DB, 'copy-folder', { fromPath: 'notes', toPath: 'docs' }) },
+    { name: 'folder_copy_missing', run: act(MP_DB, 'copy-folder', { fromPath: 'ghost', toPath: 'x' }) },
+    { name: 'folder_move_cross_db_db', run: act(MP_DB, 'move-folder', { fromPath: 'notes', toPath: 'moved', destMountPointId: MP_EMPTY }) },
+    {
+      name: 'folder_move_cross_fs_db',
+      run: seq(act(MP_FS, 'scan'), act(MP_FS, 'move-folder', { fromPath: 'notes/sub', toPath: 'fromfs', destMountPointId: MP_DB })),
+    },
+    {
+      name: 'folder_move_cross_fs_strays',
+      run: seq(act(MP_FS, 'scan'), act(MP_FS, 'move-folder', { fromPath: 'notes', toPath: 'x', destMountPointId: MP_DB })),
+    },
+    {
+      // The undo plant: `notes/sub` gains a second indexed file; after the scan
+      // the SECOND link in `tree.files` order (`findByMountPointId`'s rowid
+      // order — `notes/sub/deep.md` first, `notes/sub/deeper.md` second,
+      // measured) is made unreadable, so its copy throws after the first landed.
+      name: 'folder_copy_undo',
+      plant: (tree) => fs.writeFileSync(join(tree, 'notes', 'sub', 'deeper.md'), '# Deeper\n\nFurther down.\n'),
+      run: seq(
+        act(MP_FS, 'scan'),
+        chmodIn('notes/sub/deeper.md', 0o000),
+        act(MP_FS, 'copy-folder', { fromPath: 'notes/sub', toPath: 'undo', destMountPointId: MP_DB }),
+      ),
+      unplant: (tree) => fs.chmodSync(join(tree, 'notes', 'sub', 'deeper.md'), 0o644),
+    },
+    {
+      name: 'folder_move_undo',
+      plant: (tree) => fs.writeFileSync(join(tree, 'notes', 'sub', 'deeper.md'), '# Deeper\n\nFurther down.\n'),
+      run: seq(
+        act(MP_FS, 'scan'),
+        chmodIn('notes/sub/deeper.md', 0o000),
+        act(MP_FS, 'move-folder', { fromPath: 'notes/sub', toPath: 'undo', destMountPointId: MP_DB }),
+      ),
+      unplant: (tree) => fs.chmodSync(join(tree, 'notes', 'sub', 'deeper.md'), 0o644),
+    },
+    { name: 'folder_move_dest_same_store', run: act(MP_DB, 'move-folder', { fromPath: 'notes', toPath: 'notes3', destMountPointId: MP_DB }) },
+    // ── item 8: the wire edges of the four actions ──
+    { name: 'folder_delete_recursive_wrong_type', run: act(MP_DB, 'delete-folder', { path: 'notes', recursive: 'yes' }) },
+    { name: 'folder_delete_recursive_null', run: act(MP_DB, 'delete-folder', { path: 'notes', recursive: null }) },
+    { name: 'folder_copy_missing_to', run: act(MP_DB, 'copy-folder', { fromPath: 'notes' }) },
+    { name: 'folder_move_dest_empty', run: act(MP_DB, 'move-folder', { fromPath: 'notes', toPath: 'n2', destMountPointId: '' }) },
+    {
+      // A three-member group (two links off `notes/intro.md`), one member leaves.
+      name: 'unlink_grouped',
+      run: seq(
+        act(MP_DB, 'link-file', mv('notes/intro.md', MP_EMPTY, 'linked/a.md')),
+        act(MP_DB, 'link-file', mv('notes/intro.md', MP_EMPTY, 'linked/b.md')),
+        act(MP_EMPTY, 'unlink-file', { path: 'linked/a.md' }),
+      ),
+    },
+    {
+      name: 'unlink_dissolve',
+      run: seq(
+        act(MP_DB, 'link-file', mv('notes/intro.md', MP_EMPTY, 'linked/a.md')),
+        act(MP_EMPTY, 'unlink-file', { path: 'linked/a.md' }),
+      ),
+    },
+    { name: 'unlink_ungrouped', run: act(MP_DB, 'unlink-file', { path: 'reference.txt' }) },
+    { name: 'unlink_missing', run: act(MP_DB, 'unlink-file', { path: 'nope.md' }) },
+    { name: 'unlink_no_path', run: act(MP_DB, 'unlink-file', {}) },
+    // ── item 11: render-html (`DOCX_RENDER_HTML_REFUSED` on the two DOCX rows) ──
+    {
+      name: 'render_html_docx_valid',
+      run: seq(writeIn('docs/sample.docx', docxSample()), itemGet(MP_FS, ['docs', 'sample.docx'], '?action=render-html')),
+    },
+    {
+      name: 'render_html_docx_corrupt',
+      run: seq(writeIn('docs/bad.docx', 'not a zip at all'), itemGet(MP_FS, ['docs', 'bad.docx'], '?action=render-html')),
+    },
+    { name: 'render_html_md', run: itemGet(MP_FS, ['notes', 'alpha.md'], '?action=render-html') },
+    { name: 'render_html_missing', run: itemGet(MP_FS, ['docs', 'missing.docx'], '?action=render-html') },
+    { name: 'render_html_db_md', run: itemGet(MP_DB, ['notes', 'intro.md'], '?action=render-html') },
+    // === /P4.D381 ===
   ];
 }
 

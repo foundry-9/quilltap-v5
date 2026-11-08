@@ -4234,9 +4234,17 @@ impl CoreEngine {
             Request::MountFolderDelete {
                 mount_point_id,
                 path,
+                recursive,
             } => match self.ready_db() {
                 Ok(db) => {
-                    super::mount_files::mount_folder_delete(&db, &mount_point_id, &path).await
+                    super::mount_files::mount_folder_delete(
+                        &db,
+                        &mount_point_id,
+                        &path,
+                        recursive,
+                        SINGLE_USER_ID,
+                    )
+                    .await
                 }
                 Err(r) => r,
             },
@@ -4244,18 +4252,68 @@ impl CoreEngine {
                 mount_point_id,
                 from_path,
                 to_path,
-            } => match self.ready_db() {
-                Ok(db) => {
+                dest_mount_point_id,
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
                     super::mount_files::mount_folder_move(
                         &db,
                         &mount_point_id,
                         &from_path,
                         &to_path,
+                        dest_mount_point_id,
+                        SINGLE_USER_ID,
+                        blob_webp,
                     )
                     .await
                 }
                 Err(r) => r,
             },
+            // === P4.D381 (v4 `aec626eff`) ===
+            Request::MountFolderCopy {
+                mount_point_id,
+                from_path,
+                to_path,
+                dest_mount_point_id,
+            } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
+                    super::mount_files::mount_folder_copy(
+                        &db,
+                        &mount_point_id,
+                        from_path,
+                        to_path,
+                        dest_mount_point_id,
+                        SINGLE_USER_ID,
+                        blob_webp,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileUnlink {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::mount_files::mount_file_unlink(&db, &mount_point_id, path, SINGLE_USER_ID)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::MountFileLinks {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_file_links(&db, &mount_point_id, &path),
+                Err(r) => r,
+            },
+            Request::MountFileRenderHtml {
+                mount_point_id,
+                path,
+            } => match self.ready_db() {
+                Ok(db) => super::mount_files::mount_file_render_html(&db, &mount_point_id, &path),
+                Err(r) => r,
+            },
+            // === /P4.D381 ===
             Request::MountFileUpdate {
                 mount_point_id,
                 path,

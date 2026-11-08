@@ -537,6 +537,9 @@ pub fn status_of_kind(kind: &ErrorKind) -> i64 {
         ErrorKind::BadRequest => 400,
         ErrorKind::Conflict => 409,
         ErrorKind::Forbidden => 403,
+        // P4.D381: the named `not_available` refusals (`DOCX_RENDER_HTML_REFUSED`)
+        // answer 422, as `quilltap-web`'s `status_for_kind` maps them.
+        ErrorKind::Unprocessable => 422,
         _ => 500,
     }
 }
