@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AutonomousRoomStatusDto, AutonomousRoomSummary } from '../core/core-contract';
 import {
@@ -353,5 +353,48 @@ describe('buildLabel / filters / cron shape', () => {
       // Feb 30th parses but never comes around.
       expect(tryCronNextRun('0 0 30 2 *')).toEqual({ ok: true, next: null });
     });
+
+    // === P4.D388 ===
+    /**
+     * P4.D388 item 14 (croner `^10.0.1` → `^11.0.0`, v4 `3936fdf65`): the rows
+     * croner 11 moved. Measured against both installed copies (2026-11-08,
+     * `TZ=America/Chicago`): 10.0.1 answered `0 0 ? * 5` with a THURSDAY — its
+     * `?` bug, the same fix P4.D365 ports in `enclave/cron.rs` — and 11.0.0
+     * with the Friday. `0 0 30 2 *` stays `null` on both (the row above is
+     * unmoved).
+     */
+    describe('croner 11 (v4 3936fdf65)', () => {
+      afterEach(() => vi.useRealTimers());
+
+      it('`0 0 ? * 5` previews a Friday (croner 10.0.1 answered the Thursday)', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(2026, 10, 4, 12, 0, 0)); // a Wednesday, local time
+        const result = tryCronNextRun('0 0 ? * 5');
+        expect(result.ok).toBe(true);
+        const next = (result as { ok: true; next: Date | null }).next!;
+        expect(next.getDay()).toBe(5);
+        expect([next.getFullYear(), next.getMonth(), next.getDate(), next.getHours()]).toEqual([2026, 10, 6, 0]);
+      });
+
+      /**
+       * The spring-forward gap: croner 11 runs a fixed-time job at the gap's
+       * first valid instant (03:00), where 10.0.1 slid it an hour (03:30). The
+       * SPA previews in the RUNNER's local zone and vitest cannot pin one per
+       * test, so this row runs only where 2027-03-14 02:30 local does not exist
+       * (the US zones; this machine is America/Chicago) and is skipped, by this
+       * name, elsewhere.
+       */
+      const gapLocal = new Date(2027, 2, 14, 2, 30);
+      it.skipIf(gapLocal.getHours() === 2)(
+        '`30 2 * * *` across a US spring-forward previews 03:00 (croner 10.0.1 answered 03:30)',
+        () => {
+          vi.useFakeTimers();
+          vi.setSystemTime(new Date(2027, 2, 13, 12, 0, 0));
+          const next = (tryCronNextRun('30 2 * * *') as { ok: true; next: Date | null }).next!;
+          expect([next.getMonth(), next.getDate(), next.getHours(), next.getMinutes()]).toEqual([2, 14, 3, 0]);
+        },
+      );
+    });
+    // === end P4.D388 ===
   });
 });

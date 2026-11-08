@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — chore(spa): croner 11, mermaid 12.3.0 (v4 3936fdf65, 8f83041aa)
+
+_Versions: SPA 0.5.978._
+
+P4.D388 unit (vi). `apps/web/package.json` moves `croner` `^10.0.1` → `^11.0.0` (v4 `3936fdf65`) and `mermaid` `12.2.0` → `12.3.0`, still exact (v4 `8f83041aa`). Both lock integrities equal v4's pin lock. The lock moves only croner, mermaid and mermaid's own tree: `elkjs` 0.9.3 → 0.12.1, and `uuid` 14.0.3 removed (no SPA code imports it). The Autonomous Room cron preview moves with croner 11, as P4.D365's server `enclave/cron.rs` does. `0 0 ? * 5` now previews the Friday (10.0.1 answered the Thursday), and a fixed-time job across a US spring-forward previews the gap's first valid time, 03:00 (10.0.1 answered 03:30). `0 0 30 2 *` still previews no run. Two new rows in `autonomous.logic.spec.ts` pin both moves; the gap row runs only where the runner's local zone has that gap.
+
 #### 2026-11-08 — feat(spa): the About page's twelve 4.12 edits (v4 70d2859d8, c34986421, db4a76e39, 856ed4f2b)
 
 _Versions: SPA 0.5.977._
