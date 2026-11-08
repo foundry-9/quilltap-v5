@@ -114,4 +114,15 @@ describe('shouldRehearseImpersonatedLine', () => {
       expect(shouldRehearseImpersonatedLine(args({ bypassOnce: true }))).toBe(false);
     });
   });
+
+  // P4.D385 — v4 `db6190b44`'s first arm.
+  describe('an established fact is never rehearsed', () => {
+    it('lets an otherwise-armed seat post its fact verbatim', () => {
+      expect(shouldRehearseImpersonatedLine(args({ establishedFact: true }))).toBe(false);
+    });
+    it('changes nothing when the flag is false or absent', () => {
+      expect(shouldRehearseImpersonatedLine(args({ establishedFact: false }))).toBe(true);
+      expect(shouldRehearseImpersonatedLine(args())).toBe(true);
+    });
+  });
 });

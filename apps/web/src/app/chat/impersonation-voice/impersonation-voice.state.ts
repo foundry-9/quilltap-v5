@@ -104,6 +104,11 @@ export interface InterceptArgs {
   fileIds: string[];
   attachments: MessageAttachment[];
   pending: readonly unknown[];
+  /**
+   * The send is an established fact (Deus Ex Machina, v4 `db6190b44`): never
+   * rehearsed. The Salon passes `ComposerSend.establishedFact` (P4.D384, H1).
+   */
+  establishedFact?: boolean;
 }
 
 @Injectable()
@@ -164,6 +169,7 @@ export class ImpersonationVoiceState {
       text: args.text,
       hasAttachmentsOnly,
       bypassOnce: this.bypassOnce,
+      establishedFact: args.establishedFact,
     });
 
     // The bypass is consumed by the submit it was set for, whether or not

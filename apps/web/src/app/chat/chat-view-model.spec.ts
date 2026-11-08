@@ -84,6 +84,19 @@ describe('buildRenderItems', () => {
     expect(pascal.type === 'message' && pascal.message.id).toBe('p');
   });
 
+  // P4.D385 item 10 — v4 `671c59a53`: a machine fact "never collapses into a
+  // run of Host chips".
+  it('never chips a Host established fact: it splits the Host run around it', () => {
+    const items = buildRenderItems([
+      msg({ id: 'h1', systemSender: 'host', systemKind: 'turn-pass' }),
+      msg({ id: 'f', systemSender: 'host', systemKind: 'established-fact', participantId: null }),
+      msg({ id: 'h2', systemSender: 'host', systemKind: 'turn-pass' }),
+    ]);
+    expect(items.map((i) => i.type)).toEqual(['announcement-group', 'message', 'announcement-group']);
+    const fact = items[1];
+    expect(fact.type === 'message' && fact.message.id).toBe('f');
+  });
+
   /**
    * P4.D116 / v4 `44a8137e` — render site 1 of 2 for the new `scenario-change`
    * kind. v4 added no table entry for it, so it must arrive as a CHIP with the

@@ -158,6 +158,15 @@ export class RichEditor {
   readonly contentChange = output<string>();
   /** Fired when Enter is pressed in `submitOnEnter` mode. */
   readonly submit = output<void>();
+  /**
+   * Cmd+Shift+Enter (Mac) / Ctrl+Shift+Enter (elsewhere): send this one line
+   * as established fact (Deus Ex Machina, v4 `db6190b44`'s `KeyboardPlugin.tsx
+   * :114-125` — `onSubmit({ establishedFact: true })`). A separate output
+   * rather than an options payload on `submit` (ruling PL-2), so `submit`'s one
+   * binding and the other two hosts stay untouched. Fires only in the composer
+   * (either `submitOn*` input set), in EITHER mode, as v4's plugin does.
+   */
+  readonly submitEstablishedFact = output<void>();
   /** Fired with a pasted image file (the composer's paste-image leg). */
   readonly imagePaste = output<File>();
 
@@ -357,6 +366,18 @@ export class RichEditor {
       return true;
     };
 
+    // Deus Ex Machina's shortcut (v4 `KeyboardPlugin.tsx:114-125`): AFTER the
+    // code-block escape and BEFORE the mode branch, in either mode. Scoped to
+    // the composer the same way `escapeCodeBlockCmd` is — Document Mode and the
+    // form fields never send a fact. `Shift-Mod-Enter` is prosemirror-keymap's
+    // exact-modifier match: Meta (and not Ctrl) on a Mac, Ctrl (and not Meta)
+    // elsewhere — v4's `isMac ? metaKey && !ctrlKey : ctrlKey && !metaKey`.
+    const factSubmitCmd: Command = () => {
+      if (!this.submitOnEnter() && !this.submitOnModEnter()) return false;
+      this.submitEstablishedFact.emit();
+      return true;
+    };
+
     // Shift+Enter (and Enter inside a code block) inserts a line break — a
     // hard_break node, which serializes to a plain `\n` (the dialect soft break).
     const insertBreak: Command = (state, dispatch) => {
@@ -419,6 +440,9 @@ export class RichEditor {
         // Composition mode submit (Cmd/Ctrl+Enter). Bound above the base keymap
         // so it wins when armed, else falls through.
         'Mod-Enter': modSubmitCmd,
+        // v4 runs the code-block escape FIRST: Cmd/Ctrl+Shift+Enter on a blank
+        // trailing code line leaves the fence and sends nothing.
+        'Shift-Mod-Enter': chainCommands(escapeCodeBlockCmd, factSubmitCmd),
         'Shift-Enter': insertBreak,
       }),
       keymap(dialectFormattingKeymap(dialectSchema)),

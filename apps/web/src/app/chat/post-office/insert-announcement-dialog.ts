@@ -27,7 +27,8 @@ import {
 import { resolveDefaultSystemPromptId } from '../../shared/default-system-prompt';
 import { ToastService } from '../../ui/toast.service';
 
-type Mode = 'staff' | 'character' | 'custom';
+/** `fact`: the Deus Ex Machina tab — an established fact with no speaker (v4 `db6190b44`). */
+type Mode = 'staff' | 'character' | 'custom' | 'fact';
 type Stage = 'compose' | 'generating' | 'review';
 
 /** v4's sentinel for "post it verbatim, do not run it through a model" (`:71`). */
@@ -160,6 +161,7 @@ const AS_IS = 'as-is';
                       (characterId() === c.id ? 'qt-bg-primary/20' : 'hover:qt-bg-primary/10')
                     "
                     [disabled]="isPosting() || stage() !== 'compose'"
+                    [attr.aria-pressed]="characterId() === c.id"
                     (click)="onSelectCharacter(c.id)"
                   >
                     <!-- v4's placeholder circle: its characters list carries no
@@ -231,6 +233,12 @@ const AS_IS = 'as-is';
           </div>
         }
 
+        @if (mode() === 'fact') {
+          <div class="qt-text-xs">
+            Posted as established fact: true, known to everyone, needing no verification.
+          </div>
+        }
+
         @if (mode() === 'custom') {
           <div>
             <label for="announce-custom-name" class="block text-sm qt-text-primary mb-2">
@@ -254,7 +262,8 @@ const AS_IS = 'as-is';
       </div>
 
       <!-- Audience — public by default; naming anyone makes it a whisper (v4 :529-587). -->
-      @if (audienceCandidates().length > 0) {
+      <!-- An established fact is known to everyone: no audience picker (v4 :605). -->
+      @if (audienceCandidates().length > 0 && mode() !== 'fact') {
         <div class="mb-4">
           <label class="block text-sm qt-text-primary mb-2" id="announce-audience-label">
             Who hears it
@@ -325,9 +334,11 @@ const AS_IS = 'as-is';
                 ? isWhisper()
                   ? 'What you want the character to say privately'
                   : 'What you want the character to announce'
-                : isWhisper()
-                  ? 'Whisper'
-                  : 'Announcement'
+                : mode() === 'fact'
+                  ? 'Fact'
+                  : isWhisper()
+                    ? 'Whisper'
+                    : 'Announcement'
             }}
           </label>
           @if (willRewrite() && stage() === 'review') {
@@ -345,7 +356,7 @@ const AS_IS = 'as-is';
           [value]="content()"
           [disabled]="isPosting() || stage() !== 'compose'"
           minHeight="12rem"
-          ariaLabel="Announcement body"
+          [ariaLabel]="mode() === 'fact' ? 'Fact' : 'Announcement body'"
           (contentChange)="content.set($event)"
         />
       </div>
@@ -421,6 +432,7 @@ export class InsertAnnouncementDialog {
     { mode: 'staff', label: 'Staff' },
     { mode: 'character', label: 'Off-scene character' },
     { mode: 'custom', label: 'Custom' },
+    { mode: 'fact', label: 'Deus Ex Machina' },
   ];
 
   protected readonly mode = signal<Mode>('staff');
@@ -528,7 +540,7 @@ export class InsertAnnouncementDialog {
   );
 
   /** v4 `isWhisper` (`:317`) — naming anyone in the audience makes it a whisper. */
-  protected readonly isWhisper = computed(() => this.audience().length > 0);
+  protected readonly isWhisper = computed(() => this.mode() !== 'fact' && this.audience().length > 0);
 
   /** v4 `selectedAudienceNames` (`:242-248`). */
   protected readonly selectedAudienceNames = computed(() => {
@@ -556,6 +568,7 @@ export class InsertAnnouncementDialog {
     if (this.mode() === 'custom') {
       return this.customName().trim().length > 0 && this.content().trim().length > 0;
     }
+    if (this.mode() === 'fact') return this.content().trim().length > 0;
     if (this.mode() === 'character') {
       if (!this.characterId()) return false;
       if (this.stage() === 'compose') return this.content().trim().length > 0;
@@ -565,7 +578,9 @@ export class InsertAnnouncementDialog {
   });
 
   /** v4 `postLabel` (`:318`) — flips when the audience makes it a whisper. */
-  protected readonly postLabel = computed(() => (this.isWhisper() ? 'Post Whisper' : 'Post Announcement'));
+  protected readonly postLabel = computed(() =>
+    this.mode() === 'fact' ? 'Establish' : this.isWhisper() ? 'Post Whisper' : 'Post Announcement',
+  );
 
   /** v4 `primaryLabel` (`:317-323`). */
   protected readonly primaryLabel = computed(() => {
@@ -600,6 +615,9 @@ export class InsertAnnouncementDialog {
     this.proposedMarkdown.set('');
     this.profileOverride.set(null);
     this.systemPromptOverride.set(null);
+    // An established fact is known to everyone: selecting the tab clears any
+    // audience, and the audience picker is hidden while it is selected.
+    if (next === 'fact') this.audience.set([]);
     // (v4's `loadCharactersIfNeeded()` is the query's own `enabled` gate here.)
   }
 
@@ -680,12 +698,15 @@ export class InsertAnnouncementDialog {
 
   /** v4 `postAnnouncement` (`:222-257`). */
   private async post(textToPost: string): Promise<void> {
+    const isFact = this.mode() === 'fact';
     const sender: AnnouncerSenderWire =
       this.mode() === 'staff'
         ? { kind: 'staff', staffId: this.staffId() }
         : this.mode() === 'character'
           ? { kind: 'character', characterId: this.characterId() }
-          : { kind: 'custom', displayName: this.customName().trim() };
+          : isFact
+            ? { kind: 'fact' }
+            : { kind: 'custom', displayName: this.customName().trim() };
 
     this.isPosting.set(true);
     try {
@@ -693,9 +714,15 @@ export class InsertAnnouncementDialog {
         chatId: this.chatId(),
         contentMarkdown: textToPost.trim(),
         sender,
-        targetParticipantIds: this.audience().length > 0 ? this.audience() : null,
+        targetParticipantIds: !isFact && this.audience().length > 0 ? this.audience() : null,
       });
-      this.toasts.showSuccess(this.isWhisper() ? 'Whispered announcement posted' : 'Announcement posted');
+      this.toasts.showSuccess(
+        isFact
+          ? 'Established as fact'
+          : this.audience().length > 0
+            ? 'Whispered announcement posted'
+            : 'Announcement posted',
+      );
       this.posted.emit();
       this.close.emit();
     } catch (err) {

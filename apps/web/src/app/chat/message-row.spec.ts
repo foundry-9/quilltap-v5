@@ -1508,3 +1508,56 @@ describe('MessageRow — absent-character name chips (v4 9a88f862f)', () => {
   });
 });
 
+
+/**
+ * Deus Ex Machina in the transcript (P4.D385 item 11; v4 `MessageRow.tsx`
+ * `:217-228`, `:323`, `:404-409`, `db6190b44`): an operator line posted as
+ * fact wears the ribbon; a machine fact is a full-width band with no avatar,
+ * whose Staff bar carries the fact accent and v4's kind label.
+ */
+describe('MessageRow — established facts (v4 db6190b44)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const RIBBON = '.qt-chat-message-established-fact';
+
+  it('ribbons an operator seat line posted as fact', () => {
+    const el = render(message({ role: 'USER', isEstablishedFact: true })).nativeElement as HTMLElement;
+    expect(el.querySelector(RIBBON)!.textContent!.trim()).toBe('Deus Ex Machina — established as fact');
+    expect(el.querySelector('.qt-chat-established-fact-band')).toBeNull();
+  });
+
+  it('draws no ribbon when the flagged row also carries a systemSender', () => {
+    const el = render(
+      message({ role: 'ASSISTANT', isEstablishedFact: true, systemSender: 'carina', systemKind: 'carina-response' }),
+    ).nativeElement as HTMLElement;
+    expect(el.querySelector(RIBBON)).toBeNull();
+  });
+
+  it('bands a Host fact: the row class, the bubble band, no assistant avatar, the accented bar', () => {
+    const el = render(
+      message({
+        role: 'ASSISTANT',
+        systemSender: 'host',
+        systemKind: 'established-fact',
+        participantId: null,
+        content: 'The bridge is out.',
+      }),
+    ).nativeElement as HTMLElement;
+    expect(el.querySelector('.qt-chat-message-row')!.classList.contains('qt-chat-established-fact-row')).toBe(true);
+    expect(el.querySelector('.qt-chat-message')!.classList.contains('qt-chat-established-fact-band')).toBe(true);
+    expect(el.querySelector('.qt-chat-desktop-avatar')).toBeNull();
+    const bar = el.querySelector('.qt-chat-system-bar')!;
+    expect(bar.classList.contains('qt-chat-established-fact')).toBe(true);
+    expect(bar.querySelector('.qt-chat-system-bar-sender')!.textContent!.trim()).toBe('The Host');
+    expect(bar.querySelector('.qt-chat-system-bar-kind')!.textContent!.trim()).toBe('Deus Ex Machina');
+    expect(el.querySelector(RIBBON)).toBeNull();
+  });
+
+  it('leaves an ordinary row alone', () => {
+    const el = render(message({ isEstablishedFact: false })).nativeElement as HTMLElement;
+    expect(el.querySelector(RIBBON)).toBeNull();
+    expect(el.querySelector('.qt-chat-established-fact-row')).toBeNull();
+    expect(el.querySelector('.qt-chat-established-fact-band')).toBeNull();
+    expect(el.querySelector('.qt-chat-desktop-avatar')).not.toBeNull();
+  });
+});

@@ -183,7 +183,8 @@ describe('AnnouncementGroup — Pascal outcome accent (P4.d21)', () => {
       'chevron-right',
     );
     expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(button.getAttribute('aria-label')).toBe('Expand The Host add message');
+    // v4 94f041764 dropped the chip's aria-label: its visible text names it.
+    expect(button.hasAttribute('aria-label')).toBe(false);
 
     button.click();
     fixture.detectChanges();
@@ -192,7 +193,7 @@ describe('AnnouncementGroup — Pascal outcome accent (P4.d21)', () => {
     expect(chevron.getAttribute('data-icon')).toBe('chevron-down');
     expect(chevron.classList.contains('qt-chat-system-bar-chevron-down')).toBe(true);
     expect(button.getAttribute('aria-expanded')).toBe('true');
-    expect(button.getAttribute('aria-label')).toBe('Collapse The Host add message');
+    expect(button.hasAttribute('aria-label')).toBe(false);
   });
 
   it('carries the message identity v4 keeps for deep-link scroll-to-message', () => {
@@ -388,8 +389,8 @@ describe('AnnouncementGroup — "Try uncensored" on the Lantern\'s refused backd
 
 /**
  * v4 `a05c6f755` (`AnnouncementChip.tsx:67,109`): a chipped Staff row that also
- * carries a character announcer is named for that character, on the chip and
- * in its `aria-label`. No writer produces one at the pin (a Pascal outcome is
+ * carries a character announcer is named for that character on the chip (whose
+ * visible text is its name since `94f041764` dropped the `aria-label`). No writer produces one at the pin (a Pascal outcome is
  * never a chip), so the row is planted.
  */
 describe('AnnouncementGroup — a character announcer names the chip (P4.D320)', () => {
@@ -400,21 +401,81 @@ describe('AnnouncementGroup — a character announcer names the chip (P4.D320)',
     offSceneCharacters: [{ id: 'char-1', name: 'Imogen', title: null, avatarUrl: null }],
   } as unknown as ChatDetail;
 
-  it('shows the announcer on the chip and in the aria-label', () => {
+  it('shows the announcer on the chip, which names it (no aria-label since v4 94f041764)', () => {
     const fixture = render(
       [chip({ message: message({ customAnnouncer: { kind: 'character', characterId: 'char-1' } }) })],
       chat,
     );
     const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
     expect(button.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('Imogen');
-    expect(button.getAttribute('aria-label')).toBe('Expand Imogen add message');
+    expect(button.hasAttribute('aria-label')).toBe(false);
   });
 
   it('keeps the Staff name without an announcer', () => {
     const fixture = render([chip()], chat);
     const button = fixture.nativeElement.querySelector('.qt-chat-announcement-chip');
     expect(button.querySelector('.qt-chat-system-bar-sender').textContent.trim()).toBe('The Host');
-    expect(button.getAttribute('aria-label')).toBe('Expand The Host add message');
+    expect(button.hasAttribute('aria-label')).toBe(false);
   });
 });
 
+
+/**
+ * P4.D384's conversation-search reveal opens a collapsed chip through
+ * `revealExpand` (P4.D385 item 11b, inbound HANDOFF H3-IN).
+ */
+describe('AnnouncementGroup — the reveal-expand input (H3-IN)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const body = (f: ComponentFixture<AnnouncementGroup>) =>
+    (f.nativeElement as HTMLElement).textContent!.includes('The lock gives way.');
+  const button = (f: ComponentFixture<AnnouncementGroup>) =>
+    (f.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.qt-chat-announcement-chip')!;
+  const reveal = (f: ComponentFixture<AnnouncementGroup>, ids: string[]) => {
+    f.componentRef.setInput('revealExpand', new Set(ids));
+    f.detectChanges();
+  };
+
+  it('renders a revealed chip expanded', () => {
+    const f = render([chip()]);
+    expect(body(f)).toBe(false);
+    reveal(f, ['m1']);
+    expect(button(f).getAttribute('aria-expanded')).toBe('true');
+    expect(body(f)).toBe(true);
+  });
+
+  it('collapses it again when the reveal drops the id', () => {
+    const f = render([chip()]);
+    reveal(f, ['m1']);
+    reveal(f, []);
+    expect(button(f).getAttribute('aria-expanded')).toBe('false');
+    expect(body(f)).toBe(false);
+  });
+
+  it('keeps it open after the reveal drops it when the operator had opened it', () => {
+    const f = render([chip()]);
+    button(f).click();
+    f.detectChanges();
+    reveal(f, ['m1']);
+    reveal(f, []);
+    expect(button(f).getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it("lets the operator's toggle close a reveal-opened chip, until a new reveal", () => {
+    const f = render([chip()]);
+    reveal(f, ['m1']);
+    button(f).click();
+    f.detectChanges();
+    expect(button(f).getAttribute('aria-expanded')).toBe('false');
+    // …and open it again with a second click.
+    button(f).click();
+    f.detectChanges();
+    expect(button(f).getAttribute('aria-expanded')).toBe('true');
+    button(f).click();
+    f.detectChanges();
+    expect(button(f).getAttribute('aria-expanded')).toBe('false');
+    // A fresh reveal (a new set) opens it again.
+    reveal(f, ['m1']);
+    expect(button(f).getAttribute('aria-expanded')).toBe('true');
+  });
+});

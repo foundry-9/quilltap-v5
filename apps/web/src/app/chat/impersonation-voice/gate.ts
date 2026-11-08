@@ -37,6 +37,8 @@ export interface ShouldRehearseArgs {
   hasAttachmentsOnly: boolean;
   /** Set for the one resubmit that "Send as written" triggers. */
   bypassOnce: boolean;
+  /** The line is posted as established fact: its exact words are what is true. */
+  establishedFact?: boolean;
 }
 
 /**
@@ -59,7 +61,12 @@ export function shouldRehearseImpersonatedLine({
   text,
   hasAttachmentsOnly,
   bypassOnce,
+  establishedFact,
 }: ShouldRehearseArgs): boolean {
+  // An established fact is never rewritten in character: the exact words are
+  // what is true (v4 `db6190b44`, the FIRST arm — like the others, its place
+  // in the order is unobservable and kept as transcribed).
+  if (establishedFact) return false;
   if (mode === 'off') return false;
   if (bypassOnce) return false;
   if (!seat) return false;

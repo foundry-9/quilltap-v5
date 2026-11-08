@@ -16,6 +16,9 @@ import {
 import { ToolMessage } from './tool-message';
 import { isLanternBackgroundRefusal, type ConciergeRetryHandlers } from './concierge-retry';
 
+/** The frozen empty reveal set — the input's stable default (P4.D385, H3-IN). */
+const NO_REVEAL: ReadonlySet<string> = Object.freeze(new Set<string>());
+
 /**
  * A packed row of collapsed Staff announcement chips (v4 `qt-chat-announcement-group`).
  * Each chip shows an importance dot, the sender name, its kind, and a time; a
@@ -42,7 +45,6 @@ import { isLanternBackgroundRefusal, type ConciergeRetryHandlers } from './conci
           [id]="'message-' + chip.id"
           [attr.data-message-id]="chip.id"
           [attr.aria-expanded]="isExpanded(chip.id)"
-          [attr.aria-label]="chipLabel(chip)"
           (click)="toggle(chip.id)"
         >
           <span class="qt-chat-announcement-dot" [class]="dotClass(chip)" aria-hidden="true"></span>
@@ -182,12 +184,41 @@ export class AnnouncementGroup {
 
   private readonly expanded = signal<Set<string>>(new Set());
 
+  // === P4.D385 (H3-IN) ===
+  /**
+   * Chips a conversation-search reveal opens (P4.D384's `?msg=` / "This
+   * conversation" reveal, its HANDOFF H3): v4 lifts `expandedSystemMessageIds`
+   * into `SalonView`, so its reveal can expand a collapsed announcement before
+   * scrolling to it; v5 keeps the expanded set here, so the reveal arrives as
+   * an input. No v4 twin of the input itself.
+   *
+   * The rule (pinned in the spec): a revealed chip renders expanded; the
+   * operator's own toggle still works on it — toggling a reveal-opened chip
+   * closes it — and when the reveal set drops the id, the chip collapses unless
+   * the operator had opened it themselves. A dismissal is remembered against
+   * the reveal set it was made under, so a NEW reveal (a new set) opens the
+   * chip again.
+   */
+  readonly revealExpand = input<ReadonlySet<string>>(NO_REVEAL);
+  private readonly dismissedReveals = signal<{ of: ReadonlySet<string>; ids: ReadonlySet<string> }>({
+    of: NO_REVEAL,
+    ids: NO_REVEAL,
+  });
+
+  private isRevealed(id: string): boolean {
+    const reveal = this.revealExpand();
+    if (!reveal.has(id)) return false;
+    const dismissed = this.dismissedReveals();
+    return !(dismissed.of === reveal && dismissed.ids.has(id));
+  }
+  // === end P4.D385 ===
+
   protected readonly expandedChips = computed(() =>
-    this.chips().filter((c) => this.expanded().has(c.id)),
+    this.chips().filter((c) => this.isExpanded(c.id)),
   );
 
   protected isExpanded(id: string): boolean {
-    return this.expanded().has(id);
+    return this.expanded().has(id) || this.isRevealed(id);
   }
 
   /** v4 appends its `-down` modifier only while the bar is open. */
@@ -197,16 +228,9 @@ export class AnnouncementGroup {
       : 'qt-chat-system-bar-chevron';
   }
 
-  /**
-   * v4 `AnnouncementChip`'s `aria-label` — "Expand <sender> <kind> message".
-   * v4 hard-codes the "Expand" verb because its chip is only ever the collapsed
-   * affordance; v5 keeps the same chip mounted while the body renders below it,
-   * so the verb follows the state.
-   */
-  protected chipLabel(chip: AnnouncementChip): string {
-    const verb = this.isExpanded(chip.id) ? 'Collapse' : 'Expand';
-    return `${verb} ${this.senderName(chip)}${chip.kind ? ` ${chip.kind}` : ''} message`;
-  }
+  // v4 `94f041764` DROPPED the chip's `aria-label` ("Expand <sender> <kind>
+  // message"): the chip's visible text — sender, kind, time — names it, and
+  // `aria-expanded` carries the state.
 
   /** Character id → name for the announcers this chat can name (memoised per chat). */
   private readonly announcerNames = computed(() => announcerNamesOf(this.chat()));
@@ -222,8 +246,18 @@ export class AnnouncementGroup {
   }
 
   protected toggle(id: string): void {
+    const closing = this.isExpanded(id);
+    // P4.D385 (H3-IN): closing a chip the reveal opened records the dismissal
+    // against the current reveal set, or the reveal would hold it open.
+    if (closing && this.isRevealed(id)) {
+      const reveal = this.revealExpand();
+      const dismissed = this.dismissedReveals();
+      const ids = new Set(dismissed.of === reveal ? dismissed.ids : []);
+      ids.add(id);
+      this.dismissedReveals.set({ of: reveal, ids });
+    }
     const next = new Set(this.expanded());
-    if (next.has(id)) {
+    if (closing) {
       next.delete(id);
     } else {
       next.add(id);

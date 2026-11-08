@@ -16,6 +16,7 @@ import type { SlashCommandHost, SlashToolSource } from './slash/slash-command-ho
     [spellcheck]="spellcheck()"
     (contentChange)="last.set($event)"
     (submit)="submitted.set(submitted() + 1)"
+    (submitEstablishedFact)="facts.set(facts() + 1)"
   />`,
 })
 class Host {
@@ -26,6 +27,7 @@ class Host {
   readonly spellcheck = signal(true);
   readonly last = signal('');
   readonly submitted = signal(0);
+  readonly facts = signal(0);
 }
 
 async function render(): Promise<ComponentFixture<Host>> {
@@ -559,4 +561,69 @@ describe('RichEditor — the punctuationLint input (P4.D352)', () => {
     fixture.detectChanges();
     expect(painted(fixture)).toEqual([]);
   });
+});
+
+/**
+ * Deus Ex Machina's shortcut (P4.D385 item 5; v4 `KeyboardPlugin.tsx:114-125`):
+ * Cmd+Shift+Enter on a Mac, Ctrl+Shift+Enter elsewhere, sends one line as
+ * established fact — in EITHER composer mode, never in a non-composer host,
+ * and after the code-block escape.
+ */
+describe('RichEditor — Cmd/Ctrl+Shift+Enter (submitEstablishedFact)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /** The platform's primary modifier, as prosemirror-keymap reads `Mod`. */
+  const MOD: KeyboardEventInit = IS_MAC ? { metaKey: true } : { ctrlKey: true };
+  const OTHER: KeyboardEventInit = IS_MAC ? { ctrlKey: true } : { metaKey: true };
+
+  async function composer(mode: 'chat' | 'composition'): Promise<ComponentFixture<Host>> {
+    const fixture = await render();
+    if (mode === 'chat') fixture.componentInstance.submitOnEnter.set(true);
+    else fixture.componentInstance.submitOnModEnter.set(true);
+    fixture.detectChanges();
+    fixture.componentInstance.editor().setMarkdown('The bridge is out.');
+    return fixture;
+  }
+
+  it.each(['chat', 'composition'] as const)('fires in %s mode, and submit does not', async (mode) => {
+    const fixture = await composer(mode);
+    pressEnter(fixture, { ...MOD, shiftKey: true });
+    expect(fixture.componentInstance.facts()).toBe(1);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+
+  it('does not fire outside the composer (neither submit input set)', async () => {
+    const fixture = await render();
+    fixture.componentInstance.editor().setMarkdown('The bridge is out.');
+    pressEnter(fixture, { ...MOD, shiftKey: true });
+    expect(fixture.componentInstance.facts()).toBe(0);
+    expect(fixture.componentInstance.submitted()).toBe(0);
+  });
+
+  it('does not fire with Alt held too, nor with the other platform modifier', async () => {
+    const fixture = await composer('chat');
+    pressEnter(fixture, { ...MOD, shiftKey: true, altKey: true });
+    pressEnter(fixture, { ...OTHER, shiftKey: true });
+    pressEnter(fixture, { ...MOD, ...OTHER, shiftKey: true });
+    expect(fixture.componentInstance.facts()).toBe(0);
+  });
+
+  it('runs the code-block escape first: a blank trailing code line leaves the fence and sends nothing', async () => {
+    const fixture = await composer('composition');
+    const editor = fixture.componentInstance.editor();
+    editor.setMarkdown('```\ncode\n\n```');
+    editor.runCommand((state, dispatch) => {
+      if (dispatch) dispatch(state.tr.setSelection(TextSelection.atEnd(state.doc)));
+      return true;
+    });
+    pressEnter(fixture, { ...MOD, shiftKey: true });
+    expect(editor.inCodeBlock()).toBe(false);
+    expect(editor.getMarkdown()).toBe('```\ncode\n```');
+    expect(fixture.componentInstance.facts()).toBe(0);
+  });
+
+  // The Mac half of the exact-modifier measurement lives in
+  // `rich-editor.mac-shortcut.spec.ts`: prosemirror-keymap reads the platform
+  // once, at module load, so a Mac needs its own file (`vi.hoisted`). The
+  // non-Mac half is the Alt / other-modifier case above on jsdom's platform.
 });

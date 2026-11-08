@@ -55,11 +55,15 @@ import { buildQuickRollActions, createSlashCommandRunner } from './slash-command
 import type { SlashBuiltInToolSource } from './slash-commands';
 import { FileConflictDialog } from './file-conflict-dialog';
 import { PendingInformChips } from './pending-inform-chips';
+import type { RaisedHandStatus } from './raised-hand';
+import { RaisedHandChip } from './raised-hand-chip';
 import {
   SpeakingAsAvatar,
   voiceRehearsalTitle,
+  type EstablishedFactToggle,
   type VoiceRehearsalCue,
 } from './speaking-as-avatar';
+import { Tooltip } from '../ui/tooltip';
 import { ToastService } from '../ui/toast.service';
 
 /**
@@ -95,6 +99,22 @@ export interface ComposerSend {
    * names and carries. `fileIds` stays the request's field.
    */
   attachments: MessageAttachment[];
+  // === P4.D385 (C4 H1) ===
+  /**
+   * Post this line as established fact (Deus Ex Machina, v4 `db6190b44` —
+   * `SalonView.tsx:1923-1976`'s `submitOpts.establishedFact`): set by the armed
+   * composer or by Cmd/Ctrl+Shift+Enter, and ABSENT otherwise (never `false`).
+   * The Salon (P4.D384, HANDOFF H1) maps it onto `chatSend`'s
+   * `isEstablishedFact: true`, the optimistic row's flag, and the impersonation
+   * intercept's `establishedFact`.
+   */
+  establishedFact?: true;
+  // === end P4.D385 ===
+}
+
+/** Why `submit` was called — the Deus Ex Machina shortcut sends one line as fact. */
+interface SubmitOptions {
+  shortcutFact?: boolean;
 }
 
 /**
@@ -167,10 +187,12 @@ export interface PendingToolResultChip extends RngPendingResult {
     FileConflictDialog,
     FormattingToolbar,
     PendingInformChips,
+    RaisedHandChip,
     RichEditor,
     CustomToolsPopup,
     RngDropdown,
     SpeakingAsAvatar,
+    Tooltip,
   ],
   template: `
     <div class="qt-chat-composer">
@@ -227,6 +249,41 @@ export interface PendingToolResultChip extends RngPendingResult {
            passed at all; v5's input defaults to an empty map and the component
            draws nothing without a batch, so the gate is the component's own. -->
       <qt-pending-inform-chips [chatId]="chatId()" [participantNames]="informParticipantNames()" />
+
+      <!-- Where the operator's raised hand stands (v4 ChatComposer :466-470,
+           9eab8d2da). The × lowers a hand still up (the raise button's own
+           toggle) or puts an outcome note away. -->
+      <qt-raised-hand-chip
+        [status]="handStatus()"
+        (lower)="toggleRaisedHand.emit()"
+        (dismiss)="dismissHandStatus.emit()"
+      />
+
+      <!-- Deus Ex Machina armed (v4 ChatComposer :472-494). The live region
+           stays mounted so arming and disarming are announced. -->
+      <div aria-live="polite">
+        @if (factArmed()) {
+          <div class="qt-chat-attachment-list mb-2">
+            <div class="qt-chat-tool-result-chip">
+              <qt-icon
+                name="deus-ex-machina"
+                class="qt-chat-attachment-chip-icon qt-chat-attachment-chip-icon-info"
+              />
+              <span class="text-foreground">Deus Ex Machina: this line will be established as fact</span>
+              <qt-tooltip content="Disarm Deus Ex Machina">
+                <button
+                  type="button"
+                  class="qt-chat-attachment-chip-remove"
+                  aria-label="Disarm Deus Ex Machina"
+                  (click)="factArmedForChat.set(null)"
+                >
+                  <qt-icon name="close" class="w-4 h-4" />
+                </button>
+              </qt-tooltip>
+            </div>
+          </div>
+        }
+      </div>
 
       @if (attachedFiles().length > 0 || pendingToolResults().length > 0) {
         <div class="qt-chat-attachment-list mb-2">
@@ -321,6 +378,8 @@ export interface PendingToolResultChip extends RngPendingResult {
               [avatarUrl]="seat.avatarUrl"
               [canType]="canType()"
               [voiceRehearsal]="voiceRehearsal()"
+              [establishedFact]="establishedFactToggle()"
+              (toggleEstablishedFact)="toggleEstablishedFact()"
             />
           </div>
         }
@@ -503,10 +562,17 @@ export interface PendingToolResultChip extends RngPendingResult {
             (input)="onSourceInput($any($event.target).value)"
           ></textarea>
         }
+        <!-- v4 ChatComposer :710-714: the editor sits in a wrapper that wears
+             the Deus Ex Machina tint while armed (the source textarea, a sibling
+             outside it, is not tinted) and owns source mode's display:none. -->
+        <div
+          class="flex-1 min-w-0 self-stretch"
+          [class.qt-chat-composer-established-fact]="factArmed()"
+          [style.display]="showSource() ? 'none' : null"
+        >
         <qt-rich-editor
           #editor
           class="qt-chat-composer-input qt-lexical-contenteditable"
-          [style.display]="showSource() ? 'none' : null"
           [value]="restoredDraft()"
           [placeholder]="placeholder()"
           [disabled]="composerLocked()"
@@ -524,8 +590,10 @@ export interface PendingToolResultChip extends RngPendingResult {
           ariaLabel="Message"
           (contentChange)="onContentChange($event)"
           (submit)="submit()"
+          (submitEstablishedFact)="onFactShortcut()"
           (imagePaste)="onEditorImagePaste($event)"
         />
+        </div>
 
         <!-- Right side buttons: Send, raise a hand (soft interrupt), Stop (hard).
              v4 ChatComposer.tsx:606-660; stacked per b8362beb5. All three are
@@ -535,7 +603,7 @@ export interface PendingToolResultChip extends RngPendingResult {
             type="submit"
             class="qt-chat-composer-send"
             [title]="sendTitle()"
-            aria-label="Send message"
+            [attr.aria-label]="factArmed() ? 'Send as established fact' : 'Send message'"
             [disabled]="!canSend()"
           >
             <qt-icon name="send" class="w-5 h-5" />
@@ -731,6 +799,17 @@ export class ChatComposer implements OnInit {
    * 253-259`'s `slashDefaultCharacterId`). Null runs as nobody.
    */
   readonly slashDefaultCharacterId = input<string | null>(null);
+  // === P4.D385 (C4 H2) ===
+  /**
+   * Where the operator's raised hand stands, drawn by the raised-hand chip
+   * (v4 `ChatComposer`'s `raisedHandStatus`, `9eab8d2da`). Computed from the
+   * stream by the Salon spine (P4.D384); `handRaised` stays the raise button's
+   * `aria-pressed` (the Salon feeds it `isHandUp(status)`).
+   */
+  readonly handStatus = input<RaisedHandStatus | null>(null);
+  /** The chip's × on an outcome note (v4 `onDismissHandStatus`). */
+  readonly dismissHandStatus = output<void>();
+  // === end P4.D385 ===
 
   readonly send = output<ComposerSend>();
   /** Hard stop: cut the reply off, keep what streamed, cede the floor. */
@@ -818,6 +897,7 @@ export class ChatComposer implements OnInit {
         announce: () => this.openAnnouncement.emit(),
         mail: () => this.openMail.emit(),
         inform: () => this.openInform.emit(),
+        deus: () => this.toggleEstablishedFact(),
         ...buildQuickRollActions(
           this.core,
           chatId,
@@ -907,6 +987,61 @@ export class ChatComposer implements OnInit {
    */
   protected readonly composerLocked = computed(() => this.disabled() || this.busy());
 
+  // --- Deus Ex Machina (v4 db6190b44, ChatComposer.tsx:244-274) -------------
+
+  /**
+   * "Armed per chat (the state holds the chat id it was armed in), so switching
+   * chats disarms it; never persisted with the draft, so a reload disarms it
+   * too."
+   */
+  protected readonly factArmedForChat = signal<string | null>(null);
+  protected readonly factArmed = computed(() => this.factArmedForChat() === this.chatId());
+
+  /** The portrait toggle's state — ONE memoised object per change (NG0100). */
+  protected readonly establishedFactToggle = computed<EstablishedFactToggle>(() => ({
+    armed: this.factArmed(),
+    disabled: this.composerLocked() || !this.hasActiveCharacters(),
+  }));
+
+  /**
+   * The words a send would post: the source textarea in source mode, else the
+   * editor's markdown (v4 `currentText` / `resolveComposerSubmitText`). The one
+   * resolution `submit` and the Deus toggle both read.
+   */
+  private currentSubmitText(): string {
+    return this.showSource() ? this.sourceText() : (this.editorView()?.getMarkdown() ?? '');
+  }
+
+  /** v4 `toggleEstablishedFact` — the toggle, the chip × and `/deus` all land here. */
+  protected toggleEstablishedFact(): void {
+    if (this.factArmed()) {
+      this.factArmedForChat.set(null);
+      return;
+    }
+    // A fact needs words: an attachments-only composer cannot be armed.
+    if (!this.currentSubmitText().trim() && this.attachedFiles().length > 0) {
+      this.toasts.showInfo('A fact must be written down — attachments alone cannot be established.');
+      return;
+    }
+    this.factArmedForChat.set(this.chatId());
+  }
+
+  /**
+   * Cmd/Ctrl+Shift+Enter (v4 `handleEditorSubmit({ establishedFact: true })`,
+   * `ChatComposer.tsx:347-360`): one line sent as fact WITHOUT arming.
+   */
+  protected onFactShortcut(): void {
+    // "Belt and braces: the editor is already disabled, but a keystroke racing
+    // the lock must not put a message on top of a turn in flight."
+    if (this.composerLocked()) return;
+    const markdown = this.editorView()?.getMarkdown() ?? '';
+    if (!markdown.trim()) {
+      this.toasts.showInfo('A fact must be written down — there is nothing here to establish.');
+      return;
+    }
+    this.submit({ shortcutFact: true });
+  }
+
   protected readonly canSend = computed(
     () => !this.composerLocked() && this.hasContentToSend() && this.hasActiveCharacters(),
   );
@@ -940,6 +1075,7 @@ export class ChatComposer implements OnInit {
   protected readonly sendTitle = computed(() => {
     if (!this.hasActiveCharacters()) return 'Add a character to start chatting';
     if (this.busy()) return 'Generating...';
+    if (this.factArmed()) return 'Send as established fact';
     const seat = this.speakingAs();
     const cue = this.voiceRehearsal();
     if (cue && seat) return voiceRehearsalTitle(cue, seat.name, 'send');
@@ -987,10 +1123,13 @@ export class ChatComposer implements OnInit {
     typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
 
   /** v4's two titles, keyed off which mode a click would switch you INTO. */
-  protected readonly compositionToggleTitle = computed(() =>
-    this.compositionMode()
-      ? 'Switch to chat mode (Enter to send)'
-      : `Switch to composition mode (${this.isMac ? 'Cmd' : 'Ctrl'}+Enter to send)`,
+  protected readonly compositionToggleTitle = computed(
+    () =>
+      (this.compositionMode()
+        ? 'Switch to chat mode (Enter to send)'
+        : `Switch to composition mode (${this.isMac ? 'Cmd' : 'Ctrl'}+Enter to send)`) +
+      // v4 db6190b44 (ChatComposer :638-643): the fact shortcut works in both modes.
+      ` · ${this.isMac ? 'Cmd' : 'Ctrl'}+Shift+Enter sends as established fact`,
   );
 
   /** Flip the mode and let the salon persist it (the composer stays uncontrolled). */
@@ -1146,8 +1285,8 @@ export class ChatComposer implements OnInit {
     this.submit();
   }
 
-  /** Enter (via the editor's submit) or the Send button both land here. */
-  protected submit(): void {
+  /** Enter (via the editor's submit), the Send button and the fact shortcut all land here. */
+  protected submit(opts?: SubmitOptions): void {
     // v4 `sendMessage`'s two refusals, deliberately told apart (bug 136,
     // `8275b3642`). One `return` used to cover both an empty composer and a
     // send refused because a turn was still in flight; the second is a real
@@ -1162,6 +1301,17 @@ export class ChatComposer implements OnInit {
     // `postComposedMessage` for the doors that bypass this component. A
     // recorded mechanism divergence; the sentence is v4's, byte for byte.
     if (!this.hasContentToSend()) {
+      return;
+    }
+    // Deus Ex Machina (v4 `SalonView.tsx:1941-1947`, moved into the composer —
+    // ruling PL-3 — because v5 resolves the submit text here): "a fact needs
+    // words, and the server refuses one without them. Nothing is cleared, and
+    // the composer stays armed." It sits ahead of the busy refusal, as v4's
+    // guard sits ahead of `sendMessage`'s.
+    const establishedFact = this.factArmed() || !!opts?.shortcutFact;
+    const content = this.currentSubmitText();
+    if (establishedFact && !content.trim()) {
+      this.toasts.showInfo('A fact must be written down — attachments alone cannot be established.');
       return;
     }
     if (this.busy()) {
@@ -1189,7 +1339,7 @@ export class ChatComposer implements OnInit {
     // is `onSourceInput` → `onContentChange`, which keeps `text()` (and so
     // `canSend`) in step with the textarea. Same behaviour, no shared module:
     // v5 has one composer component where v4 has a page and a child.
-    const content = this.showSource() ? this.sourceText() : (this.editorView()?.getMarkdown() ?? '');
+    // (`content` is resolved above, by `currentSubmitText`.)
     // The emit is the whole of `submit`: the CLEAR belongs to whoever actually
     // posts the message. See `clearAfterSend` — In Their Own Words (P4.D181) can
     // take this submit over, and "Edit original" / "Cancel" require the draft and
@@ -1204,7 +1354,11 @@ export class ChatComposer implements OnInit {
         filepath: f.filepath,
         mimeType: f.mimeType,
       })),
+      ...(establishedFact ? { establishedFact: true as const } : {}),
     });
+    // v4 `handleFormSubmit`: `if (establishedFact && sent !== false)` disarm —
+    // only the words refusal above returns `false` there (ruling PL-4).
+    if (establishedFact) this.factArmedForChat.set(null);
   }
 
   /**

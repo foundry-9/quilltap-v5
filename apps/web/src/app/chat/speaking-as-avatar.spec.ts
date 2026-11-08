@@ -2,12 +2,19 @@ import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import {
+  ESTABLISHED_FACT_TOGGLE_TIP,
   SpeakingAsAvatar,
   voiceRehearsalTitle,
   type VoiceRehearsalCue,
 } from './speaking-as-avatar';
+
+/** The portrait's words — since v4 `df8d4d70a` a `qt-tooltip`, not a native `title`. */
+function tipOf(r: { fixture: ComponentFixture<SpeakingAsAvatar>; cue: HTMLElement }): string | null {
+  return tooltipContentOf(r.fixture, r.cue);
+}
 
 /**
  * Client port of v4 `__tests__/unit/app/salon/SpeakingAsAvatar.test.tsx`. Covers
@@ -46,7 +53,7 @@ describe('SpeakingAsAvatar', () => {
     });
 
     expect(cue.getAttribute('aria-label')).toBe('Speaking as Charlie');
-    expect(cue.getAttribute('title')).toBe('Speaking as Charlie');
+    expect(tooltipContentOf(fixture, cue)).toBe('Speaking as Charlie');
     expect(cue.classList.contains('qt-speaking-as-avatar-dim')).toBe(false);
 
     const img = fixture.nativeElement.querySelector('img') as HTMLImageElement;
@@ -55,10 +62,10 @@ describe('SpeakingAsAvatar', () => {
   });
 
   it('dims to near-dark while a reply is in flight', () => {
-    const { cue } = render({ name: 'Charlie', canType: false });
+    const { fixture, cue } = render({ name: 'Charlie', canType: false });
 
     expect(cue.getAttribute('aria-label')).toBe('Speaking as Charlie, waiting for the room');
-    expect(cue.getAttribute('title')).toBe('Speaking as Charlie — waiting for the room');
+    expect(tooltipContentOf(fixture, cue)).toBe('Speaking as Charlie — waiting for the room');
     expect(cue.classList.contains('qt-speaking-as-avatar-dim')).toBe(true);
   });
 
@@ -135,15 +142,11 @@ describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
     const armed =
       'Speaking as Charlie — your draft goes to Charlie to say in their own words first';
     expect(
-      render({ name: 'Charlie', canType: true, voiceRehearsal: 'always' }).cue.getAttribute(
-        'title',
-      ),
+      tipOf(render({ name: 'Charlie', canType: true, voiceRehearsal: 'always' })),
     ).toBe(armed);
     // …even when the floor is not the human's.
     expect(
-      render({ name: 'Charlie', canType: false, voiceRehearsal: 'always' }).cue.getAttribute(
-        'title',
-      ),
+      tipOf(render({ name: 'Charlie', canType: false, voiceRehearsal: 'always' })),
     ).toBe(armed);
   });
 
@@ -151,10 +154,10 @@ describe('SpeakingAsAvatar — the voice-rehearsal cue', () => {
     const armed =
       'Speaking as Charlie — your draft opens for review; send it as written or have Charlie restate it';
     expect(
-      render({ name: 'Charlie', canType: true, voiceRehearsal: 'ask' }).cue.getAttribute('title'),
+      tipOf(render({ name: 'Charlie', canType: true, voiceRehearsal: 'ask' })),
     ).toBe(armed);
     expect(
-      render({ name: 'Charlie', canType: false, voiceRehearsal: 'ask' }).cue.getAttribute('title'),
+      tipOf(render({ name: 'Charlie', canType: false, voiceRehearsal: 'ask' })),
     ).toBe(armed);
   });
 
@@ -232,5 +235,96 @@ describe('SpeakingAsAvatar — the Salon Images switch (v4 e3937d7aa)', () => {
       'Speaking as Charlie',
     );
     TestBed.resetTestingModule();
+  });
+});
+
+/**
+ * The Deus Ex Machina toggle (P4.D385 item 8; v4 `SpeakingAsAvatar.tsx`,
+ * `db6190b44` / `df8d4d70a`) and the portrait's move from `title` to a
+ * `qt-tooltip`.
+ */
+describe('SpeakingAsAvatar — the Deus Ex Machina toggle', () => {
+  function render(fact: { armed: boolean; disabled?: boolean } | null | undefined) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [SpeakingAsAvatar] });
+    const fixture = TestBed.createComponent(SpeakingAsAvatar);
+    fixture.componentRef.setInput('name', 'Charlie');
+    fixture.componentRef.setInput('canType', false);
+    if (fact !== undefined) fixture.componentRef.setInput('establishedFact', fact);
+    let toggles = 0;
+    fixture.componentInstance.toggleEstablishedFact.subscribe(() => (toggles += 1));
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    return {
+      fixture,
+      root,
+      toggle: root.querySelector<HTMLButtonElement>('.qt-chat-established-fact-toggle'),
+      toggles: () => toggles,
+    };
+  }
+
+  it('carries no native title anywhere', () => {
+    const { root } = render({ armed: false });
+    expect(root.querySelector('[title]')).toBeNull();
+  });
+
+  it('is absent without the input', () => {
+    expect(render(undefined).toggle).toBeNull();
+    expect(render(null).toggle).toBeNull();
+  });
+
+  it('names itself and reports its state through aria-pressed, both ways', () => {
+    const off = render({ armed: false });
+    expect(off.toggle!.getAttribute('aria-label')).toBe('Deus Ex Machina');
+    expect(off.toggle!.getAttribute('aria-pressed')).toBe('false');
+    expect(off.toggle!.querySelector('[data-icon="deus-ex-machina"]')).not.toBeNull();
+    expect(render({ armed: true }).toggle!.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it("wears v4's two tooltips", () => {
+    const off = render({ armed: false });
+    expect(tooltipContentOf(off.fixture, off.toggle)).toBe(
+      'Deus Ex Machina — post your next line as established fact (or type /deus)',
+    );
+    expect(tooltipContentOf(off.fixture, off.toggle)).toBe(ESTABLISHED_FACT_TOGGLE_TIP.disarmed);
+    const on = render({ armed: true });
+    expect(tooltipContentOf(on.fixture, on.toggle)).toBe(
+      'Deus Ex Machina is armed — your next line descends from the rafters as established fact. Click to stand it down.',
+    );
+  });
+
+  it('emits on click, and is disabled when asked', () => {
+    const r = render({ armed: false });
+    r.toggle!.click();
+    expect(r.toggles()).toBe(1);
+    const d = render({ armed: false, disabled: true });
+    expect(d.toggle!.disabled).toBe(true);
+    expect(render({ armed: false, disabled: false }).toggle!.disabled).toBe(false);
+  });
+
+  it('keeps the caret in the editor: its mousedown is default-prevented', () => {
+    const { toggle } = render({ armed: false });
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    toggle!.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+  });
+
+  it('sits OUTSIDE the dimmed portrait, so it stays usable while a reply streams', () => {
+    const { root, toggle } = render({ armed: false });
+    const dim = root.querySelector('.qt-speaking-as-avatar-dim');
+    expect(dim).not.toBeNull();
+    expect(dim!.contains(toggle)).toBe(false);
+  });
+
+  it('floors the box width only when there is no picture', () => {
+    const bare = render({ armed: false });
+    expect(bare.root.firstElementChild!.classList.contains('min-w-24')).toBe(true);
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [SpeakingAsAvatar] });
+    const f = TestBed.createComponent(SpeakingAsAvatar);
+    f.componentRef.setInput('name', 'Charlie');
+    f.componentRef.setInput('avatarUrl', '/files/charlie.webp');
+    f.detectChanges();
+    expect((f.nativeElement as HTMLElement).firstElementChild!.classList.contains('min-w-24')).toBe(false);
   });
 });

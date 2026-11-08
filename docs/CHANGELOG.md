@@ -1110,6 +1110,25 @@ _Versions: SPA 0.5.973._
 
 P4.D384 items 2–7. `core-contract.ts`'s flat `ChatStreamFrame` bag becomes v4's `kind`-discriminated union (contract C3); the old bag is renamed `LegacyStreamBag` and kept for Help chat and the Brahma console, and `ScopedEvent` stays the loose raw-wire type (ruling P-1). New `core/stream-frames.ts` is the client's one parser (`parseFrame` / `parseFrameValue`, `doneLeavesNoReply`, `assertNever`): it strips unknown keys, emits schema key order, and WARNs a refused frame once per kind. A new 179-row oracle corpus recorded from v4's real `parseFrame` at `624d0d25c` pins output bytes, warns and issue texts. The stream reducer is now v4's two exhaustive switches (seat frames, then the stream's own), with the floor frames handled in both, which fixes the seat-tagged `handAnswered` the old fold swallowed. `FinalDoneInfo` gains `outcome` and derives the four legacy flags in one place. The old fold survives as `reduceLegacyChatFrame` for the Brahma console (ruling P-2), with the pre-frames spec kept over it. The swipe reader and Document Mode's `toolResult` reader move to frames. The raised hand is now v4's `RaisedHandStatus` machine (raised, asked, yielded, declined, unasked) computed from `handAsked` / `handAnswered` frames, and the "carried on regardless" toast is deleted. The reply's `raised` is no longer read. An established-fact send dispatches `isEstablishedFact: true` (absent otherwise) and refuses an attachment-only fact. The composer-side types are fenced `LANE-REMOVE` stand-ins until P4.D385 lands them.
 
+#### 2026-11-08 — feat(spa): P4.D385 commit 2 — Deus Ex Machina in the composer and transcript, the raised-hand chip, the fact tab, the reveal-expand input (v4 624d0d25c)
+
+_Versions: SPA 0.5.974._
+
+P4.D385 items 5–8, 11, 11b, 12. The composer arms Deus Ex Machina per chat
+(the portrait toggle, `/deus`, or Cmd/Ctrl+Shift+Enter for one line through
+the rich editor's new `submitEstablishedFact` output), shows the armed chip
+and the tinted editor wrapper, relabels Send, and emits
+`ComposerSend.establishedFact: true` (absent otherwise) — refusing an
+attachments-only fact with v4's sentences and staying armed. New
+`qt-raised-hand-chip` (v4 `9eab8d2da`'s five lines), hosted with the new
+`handStatus` input / `dismissHandStatus` output. The transcript ribbons a
+seat line posted as fact and draws a Host fact as a full-width band with no
+avatar. Insert Announcement gains the "Deus Ex Machina" tab (`Establish`,
+no audience, `{kind:'fact'}`) and `aria-pressed` on the character list; the
+In Their Own Words gate never rehearses a fact; the announcement chip drops
+its `aria-label` (v4 `94f041764`) and takes a `revealExpand` input for
+P4.D384's conversation-search reveal.
+
 #### 2026-11-07 — feat(spa): P4.D385 commit 1 — the established-fact predicates, RaisedHandStatus, the deus slash action + icon name, the fact label/accent/importance and never-collapsed arm (v4 624d0d25c)
 
 _Versions: SPA 0.5.973._

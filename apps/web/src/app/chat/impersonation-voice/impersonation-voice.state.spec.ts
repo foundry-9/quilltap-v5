@@ -161,6 +161,14 @@ describe('ImpersonationVoiceState.intercept', () => {
     expect(r.dispatched).toEqual([]);
   });
 
+  // P4.D385 — v4 `db6190b44`: the exact words of a fact are what is true.
+  it('never takes over an established fact, and opens nothing', () => {
+    const r = rig();
+    expect(r.state.intercept(interceptArgs({ establishedFact: true }))).toBe(false);
+    expect(r.state.isOpen()).toBe(false);
+    expect(r.dispatched).toEqual([]);
+  });
+
   it('declines when the gate fires but no target could be built', () => {
     const r = rig();
     expect(r.state.intercept(interceptArgs({ seatTarget: null }))).toBe(false);

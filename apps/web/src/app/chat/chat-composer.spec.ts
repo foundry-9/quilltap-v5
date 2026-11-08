@@ -7,6 +7,7 @@ import { CoreClient } from '../core/core-client';
 import { coreStreamStub } from '../core/core-client.testing';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 import { ChatComposer, type ComposerSend, type PendingToolResultChip } from './chat-composer';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import { ToastService } from '../ui/toast.service';
@@ -201,7 +202,7 @@ describe('ChatComposer — attach affordance', () => {
     expect(richEditor(fixture).submitOnEnter()).toBe(false);
     expect(richEditor(fixture).submitOnModEnter()).toBe(true);
     expect(toggle().classList.contains('qt-chat-toolbar-button-active')).toBe(true);
-    expect(toggle().getAttribute('title')).toBe('Switch to chat mode (Enter to send)');
+    expect(toggle().getAttribute('title')).toMatch(/^Switch to chat mode \(Enter to send\) · (Cmd|Ctrl)\+Shift\+Enter sends as established fact$/);
   });
 
   it('opens the conflict dialog on a duplicate and resolves with a resolution', async () => {
@@ -787,7 +788,7 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
   it('passes the MODE through, so the portrait and Send say the same thing', async () => {
     const fixture = await armed({ voiceRehearsal: 'ask' });
     const cue = fixture.nativeElement.querySelector('.qt-speaking-as-avatar') as HTMLElement;
-    expect(cue.getAttribute('title')).toBe(
+    expect(tooltipContentOf(fixture, cue)).toBe(
       'Speaking as Evangeline — your draft opens for review; send it as written or have Evangeline restate it',
     );
   });
@@ -1094,7 +1095,7 @@ describe('ChatComposer — the / command host (v4 4877fc2da)', () => {
     for (const action of ['library', 'image', 'announce', 'mail', 'inform'] as const) h.actions[action]!();
     expect(seen).toEqual(['library', 'image', 'announce', 'mail', 'inform']);
     expect(Object.keys(h.actions)).toEqual([
-      'attach', 'library', 'image', 'announce', 'mail', 'inform', 'd6', 'd20', 'coin', 'bottle',
+      'attach', 'library', 'image', 'announce', 'mail', 'inform', 'deus', 'd6', 'd20', 'coin', 'bottle',
     ]);
   });
 
@@ -1347,5 +1348,278 @@ describe('ChatComposer — the punctuation lint + prose mode wire (P4.D352)', ()
     fixture.componentRef.setInput('markdownAsterisks', false);
     fixture.detectChanges();
     expect(bold()).toBeNull();
+  });
+});
+
+/**
+ * Deus Ex Machina in the composer (P4.D385 items 6–8; v4 `db6190b44` /
+ * `df8d4d70a`, `ChatComposer.tsx:244-360`, `:466-494`, `:597-616`, `:710-753`):
+ * the per-chat armed state, its three ways in (portrait toggle, `/deus`,
+ * Cmd/Ctrl+Shift+Enter for one line), the two refusals, and what a send emits.
+ */
+describe('ChatComposer — Deus Ex Machina', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function toasts(): { type: string; message: string }[] {
+    return TestBed.inject(ToastService)
+      .toasts()
+      .map((t) => ({ type: t.type, message: t.message }));
+  }
+
+  interface Internals {
+    factArmed(): boolean;
+    toggleEstablishedFact(): void;
+    onFactShortcut(): void;
+    submit(): void;
+    slashHost(): { actions: Partial<Record<string, () => void>> };
+  }
+  const internals = (f: ComponentFixture<ChatComposer>) => f.componentInstance as unknown as Internals;
+
+  async function composer(text = 'The bridge is out.'): Promise<ComponentFixture<ChatComposer>> {
+    const fixture = render();
+    fixture.componentRef.setInput('hasActiveCharacters', true);
+    fixture.componentRef.setInput('speakingAs', { name: 'Charlie', avatarUrl: null });
+    fixture.detectChanges();
+    richEditor(fixture).setMarkdown(text);
+    richEditor(fixture).contentChange.emit(text);
+    await settle(fixture);
+    return fixture;
+  }
+
+  const el = (f: ComponentFixture<ChatComposer>) => f.nativeElement as HTMLElement;
+  const toggle = (f: ComponentFixture<ChatComposer>) =>
+    el(f).querySelector<HTMLButtonElement>('.qt-chat-established-fact-toggle')!;
+  const armedChip = (f: ComponentFixture<ChatComposer>) =>
+    [...el(f).querySelectorAll('.qt-chat-tool-result-chip')].find((c) =>
+      c.textContent!.includes('Deus Ex Machina: this line will be established as fact'),
+    ) ?? null;
+  const sendButton = (f: ComponentFixture<ChatComposer>) =>
+    el(f).querySelector<HTMLButtonElement>('button[type="submit"]')!;
+  const wrapper = (f: ComponentFixture<ChatComposer>) => el(f).querySelector('qt-rich-editor')!.parentElement!;
+  const attach = (f: ComponentFixture<ChatComposer>) => {
+    f.componentInstance.addAttachedFile({
+      id: 'f-1',
+      filename: 'map.png',
+      filepath: 'chat/map.png',
+      mimeType: 'image/png',
+      url: '/api/v1/files/f-1',
+    } as never);
+    f.detectChanges();
+  };
+  function sends(f: ComponentFixture<ChatComposer>): ComposerSend[] {
+    const out: ComposerSend[] = [];
+    f.componentInstance.send.subscribe((p: ComposerSend) => out.push(p));
+    return out;
+  }
+
+  it('arms from the portrait toggle: the chip, the tint, the Send label', async () => {
+    const f = await composer();
+    expect(toggle(f).getAttribute('aria-pressed')).toBe('false');
+    expect(armedChip(f)).toBeNull();
+    expect(wrapper(f).classList.contains('qt-chat-composer-established-fact')).toBe(false);
+    toggle(f).click();
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(true);
+    expect(toggle(f).getAttribute('aria-pressed')).toBe('true');
+    expect(armedChip(f)).not.toBeNull();
+    expect(armedChip(f)!.querySelector('[data-icon="deus-ex-machina"]')).not.toBeNull();
+    expect(armedChip(f)!.closest('[aria-live="polite"]')).not.toBeNull();
+    expect(wrapper(f).classList.contains('qt-chat-composer-established-fact')).toBe(true);
+    expect(wrapper(f).classList.contains('flex-1')).toBe(true);
+    expect(sendButton(f).getAttribute('aria-label')).toBe('Send as established fact');
+    // The source textarea is a sibling OUTSIDE the tinted wrapper.
+    expect(wrapper(f).querySelector('textarea')).toBeNull();
+  });
+
+  it('a second toggle and the chip × both disarm', async () => {
+    const f = await composer();
+    toggle(f).click();
+    f.detectChanges();
+    toggle(f).click();
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(false);
+    toggle(f).click();
+    f.detectChanges();
+    const x = armedChip(f)!.querySelector<HTMLButtonElement>('.qt-chat-attachment-chip-remove')!;
+    expect(x.getAttribute('aria-label')).toBe('Disarm Deus Ex Machina');
+    x.click();
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(false);
+    expect(armedChip(f)).toBeNull();
+    expect(sendButton(f).getAttribute('aria-label')).toBe('Send message');
+  });
+
+  it('arms from the /deus slash action', async () => {
+    const f = await composer();
+    internals(f).slashHost().actions['deus']!();
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(true);
+  });
+
+  it('refuses to arm an attachments-only composer, with v4’s sentence', async () => {
+    const f = await composer('');
+    attach(f);
+    toggle(f).click();
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(false);
+    expect(toasts().at(-1)).toEqual({
+      type: 'info',
+      message: 'A fact must be written down — attachments alone cannot be established.',
+    });
+  });
+
+  it('disarms when the chat changes (armed per chat)', async () => {
+    const f = await composer();
+    toggle(f).click();
+    f.detectChanges();
+    f.componentRef.setInput('chatId', 'chat-2');
+    f.detectChanges();
+    expect(internals(f).factArmed()).toBe(false);
+  });
+
+  it('an armed send emits establishedFact: true, then disarms', async () => {
+    const f = await composer();
+    const out = sends(f);
+    toggle(f).click();
+    f.detectChanges();
+    internals(f).submit();
+    f.detectChanges();
+    expect(out).toHaveLength(1);
+    expect(out[0]!.establishedFact).toBe(true);
+    expect(out[0]!.content).toBe('The bridge is out.');
+    expect(internals(f).factArmed()).toBe(false);
+  });
+
+  it('an unarmed send carries NO establishedFact key at all', async () => {
+    const f = await composer();
+    const out = sends(f);
+    internals(f).submit();
+    expect(out).toHaveLength(1);
+    expect('establishedFact' in out[0]!).toBe(false);
+  });
+
+  it('an attachments-only armed send emits nothing and stays armed', async () => {
+    const f = await composer();
+    toggle(f).click();
+    f.detectChanges();
+    richEditor(f).setMarkdown('');
+    richEditor(f).contentChange.emit('');
+    attach(f);
+    await settle(f);
+    const out = sends(f);
+    internals(f).submit();
+    f.detectChanges();
+    expect(out).toEqual([]);
+    expect(internals(f).factArmed()).toBe(true);
+    expect(toasts().at(-1)).toEqual({
+      type: 'info',
+      message: 'A fact must be written down — attachments alone cannot be established.',
+    });
+  });
+
+  it('the shortcut sends ONE line as fact without arming', async () => {
+    const f = await composer();
+    const out = sends(f);
+    richEditor(f).submitEstablishedFact.emit();
+    f.detectChanges();
+    expect(out).toHaveLength(1);
+    expect(out[0]!.establishedFact).toBe(true);
+    expect(internals(f).factArmed()).toBe(false);
+  });
+
+  it('the shortcut on a blank composer toasts and sends nothing', async () => {
+    const f = await composer('');
+    attach(f);
+    const out = sends(f);
+    internals(f).onFactShortcut();
+    expect(out).toEqual([]);
+    expect(toasts().at(-1)).toEqual({
+      type: 'info',
+      message: 'A fact must be written down — there is nothing here to establish.',
+    });
+  });
+
+  it('the shortcut does nothing while the composer is locked', async () => {
+    const f = await composer();
+    f.componentRef.setInput('busy', true);
+    f.detectChanges();
+    const out = sends(f);
+    const before = toasts().length;
+    internals(f).onFactShortcut();
+    expect(out).toEqual([]);
+    expect(toasts().length).toBe(before);
+  });
+
+  it('puts the fact arm into the Send tooltip ladder after the busy arm', async () => {
+    const f = await composer();
+    const title = () => sendButton(f).getAttribute('title');
+    expect(title()).toBe('Send message');
+    toggle(f).click();
+    f.detectChanges();
+    expect(title()).toBe('Send as established fact');
+    f.componentRef.setInput('busy', true);
+    f.detectChanges();
+    expect(title()).toBe('Generating...');
+    f.componentRef.setInput('busy', false);
+    f.componentRef.setInput('voiceRehearsal', 'ask');
+    f.detectChanges();
+    // The fact arm outranks the In Their Own Words cue (v4's ladder order).
+    expect(title()).toBe('Send as established fact');
+  });
+
+  it('disables the portrait toggle while the composer is locked', async () => {
+    const f = await composer();
+    expect(toggle(f).disabled).toBe(false);
+    f.componentRef.setInput('busy', true);
+    f.detectChanges();
+    expect(toggle(f).disabled).toBe(true);
+  });
+});
+
+describe('ChatComposer — the composition toggle names the fact shortcut (v4 db6190b44)', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    delete (navigator as unknown as Record<string, unknown>)['platform'];
+  });
+
+  it.each([
+    ['MacIntel', 'Cmd'],
+    ['Win32', 'Ctrl'],
+  ])('on %s it says %s', (platform, mod) => {
+    Object.defineProperty(navigator, 'platform', { value: platform, configurable: true });
+    const f = render();
+    const t = () =>
+      (f.nativeElement as HTMLElement).querySelector('[aria-pressed][class*="qt-chat-toolbar-button"]')!.getAttribute('title');
+    expect(t()).toBe(`Switch to composition mode (${mod}+Enter to send) · ${mod}+Shift+Enter sends as established fact`);
+    f.componentRef.setInput('compositionMode', true);
+    f.detectChanges();
+    expect(t()).toBe(`Switch to chat mode (Enter to send) · ${mod}+Shift+Enter sends as established fact`);
+  });
+});
+
+describe('ChatComposer — the raised-hand chip (v4 9eab8d2da)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('sits after the inform chips and before the armed chip; its × lowers through toggleRaisedHand', () => {
+    const f = render();
+    f.componentRef.setInput('speakingAs', { name: 'Charlie', avatarUrl: null });
+    f.componentRef.setInput('handStatus', { kind: 'raised' });
+    f.detectChanges();
+    const root = f.nativeElement as HTMLElement;
+    const order = [...root.querySelectorAll('qt-pending-inform-chips, qt-raised-hand-chip, [aria-live="polite"]')]
+      .filter((n) => n.tagName !== 'DIV' || n.parentElement!.classList.contains('qt-chat-composer-content'))
+      .map((n) => n.tagName.toLowerCase());
+    expect(order.slice(0, 3)).toEqual(['qt-pending-inform-chips', 'qt-raised-hand-chip', 'div']);
+    let raised = 0;
+    let dismissed = 0;
+    f.componentInstance.toggleRaisedHand.subscribe(() => (raised += 1));
+    f.componentInstance.dismissHandStatus.subscribe(() => (dismissed += 1));
+    root.querySelector<HTMLButtonElement>('qt-raised-hand-chip .qt-chat-attachment-chip-remove')!.click();
+    expect(raised).toBe(1);
+    f.componentRef.setInput('handStatus', { kind: 'unasked' });
+    f.detectChanges();
+    root.querySelector<HTMLButtonElement>('qt-raised-hand-chip .qt-chat-attachment-chip-remove')!.click();
+    expect(dismissed).toBe(1);
+    expect(raised).toBe(1);
   });
 });

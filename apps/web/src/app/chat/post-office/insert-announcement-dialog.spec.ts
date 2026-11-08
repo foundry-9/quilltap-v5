@@ -479,6 +479,104 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
     });
   });
 
+  // P4.D385 item 12 — v4 `db6190b44`'s Deus Ex Machina tab.
+  describe('the Deus Ex Machina tab (v4 db6190b44)', () => {
+    function audienceBox(fixture: ComponentFixture<unknown>, name: string): HTMLInputElement | null {
+      const labels = [
+        ...fixture.nativeElement.querySelectorAll('[role="group"] label'),
+      ] as HTMLLabelElement[];
+      return labels.find((l) => (l.textContent ?? '').includes(name))?.querySelector('input') ?? null;
+    }
+
+    it('is the fourth tab, after Custom', async () => {
+      const fixture = await mount(stub({}));
+      const tabs = [...fixture.nativeElement.querySelectorAll('[role="tab"]')].map((t) =>
+        (t as HTMLElement).textContent!.trim(),
+      );
+      expect(tabs).toEqual(['Staff', 'Off-scene character', 'Custom', 'Deus Ex Machina']);
+      tab(fixture, 'Deus Ex Machina').click();
+      fixture.detectChanges();
+      expect(tab(fixture, 'Deus Ex Machina').getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('explains itself, hides the audience, and labels the body "Fact"', async () => {
+      const fixture = await mount(stub({}), [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      expect(text(fixture)).toContain('Who hears it');
+      tab(fixture, 'Deus Ex Machina').click();
+      fixture.detectChanges();
+      expect(text(fixture)).toContain(
+        'Posted as established fact: true, known to everyone, needing no verification.',
+      );
+      expect(text(fixture)).not.toContain('Who hears it');
+      expect(audienceBox(fixture, 'Cleo')).toBeNull();
+      expect(text(fixture)).toContain('Fact');
+      const editor = fixture.debugElement.queryAll(By.directive(RichEditor))[0]!.componentInstance as RichEditor;
+      expect(editor.ariaLabel()).toBe('Fact');
+    });
+
+    it('needs words: the Establish button is disabled until the body has some', async () => {
+      const fixture = await mount(stub({}));
+      tab(fixture, 'Deus Ex Machina').click();
+      fixture.detectChanges();
+      expect(primary(fixture).textContent?.trim()).toBe('Establish');
+      expect(primary(fixture).disabled).toBe(true);
+      await setEditor(fixture, '   ');
+      fixture.detectChanges();
+      expect(primary(fixture).disabled).toBe(true);
+      await setEditor(fixture, 'The bridge is out.');
+      fixture.detectChanges();
+      expect(primary(fixture).disabled).toBe(false);
+    });
+
+    it('posts {kind:"fact"} with NO audience, even one chosen before switching, and toasts v4’s line', async () => {
+      const s = stub({});
+      const fixture = await mount(s, [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      audienceBox(fixture, 'Cleo')!.click();
+      fixture.detectChanges();
+      expect(primary(fixture).textContent?.trim()).toBe('Post Whisper');
+      tab(fixture, 'Deus Ex Machina').click();
+      fixture.detectChanges();
+      await setEditor(fixture, '  The bridge is out.  ');
+      fixture.detectChanges();
+      expect(primary(fixture).textContent?.trim()).toBe('Establish');
+      primary(fixture).click();
+      await settle(fixture);
+      const post = s.calls.find((c) => c['type'] === 'chatAnnouncementPost')!;
+      expect(JSON.stringify({ c: post['contentMarkdown'], s: post['sender'], t: post['targetParticipantIds'] })).toBe(
+        JSON.stringify({ c: 'The bridge is out.', s: { kind: 'fact' }, t: null }),
+      );
+      expect(toasts()).toEqual([{ type: 'success', message: 'Established as fact' }]);
+      // The audience was cleared, not merely hidden: back on Staff it is public.
+    });
+
+    it('clears the audience on entry, so leaving the tab finds it public', async () => {
+      const fixture = await mount(stub({}), [], [audienceCandidate({ participantId: 'p-cleo', name: 'Cleo' })]);
+      audienceBox(fixture, 'Cleo')!.click();
+      fixture.detectChanges();
+      tab(fixture, 'Deus Ex Machina').click();
+      fixture.detectChanges();
+      tab(fixture, 'Staff').click();
+      fixture.detectChanges();
+      expect(audienceBox(fixture, 'Cleo')!.checked).toBe(false);
+      expect(text(fixture)).toContain('Everyone present hears this');
+    });
+  });
+
+  it('marks the chosen off-scene character with aria-pressed (v4 94f041764)', async () => {
+    const fixture = await mount(
+      stub({ characters: [character({ id: 'char-1', name: 'Bram' }), character({ id: 'char-2', name: 'Cora' })] }),
+    );
+    tab(fixture, 'Off-scene character').click();
+    fixture.detectChanges();
+    await settle(fixture);
+    const buttons = () =>
+      [...fixture.nativeElement.querySelectorAll('.max-h-40 button')] as HTMLButtonElement[];
+    expect(buttons().map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+    buttons()[1]!.click();
+    fixture.detectChanges();
+    expect(buttons().map((b) => b.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+  });
+
   describe('the "Who hears it" audience (v4 `a163862c`)', () => {
     function checkbox(fixture: ComponentFixture<unknown>, name: string): HTMLInputElement {
       const labels = [

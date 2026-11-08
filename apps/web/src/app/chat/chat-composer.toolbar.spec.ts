@@ -188,9 +188,11 @@ describe('ChatComposer — the formatting toolbar', () => {
     root(fixture).querySelector<HTMLButtonElement>('.qt-formatting-button-source')!.click();
     fixture.detectChanges();
     expect(sourceTextarea(fixture).value).toBe('# Heading');
-    // v4 keeps the editor mounted-but-hidden to preserve undo history.
+    // v4 keeps the editor mounted-but-hidden to preserve undo history; since
+    // v4 db6190b44 the `display: none` sits on the editor's WRAPPER (the one
+    // that wears the Deus Ex Machina tint), as v4's does.
     const host = root(fixture).querySelector<HTMLElement>('qt-rich-editor')!;
-    expect(host.style.display).toBe('none');
+    expect(host.parentElement!.style.display).toBe('none');
 
     // An edit in the textarea comes back into the editor on the way out.
     const area = sourceTextarea(fixture);

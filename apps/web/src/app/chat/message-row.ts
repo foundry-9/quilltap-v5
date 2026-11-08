@@ -16,6 +16,7 @@ import { Tooltip } from '../ui/tooltip';
 import { thumbnailUrl, fileUrl } from '../images/image-urls';
 import { announcerNamesOf, resolveMessageAuthor, type SwipeState } from './chat-view-model';
 import { resolveWhisperTargetLabel } from './whisper-visibility';
+import { isEstablishedFactAnnouncement, isEstablishedFactSeatLine } from './established-fact';
 import { ConfirmationBadge } from './confirmation-badge';
 import { HiddenImageTile } from './hidden-image/hidden-image-tile';
 import { injectImagesHidden } from './hidden-image/images-hidden';
@@ -87,6 +88,7 @@ export interface ImageClickEvent {
       [class.qt-chat-message-row-user]="author().isUser"
       [class.qt-chat-message-row-assistant]="!author().isUser"
       [class.qt-chat-message-row-courier]="isCourier()"
+      [class.qt-chat-established-fact-row]="isFactBand()"
       [class.group]="true"
     >
       @if (isCourier()) {
@@ -119,7 +121,9 @@ export interface ImageClickEvent {
           </div>
         </div>
       } @else {
-      @if (showAvatar() && !author().isUser) {
+      <!-- A machine fact is a full-width band with no avatar (v4 MessageRow
+           :323, db6190b44). -->
+      @if (showAvatar() && !author().isUser && !isFactBand()) {
         <!-- v4 MessageRow.tsx:278-282 — the regular row's assistant avatar takes
              dangerous={isDangerousChat}. -->
         <div class="qt-chat-desktop-avatar" [class.qt-chat-avatar-dangerous]="isDangerousChat()">
@@ -195,6 +199,7 @@ export interface ImageClickEvent {
           class="qt-chat-message"
           [class]="bubbleClass()"
           [class.qt-chat-message-whisper-overheard]="isOverheardWhisper()"
+          [class.qt-chat-established-fact-band]="isFactBand()"
           [class.qt-chat-message-regenerating]="!!regeneration()"
           [attr.aria-busy]="regeneration() ? true : null"
         >
@@ -202,6 +207,11 @@ export interface ImageClickEvent {
             <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}{{ isOverheardWhisper() ? ' (overheard)' : '' }}</div>
           } @else if (variant() === 'silent') {
             <div class="qt-chat-silent-label">Silent — inner thoughts</div>
+          }
+          <!-- An operator line posted as established fact (v4 MessageRow
+               :404-409, db6190b44). -->
+          @if (isFactSeatLine()) {
+            <div class="qt-chat-message-established-fact">Deus Ex Machina — established as fact</div>
           }
 
           @for (block of reasoningBlocks(); track block.seq) {
@@ -664,6 +674,10 @@ export class MessageRow {
    * normal markdown pipeline either way.
    */
   protected readonly isStaffRow = computed(() => this.message().systemSender != null);
+  /** An operator line posted as established fact — the ribbon (v4 `isFactSeatLine`). */
+  protected readonly isFactSeatLine = computed(() => isEstablishedFactSeatLine(this.message()));
+  /** A machine-delivered fact — the full-width band (v4 `isFactBand`). */
+  protected readonly isFactBand = computed(() => isEstablishedFactAnnouncement(this.message()));
   /** Character id → name for the announcers this chat can name (memoised per chat). */
   private readonly announcerNames = computed(() => announcerNamesOf(this.chat()));
   /**
