@@ -139,12 +139,12 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     await tick();
     expect(h.controller.regeneration()!.stage).toBe('preparing');
 
-    h.stream.frames.next(frame('m-1', { content: 'Once ' }));
+    h.stream.frames.next(frame('m-1', { kind: 'content', text: 'Once ' }));
     await tick();
     expect(h.controller.regeneration()!.stage).toBe('streaming');
     expect(h.controller.regeneration()!.content).toBe('Once ');
 
-    h.stream.frames.next(frame('m-1', { content: 'upon a time.' }));
+    h.stream.frames.next(frame('m-1', { kind: 'content', text: 'upon a time.' }));
     await tick();
     expect(h.controller.regeneration()!.content).toBe('Once upon a time.');
     h.settle();
@@ -156,8 +156,8 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     void h.controller.regenerate('m-1', async () => {});
     await tick();
 
-    h.stream.frames.next(frame('m-1', { reasoning: 'I think' }));
-    h.stream.frames.next(frame('m-1', { reasoning: 'I think, therefore' }));
+    h.stream.frames.next(frame('m-1', { kind: 'reasoning', text: 'I think' }));
+    h.stream.frames.next(frame('m-1', { kind: 'reasoning', text: 'I think, therefore' }));
     await tick();
     expect(h.controller.regeneration()!.reasoning).toBe('I think, therefore');
     h.settle();
@@ -171,6 +171,7 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
 
     h.stream.frames.next(
       frame('m-1', {
+        kind: 'status',
         status: { stage: 'saving', message: 'Regenerating — filing the new line...' },
       }),
     );
@@ -188,7 +189,7 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     void h.controller.regenerate('m-1', async () => {});
     await tick();
 
-    h.stream.frames.next(frame('m-2', { content: 'not mine' }));
+    h.stream.frames.next(frame('m-2', { kind: 'content', text: 'not mine' }));
     h.stream.frames.next({
       type: 'generatorProgress',
       progressId: 'm-1',
@@ -217,10 +218,10 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     );
     await tick();
 
-    h.stream.frames.next(frame('m-1', { content: 'draft' }));
+    h.stream.frames.next(frame('m-1', { kind: 'content', text: 'draft' }));
     await tick();
     h.stream.frames.next(
-      frame('m-1', { done: true, message: { id: 'swipe-2', content: 'the persisted line' } }),
+      frame('m-1', { kind: 'swipeDone', message: { id: 'swipe-2', content: 'the persisted line' } }),
     );
     await tick();
     // The persisted line replaces the accumulated one before the hand-off, so
@@ -243,19 +244,33 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
     const selected: string[] = [];
     const run = h.controller.regenerate('m-1', async () => {}, (id) => selected.push(id));
     await tick();
-    h.stream.frames.next(frame('m-1', { content: 'draft' }));
+    h.stream.frames.next(frame('m-1', { kind: 'content', text: 'draft' }));
     await tick();
     h.settleWith({ message: { id: 'swipe-9', content: 'the persisted line' } });
     await run;
     expect(selected).toEqual(['swipe-9']);
   });
 
+  it('P4.D384: strips the nested `kind` the swipe status carries on the wire (v4 ResponseStatusSchema)', async () => {
+    const h = harness();
+    void h.controller.regenerate('m-1', async () => {});
+    await tick();
+    h.stream.frames.next(
+      frame('m-1', { kind: 'status', status: { kind: 'regenerating', stage: 'saving', message: 'Filing…' } }),
+    );
+    await tick();
+    expect(h.controller.regenerationStatus()).toEqual({ stage: 'saving', message: 'Filing…' });
+    h.settle();
+  });
+
+  // P4.D384: a `swipeDone` whose message has no id is refused by the parser
+  // (v4 `PostedMessageSchema`), so nothing settles and nothing is selected.
   it('does not select a variant when done carried no message id', async () => {
     const h = harness();
     const selected: string[] = [];
     const run = h.controller.regenerate('m-1', async () => {}, (id) => selected.push(id));
     await tick();
-    h.stream.frames.next(frame('m-1', { done: true }));
+    h.stream.frames.next(frame('m-1', { kind: 'swipeDone', message: { content: 'x' } }));
     await tick();
     h.settle();
     await run;
@@ -272,7 +287,8 @@ describe('RegenerationController (v4 useRegeneration @ f45a517a9)', () => {
 
     h.stream.frames.next(
       frame('m-1', {
-        error: 'Failed to generate alternative response',
+        kind: 'error',
+        message: 'Failed to generate alternative response',
         errorType: 'regenerate_failed',
         details: 'the model said no',
       }),
@@ -367,13 +383,13 @@ describe('RegenerationController — "Try uncensored" (v4 useRegeneration @ ce2f
       { request: RETRY },
     );
     await tick();
-    h.stream.frames.next(frame('m-1', { status: { stage: 'rerouting', message: 'Rerouting…' } }));
+    h.stream.frames.next(frame('m-1', { kind: 'status', status: { stage: 'rerouting', message: 'Rerouting…' } }));
     await tick();
     expect(h.controller.regenerationStatus()).toEqual({ stage: 'rerouting', message: 'Rerouting…' });
-    h.stream.frames.next(frame('m-1', { content: 'On the uncensored desk' }));
+    h.stream.frames.next(frame('m-1', { kind: 'content', text: 'On the uncensored desk' }));
     await tick();
     expect(h.controller.regeneration()!.content).toBe('On the uncensored desk');
-    h.stream.frames.next(frame('m-1', { done: true, message: { id: 'swipe-new', content: 'On the uncensored desk.' } }));
+    h.stream.frames.next(frame('m-1', { kind: 'swipeDone', message: { id: 'swipe-new', content: 'On the uncensored desk.' } }));
     h.settle();
     await run;
     expect(refetched).toBe(1);

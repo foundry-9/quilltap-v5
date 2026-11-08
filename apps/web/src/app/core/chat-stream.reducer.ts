@@ -1,8 +1,25 @@
 /**
- * The SSE stream reducer — a pure fold of chat-scoped `ChatStreamFrame`s into
- * per-chat streaming view state. This is the v5 port of v4's client hooks
- * `app/salon/[id]/hooks/useSSEStreaming.ts` + `useMessageStreaming.ts`; the
- * union semantics below are lifted from `readSSEStream`.
+ * The SSE stream reducer — a pure fold of chat-scoped {@link ChatStreamFrame}s
+ * into per-chat streaming view state. This is the v5 port of v4's client hooks
+ * `app/salon/[id]/hooks/useSSEStreaming.ts` + `useMessageStreaming.ts`.
+ *
+ * ## P4.D384 — v4 `604a082c4`: one frame, one kind
+ * A Salon frame is now a member of the `kind`-tagged union, read only through
+ * `parseFrameValue` (`./stream-frames`), and {@link reduceChatFrame} is v4's
+ * dispatch: `frame.seat ? handleSeatFrame : handleFrame`, each an exhaustive
+ * `switch (frame.kind)` ending in `assertNever`. The FLOOR frames (the raised
+ * hand and the Storyteller board) are handled the same in both switches — which
+ * is v4 `9eab8d2da`'s fix for the seat-tagged `handAnswered` the old
+ * presence-based fold swallowed behind its concurrent early return. The old
+ * multi-key-per-frame branches retire ("no ordering of tests decides what a
+ * frame means"). v4's `604a082c4` "concurrent empty bubble" fix (React's
+ * updater race reading a seat's text back out of state) is CONVERGED BY
+ * CONSTRUCTION here: this fold reads its own `concurrentStreams` in a pure
+ * pass, so a seat's `done` always sees its finished text.
+ *
+ * {@link reduceLegacyChatFrame} keeps the pre-`604a082c4` presence-based fold
+ * for the Brahma console, whose stream v4 still renders as the legacy bag
+ * (`legacyFrameEncoder`) and reads with its own client (ruling P-2).
  *
  * The reducer is deliberately PURE (`(state, frame) => state`) and side-effect
  * free — v4's hook interleaves React state, toasts, scroll, and `fetchChat()`;
@@ -36,6 +53,10 @@
 import type {
   AttachmentResults,
   ChatStreamFrame,
+  DoneFrame,
+  DoneOutcome,
+  FrameOf,
+  LegacyStreamBag,
   ReasoningSegment,
   ResponseStatus,
   NextSpeakerInfo,
@@ -44,6 +65,7 @@ import type {
   StorytellerBid,
   StorytellerRound,
 } from './core-contract';
+import { assertNever, doneLeavesNoReply } from './stream-frames';
 
 // === P4.D344: Storyteller mode ===
 /**
@@ -127,6 +149,12 @@ export type StreamMessage =
 
 /** The terminal `done` info the consumer reconciles against the dispatch reply. */
 export interface FinalDoneInfo {
+  /**
+   * How the turn closed (v4 `done.outcome`, P4.D384). The four booleans below
+   * are DERIVED from it in ONE place ({@link outcomeFlags}, v4's
+   * `legacyOutcomeFlags`) so the Salon's existing readers do not churn.
+   */
+  outcome: DoneOutcome;
   messageId: string | null;
   provider: string | null;
   modelName: string | null;
@@ -153,6 +181,12 @@ export interface FinalDoneInfo {
    * key (the Courier's `pendingExternalTurn` patch spreads it forward unchanged).
    */
   attachmentResults: AttachmentResults | null;
+}
+
+/** A raised hand being put to a character (v4 `handAsked` frame, `9eab8d2da`) — see {@link ChatStreamState.handAsked}. */
+export interface HandAsked {
+  participantId: string;
+  characterName: string;
 }
 
 /** A raised hand's answer (v4 `handAnswered` frame) — see {@link ChatStreamState.handAnswered}. */
@@ -225,6 +259,14 @@ export interface ChatStreamState {
   handAnswered: HandAnswered | null;
   /** Bumped per `handAnswered` frame so two answers in one chain each report. */
   handAnsweredSeq: number;
+  /**
+   * The latest `handAsked` frame (v4 `9eab8d2da`): the raised hand is being put
+   * to this character. CARRIED like {@link handAnswered} — the hand status the
+   * composer's chip shows is the vertical's.
+   */
+  handAsked: HandAsked | null;
+  /** Bumped per `handAsked` frame. */
+  handAskedSeq: number;
   // === P4.D344: Storyteller mode ===
   /**
    * The latest storyteller board frame (`storytellerRound` / `storytellerBid`
@@ -268,6 +310,8 @@ export function initialChatStreamState(): ChatStreamState {
     chainHeldUserTurn: false,
     handAnswered: null,
     handAnsweredSeq: 0,
+    handAsked: null,
+    handAskedSeq: 0,
     storyteller: null,
     storytellerSeq: 0,
     concurrentStreams: [],
@@ -277,11 +321,399 @@ export function initialChatStreamState(): ChatStreamState {
 }
 
 /**
- * Fold ONE frame into the state, returning a new state (pure). Mirrors the body
- * of v4's `readSSEStream` line loop — each independent `if` branch below matches
- * v4's, so a single frame with multiple keys applies each in v4's order.
+ * Fold ONE parsed frame into the state, returning a new state (pure) — v4's
+ * `handleLine`: a frame is a concurrent seat's or the stream's own, and then
+ * exactly one kind.
  */
 export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamState {
+  return frame.seat ? reduceSeat(prev, frame, frame.seat.participantId) : reduceMain(prev, frame);
+}
+
+type FloorFrame = FrameOf<'handAsked' | 'handAnswered' | 'storytellerRound' | 'storytellerBid' | 'roundOpen'>;
+
+/**
+ * The raised hand and the Storyteller board: the same whoever's seat sent them
+ * (v4 `applyFloorFrame`). Carried, never toasted here — the hand status and the
+ * board's cache write are the vertical's (`reportStreamTransitions`).
+ */
+function applyFloorFrame(s: ChatStreamState, frame: FloorFrame): ChatStreamState {
+  switch (frame.kind) {
+    case 'handAsked':
+      return {
+        ...s,
+        handAsked: { participantId: frame.participantId, characterName: frame.characterName },
+        handAskedSeq: s.handAskedSeq + 1,
+      };
+    case 'handAnswered':
+      return {
+        ...s,
+        handAnswered: {
+          participantId: frame.participantId,
+          characterName: frame.characterName,
+          yielded: frame.yielded,
+        },
+        handAnsweredSeq: s.handAnsweredSeq + 1,
+      };
+    // === P4.D344: the board frames — handed to the board, nothing else folds
+    // from them. The carried shapes are the ones the board reads (unchanged). ===
+    case 'storytellerRound':
+      return carryStoryteller(s, { kind: 'round', round: frame.round });
+    case 'storytellerBid':
+      return carryStoryteller(s, { kind: 'bid', roundId: frame.roundId, bid: frame.bid });
+    case 'roundOpen':
+      return carryStoryteller(s, { kind: 'open', roundId: frame.roundId });
+    // === end P4.D344 ===
+    default:
+      return assertNever(frame);
+  }
+}
+
+/**
+ * Storyteller "all at once": a frame from one of several concurrent turns
+ * (v4 `handleSeatFrame`). Each seat gets its own bubble; the shared streaming
+ * slot is left alone.
+ */
+function reduceSeat(s: ChatStreamState, frame: ChatStreamFrame, pid: string): ChatStreamState {
+  const has = s.concurrentStreams.some((c) => c.participantId === pid);
+  switch (frame.kind) {
+    case 'handAsked':
+    case 'handAnswered':
+    case 'storytellerRound':
+    case 'storytellerBid':
+    case 'roundOpen':
+      return applyFloorFrame(s, frame);
+    case 'turnStart':
+      return {
+        ...s,
+        waitingForResponse: false,
+        concurrentStreams: has ? s.concurrentStreams : [...s.concurrentStreams, { participantId: pid, content: '' }],
+      };
+    case 'content': {
+      if (!frame.text) return s;
+      const text = frame.text;
+      return {
+        ...s,
+        concurrentStreams: has
+          ? s.concurrentStreams.map((c) => (c.participantId === pid ? { ...c, content: c.content + text } : c))
+          : [...s.concurrentStreams, { participantId: pid, content: text }],
+      };
+    }
+    case 'done': {
+      const finished = s.concurrentStreams.find((c) => c.participantId === pid)?.content ?? '';
+      let messages = s.messages;
+      if (frame.messageId && !doneLeavesNoReply(frame.outcome)) {
+        messages = dedupePush(messages, assistantFromDone(frame, finished, pid, true));
+      }
+      return {
+        ...s,
+        messages,
+        concurrentStreams: s.concurrentStreams.filter((c) => c.participantId !== pid),
+      };
+    }
+    case 'posted':
+      return { ...s, messages: dedupePush(s.messages, postedMessage(frame)) };
+    case 'error':
+      // v4 toasts it and reads on; v5 records it for the run's one error toast
+      // (recorded at P4.D344 — kept).
+      return { ...s, error: frame.message };
+    // A concurrent turn's status, thinking, tools and chain bookkeeping have no
+    // bubble of their own; the round's own frames carry the rest.
+    case 'reasoning':
+    case 'status':
+    case 'fileProcessing':
+    case 'toolsDetected':
+    case 'toolResult':
+    case 'turnComplete':
+    case 'chainComplete':
+    case 'pendingExternalTurn':
+    case 'confirmationResult':
+    case 'swipeDone':
+      return s;
+    default:
+      return assertNever(frame);
+  }
+}
+
+/** The stream's own frames (v4 `handleFrame`), mapped onto the pure fold. */
+function reduceMain(s: ChatStreamState, frame: ChatStreamFrame): ChatStreamState {
+  switch (frame.kind) {
+    case 'handAsked':
+    case 'handAnswered':
+    case 'storytellerRound':
+    case 'storytellerBid':
+    case 'roundOpen':
+      return applyFloorFrame(s, frame);
+
+    case 'status':
+      return { ...s, status: frame.status };
+
+    // content — incremental append; flip streaming on the first chunk
+    case 'content': {
+      if (!frame.text) return s;
+      return {
+        ...s,
+        content: s.content + frame.text,
+        waitingForResponse: s.streaming ? s.waitingForResponse : false,
+        streaming: true,
+      };
+    }
+
+    // reasoning — cumulative, so REPLACE the buffer
+    case 'reasoning':
+      return { ...s, reasoning: frame.text };
+
+    // the turn failed after the stream opened — record and halt (v4 throws)
+    case 'error': {
+      const message = frame.details ? `${frame.message}: ${frame.details}` : frame.message;
+      const errorSubmission: NonNullable<ChatStreamState['errorSubmission']> = {};
+      if (typeof frame.userMessagePersisted === 'boolean') {
+        errorSubmission.userMessagePersisted = frame.userMessagePersisted;
+      }
+      if (typeof frame.pendingToolResultsPersisted === 'boolean') {
+        errorSubmission.pendingToolResultsPersisted = frame.pendingToolResultsPersisted;
+      }
+      return { ...s, error: message, errorSubmission, status: null, streaming: false, waitingForResponse: false };
+    }
+
+    // tool detection — push a batch tagged with the current prose offset
+    case 'toolsDetected': {
+      const seq = s.toolBatchSeq;
+      const calls: PendingToolCall[] = frame.names.map((name, idx) => ({
+        id: `tool-${seq}-${idx}`,
+        name,
+        status: 'pending',
+        arguments: frame.arguments[idx],
+      }));
+      return {
+        ...s,
+        toolBatchSeq: seq + 1,
+        toolBatches: [...s.toolBatches, { offset: s.content.length, calls }],
+      };
+    }
+
+    // tool result (FLAT) — mark the matching call on the MOST RECENT batch
+    case 'toolResult':
+      return {
+        ...s,
+        toolBatches: applyToolResult(s.toolBatches, {
+          index: frame.index,
+          name: frame.name,
+          success: frame.success,
+          result: frame.result,
+          error: frame.error,
+        }),
+      };
+
+    // a Carina answer, a Host announcement or a Pascal outcome surfaced
+    // mid-turn — inserted at once, deduped by id
+    case 'posted':
+      return { ...s, messages: dedupePush(s.messages, postedMessage(frame)) };
+
+    // an answer-confirmation result (FLAT) — patch the bubble (and, on a
+    // revision, its content)
+    case 'confirmationResult':
+      return {
+        ...s,
+        messages: applyConfirmation(s.messages, {
+          messageId: frame.messageId,
+          confirmed: frame.confirmed,
+          revised: frame.revised,
+          notes: frame.notes,
+          ...(frame.content !== undefined ? { content: frame.content } : {}),
+        }),
+      };
+
+    case 'done':
+      return reduceDone(s, frame);
+
+    // the Courier parked a placeholder for a manual / clipboard turn; the
+    // accompanying `done` (with `pendingExternalTurn: true`) closes the turn
+    case 'pendingExternalTurn':
+      return { ...s, finalDone: { ...(s.finalDone ?? emptyDone()), pendingExternalTurn: true } };
+
+    // turn start (a character is about to respond) — reset the buffer. Only a
+    // CHAINED turn (depth > 0) enters a chain: the server also sends a depth-0
+    // turnStart before every first turn so the bubble shows the right
+    // responder, and that one must leave the turn's done on the ordinary path.
+    // v4 never CLEARS `inChain` on depth 0, it only declines to set it (bug
+    // 242, `b045dd986`).
+    case 'turnStart':
+      return {
+        ...s,
+        inChain: frame.chainDepth > 0 ? true : s.inChain,
+        content: '',
+        reasoning: '',
+        toolBatches: [],
+        streaming: false,
+        waitingForResponse: true,
+        respondingParticipantId: frame.participantId,
+      };
+
+    // turn complete (a chained character finished) — reset without ending the chain
+    case 'turnComplete':
+      return { ...s, content: '', reasoning: '', streaming: false, waitingForResponse: false };
+
+    // chain complete (all chained turns done) — terminal
+    case 'chainComplete':
+      return {
+        ...s,
+        inChain: false,
+        content: '',
+        reasoning: '',
+        streaming: false,
+        waitingForResponse: false,
+        respondingParticipantId: null,
+        finished: true,
+        // v4 builds the onChainComplete event here. v5's fold is pure and the
+        // announcement is a side effect, so the fields it needs ride the state
+        // to the vertical instead of a callback.
+        chainReason: frame.reason,
+        chainPaused: frame.paused === true,
+        chainHeldUserTurn: frame.heldUserTurn === true,
+      };
+
+    // Not frames a Salon send carries.
+    case 'fileProcessing':
+    case 'swipeDone':
+      return s;
+
+    default:
+      return assertNever(frame);
+  }
+}
+
+/** The bubble a posted frame surfaces (`what` → the bubble kind). */
+function postedMessage(frame: FrameOf<'posted'>): StreamMessage {
+  const kind = frame.what === 'carinaAnswer' ? 'carina' : frame.what === 'hostAnnouncement' ? 'host' : 'pascal';
+  return { kind, id: frame.message.id, message: frame.message };
+}
+
+/** v4 `assistantMessageFromDone` — the assistant bubble a `done` settles. */
+function assistantFromDone(
+  frame: DoneFrame,
+  content: string,
+  participantId: string | null,
+  intermediate: boolean,
+): Extract<StreamMessage, { kind: 'assistant' }> {
+  return {
+    kind: 'assistant',
+    id: frame.messageId as string,
+    content,
+    participantId,
+    provider: frame.provider || null,
+    modelName: frame.modelName || null,
+    routeTrail: frame.routeTrail ?? null,
+    isSilentMessage: frame.isSilentMessage || undefined,
+    reasoningContent: frame.reasoningContent ?? null,
+    reasoningSegments: frame.reasoningSegments ?? null,
+    intermediate,
+  };
+}
+
+function carryStoryteller(s: ChatStreamState, event: StorytellerStreamEvent): ChatStreamState {
+  return { ...s, storyteller: event, storytellerSeq: s.storytellerSeq + 1 };
+}
+
+/** Fold a whole parsed-frame sequence into a final state (test/util convenience). */
+export function foldChatFrames(
+  frames: ChatStreamFrame[],
+  initial: ChatStreamState = initialChatStreamState(),
+): ChatStreamState {
+  return frames.reduce(reduceChatFrame, initial);
+}
+
+// ---------------------------------------------------------------------------
+// done handling
+// ---------------------------------------------------------------------------
+
+/**
+ * The four legacy booleans a `done.outcome` stands for — v4's
+ * `legacyOutcomeFlags` (`stream-frames.ts:515-524`): a bare yield is also a
+ * skip. The ONE place {@link FinalDoneInfo}'s flags are derived.
+ */
+export function outcomeFlags(
+  outcome: DoneOutcome,
+): Pick<FinalDoneInfo, 'skipped' | 'yielded' | 'stopped' | 'emptyResponse'> {
+  return {
+    skipped: outcome === 'skipped' || outcome === 'yielded',
+    yielded: outcome === 'yielded',
+    stopped: outcome === 'stopped',
+    emptyResponse: outcome === 'empty',
+  };
+}
+
+function reduceDone(prev: ChatStreamState, frame: DoneFrame): ChatStreamState {
+  const finalDone: FinalDoneInfo = {
+    outcome: frame.outcome,
+    messageId: frame.messageId,
+    provider: frame.provider ?? null,
+    modelName: frame.modelName ?? null,
+    turn: frame.turn ?? null,
+    skippedParticipantId: frame.skippedParticipantId ?? null,
+    emptyResponseReason: frame.emptyResponseReason ?? null,
+    pendingExternalTurn: frame.pendingExternalTurn ?? false,
+    toolsExecuted: frame.toolsExecuted,
+    attachmentResults: frame.attachmentResults,
+    ...outcomeFlags(frame.outcome),
+  };
+  let s: ChatStreamState = { ...prev, finalDone };
+
+  // A pass, a bare yield or a hard stop before any prose: the Host note (if
+  // any) already surfaced via a posted frame. Reset without a bubble.
+  if (doneLeavesNoReply(frame.outcome)) {
+    return { ...s, content: '', reasoning: '', toolBatches: [], streaming: false };
+  }
+
+  // Empty response: no bubble; the send path also stops waiting.
+  if (frame.outcome === 'empty') {
+    return { ...s, content: '', reasoning: '', toolBatches: [], streaming: false, waitingForResponse: false };
+  }
+
+  // The Courier: this closes a parked placeholder turn — no bubble; the
+  // placeholder arrives with the refetch.
+  if (frame.pendingExternalTurn) {
+    return {
+      ...s,
+      content: '',
+      reasoning: '',
+      toolBatches: [],
+      streaming: false,
+      waitingForResponse: false,
+      respondingParticipantId: null,
+    };
+  }
+
+  // Normal completion — emit the assistant bubble. Intermediate (chained) dones
+  // skip an empty bubble (v4 `if (!fullContent) return`); the final done emits
+  // whatever content there is against the server messageId.
+  const content = prev.content;
+  const emitBubble = prev.inChain ? content.trim().length > 0 : true;
+  if (emitBubble && frame.messageId) {
+    const assistant: StreamMessage = {
+      ...assistantFromDone(frame, content, frame.participantId ?? prev.respondingParticipantId ?? null, prev.inChain),
+      provider: frame.provider ?? null,
+      modelName: frame.modelName ?? null,
+    };
+    s = { ...s, messages: dedupePush(prev.messages, assistant) };
+  }
+
+  return { ...s, content: '', reasoning: '', toolBatches: [], streaming: false };
+}
+
+// ---------------------------------------------------------------------------
+// === P4.D384 === the legacy bag fold (the Brahma console)
+// ---------------------------------------------------------------------------
+
+/**
+ * The LEGACY fold (P4.D384 ruling P-2) — the pre-`604a082c4` presence-based
+ * body, unchanged but for its name: the Brahma console's stream is still the
+ * untagged bag (v4 `brahma-console/orchestrator.service.ts:125` —
+ * `legacyFrameEncoder`; read by v4's own `useBrahmaConsoleStreaming.ts`, whose
+ * role this plays). Each independent `if` branch matches v4's old
+ * `readSSEStream`, so a single bag with multiple keys applies each in order.
+ * Never fed a Salon frame.
+ */
+export function reduceLegacyChatFrame(prev: ChatStreamState, frame: LegacyStreamBag): ChatStreamState {
   let s = prev;
 
   // === P4.D344: storyteller board frames — handed to the board, nothing else
@@ -299,7 +731,7 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   // Each participant gets its own bubble; the shared streaming slot is left
   // alone (v4 `:722-760`).
   if (frame.concurrent && frame.participantId) {
-    return reduceConcurrent(s, frame, frame.participantId);
+    return reduceLegacyConcurrent(s, frame, frame.participantId);
   }
   // === end P4.D344 ===
 
@@ -396,7 +828,7 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
 
   // completion
   if (frame.done) {
-    s = reduceDone(s, frame);
+    s = reduceLegacyDone(s, frame);
   }
 
   // the Courier parked a placeholder for a manual / clipboard turn
@@ -452,8 +884,7 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   return s;
 }
 
-// === P4.D344 ===
-function reduceConcurrent(s: ChatStreamState, frame: ChatStreamFrame, pid: string): ChatStreamState {
+function reduceLegacyConcurrent(s: ChatStreamState, frame: LegacyStreamBag, pid: string): ChatStreamState {
   const has = s.concurrentStreams.some((c) => c.participantId === pid);
   if (frame.turnStart) {
     return {
@@ -512,25 +943,9 @@ function reduceConcurrent(s: ChatStreamState, frame: ChatStreamFrame, pid: strin
   return s;
 }
 
-function carryStoryteller(s: ChatStreamState, event: StorytellerStreamEvent): ChatStreamState {
-  return { ...s, storyteller: event, storytellerSeq: s.storytellerSeq + 1 };
-}
-// === end P4.D344 ===
-
-/** Fold a whole frame sequence into a final state (test/util convenience). */
-export function foldChatFrames(
-  frames: ChatStreamFrame[],
-  initial: ChatStreamState = initialChatStreamState(),
-): ChatStreamState {
-  return frames.reduce(reduceChatFrame, initial);
-}
-
-// ---------------------------------------------------------------------------
-// done handling
-// ---------------------------------------------------------------------------
-
-function reduceDone(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamState {
+function reduceLegacyDone(prev: ChatStreamState, frame: LegacyStreamBag): ChatStreamState {
   const finalDone: FinalDoneInfo = {
+    outcome: legacyOutcomeOf(frame),
     messageId: frame.messageId ?? null,
     provider: frame.provider ?? null,
     modelName: frame.modelName ?? null,
@@ -610,13 +1025,23 @@ function reduceDone(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamSt
   };
 }
 
+/** The outcome a legacy bag's flags stand for (the inverse of {@link outcomeFlags}). */
+function legacyOutcomeOf(frame: LegacyStreamBag): DoneOutcome {
+  if (frame.stopped) return 'stopped';
+  if (frame.yielded) return 'yielded';
+  if (frame.skipped) return 'skipped';
+  if (frame.emptyResponse) return 'empty';
+  return 'finished';
+}
+// === end P4.D384 ===
+
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
 function applyToolResult(
   batches: StreamingToolBatch[],
-  result: NonNullable<ChatStreamFrame['toolResult']>,
+  result: NonNullable<LegacyStreamBag['toolResult']>,
 ): StreamingToolBatch[] {
   if (batches.length === 0) {
     return batches;
@@ -646,7 +1071,7 @@ function dedupePush(messages: StreamMessage[], message: StreamMessage): StreamMe
 
 function applyConfirmation(
   messages: StreamMessage[],
-  result: NonNullable<ChatStreamFrame['confirmationResult']>,
+  result: NonNullable<LegacyStreamBag['confirmationResult']>,
 ): StreamMessage[] {
   return messages.map((m) =>
     m.kind === 'assistant' && m.id === result.messageId
@@ -664,6 +1089,7 @@ function applyConfirmation(
 
 function emptyDone(): FinalDoneInfo {
   return {
+    outcome: 'finished',
     messageId: null,
     provider: null,
     modelName: null,

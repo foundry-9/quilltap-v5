@@ -14,14 +14,60 @@
  * spec that used the old traces folded a shape the server never sends, which
  * is exactly how the pre-fix `inChain` survived unnoticed.
  *
- * Every entry is a `ScopedEvent` exactly as it arrives on `GET /api/events`:
- * a bare single-key (or flat-multi-key) chat frame plus its `chatId` scope tag.
+ * Every entry is a {@link WireFrame} exactly as it arrives on `GET /api/events`
+ * since P4.D384 (v4 `604a082c4`): a `kind`-tagged Salon frame (contract C3)
+ * with its `chatId` scope tag first. The traces were re-expressed from the old
+ * untagged bags one kind per frame; `done` frames carry v4's required keys
+ * (`outcome`, `messageId`, `usage`, `cacheUsage`, `attachmentResults`,
+ * `toolsExecuted`) — v4's parser drops a `done` without them.
+ *
+ * {@link goldenStream} adds v4's own six golden streams
+ * (`__tests__/fixtures/salon-stream/*.legacy.json` through v4's
+ * `loadFrameStream`), taken from the stream-frames oracle corpus's section (d)
+ * — the frames v4's `useSSEStreaming-golden.test.tsx` replays.
  * The traces cover: content+reasoning interleave, a tool batch spliced at an
  * anchor, a multi-turn chain, a "nothing to add" skip done, a mid-stream error,
  * and interleaved OTHER-chat frames (to prove scope filtering).
  */
 
-import type { ScopedEvent } from '../core-contract';
+import type { ChatStreamFrame, DoneFrame, ScopeEnvelope } from '../core-contract';
+import corpusText from '../../../testing/fixtures/stream-frames.oracle.ndjson';
+
+/** A Salon frame on the wire: the scope envelope, then the frame. */
+export type WireFrame = ScopeEnvelope & ChatStreamFrame;
+
+/** v4's `doneFrame` test helper: a complete `done`, an ordinary finish unless `fields` says otherwise. */
+export function doneFrame(fields: Partial<Omit<DoneFrame, 'kind'>> = {}): DoneFrame {
+  return {
+    kind: 'done',
+    outcome: 'finished',
+    messageId: null,
+    usage: null,
+    cacheUsage: null,
+    attachmentResults: null,
+    toolsExecuted: false,
+    ...fields,
+  };
+}
+
+/** v4's six golden streams (`GOLDEN_STREAMS`). */
+export type GoldenStream =
+  | 'plain-reply'
+  | 'tool-reply'
+  | 'storyteller-concurrent-hand'
+  | 'courier-external'
+  | 'failures'
+  | 'swipe';
+
+/** One golden stream's frames, in order, exactly as v4's `parseFrame` returned them. */
+export function goldenStream(name: GoldenStream): ChatStreamFrame[] {
+  return (corpusText as unknown as string)
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line) as { section: string; id: string; out: ChatStreamFrame })
+    .filter((r) => r.section === 'golden' && r.id.startsWith(`${name}#`))
+    .map((r) => r.out);
+}
 
 const CHAT = 'chat-1';
 const OTHER = 'chat-2';
@@ -31,21 +77,21 @@ const OTHER = 'chat-2';
  * depth-0 `turnStart` naming the responder, the statuses, interleaved
  * reasoning + content, then done with a bubble.
  */
-export const singleTurnTrace: ScopedEvent[] = [
-  { chatId: CHAT, status: { stage: 'initializing', message: 'Loading chat...' } },
-  { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Friday', chainDepth: 0 },
-  { chatId: CHAT, status: { stage: 'sending', message: 'Sending to Friday…', characterName: 'Friday', characterId: 'c1' } },
-  { chatId: CHAT, status: { stage: 'streaming', message: 'Friday is composing a reply…' } },
-  { chatId: CHAT, reasoning: 'Let me think' },
-  { chatId: CHAT, reasoning: 'Let me think about cats' },
-  { chatId: CHAT, content: 'Cats ' },
+export const singleTurnTrace: WireFrame[] = [
+  { chatId: CHAT, kind: 'status', status: { stage: 'initializing', message: 'Loading chat...' } },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p1', characterName: 'Friday', chainDepth: 0 },
+  { chatId: CHAT, kind: 'status', status: { stage: 'sending', message: 'Sending to Friday…', characterName: 'Friday', characterId: 'c1' } },
+  { chatId: CHAT, kind: 'status', status: { stage: 'streaming', message: 'Friday is composing a reply…' } },
+  { chatId: CHAT, kind: 'reasoning', text: 'Let me think' },
+  { chatId: CHAT, kind: 'reasoning', text: 'Let me think about cats' },
+  { chatId: CHAT, kind: 'content', text: 'Cats ' },
   // An interleaved frame for ANOTHER chat that the consumer must filter out.
-  { chatId: OTHER, content: 'IGNORED — different chat' },
-  { chatId: CHAT, content: 'are ' },
-  { chatId: CHAT, content: 'wonderful.' },
+  { chatId: OTHER, kind: 'content', text: 'IGNORED — different chat' },
+  { chatId: CHAT, kind: 'content', text: 'are ' },
+  { chatId: CHAT, kind: 'content', text: 'wonderful.' },
   {
     chatId: CHAT,
-    done: true,
+    ...doneFrame({
     messageId: 'm1',
     participantId: 'p1',
     usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
@@ -56,16 +102,17 @@ export const singleTurnTrace: ScopedEvent[] = [
     modelName: 'claude-sonnet-5',
     reasoningContent: 'Let me think about cats',
     reasoningSegments: null,
+    }),
   },
 ];
 
 /** A tool batch spliced at the prose offset where the model paused to call it. */
-export const toolBatchTrace: ScopedEvent[] = [
-  { chatId: CHAT, content: 'Let me look ' },
-  { chatId: CHAT, toolsDetected: 1, toolNames: ['search'], toolArguments: [{ query: 'cats' }] },
-  { chatId: CHAT, toolResult: { index: 0, name: 'search', success: true, result: { hits: 3 } } },
-  { chatId: CHAT, content: 'into that for you.' },
-  { chatId: CHAT, done: true, messageId: 'm2', participantId: 'p1', toolsExecuted: true, provider: 'ANTHROPIC', modelName: 'claude-sonnet-5' },
+export const toolBatchTrace: WireFrame[] = [
+  { chatId: CHAT, kind: 'content', text: 'Let me look ' },
+  { chatId: CHAT, kind: 'toolsDetected', names: ['search'], arguments: [{ query: 'cats' }] },
+  { chatId: CHAT, kind: 'toolResult', index: 0, name: 'search', success: true, result: { hits: 3 } },
+  { chatId: CHAT, kind: 'content', text: 'into that for you.' },
+  { chatId: CHAT, ...doneFrame({ messageId: 'm2', participantId: 'p1', toolsExecuted: true, provider: 'ANTHROPIC', modelName: 'claude-sonnet-5' }) },
 ];
 
 /**
@@ -75,49 +122,52 @@ export const toolBatchTrace: ScopedEvent[] = [
  * one its re-entered `process_message` sends (which must not take the chain
  * back out), content, an intermediate done, `turnComplete`; then chainComplete.
  */
-export const multiTurnChainTrace: ScopedEvent[] = [
-  { chatId: CHAT, turnStart: true, participantId: 'p0', characterName: 'Friday', chainDepth: 0 },
-  { chatId: CHAT, content: 'Shall we begin?' },
-  { chatId: CHAT, done: true, messageId: 'm9', participantId: 'p0', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
-  { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Ada', chainDepth: 1 },
-  { chatId: CHAT, turnStart: true, participantId: 'p1', characterName: 'Ada', chainDepth: 0 },
-  { chatId: CHAT, content: 'Hi, I am Ada.' },
-  { chatId: CHAT, done: true, messageId: 'm10', participantId: 'p1', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
-  { chatId: CHAT, turnComplete: true, participantId: 'p1', messageId: 'm10', chainDepth: 1, skipped: false },
-  { chatId: CHAT, turnStart: true, participantId: 'p2', characterName: 'Bob', chainDepth: 2 },
-  { chatId: CHAT, turnStart: true, participantId: 'p2', characterName: 'Bob', chainDepth: 0 },
-  { chatId: CHAT, content: 'And I am Bob.' },
-  { chatId: CHAT, done: true, messageId: 'm11', participantId: 'p2', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false },
-  { chatId: CHAT, turnComplete: true, participantId: 'p2', messageId: 'm11', chainDepth: 2, skipped: false },
-  { chatId: CHAT, chainComplete: true, reason: 'cycle_complete', nextSpeakerId: null, chainDepth: 2 },
+export const multiTurnChainTrace: WireFrame[] = [
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p0', characterName: 'Friday', chainDepth: 0 },
+  { chatId: CHAT, kind: 'content', text: 'Shall we begin?' },
+  { chatId: CHAT, ...doneFrame({ messageId: 'm9', participantId: 'p0', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false }) },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p1', characterName: 'Ada', chainDepth: 1 },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p1', characterName: 'Ada', chainDepth: 0 },
+  { chatId: CHAT, kind: 'content', text: 'Hi, I am Ada.' },
+  { chatId: CHAT, ...doneFrame({ messageId: 'm10', participantId: 'p1', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false }) },
+  { chatId: CHAT, kind: 'turnComplete', participantId: 'p1', messageId: 'm10', chainDepth: 1, skipped: false },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p2', characterName: 'Bob', chainDepth: 2 },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p2', characterName: 'Bob', chainDepth: 0 },
+  { chatId: CHAT, kind: 'content', text: 'And I am Bob.' },
+  { chatId: CHAT, ...doneFrame({ messageId: 'm11', participantId: 'p2', provider: 'ANTHROPIC', modelName: 'claude-sonnet-5', toolsExecuted: false }) },
+  { chatId: CHAT, kind: 'turnComplete', participantId: 'p2', messageId: 'm11', chainDepth: 2, skipped: false },
+  { chatId: CHAT, kind: 'chainComplete', reason: 'cycle_complete', nextSpeakerId: null, chainDepth: 2 },
 ];
 
 /** A "nothing to add" turn-pass: a Host announcement then a skip done (no bubble). */
-export const skipDoneTrace: ScopedEvent[] = [
-  { chatId: CHAT, turnStart: true, participantId: 'p3', characterName: 'Cyd', chainDepth: 1 },
-  { chatId: CHAT, turnStart: true, participantId: 'p3', characterName: 'Cyd', chainDepth: 0 },
+export const skipDoneTrace: WireFrame[] = [
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p3', characterName: 'Cyd', chainDepth: 1 },
+  { chatId: CHAT, kind: 'turnStart', participantId: 'p3', characterName: 'Cyd', chainDepth: 0 },
   {
     chatId: CHAT,
-    hostAnnouncement: { id: 'host-1', type: 'message', systemSender: 'host', content: 'Cyd has nothing to add.' },
+    kind: 'posted',
+    what: 'hostAnnouncement',
+    message: { id: 'host-1', type: 'message', systemSender: 'host', content: 'Cyd has nothing to add.' },
   },
   {
     chatId: CHAT,
-    done: true,
-    messageId: null,
-    participantId: 'p3',
-    toolsExecuted: false,
-    skipped: true,
-    skippedParticipantId: 'p3',
-    provider: 'ANTHROPIC',
-    modelName: 'claude-sonnet-5',
+    ...doneFrame({
+      outcome: 'skipped',
+      messageId: null,
+      participantId: 'p3',
+      toolsExecuted: false,
+      skippedParticipantId: 'p3',
+      provider: 'ANTHROPIC',
+      modelName: 'claude-sonnet-5',
+    }),
   },
 ];
 
 /** A mid-stream transport error after partial content. */
-export const midStreamErrorTrace: ScopedEvent[] = [
-  { chatId: CHAT, status: { stage: 'streaming', message: 'Composing…' } },
-  { chatId: CHAT, content: 'Partial answer…' },
-  { chatId: CHAT, error: 'Failed to generate response', errorType: 'stream_error', details: 'boom' },
+export const midStreamErrorTrace: WireFrame[] = [
+  { chatId: CHAT, kind: 'status', status: { stage: 'streaming', message: 'Composing…' } },
+  { chatId: CHAT, kind: 'content', text: 'Partial answer…' },
+  { chatId: CHAT, kind: 'error', message: 'Failed to generate response', errorType: 'stream_error', details: 'boom' },
 ];
 
 export const FIXTURE_CHAT_ID = CHAT;

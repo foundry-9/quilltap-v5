@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { parseFrameValue } from '../core/stream-frames';
 import {
   isSwipeProgressEvent,
   type MessageRetryUncensoredRequest,
@@ -162,34 +163,40 @@ export class RegenerationController {
 
     const sub = this.core.events$.subscribe((frame) => {
       if (!isSwipeProgressEvent(frame, messageId)) return;
-      const data = frame.frame;
-
-      if (data['status']) {
-        this.regenerationStatus.set(data['status'] as ResponseStatus);
-      }
-      if (data['content']) {
-        fullContent += String(data['content']);
-        this.scheduleContent(fullContent);
-      }
-      if (typeof data['reasoning'] === 'string') {
-        const reasoning = data['reasoning'];
-        this.regeneration.update((prev) => (prev ? { ...prev, reasoning } : prev));
-      }
-      if (data['error']) {
-        streamError = data['details']
-          ? `${String(data['error'])}: ${String(data['details'])}`
-          : String(data['error']);
-      }
-      if (data['done']) {
-        // Show the finished line rather than whatever the last frame left, so
-        // the hand-off to the persisted swipe is not a visible twitch.
-        this.cancelPendingFlush();
-        const posted = data['message'] as { id?: string; content?: string } | undefined;
-        newSwipeId = posted?.id ?? null;
-        const finalContent = posted?.content;
-        this.regeneration.update((prev) =>
-          prev ? { ...prev, stage: 'streaming', content: finalContent ?? fullContent } : prev,
-        );
+      // P4.D384 (v4 `604a082c4`, `useRegeneration.ts:155-200`): the swipe
+      // stream is frames, read through the one parser, one kind per frame.
+      const f = parseFrameValue(frame.frame);
+      if (!f) return;
+      switch (f.kind) {
+        case 'status':
+          this.regenerationStatus.set(f.status);
+          return;
+        case 'content':
+          if (!f.text) return;
+          fullContent += f.text;
+          this.scheduleContent(fullContent);
+          return;
+        case 'reasoning': {
+          const reasoning = f.text;
+          this.regeneration.update((prev) => (prev ? { ...prev, reasoning } : prev));
+          return;
+        }
+        case 'error':
+          streamError = f.details ? `${f.message}: ${f.details}` : f.message;
+          return;
+        case 'swipeDone': {
+          // Show the finished line rather than whatever the last frame left, so
+          // the hand-off to the persisted swipe is not a visible twitch.
+          this.cancelPendingFlush();
+          newSwipeId = f.message.id;
+          const finalContent = (f.message as { content?: unknown }).content as string | undefined;
+          this.regeneration.update((prev) =>
+            prev ? { ...prev, stage: 'streaming', content: finalContent ?? fullContent } : prev,
+          );
+          return;
+        }
+        default:
+          return;
       }
     });
 

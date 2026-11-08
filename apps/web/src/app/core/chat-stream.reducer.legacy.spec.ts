@@ -1,0 +1,691 @@
+import { describe, expect, it } from 'vitest';
+
+import type { LegacyStreamBag as ChatStreamFrame, ScopeEnvelope } from './core-contract';
+import {
+  initialChatStreamState,
+  reduceLegacyChatFrame as reduceChatFrame,
+  type ChatStreamState,
+  type StreamMessage,
+} from './chat-stream.reducer';
+
+/**
+ * P4.D384 (ruling P-2): the pre-`604a082c4` reducer spec, kept verbatim over
+ * the LEGACY fold — the Brahma console's reader of the untagged bag — so the
+ * fold P-2 kept "unchanged" is pinned as such. The Salon's fold is
+ * `chat-stream.reducer.spec.ts`.
+ */
+type ScopedEvent = ScopeEnvelope & ChatStreamFrame;
+const foldChatFrames = (frames: ChatStreamFrame[], initial: ChatStreamState = initialChatStreamState()) =>
+  frames.reduce(reduceChatFrame, initial);
+import {
+  FIXTURE_CHAT_ID,
+  midStreamErrorTrace,
+  multiTurnChainTrace,
+  singleTurnTrace,
+  skipDoneTrace,
+  toolBatchTrace,
+} from './__fixtures__/legacy-frame-trace';
+
+/** Strip the scope tags (the consumer filters by chatId, then folds the frame). */
+function framesFor(trace: ScopedEvent[], chatId: string) {
+  return trace
+    .filter((e) => e.chatId === chatId)
+    .map(({ chatId: _c, roomId: _r, progressId: _p, ...frame }) => frame);
+}
+
+function assistant(messages: StreamMessage[]) {
+  return messages.filter((m): m is Extract<StreamMessage, { kind: 'assistant' }> => m.kind === 'assistant');
+}
+
+describe('LEGACY chat stream reducer', () => {
+  it('interleaves content (append) and reasoning (replace), then emits the assistant bubble on done', () => {
+    const frames = framesFor(singleTurnTrace, FIXTURE_CHAT_ID);
+    // Fold everything except the terminal done to inspect the live buffer.
+    const beforeDone = frames.slice(0, -1).reduce(reduceChatFrame, initialChatStreamState());
+    expect(beforeDone.content).toBe('Cats are wonderful.'); // content appended
+    expect(beforeDone.reasoning).toBe('Let me think about cats'); // reasoning replaced, not appended
+    expect(beforeDone.streaming).toBe(true);
+    expect(beforeDone.status?.stage).toBe('streaming');
+
+    const final = frames.reduce(reduceChatFrame, initialChatStreamState());
+    const bubbles = assistant(final.messages);
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]).toMatchObject({
+      id: 'm1',
+      content: 'Cats are wonderful.',
+      participantId: 'p1',
+      provider: 'ANTHROPIC',
+      modelName: 'claude-sonnet-5',
+      reasoningContent: 'Let me think about cats',
+      intermediate: false,
+    });
+    // The live buffer resets after the bubble is emitted.
+    expect(final.content).toBe('');
+    expect(final.reasoning).toBe('');
+    expect(final.finalDone?.messageId).toBe('m1');
+  });
+
+  it('filters frames by chatId — the other-chat content never reaches this chat', () => {
+    // The raw trace carries an OTHER-chat content frame; folding only the
+    // filtered frames must not include it.
+    const final = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
+    expect(assistant(final.messages)[0].content).toBe('Cats are wonderful.');
+    expect(final.content).toBe('');
+  });
+
+  it('splices a tool batch at the prose offset and marks the result on the latest batch', () => {
+    const frames = framesFor(toolBatchTrace, FIXTURE_CHAT_ID);
+    // After detection (before the result / trailing content), the batch is anchored.
+    const afterDetect = frames.slice(0, 2).reduce(reduceChatFrame, initialChatStreamState());
+    expect(afterDetect.toolBatches).toHaveLength(1);
+    expect(afterDetect.toolBatches[0].offset).toBe('Let me look '.length); // 12
+    expect(afterDetect.toolBatches[0].calls[0]).toMatchObject({
+      name: 'search',
+      status: 'pending',
+      arguments: { query: 'cats' },
+    });
+
+    const final = frames.reduce(reduceChatFrame, initialChatStreamState());
+    // The batch persists on the state carried into the bubble; the call is resolved.
+    const batch = final.toolBatches[0] ?? afterDetect.toolBatches[0];
+    // Re-fold up to just before the terminal done to inspect the resolved batch.
+    const beforeDone = frames.slice(0, -1).reduce(reduceChatFrame, initialChatStreamState());
+    expect(beforeDone.toolBatches[0].calls[0]).toMatchObject({ status: 'success', result: { hits: 3 } });
+    expect(beforeDone.toolBatches[0].offset).toBe(12);
+    expect(batch).toBeDefined();
+    expect(assistant(final.messages)[0].id).toBe('m2');
+    expect(final.finalDone?.toolsExecuted).toBe(true);
+  });
+
+  it("carries a failing tool's sibling `error` sentence onto the call (Bug 84)", () => {
+    // The emitter puts the sentence in `error`, a SIBLING of `result`, because
+    // `result` is null on failure (`chat_events.rs:529`). The reducer must carry
+    // it RAW — the executor's own `Error: ` prefix intact — so the render site
+    // can resolve it; dropping it here is half of what v4's bug 84 was.
+    const detected = reduceChatFrame(initialChatStreamState(), {
+      toolsDetected: 1,
+      toolNames: ['generate_image'],
+      toolArguments: [{ prompt: 'a cat' }],
+    });
+    const failed = reduceChatFrame(detected, {
+      toolResult: {
+        index: 0,
+        name: 'generate_image',
+        success: false,
+        result: null,
+        error: 'Error: Image generation is not enabled for this chat',
+      },
+    });
+    expect(failed.toolBatches[0].calls[0]).toMatchObject({
+      name: 'generate_image',
+      status: 'error',
+      errorText: 'Error: Image generation is not enabled for this chat',
+    });
+  });
+
+  it('leaves `errorText` undefined on a success frame, which carries no `error`', () => {
+    const detected = reduceChatFrame(initialChatStreamState(), {
+      toolsDetected: 1,
+      toolNames: ['generate_image'],
+    });
+    const ok = reduceChatFrame(detected, {
+      toolResult: { index: 0, name: 'generate_image', success: true, result: { images: [{}] } },
+    });
+    expect(ok.toolBatches[0].calls[0].status).toBe('success');
+    expect(ok.toolBatches[0].calls[0].errorText).toBeUndefined();
+  });
+
+  it('handles a multi-turn chain: one bubble per turn, terminal chainComplete', () => {
+    const final = foldChatFrames(framesFor(multiTurnChainTrace, FIXTURE_CHAT_ID));
+    const bubbles = assistant(final.messages);
+    expect(bubbles.map((m) => m.id)).toEqual(['m9', 'm10', 'm11']);
+    // P4.D301 (bug 242): the first turn is depth 0 — not in the chain yet.
+    expect(bubbles[0]).toMatchObject({ content: 'Shall we begin?', participantId: 'p0', intermediate: false });
+    expect(bubbles[1]).toMatchObject({ content: 'Hi, I am Ada.', participantId: 'p1', intermediate: true });
+    expect(bubbles[2]).toMatchObject({ content: 'And I am Bob.', participantId: 'p2', intermediate: true });
+    expect(final.inChain).toBe(false);
+    expect(final.finished).toBe(true);
+    expect(final.respondingParticipantId).toBeNull();
+    // Each turnStart reset the buffer, so no content leaked across turns.
+    expect(final.content).toBe('');
+  });
+
+  it('handles a skip (nothing to add) done: surfaces the Host note, emits no bubble', () => {
+    const final = foldChatFrames(framesFor(skipDoneTrace, FIXTURE_CHAT_ID));
+    expect(assistant(final.messages)).toHaveLength(0);
+    const host = final.messages.find((m) => m.kind === 'host');
+    expect(host).toBeDefined();
+    expect(host?.id).toBe('host-1');
+    expect(final.finalDone?.skipped).toBe(true);
+    expect(final.finalDone?.skippedParticipantId).toBe('p3');
+    expect(final.content).toBe('');
+  });
+
+  it('records a mid-stream transport error and halts streaming', () => {
+    const final = foldChatFrames(framesFor(midStreamErrorTrace, FIXTURE_CHAT_ID));
+    expect(final.error).toBe('Failed to generate response: boom');
+    expect(final.streaming).toBe(false);
+    expect(final.waitingForResponse).toBe(false);
+  });
+
+  it('dedupes carina/host announcements by id', () => {
+    const base = initialChatStreamState();
+    const s1 = reduceChatFrame(base, { carinaAnswer: { id: 'carina-1', type: 'message' } });
+    const s2 = reduceChatFrame(s1, { carinaAnswer: { id: 'carina-1', type: 'message' } });
+    expect(s2.messages.filter((m) => m.kind === 'carina')).toHaveLength(1);
+  });
+
+  it('surfaces a pascalResult mid-turn and dedupes it by id (§4)', () => {
+    const base = initialChatStreamState();
+    const s1 = reduceChatFrame(base, {
+      pascalResult: { id: 'pascal-1', type: 'message', systemSender: 'pascal' },
+    });
+    const s2 = reduceChatFrame(s1, {
+      pascalResult: { id: 'pascal-1', type: 'message', systemSender: 'pascal' },
+    });
+    const pascal = s2.messages.filter((m) => m.kind === 'pascal');
+    expect(pascal).toHaveLength(1);
+    expect(pascal[0].id).toBe('pascal-1');
+    expect((pascal[0] as Extract<StreamMessage, { kind: 'pascal' }>).message).toMatchObject({
+      systemSender: 'pascal',
+    });
+  });
+
+  /**
+   * Bug 94 — the attachment ledger's carry. v4 reads `data.attachmentResults`
+   * straight off the done EVENT inside its SSE hook (`useSSEStreaming.ts:601`);
+   * v5's render site is downstream of this pure fold, so a render-site edit
+   * alone would be INERT if the fold dropped the field. Pinned here, at the
+   * reducer level, where a dropped carry cannot hide.
+   */
+  it('carries the done frame’s attachmentResults onto finalDone, the same object (bug 94)', () => {
+    const ledger = {
+      sent: ['file-ok'],
+      failed: [{ id: 'file-bad', error: 'Provider cannot send images' }],
+    };
+    const done = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: ledger,
+    });
+    // Identity, not just equality: the consumer keys "once per done" off the
+    // object reference, so the fold must hand the frame's own object through.
+    expect(done.finalDone?.attachmentResults).toBe(ledger);
+    expect(done.finalDone?.attachmentResults?.failed).toEqual([
+      { id: 'file-bad', error: 'Provider cannot send images' },
+    ]);
+  });
+
+  it('reads an absent or explicitly null ledger as null', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { done: true, messageId: 'm1' });
+    expect(absent.finalDone?.attachmentResults).toBeNull();
+    // The recovery-path done sends the field as `null` (`DonePayload`).
+    const explicit = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: null,
+    });
+    expect(explicit.finalDone?.attachmentResults).toBeNull();
+  });
+
+  it('spreads the last ledger forward unchanged on a Courier pendingExternalTurn patch', () => {
+    const ledger = { failed: [{ id: 'file-bad', error: 'Provider cannot send images' }] };
+    const done = reduceChatFrame(initialChatStreamState(), {
+      done: true,
+      messageId: 'm1',
+      attachmentResults: ledger,
+    });
+    const parked = reduceChatFrame(done, { pendingExternalTurn: true });
+    // Same reference — the patch is not a new ledger, and a consumer keying off
+    // identity must not warn a second time for it.
+    expect(parked.finalDone?.attachmentResults).toBe(ledger);
+    expect(parked.finalDone?.pendingExternalTurn).toBe(true);
+  });
+
+  // v4 bug 123 (`useSSEStreaming.ts:686-691`): the chainComplete frame carries
+  // `reason` and `paused`, and the client reads `data.paused === true` — so an
+  // absent key and an explicit `false` are the same answer. v5's fold is pure
+  // and the announcement happens after the reconcile, so the two facts must
+  // survive the fold rather than being consumed by a callback.
+  it('carries reason and paused off a chainComplete frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'error',
+      paused: true,
+      chainDepth: 2,
+    });
+    expect(s.finished).toBe(true);
+    expect(s.chainReason).toBe('error');
+    expect(s.chainPaused).toBe(true);
+  });
+
+  it('reads an absent or false `paused` alike, and a missing reason as null', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { chainComplete: true });
+    expect(absent.chainPaused).toBe(false);
+    expect(absent.chainReason).toBeNull();
+
+    const explicitFalse = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'no_next_speaker',
+      paused: false,
+    });
+    expect(explicitFalse.chainPaused).toBe(false);
+    expect(explicitFalse.chainReason).toBe('no_next_speaker');
+  });
+
+  it('starts a fresh stream unpaused with no chain reason', () => {
+    const fresh = initialChatStreamState();
+    expect(fresh.chainPaused).toBe(false);
+    expect(fresh.chainReason).toBeNull();
+    expect(fresh.chainHeldUserTurn).toBe(false);
+  });
+
+  it('carries `heldUserTurn` off the chain-complete frame (bug 137, §C.4)', () => {
+    // The frame `finish_held_user_turn` emits: a paused room recorded the
+    // user's message and gave it to nobody. It never appears without
+    // `paused: true`, and the once-per-pause throttle is the CLIENT's — the
+    // server raises it on EVERY held turn, so the fold must be literal.
+    const held = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      reason: 'paused',
+      nextSpeakerId: null,
+      chainDepth: 0,
+      paused: true,
+      heldUserTurn: true,
+    });
+    expect(held.chainHeldUserTurn).toBe(true);
+    expect(held.chainPaused).toBe(true);
+  });
+
+  it('reads an absent or false `heldUserTurn` alike', () => {
+    const absent = reduceChatFrame(initialChatStreamState(), { chainComplete: true, paused: true });
+    expect(absent.chainHeldUserTurn).toBe(false);
+
+    const explicitFalse = reduceChatFrame(initialChatStreamState(), {
+      chainComplete: true,
+      paused: true,
+      heldUserTurn: false,
+    });
+    expect(explicitFalse.chainHeldUserTurn).toBe(false);
+  });
+
+  it('applies an answer-confirmation revision to the bubble content', () => {
+    const done = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
+    const revised = reduceChatFrame(done, {
+      confirmationResult: { messageId: 'm1', confirmed: true, revised: true, notes: 'tightened', content: 'Cats are truly wonderful.' },
+    });
+    const bubble = assistant(revised.messages)[0];
+    expect(bubble.content).toBe('Cats are truly wonderful.');
+    expect(bubble.confirmationRevised).toBe(true);
+    expect(bubble.confirmed).toBe(true);
+    expect(bubble.confirmationNotes).toBe('tightened');
+  });
+
+  // P4.145 — v4's `fileProcessing` frame (`streaming.service.ts:563-576`,
+  // emitted once per send that loaded attachments) is server telemetry no v4
+  // client reads: `readSSEStream` has no arm for it and v4's own client type
+  // omits the key. The SPA must stay NEUTRAL when the server starts emitting
+  // it — above all, an entry's NESTED `error` is never the stream's error.
+  const failedEntryFrame: ChatStreamFrame = {
+    fileProcessing: [
+      {
+        filename: 'a.txt',
+        type: 'unsupported',
+        usedImageDescriptionLLM: false,
+        error:
+          'File type application/x-thing is not supported by provider OPENAI_COMPATIBLE and no fallback is available',
+      },
+    ],
+  };
+
+  it('ignores a fileProcessing frame — the previous state comes back by reference', () => {
+    const prev = initialChatStreamState();
+    expect(reduceChatFrame(prev, failedEntryFrame)).toBe(prev);
+  });
+
+  it('a fileProcessing frame mid-stream leaves the live turn untouched (a nested error is not the stream error)', () => {
+    const frames = framesFor(singleTurnTrace, FIXTURE_CHAT_ID);
+    const mid = frames.slice(0, -1).reduce(reduceChatFrame, initialChatStreamState());
+    expect(mid.content).toBe('Cats are wonderful.');
+
+    const after = reduceChatFrame(mid, failedEntryFrame);
+    expect(after).toBe(mid);
+    expect(after.content).toBe('Cats are wonderful.');
+    expect(after.streaming).toBe(true);
+    expect(after.waitingForResponse).toBe(mid.waitingForResponse);
+    expect(after.error).toBeNull();
+    expect(after.status).toBe(mid.status);
+  });
+
+  it('ignores a successful text entry with no error key', () => {
+    const prev = initialChatStreamState();
+    const frame: ChatStreamFrame = {
+      fileProcessing: [{ filename: 'a.txt', type: 'text', usedImageDescriptionLLM: false }],
+    };
+    expect(reduceChatFrame(prev, frame)).toBe(prev);
+  });
+});
+
+/**
+ * P4.D301 — bug 242 (v4 `b045dd986`, `useSSEStreaming.ts:756-762`): only a
+ * CHAINED `turnStart` (`chainDepth > 0`) enters a chain; the depth-0 one the
+ * server sends before every first turn (and again inside every chained turn's
+ * re-entered `process_message`) must leave `inChain` exactly as it was. v4's two
+ * `useSSEStreaming-single-turn-done.test.tsx` cases are transcribed as folds.
+ */
+describe('LEGACY chat stream reducer — the depth-0 turnStart (bug 242)', () => {
+  const TURN_START: ChatStreamFrame = {
+    turnStart: true,
+    participantId: 'participant-1',
+    characterName: 'Ada',
+    chainDepth: 0,
+  };
+
+  it('runs the end-of-turn path after a depth-0 turnStart and done (v4 case 1)', () => {
+    const final = foldChatFrames([
+      TURN_START,
+      { content: 'Good evening to you.' },
+      { done: true, messageId: 'assistant-1', participantId: 'participant-1' },
+    ]);
+    expect(final.inChain).toBe(false);
+    const bubbles = assistant(final.messages);
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]).toMatchObject({ id: 'assistant-1', content: 'Good evening to you.', intermediate: false });
+    // v4's other three asserts (`fetchChat`, `notifyQueueChange`, the responder
+    // reset) are v5's dispatch-reconcile work, never the fold's — `finished` is
+    // chainComplete's alone. What the fold owes is the final done.
+    expect(final.finalDone?.messageId).toBe('assistant-1');
+  });
+
+  it('carries emptyResponse to the final done after a depth-0 turnStart (v4 case 2 — v5 converges)', () => {
+    // v5's empty-response toast rides `finalDone`, which never read `inChain`:
+    // GREEN on unported main, recorded as a convergence.
+    const final = foldChatFrames([
+      TURN_START,
+      { done: true, emptyResponse: true, messageId: 'assistant-1', participantId: 'participant-1' },
+    ]);
+    expect(final.finalDone?.emptyResponse).toBe(true);
+  });
+
+  it('a depth-1 turnStart still enters the chain', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { ...TURN_START, chainDepth: 1 });
+    expect(s.inChain).toBe(true);
+  });
+
+  it('a depth-0 turnStart never takes a chain back out (v4 only declines to set)', () => {
+    const inChain = reduceChatFrame(initialChatStreamState(), { ...TURN_START, chainDepth: 1 });
+    expect(reduceChatFrame(inChain, TURN_START).inChain).toBe(true);
+    // An absent chainDepth reads as 0 (v4 `data.chainDepth || 0`).
+    const { chainDepth: _d, ...noDepth } = TURN_START;
+    expect(reduceChatFrame(initialChatStreamState(), noDepth).inChain).toBe(false);
+  });
+
+  it("emits a bubble for an empty-content depth-0 done with a messageId — v5's one bug-242 symptom", () => {
+    // A tool-only single-character reply: no prose, but a saved message.
+    const final = foldChatFrames([
+      TURN_START,
+      { content: '   ' },
+      { done: true, messageId: 'assistant-2', participantId: 'participant-1' },
+    ]);
+    const bubbles = assistant(final.messages);
+    expect(bubbles).toHaveLength(1);
+    expect(bubbles[0]).toMatchObject({ id: 'assistant-2', intermediate: false });
+  });
+
+  it('the real single-turn trace (depth-0 turnStart first) folds to a final, non-intermediate bubble', () => {
+    const final = foldChatFrames(framesFor(singleTurnTrace, FIXTURE_CHAT_ID));
+    expect(final.inChain).toBe(false);
+    expect(assistant(final.messages)[0]).toMatchObject({ id: 'm1', intermediate: false });
+  });
+});
+
+/**
+ * P4.D301 — bug 241: the send shell's error frame carries v4's two
+ * `ErrorEventExtras` flags; the reducer records them for the Salon's restore
+ * decision (R-L6), copying a key ONLY when it is a real boolean (v4
+ * `useSSEStreaming.ts:695-698`). Read structurally so the red-first run against
+ * the old state shape fails on the missing field rather than not compiling.
+ */
+describe('LEGACY chat stream reducer — the error frame persistence flags (bug 241)', () => {
+  type WithSubmission = {
+    errorSubmission: { userMessagePersisted?: boolean; pendingToolResultsPersisted?: boolean } | null;
+  };
+  const sub = (s: unknown) => (s as WithSubmission).errorSubmission;
+
+  it('records both flags off a five-key error frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      error: 'Failed to generate response',
+      errorType: 'Error',
+      details: 'No API key configured for this connection profile',
+      userMessagePersisted: false,
+      pendingToolResultsPersisted: true,
+    } as ChatStreamFrame);
+    expect(s.error).toBe('Failed to generate response: No API key configured for this connection profile');
+    expect(sub(s)).toEqual({ userMessagePersisted: false, pendingToolResultsPersisted: true });
+  });
+
+  it('copies booleans only — a string "true" is not a flag', () => {
+    const s = reduceChatFrame(initialChatStreamState(), {
+      error: 'Failed to generate response',
+      details: 'x',
+      userMessagePersisted: 'true',
+      pendingToolResultsPersisted: false,
+    } as unknown as ChatStreamFrame);
+    expect(sub(s)).toEqual({ pendingToolResultsPersisted: false });
+  });
+
+  it('a three-key frame records an empty flag set (the server did not say)', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { error: 'Failed', errorType: 'fatal_error', details: '' });
+    expect(sub(s)).toEqual({});
+  });
+
+  it('starts null', () => {
+    expect(sub(initialChatStreamState())).toBeNull();
+  });
+});
+
+describe('LEGACY chat stream reducer — raise a hand / stop (v4 2b5e8ee24)', () => {
+  const fold = (frames: ChatStreamFrame[]) => frames.reduce(reduceChatFrame, initialChatStreamState());
+
+  it('a done{stopped} resets without a bubble, and carries the flag', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 0 },
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, stopped: true },
+    ]);
+    expect(s.finalDone?.stopped).toBe(true);
+    expect(s.content).toBe('');
+    expect(s.toolBatches).toEqual([]);
+    expect(s.streaming).toBe(false);
+    expect(assistant(s.messages)).toHaveLength(0);
+  });
+
+  it('a stop with prose is an ordinary done', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 0 },
+      { content: 'Well, as I was say' },
+      { done: true, messageId: 'm1', participantId: 'p2', toolsExecuted: false },
+    ]);
+    expect(s.finalDone?.stopped).toBe(false);
+    expect(assistant(s.messages)).toHaveLength(1);
+  });
+
+  it('a bare yield carries yielded + skipped and emits no bubble', () => {
+    const s = fold([
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, skipped: true, skippedParticipantId: 'p2', yielded: true },
+    ]);
+    expect(s.finalDone).toMatchObject({ yielded: true, skipped: true, skippedParticipantId: 'p2' });
+    expect(assistant(s.messages)).toHaveLength(0);
+  });
+
+  it('carries handAnswered as a counted transition', () => {
+    const one = fold([{ handAnswered: true, participantId: 'p2', characterName: 'Bertie', yielded: false }]);
+    expect(one.handAnswered).toEqual({ participantId: 'p2', characterName: 'Bertie', yielded: false });
+    expect(one.handAnsweredSeq).toBe(1);
+    const two = reduceChatFrame(one, { handAnswered: true, participantId: 'p3', yielded: true });
+    expect(two.handAnsweredSeq).toBe(2);
+    expect(two.handAnswered).toEqual({ participantId: 'p3', characterName: null, yielded: true });
+  });
+
+  it('carries the yielded / stopped chain reasons', () => {
+    const y = fold([{ chainComplete: true, reason: 'yielded', paused: false }]);
+    expect(y.chainReason).toBe('yielded');
+    expect(y.chainPaused).toBe(false);
+    const st = fold([{ chainComplete: true, reason: 'stopped', paused: true }]);
+    expect(st.chainReason).toBe('stopped');
+    expect(st.chainPaused).toBe(true);
+  });
+
+  it('folds the bare-yield frame order whole: one host note, no assistant bubble', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 1 },
+      { handAnswered: true, participantId: 'p2', characterName: 'Bertie', yielded: true },
+      { hostAnnouncement: { id: 'host-y', type: 'message', systemSender: 'host', content: 'Bertie yields the floor to you.' } },
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, skipped: true, skippedParticipantId: 'p2', yielded: true },
+      { chainComplete: true, reason: 'yielded', paused: false },
+    ]);
+    expect(s.messages.filter((m) => m.kind === 'host')).toHaveLength(1);
+    expect(assistant(s.messages)).toHaveLength(0);
+    expect(s.finished).toBe(true);
+  });
+});
+
+// === P4.D344: Storyteller mode (v4 b15fe9404, useSSEStreaming.ts:705-717) ===
+describe('LEGACY chat stream reducer — the storyteller board frames (P4.D344)', () => {
+  const bidOf = (participantId: string) => ({
+    participantId,
+    characterId: `c-${participantId}`,
+    characterName: participantId,
+    status: 'bid' as const,
+    tier: 'simple' as const,
+    statedTier: 'simple' as const,
+    tierRaised: false,
+    tools: [],
+    plan: 'Tea.',
+    reason: null,
+    talkativeness: 0.5,
+    silent: false,
+  });
+  const round = {
+    id: 'r-1',
+    chatId: 'chat-1',
+    triggerMessageId: 'm-1',
+    status: 'open' as const,
+    bids: [],
+    createdAt: 'x',
+    updatedAt: 'x',
+  };
+
+  it('starts empty', () => {
+    const s = initialChatStreamState();
+    expect(s.storyteller).toBeNull();
+    expect(s.storytellerSeq).toBe(0);
+  });
+
+  it('carries each of the three frames with a bumped seq, and folds nothing else from them', () => {
+    const base = { ...initialChatStreamState(), waitingForResponse: true, content: 'held' };
+    const a = reduceChatFrame(base, { storytellerRound: round });
+    expect(a).toEqual({ ...base, storyteller: { kind: 'round', round }, storytellerSeq: 1 });
+    // A stray status beside the board key is NOT folded — v4 returns first.
+    const b = reduceChatFrame(a, { storytellerBid: { roundId: 'r-1', bid: bidOf('x') }, status: { stage: 'x', message: 'y' } } as ChatStreamFrame);
+    expect(b.storyteller).toEqual({ kind: 'bid', roundId: 'r-1', bid: bidOf('x') });
+    expect(b.storytellerSeq).toBe(2);
+    expect(b.status).toBeNull();
+    const c = reduceChatFrame(b, { storytellerBid: { roundId: 'r-1', bid: bidOf('y') } });
+    expect(c.storytellerSeq).toBe(3);
+    const d = reduceChatFrame(c, { roundOpen: true, roundId: 'r-1' });
+    expect(d.storyteller).toEqual({ kind: 'open', roundId: 'r-1' });
+    expect(d.storytellerSeq).toBe(4);
+    expect(d.content).toBe('held');
+    expect(d.waitingForResponse).toBe(true);
+  });
+
+  it('a roundOpen without a roundId is not a board frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { roundOpen: true });
+    expect(s.storytellerSeq).toBe(0);
+  });
+
+  it("a storyteller send's chainComplete rides the string chainReason — round_open — and leaves nothing waiting", () => {
+    const s = foldChatFrames([
+      { status: { stage: 'initializing', message: '…' } },
+      { turnStart: true, participantId: 'p-1', characterName: 'Ada', chainDepth: 0 },
+      { storytellerRound: round },
+      { storytellerBid: { roundId: 'r-1', bid: bidOf('p-1') } },
+      { roundOpen: true, roundId: 'r-1' },
+      { chainComplete: true, reason: 'round_open', nextSpeakerId: null, chainDepth: 0 },
+    ]);
+    expect(s.chainReason).toBe('round_open');
+    expect(s.chainPaused).toBe(false);
+    expect(s.waitingForResponse).toBe(false);
+    expect(s.finished).toBe(true);
+    expect(s.messages).toEqual([]);
+    expect(s.storytellerSeq).toBe(3);
+  });
+});
+// === end P4.D344 ===
+
+// === P4.D344 Tier 2: the concurrent ("all at once") bubbles (v4 useSSEStreaming.ts:722-760) ===
+describe('LEGACY chat stream reducer — concurrent storyteller turns (P4.D344)', () => {
+  it('keeps one bubble per participant, interleaved, and leaves the shared slot alone', () => {
+    const base = { ...initialChatStreamState(), waitingForResponse: true };
+    const s = foldChatFrames(
+      [
+        { turnStart: true, participantId: 'a', concurrent: true },
+        { turnStart: true, participantId: 'b', concurrent: true },
+        { content: 'Tea', participantId: 'a', concurrent: true },
+        { content: 'Cof', participantId: 'b', concurrent: true },
+        { content: ' first.', participantId: 'a', concurrent: true },
+        { content: 'fee.', participantId: 'b', concurrent: true },
+      ],
+      base,
+    );
+    expect(s.concurrentStreams).toEqual([
+      { participantId: 'a', content: 'Tea first.' },
+      { participantId: 'b', content: 'Coffee.' },
+    ]);
+    expect(s.waitingForResponse).toBe(false);
+    expect(s.content).toBe('');
+    expect(s.streaming).toBe(false);
+    expect(s.respondingParticipantId).toBeNull();
+  });
+
+  it('a content frame for an unknown participant opens its bubble', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { content: 'Hm.', participantId: 'c', concurrent: true });
+    expect(s.concurrentStreams).toEqual([{ participantId: 'c', content: 'Hm.' }]);
+  });
+
+  it('done settles the bubble into an assistant message with v4’s fields; skipped / stopped push nothing', () => {
+    let s = foldChatFrames([
+      { turnStart: true, participantId: 'a', concurrent: true },
+      { content: 'Tea first.', participantId: 'a', concurrent: true },
+      { turnStart: true, participantId: 'b', concurrent: true },
+      { content: 'Nothing.', participantId: 'b', concurrent: true },
+    ]);
+    s = reduceChatFrame(s, { done: true, messageId: 'm-a', participantId: 'a', provider: 'p', modelName: 'm', concurrent: true });
+    s = reduceChatFrame(s, { done: true, messageId: 'm-b', participantId: 'b', skipped: true, concurrent: true });
+    expect(s.concurrentStreams).toEqual([]);
+    expect(s.messages).toEqual([
+      {
+        kind: 'assistant',
+        id: 'm-a',
+        content: 'Tea first.',
+        participantId: 'a',
+        provider: 'p',
+        modelName: 'm',
+        routeTrail: null,
+        isSilentMessage: undefined,
+        reasoningContent: null,
+        reasoningSegments: null,
+        intermediate: true,
+      },
+    ]);
+    // A repeated done is deduped by id.
+    expect(reduceChatFrame(s, { done: true, messageId: 'm-a', participantId: 'a', concurrent: true }).messages).toHaveLength(1);
+  });
+
+  it('a concurrent frame without a participantId is an ordinary frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { content: 'x', concurrent: true });
+    expect(s.content).toBe('x');
+    expect(s.concurrentStreams).toEqual([]);
+  });
+});
+// === end P4.D344 ===

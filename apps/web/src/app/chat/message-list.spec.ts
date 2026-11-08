@@ -173,7 +173,9 @@ describe('buildStreamRenderItems (dogfood finding #7)', () => {
 
   it('renders a mid-turn carina answer as its own row (never a chip)', () => {
     const state = reduceChatFrame(initialChatStreamState(), {
-      carinaAnswer: { id: 'carina-1', role: 'ASSISTANT', content: 'Reference answer.', systemSender: 'carina', participantId: 'p1' },
+      kind: 'posted',
+      what: 'carinaAnswer',
+      message: { id: 'carina-1', role: 'ASSISTANT', content: 'Reference answer.', systemSender: 'carina', participantId: 'p1' },
     });
     const items = buildStreamRenderItems(state, []);
     expect(items).toHaveLength(1);
@@ -440,7 +442,8 @@ describe('MessageList — the chat template threads into every rendered row (P4.
 
   it('styles the live streaming bubble (v4 VirtualizedMessageList:387-388)', () => {
     const stream = reduceChatFrame(initialChatStreamState(), {
-      content: 'Ada @@steps closer@@.',
+      kind: 'content',
+      text: 'Ada @@steps closer@@.',
     });
     expect(emotes(render({ messages: [], stream, patterns: CUSTOM }))).toBe(1);
     expect(emotes(render({ messages: [], stream }))).toBe(0);
@@ -653,8 +656,11 @@ describe('MessageList — the avatar gate + responding character (v4 SalonView:1
   const live = (participantId?: string): ChatStreamState =>
     foldChatFrames(
       participantId
-        ? [{ turnStart: true, participantId }, { content: 'live' }]
-        : [{ content: 'live' }],
+        ? [
+            { kind: 'turnStart', participantId, characterName: 'X', chainDepth: 0 },
+            { kind: 'content', text: 'live' },
+          ]
+        : [{ kind: 'content', text: 'live' }],
     );
 
   it('shows avatars with no settings loaded (v4 :1172 — `if (!chatSettings) return true`)', () => {

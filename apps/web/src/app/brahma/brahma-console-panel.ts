@@ -37,7 +37,9 @@ import { filter } from 'rxjs';
 
 import {
   initialChatStreamState,
-  reduceChatFrame,
+  // === P4.D384 === the Brahma console's stream is still the legacy bag (ruling P-2)
+  reduceLegacyChatFrame,
+  // === end P4.D384 ===
   type ChatStreamState,
 } from '../core/chat-stream.reducer';
 import { CoreClient } from '../core/core-client';
@@ -312,7 +314,9 @@ export class BrahmaConsolePanel {
     const sub = this.core.events$
       .pipe(filter((frame) => frame.chatId === chatId))
       .subscribe((frame) => {
-        state = reduceChatFrame(state, frame);
+        // === P4.D384 ===
+        state = reduceLegacyChatFrame(state, frame);
+        // === end P4.D384 ===
         this.stream.set(state);
         if (state.error) this.streamError.set(state.error);
       });

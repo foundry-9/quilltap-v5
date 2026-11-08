@@ -32,7 +32,7 @@
  * @module help/help-stream
  */
 
-import type { ChatStreamFrame } from '../core/core-contract';
+import type { LegacyStreamBag } from '../core/core-contract';
 
 /** One navigation target offered under a help answer (v4 `NavigationLink`). */
 export interface NavigationLink {
@@ -129,7 +129,7 @@ export function labelFromUrl(url: string): string {
  * `else if`) are v4's — a single frame legitimately carries several markers,
  * and the later branches overwrite the earlier ones' buffer clears.
  */
-export function reduceHelpFrame(prev: HelpStreamState, frame: ChatStreamFrame): HelpStreamState {
+export function reduceHelpFrame(prev: HelpStreamState, frame: LegacyStreamBag): HelpStreamState {
   if (prev.halted) return prev;
   let s = prev;
 

@@ -582,3 +582,26 @@ import graph is v4's own `lib/` only (`lib/utils/regex.ts`).
 - **Cross-check (free):** P4.D347's Rust `name_mentions_equivalence` records its
   own oracle from the same `name-mentions.ts`; the unifier may diff the `matcher`
   rows.
+
+## P4.D384 — `stream-frames.oracle.ndjson` (the Salon's kind-tagged frames)
+
+Recorded by `apps/web/oracle/stream-frames.recorder.ts` against v4's REAL
+`parseFrame` / `doneLeavesNoReply` (`lib/chat/stream-frames.ts`, `604a082c4`)
+at the pin **`624d0d25c`** (`4.13.0-dev.8`, `zod` 4.6.7), from the lane-unique
+pin `/tmp/qt-v4-pin-p4d384-624d0d25c` with its OWN `npm ci --offline`. Replayed
+IN FILE ORDER through one fresh module by `core/stream-frames.oracle.spec.ts`
+(the once-per-kind WARN Set is module-global, so order is part of the corpus).
+
+**179 rows:** `null` 11, `valid` 66, `drop` 46 (each refused row also carries
+`issues`, v4's first three Zod issue texts), `golden` 51 (every frame of v4's
+six golden streams through v4's own `loadFrameStream`; `core/__fixtures__/
+frame-trace.ts`'s `goldenStream()` reads them for the reducer specs),
+`doneLeavesNoReply` 5. The spec asserts every count.
+
+```bash
+PIN='/tmp/qt-v4-pin-p4d384-624d0d25c'
+F=<V5>/apps/web/src/testing/fixtures/stream-frames.oracle.ndjson
+rm -f "$F"; cp <V5>/apps/web/oracle/stream-frames.recorder.ts "$PIN/"
+cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx stream-frames.recorder.ts > "$F"
+wc -l < "$F"   # 179
+```

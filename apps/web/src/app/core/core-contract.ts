@@ -52,6 +52,15 @@ export interface ChatSendRequest {
   nudge?: boolean;
   /** Pre-computed tool results to thread (v4 `sendMessageSchema.pendingToolResults`). */
   pendingToolResults?: unknown[];
+  // === P4.D384 (C4 H1) ===
+  /**
+   * Deus Ex Machina: the line is an ESTABLISHED FACT, not a remark (v4
+   * `db6190b44`). Present only as `true` — v4's client spreads
+   * `...(establishedFact ? { isEstablishedFact: true } : {})`, so a plain send
+   * carries no key at all, never `false`.
+   */
+  isEstablishedFact?: boolean;
+  // === end P4.D384 (C4 H1) ===
 }
 
 /** List chats with the v4 `handleList` query knobs (all optional). */
@@ -5360,13 +5369,22 @@ export interface AttachmentResults {
   failed?: AttachmentFailure[];
 }
 
+// === P4.D384 ===
 /**
- * One parsed chat stream frame. The wire frames are BARE single-key (or
- * flat-multi-key) objects — never a tagged wrapper — so, exactly as v4's client
- * does, we model them as one flat interface of optional fields and branch on
- * presence. Field names mirror the Rust `ChatEvent` serialization byte-for-byte.
+ * The OLDER untagged stream bag (v4 `toLegacyBag`, rendered by its
+ * `legacyFrameEncoder`) — the wire shape Help chat and the Brahma console
+ * still receive. The bags are BARE single-key (or flat-multi-key) objects, so,
+ * exactly as v4's legacy readers do, they are one flat interface of optional
+ * fields and branch on presence. Field names mirror the Rust `ChatEvent`
+ * serialization byte-for-byte.
+ *
+ * Until P4.D384 this interface was named `ChatStreamFrame` and the Salon read
+ * it too; v4 `604a082c4` moved the Salon onto the `kind`-tagged
+ * {@link ChatStreamFrame} union, and only the two readers above stay here
+ * (the round's R-G ruling: frames are rendered at the sink, Salon = frames,
+ * Help / Brahma = legacy).
  */
-export interface ChatStreamFrame {
+export interface LegacyStreamBag {
   // content / reasoning
   content?: string;
   /** Cumulative live "thinking" — replace, don't append. */
@@ -5541,16 +5559,174 @@ export interface ConfirmationResult {
 export type PostedMessage = Record<string, unknown> & { id: string };
 
 /**
- * The scope-tagged event envelope (D3). One global stream carries every event;
- * the scope ids say what the payload is about. The chat payload flattens into
- * the envelope, so a chat frame arrives as `{ chatId, ...ChatStreamFrame }`.
+ * The scope envelope (D3) — the scope ids one global stream tags every event
+ * with, flattened onto the payload (`{ chatId, kind, … }` on `/api/events`; the
+ * scope tag comes BEFORE `kind`, contract C3).
  */
-export type ScopedEvent = {
+export interface ScopeEnvelope {
   chatId?: string;
   roomId?: string;
   progressId?: string;
-} & ChatStreamFrame &
-  CreationProgressFrame;
+}
+
+/**
+ * The RAW wire object one global stream carries (D3), typed as loosely as the
+ * wire is (ruling P-1). It CANNOT be a scope-discriminated union: Help chat and
+ * the Brahma console scope their legacy bags by `chatId` exactly as the Salon
+ * scopes its frames, so a `chatId` says nothing about which dialect a payload
+ * speaks. The Salon's readers therefore type a frame only AFTER
+ * `parseFrameValue` (`core/stream-frames.ts`) has validated it as a
+ * {@link ChatStreamFrame}; every other reader keeps folding the loose bag.
+ */
+export type ScopedEvent = ScopeEnvelope & LegacyStreamBag & CreationProgressFrame;
+
+/** A concurrent Storyteller seat: which participant's turn wrote this frame (v4 `SeatTagSchema`). */
+export interface SeatTag {
+  participantId: string;
+  concurrent: true;
+}
+
+/** How a `done` frame closed its turn (v4 `DoneOutcomeSchema`). */
+export type DoneOutcome = 'finished' | 'skipped' | 'yielded' | 'stopped' | 'empty';
+
+/** Why a chain stopped (v4 `ChainCompleteReasonSchema`). */
+export type ChainCompleteReason =
+  | 'user_turn'
+  | 'paused'
+  | 'max_depth'
+  | 'max_time'
+  | 'error'
+  | 'no_next_speaker'
+  | 'cycle_complete'
+  | 'yielded'
+  | 'stopped'
+  | 'round_open';
+
+/**
+ * The attachment ledger AS THE FRAME CARRIES IT (v4 `AttachmentResultsSchema`):
+ * both arrays required — a `done` without one of them is dropped by the parser.
+ * Assignable to the looser {@link AttachmentResults} the render site reads.
+ */
+export interface FrameAttachmentResults {
+  sent: string[];
+  failed: AttachmentFailure[];
+}
+
+/** The piece every frame may end with (v4 `...seat`). */
+interface Seated {
+  seat?: SeatTag;
+}
+
+/**
+ * One Salon stream frame — v4 `StreamFrame` (`lib/chat/stream-frames.ts`,
+ * `604a082c4`), the `kind`-discriminated union of contract C3. A Salon turn's
+ * events are these; a reader dispatches with an exhaustive
+ * `switch (frame.kind)` ending in `assertNever`, so a new kind is a compile
+ * error until every reader handles or ignores it, and no ordering of tests
+ * decides what a frame means.
+ *
+ * Member field types are EXACTLY v4's schema: `done.provider` / `modelName` /
+ * `turn` are optional but NOT nullable (a `null` drops the whole frame),
+ * `done.messageId` is required (`string | null`), `attachmentResults` is
+ * required-nullable with both arrays required inside.
+ */
+export type ChatStreamFrame =
+  | ({ kind: 'content'; text: string } & Seated)
+  | ({ kind: 'reasoning'; text: string } & Seated)
+  | ({ kind: 'status'; status: ResponseStatus } & Seated)
+  | ({ kind: 'fileProcessing'; info: Array<Omit<FileProcessingEntry, 'type'> & { type: string }> } & Seated)
+  | ({ kind: 'toolsDetected'; names: string[]; arguments: Array<Record<string, unknown>> } & Seated)
+  | ({
+      kind: 'toolResult';
+      index?: number;
+      name: string;
+      success: boolean;
+      result?: unknown;
+      error?: string;
+    } & Seated)
+  | ({ kind: 'turnStart'; participantId: string; characterName: string; chainDepth: number } & Seated)
+  | ({
+      kind: 'done';
+      outcome: DoneOutcome;
+      messageId: string | null;
+      participantId?: string | null;
+      usage: TokenUsage | null;
+      cacheUsage: CacheUsage | null;
+      attachmentResults: FrameAttachmentResults | null;
+      toolsExecuted: boolean;
+      turn?: NextSpeakerInfo;
+      /** `outcome: 'empty'` — why the provider returned nothing, in words. */
+      emptyResponseReason?: string;
+      /** `outcome: 'skipped' | 'yielded'` — the seat that passed or yielded. */
+      skippedParticipantId?: string | null;
+      provider?: string;
+      modelName?: string;
+      /** Every profile tried, in order. Null (the common case) when nothing failed. */
+      routeTrail?: RouteAttempt[] | null;
+      isSilentMessage?: boolean;
+      /** The Courier: this closes a parked placeholder turn, not a streamed reply. */
+      pendingExternalTurn?: boolean;
+      reasoningContent?: string | null;
+      reasoningSegments?: ReasoningSegment[] | null;
+    } & Seated)
+  | ({
+      kind: 'turnComplete';
+      participantId: string;
+      messageId: string;
+      chainDepth: number;
+      skipped?: boolean;
+    } & Seated)
+  | ({
+      kind: 'chainComplete';
+      reason: ChainCompleteReason;
+      nextSpeakerId: string | null;
+      chainDepth: number;
+      /** The chat is (or was just) marked paused as part of this stop (bug 123). */
+      paused?: boolean;
+      /** The stop IS the user's own message: a paused room recorded it (bug 137). */
+      heldUserTurn?: boolean;
+    } & Seated)
+  | ({
+      kind: 'error';
+      message: string;
+      errorType: string;
+      details: string;
+      /** Whether the user's message row was saved before the failure (bug 241). */
+      userMessagePersisted?: boolean;
+      /** Whether the staged tool results were saved as TOOL rows. */
+      pendingToolResultsPersisted?: boolean;
+    } & Seated)
+  | ({ kind: 'pendingExternalTurn'; messageId: string; participantId: string; characterName: string } & Seated)
+  | ({ kind: 'posted'; what: 'carinaAnswer' | 'hostAnnouncement' | 'pascalResult'; message: PostedMessage } & Seated)
+  | ({ kind: 'storytellerRound'; round: StorytellerRound } & Seated)
+  | ({ kind: 'storytellerBid'; roundId: string; bid: StorytellerBid } & Seated)
+  | ({ kind: 'roundOpen'; roundId: string } & Seated)
+  | ({ kind: 'handAsked'; participantId: string; characterName: string } & Seated)
+  | ({ kind: 'handAnswered'; participantId: string; characterName: string; yielded: boolean } & Seated)
+  | ({
+      kind: 'confirmationResult';
+      messageId: string;
+      confirmed: boolean | null;
+      revised: boolean;
+      notes: string | null;
+      content?: string;
+    } & Seated)
+  | ({ kind: 'swipeDone'; message: PostedMessage } & Seated);
+
+export type StreamFrameKind = ChatStreamFrame['kind'];
+/** The frame of one kind. */
+export type FrameOf<K extends StreamFrameKind> = Extract<ChatStreamFrame, { kind: K }>;
+export type DoneFrame = FrameOf<'done'>;
+export type ChainCompleteFrame = FrameOf<'chainComplete'>;
+export type ErrorFrame = FrameOf<'error'>;
+export type ConfirmationResultFrame = FrameOf<'confirmationResult'>;
+export type PostedFrame = FrameOf<'posted'>;
+export type ToolsDetectedFrame = FrameOf<'toolsDetected'>;
+// (v4's `ToolResultFrame` alias: v5's name is taken by the legacy bag's
+// nested `toolResult` object below the fence, which the Help reducer still
+// reads — so the frame alias is `ToolResultStreamFrame`.)
+export type ToolResultStreamFrame = FrameOf<'toolResult'>;
+// === end P4.D384 ===
 
 /** One resolved garment in a Green-Room slot preview (Rust `OutfitPreviewEntry`). */
 export interface OutfitPreviewEntry {
@@ -9669,10 +9845,15 @@ export interface ChatInformCancelResult {
  * {@link GeneratorProgressEvent} precedent — the frame carries its own `type`
  * tag).
  *
- * The frame is one of: `{ status: { stage, message, characterName, characterId } }`
- * for the four status beats, `{ content: <delta> }` (APPEND), `{ reasoning:
- * <cumulative> }` (REPLACE — last wins, never concatenated), `{ done: true,
- * message: <the persisted swipe row> }`, or `{ error, errorType, details }`.
+ * P4.D384 (v4 `604a082c4`): the frame is a FRAMES-dialect object, read only
+ * through `parseFrameValue` (`core/stream-frames.ts`): `{ kind: 'status',
+ * status: { kind, stage, message, characterName, characterId } }` for the four
+ * status beats (the nested `kind` rides the wire and is STRIPPED by the
+ * parser — v4's `ResponseStatusSchema` has no such key), `{ kind: 'content',
+ * text: <delta> }` (APPEND), `{ kind: 'reasoning', text: <cumulative> }`
+ * (REPLACE — last wins, never concatenated), `{ kind: 'swipeDone', message:
+ * <the persisted swipe row> }`, or `{ kind: 'error', message, errorType,
+ * details }`.
  */
 export interface SwipeProgressEvent {
   type: 'swipeProgress';

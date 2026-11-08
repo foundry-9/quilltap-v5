@@ -951,7 +951,7 @@ describe('Salon turn controls', () => {
 
   it('warns when a chain stops paused because a turn FAILED', async () => {
     const { client } = stubClient(groupChat(), {
-      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'error', nextSpeakerId: null, chainDepth: 0, paused: true }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -964,7 +964,7 @@ describe('Salon turn controls', () => {
 
   it('informs when a chain stops paused for any other reason', async () => {
     const { client } = stubClient(groupChat(), {
-      chainFrames: [{ chainComplete: true, reason: 'paused', paused: true }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'paused', nextSpeakerId: null, chainDepth: 0, paused: true }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -976,7 +976,7 @@ describe('Salon turn controls', () => {
 
   it('says nothing when the chainComplete carries no `paused` key at all', async () => {
     const { client } = stubClient(groupChat(), {
-      chainFrames: [{ chainComplete: true, reason: 'no_next_speaker' }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'no_next_speaker', nextSpeakerId: null, chainDepth: 0 }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -987,7 +987,7 @@ describe('Salon turn controls', () => {
     // The empty-response stop: v4 emits reason 'error' with paused FALSE, so the
     // reason alone must never be enough to warn.
     const { client } = stubClient(groupChat(), {
-      chainFrames: [{ chainComplete: true, reason: 'error', paused: false }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'error', nextSpeakerId: null, chainDepth: 0, paused: false }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -998,7 +998,7 @@ describe('Salon turn controls', () => {
   // toast — judged against what the client believed BEFORE the reconcile.
   it('says nothing when the client already believed the chat was paused', async () => {
     const { client } = stubClient(groupChat({ isPaused: true }), {
-      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'error', nextSpeakerId: null, chainDepth: 0, paused: true }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -1024,7 +1024,7 @@ describe('Salon turn controls', () => {
       ],
     });
     const { client } = stubClient(allLLM, {
-      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'error', nextSpeakerId: null, chainDepth: 0, paused: true }],
     });
     const fixture = await render(client);
     await sendAndSettle(fixture);
@@ -1050,7 +1050,7 @@ describe('Salon turn controls', () => {
    */
   it('a reconcile that brings back `isPaused: true` does not swallow the news', async () => {
     const { client } = stubClient(groupChat({ isPaused: false }), {
-      chainFrames: [{ chainComplete: true, reason: 'error', paused: true }],
+      chainFrames: [{ kind: 'chainComplete', reason: 'error', nextSpeakerId: null, chainDepth: 0, paused: true }],
       chatAfterSend: groupChat({ isPaused: true }),
     });
     const fixture = await render(client);

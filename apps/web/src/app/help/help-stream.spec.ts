@@ -19,14 +19,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { ChatStreamFrame } from '../core/core-contract';
+import type { LegacyStreamBag } from '../core/core-contract';
 import { initialHelpStreamState, labelFromUrl, reduceHelpFrame } from './help-stream';
 import vectors from './__fixtures__/label-from-url-vectors.json';
 
 /** A `status` frame's payload — only its PRESENCE is load-bearing in the fold. */
 const STATUS = { stage: 'executing_tools', message: 'Consulting the archives...' };
 
-function fold(frames: ChatStreamFrame[]) {
+function fold(frames: LegacyStreamBag[]) {
   return frames.reduce(reduceHelpFrame, initialHelpStreamState());
 }
 
@@ -235,7 +235,7 @@ describe('reduceHelpFrame — the two halting branches', () => {
 });
 
 describe('reduceHelpFrame — help_navigate → navigation links', () => {
-  const nav = (result: unknown, success = true): ChatStreamFrame => ({
+  const nav = (result: unknown, success = true): LegacyStreamBag => ({
     toolResult: { name: 'help_navigate', success, result },
   });
 
@@ -279,7 +279,7 @@ describe('reduceHelpFrame — help_navigate → navigation links', () => {
 });
 
 describe('reduceHelpFrame — help_search → suggested links', () => {
-  const search = (result: unknown, success = true): ChatStreamFrame => ({
+  const search = (result: unknown, success = true): LegacyStreamBag => ({
     toolResult: { name: 'help_search', success, result },
   });
 

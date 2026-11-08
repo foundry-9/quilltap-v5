@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { singleTurnTrace, FIXTURE_CHAT_ID } from '../core/__fixtures__/frame-trace';
 import { foldChatFrames } from '../core/chat-stream.reducer';
+import type { ChatStreamFrame } from '../core/core-contract';
 import { By } from '@angular/platform-browser';
 
 import { MessageContent } from './message-content';
@@ -25,11 +26,11 @@ describe('StreamingMessage', () => {
   it('renders accumulated streamed content while the turn is in flight', () => {
     // Fold the trace up to (not including) the done frame — the live bubble state.
     const midStream = singleTurnTrace
-      .filter((f) => f.chatId === FIXTURE_CHAT_ID && !f.done)
+      .filter((f) => f.chatId === FIXTURE_CHAT_ID && f.kind !== 'done')
       .map((f) => {
         const { chatId, ...frame } = f;
         void chatId;
-        return frame;
+        return frame as ChatStreamFrame;
       });
     const state = foldChatFrames(midStream);
     const fixture = render(state);
@@ -43,8 +44,8 @@ describe('StreamingMessage', () => {
   // state still CARRIES the sentence; only the render is v4's silence.
   it('records a mid-stream error frame without rendering it', () => {
     const state = foldChatFrames([
-      { content: 'Partial…' },
-      { error: 'Failed to generate response', details: 'boom' },
+      { kind: 'content', text: 'Partial…' },
+      { kind: 'error', message: 'Failed to generate response', errorType: 'x', details: 'boom' },
     ]);
     expect(state.error).toBe('Failed to generate response: boom');
     const fixture = render(state);
@@ -64,7 +65,7 @@ describe('StreamingMessage', () => {
     }
 
     it('shows the large labelled quill while awaiting the first chunk', () => {
-      const fixture = render(foldChatFrames([{ turnStart: true }]));
+      const fixture = render(foldChatFrames([{ kind: 'turnStart', participantId: 'p1', characterName: 'Friday', chainDepth: 0 }]));
       const found = quills(fixture);
       expect(found).toHaveLength(1);
       expect(found[0].classList.contains('w-12')).toBe(true);
@@ -74,7 +75,7 @@ describe('StreamingMessage', () => {
     });
 
     it('trails the live prose with the small quill once content streams', () => {
-      const fixture = render(foldChatFrames([{ content: 'Cats are ' }, { content: 'wonderful.' }]));
+      const fixture = render(foldChatFrames([{ kind: 'content', text: 'Cats are ' }, { kind: 'content', text: 'wonderful.' }]));
       const found = quills(fixture);
       expect(found).toHaveLength(1);
       expect(found[0].classList.contains('w-4')).toBe(true);
@@ -82,7 +83,7 @@ describe('StreamingMessage', () => {
 
     it('carries the quill in the status strip only while streaming, unlabelled', () => {
       const fixture = render(
-        foldChatFrames([{ status: { stage: 'streaming', message: 'Friday is composing…' } }]),
+        foldChatFrames([{ kind: 'status', status: { stage: 'streaming', message: 'Friday is composing…' } }]),
       );
       const strip = fixture.nativeElement.querySelector('.qt-chat-response-status-icon');
       expect(strip.querySelector('.qt-thinking-indicator')).not.toBeNull();
@@ -94,7 +95,7 @@ describe('StreamingMessage', () => {
     // loop INSIDE a single case would fail on its second render.
     for (const stage of ['compressing', 'gathering', 'building', 'sending', 'tool_executing']) {
       it(`keeps the pulsing dot on the ${stage} stage`, () => {
-        const fixture = render(foldChatFrames([{ status: { stage, message: `${stage}…` } }]));
+        const fixture = render(foldChatFrames([{ kind: 'status', status: { stage, message: `${stage}…` } }]));
         const strip = fixture.nativeElement.querySelector('.qt-chat-response-status-icon');
         expect(strip.querySelector('.animate-pulse')).not.toBeNull();
         expect(strip.querySelector('.qt-thinking-indicator')).toBeNull();
@@ -127,9 +128,9 @@ describe('StreamingMessage', () => {
       it('keeps the inline form while prose is still arriving after a tool batch', () => {
         const fixture = render(
           foldChatFrames([
-            { content: 'Let me look ' },
-            { toolsDetected: 1, toolNames: ['search_memories'] },
-            { content: 'and here it is.' },
+            { kind: 'content', text: 'Let me look ' },
+            { kind: 'toolsDetected', names: ['search_memories'], arguments: [] },
+            { kind: 'content', text: 'and here it is.' },
           ]),
         );
         expect(fixture.nativeElement.querySelector('div.mt-3')).toBeNull();
@@ -139,8 +140,8 @@ describe('StreamingMessage', () => {
       it('gives the indicator its own line when the trailing segment is empty', () => {
         const fixture = render(
           foldChatFrames([
-            { content: 'Let me look ' },
-            { toolsDetected: 1, toolNames: ['search_memories'] },
+            { kind: 'content', text: 'Let me look ' },
+            { kind: 'toolsDetected', names: ['search_memories'], arguments: [] },
           ]),
         );
         const standalone = fixture.nativeElement.querySelector('div.mt-3') as HTMLElement;
@@ -159,7 +160,7 @@ describe('StreamingMessage', () => {
       });
 
       it('stays inline when no tool batch precedes it', () => {
-        const fixture = render(foldChatFrames([{ content: 'Cats are wonderful.' }]));
+        const fixture = render(foldChatFrames([{ kind: 'content', text: 'Cats are wonderful.' }]));
         expect(fixture.nativeElement.querySelector('div.mt-3')).toBeNull();
         expect(wrapper(fixture).classList.contains('inline-block')).toBe(true);
       });
@@ -168,9 +169,9 @@ describe('StreamingMessage', () => {
     it('marks a pending tool row with an unlabelled quill, settled rows with ✓/✗', () => {
       const fixture = render(
         foldChatFrames([
-          { content: 'thinking about it' },
-          { toolsDetected: 2, toolNames: ['search_memories', 'read_conversation'] },
-          { toolResult: { name: 'search_memories', success: true, result: 'ok' } },
+          { kind: 'content', text: 'thinking about it' },
+          { kind: 'toolsDetected', names: ['search_memories', 'read_conversation'], arguments: [] },
+          { kind: 'toolResult', name: 'search_memories', success: true, result: 'ok' },
         ]),
       );
       const rows: HTMLElement[] = Array.from(
@@ -213,7 +214,7 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [StreamingMessage] });
     const fixture = TestBed.createComponent(StreamingMessage);
-    fixture.componentRef.setInput('state', foldChatFrames([{ content: 'Live prose' }]));
+    fixture.componentRef.setInput('state', foldChatFrames([{ kind: 'content', text: 'Live prose' }]));
     for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
     fixture.detectChanges();
     return fixture;
@@ -290,7 +291,7 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
   it('is present in the waiting state too (v4 :85 precedes the :99 branch)', () => {
     TestBed.configureTestingModule({ imports: [StreamingMessage] });
     const fixture = TestBed.createComponent(StreamingMessage);
-    fixture.componentRef.setInput('state', foldChatFrames([{ turnStart: true }]));
+    fixture.componentRef.setInput('state', foldChatFrames([{ kind: 'turnStart', participantId: 'p1', characterName: 'Friday', chainDepth: 0 }]));
     fixture.componentRef.setInput('showAvatar', true);
     fixture.componentRef.setInput('respondingCharacter', ada);
     fixture.detectChanges();
@@ -300,7 +301,7 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
 
   it('v5: a streamed diagram fence stays a code block (STREAMING_DIAGRAMS, v4 StreamingMessage.tsx:15)', () => {
     const fixture = renderWith({
-      state: foldChatFrames([{ content: 'Look:\n\n```mermaid\ngraph TD; A-->B\n```' }]),
+      state: foldChatFrames([{ kind: 'content', text: 'Look:\n\n```mermaid\ngraph TD; A-->B\n```' }]),
     });
     const el = fixture.nativeElement as HTMLElement;
     expect(el.querySelector('qt-diagram-block')).toBeNull();

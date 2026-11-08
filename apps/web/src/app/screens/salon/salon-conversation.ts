@@ -155,6 +155,18 @@ import {
   reduceChatFrame,
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
+// === P4.D384 ===
+import { parseFrameValue } from '../../core/stream-frames';
+import {
+  dismissedHandStatus,
+  handStatusFromFloor,
+  isHandUp,
+  lowerIfOnlyRaised,
+  settleHandAtStreamEnd,
+  type RaisedHandStatus,
+} from '../../chat/raised-hand-status';
+import type { InterceptArgs } from '../../chat/impersonation-voice/impersonation-voice.state';
+// === end P4.D384 ===
 import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import {
   SEND_FAILURE_TOAST_MS,
@@ -211,6 +223,19 @@ import {
   bindAbsentMentions,
 } from '../../chat/absent-mentions/absent-mentions.api';
 import { isOffSceneMentionIntroduction } from '../../chat/absent-mentions/off-scene-kinds';
+
+// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds ComposerSend.establishedFact ===
+/** The composer's send, widened by the Deus Ex Machina flag P4.D385 adds (H1b). */
+type ComposerSendH1 = ComposerSend & { establishedFact?: true };
+// === end P4.D384 LANE-REMOVE (C4 H1) ===
+// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds InterceptArgs.establishedFact ===
+/** The impersonation-voice gate's arguments, widened by the fact flag (the gate never rehearses a fact). */
+type InterceptArgsH1 = InterceptArgs & { establishedFact?: boolean };
+// === end P4.D384 LANE-REMOVE (C4 H1) ===
+// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds MessageDto.isEstablishedFact ===
+/** The optimistic bubble, widened by the ribbon flag P4.D385's `MessageDto` adds. */
+type MessageDtoH1 = MessageDto & { isEstablishedFact?: true };
+// === end P4.D384 LANE-REMOVE (C4 H1) ===
 
 /**
  * v4 `setImpersonatingParticipantIds(data.impersonatingParticipantIds || [])`
@@ -1050,16 +1075,23 @@ export class SalonConversation {
       // React to the LLM's document tools on the live stream (v4 SalonView
       // `onToolResult`): open/close/write/move/delete → reload from server;
       // doc_focus → route to the pane that owns the target document.
+      //
+      // P4.D384 (v4 `604a082c4`): a `kind: 'toolResult'` frame, read through
+      // the one parser with its FLAT fields. Only the stream's OWN frames: a
+      // seat-tagged tool result is ignored, as v4's `handleSeatFrame` ignores
+      // it. The kind is pre-checked so a non-frame payload scoped to this chat
+      // (the Brahma console's legacy bags) is skipped without a parser WARN.
       const sub = this.core.events$
         .pipe(filter((frame) => frame.chatId === chatId))
-        .subscribe((frame) => {
-          const result = frame.toolResult;
-          if (!result) return;
-          if (result.success && DOC_RELOAD_TOOLS.has(result.name)) {
+        .subscribe((ev) => {
+          if ((ev as { kind?: unknown }).kind !== 'toolResult') return;
+          const f = parseFrameValue(ev);
+          if (f?.kind !== 'toolResult' || f.seat) return;
+          if (f.success && DOC_RELOAD_TOOLS.has(f.name)) {
             void this.documentMode.reloadFromServer();
           }
-          if (result.name === 'doc_focus' && result.success && result.result) {
-            this.documentMode.handleDocFocus(result.result as DocFocusTarget);
+          if (f.name === 'doc_focus' && f.success && f.result) {
+            this.documentMode.handleDocFocus(f.result as DocFocusTarget);
           }
         });
       this.destroyRef.onDestroy(() => sub.unsubscribe());
@@ -1650,8 +1682,16 @@ export class SalonConversation {
   protected readonly busy = computed(() => this.stream() != null);
 
   // --- the operator's interrupts (v4 `useSSEStreaming` `2b5e8ee24`) -------
-  /** The operator's hand is up, waiting on the next speaker's answer. */
-  protected readonly handRaised = signal(false);
+  // === P4.D384 (v4 `9eab8d2da`) ===
+  /**
+   * The raised hand's status (`chat/raised-hand-status.ts`): raised → asked →
+   * yielded / declined, or `unasked` when the stream ended first. The
+   * composer's chip shows it (U1 — the binding lands with P4.D385's input).
+   */
+  protected readonly handStatus = signal<RaisedHandStatus | null>(null);
+  /** The operator's hand is up — raised, or being put to the next speaker. */
+  protected readonly handRaised = computed(() => isHandUp(this.handStatus()));
+  // === end P4.D384 ===
   /** A hard stop is being put away on the server. */
   protected readonly stopping = signal(false);
   /**
@@ -3784,28 +3824,39 @@ export class SalonConversation {
   // Send + streaming
   // -------------------------------------------------------------------------
 
-  protected send(payload: ComposerSend): void {
+  protected send(payload: ComposerSendH1): void {
+    // === P4.D384 (C4 H1, v4 `SalonView.tsx:1943-1947`) ===
+    // A fact must be words: an attachment-only established fact is refused
+    // before anything is cleared, so the composer keeps the tray (and stays
+    // armed — that half is the composer's, P4.D385 H1b).
+    const establishedFact = payload.establishedFact === true;
+    if (establishedFact && !payload.content.trim()) {
+      this.toasts.showInfo('A fact must be written down — attachments alone cannot be established.');
+      return;
+    }
+    // === end P4.D384 ===
     // In Their Own Words takes the submit over when it is armed (v4
     // `SalonView.tsx:1615-1642`). It sits ABOVE the pending-results snapshot on
     // purpose: an intercepted submit must leave the rolls in state, exactly as
-    // v4's does by never reaching `sendMessage` at all.
-    if (
-      this.impersonationVoice.intercept({
-        text: payload.content,
-        seat: this.rehearsalSeat(),
-        seatTarget: this.rehearsalTarget(),
-        mode: this.impersonationVoiceMode(),
-        impersonatingParticipantIds: this.impersonatingIds(),
-        fileIds: payload.fileIds,
-        attachments: payload.attachments,
-        pending: this.pendingToolResults(),
-      })
-    ) {
+    // v4's does by never reaching `sendMessage` at all. It receives the fact
+    // flag (v4's shape — the gate never rehearses a fact).
+    const intercept: InterceptArgsH1 = {
+      text: payload.content,
+      seat: this.rehearsalSeat(),
+      seatTarget: this.rehearsalTarget(),
+      mode: this.impersonationVoiceMode(),
+      impersonatingParticipantIds: this.impersonatingIds(),
+      fileIds: payload.fileIds,
+      attachments: payload.attachments,
+      pending: this.pendingToolResults(),
+      establishedFact,
+    };
+    if (this.impersonationVoice.intercept(intercept)) {
       // Nothing cleared, nothing snapshotted, nothing sent: the composer still
       // holds the draft and the tray, which is what "Edit original" returns to.
       return;
     }
-    this.postComposedMessage(payload.content, payload.fileIds, payload.attachments);
+    this.postComposedMessage(payload.content, payload.fileIds, payload.attachments, undefined, establishedFact);
   }
 
   /**
@@ -3823,6 +3874,8 @@ export class SalonConversation {
     fileIds: string[],
     attachments: MessageAttachment[],
     pendingOverride?: readonly PendingToolResultChip[],
+    /** P4.D384 (C4 H1): an established fact — the dialog's Send doors never pass one. */
+    establishedFact = false,
   ): void {
     // v4 `sendMessage`'s in-flight refusal (bug 136) at v4's own site — the ONE
     // door a composed message goes out by. It MUST precede `clearAfterSend`
@@ -3833,6 +3886,8 @@ export class SalonConversation {
       );
       return;
     }
+    // The operator has the floor now; the last hand's outcome is spent (v4 `:1032`).
+    this.handStatus.set(null);
     const pending = [...(pendingOverride ?? this.pendingToolResults())];
     this.pendingToolResults.set([]);
     // P4.D301 (bug 241): keep the tray the clear empties — the uploaded files
@@ -3840,7 +3895,7 @@ export class SalonConversation {
     // can put them back. A composer that hands back nothing (or none mounted)
     // reads as an empty tray.
     const snapshot = this.composer()?.clearAfterSend() ?? { files: [] };
-    void this.runTurn({ content, fileIds, attachments, pending, sentFiles: snapshot.files });
+    void this.runTurn({ content, fileIds, attachments, pending, sentFiles: snapshot.files, establishedFact });
   }
 
   /**
@@ -3869,6 +3924,8 @@ export class SalonConversation {
     pending?: PendingToolResultChip[];
     /** P4.D301: the composer tray `clearAfterSend` emptied for this send. */
     sentFiles?: UploadedChatFile[];
+    /** P4.D384 (C4 H1): post the line as an established fact. */
+    establishedFact?: boolean;
   }): Promise<void> {
     const chatId = this.chatId();
     if (!chatId) return;
@@ -3919,6 +3976,9 @@ export class SalonConversation {
         );
         return;
       }
+      // P4.D384 (v4 `triggerContinueMode` `:1333`): past the guards, the last
+      // hand's outcome is spent.
+      this.handStatus.set(null);
     }
     // Bug 48: a turn action supersedes the optimistic impersonate-takes-turn
     // override — v4 recomputes `turnSelectionResult` from history once a message
@@ -3933,7 +3993,7 @@ export class SalonConversation {
       // v4 `useSSEStreaming.ts:728-751` — the bubble is pushed into the SAME
       // array the read reconciles into, so it is retired by the fold rather
       // than by a separate clear.
-      const bubble = this.makeTempUserMessage(opts.content ?? '', opts.attachments ?? []);
+      const bubble = this.makeTempUserMessage(opts.content ?? '', opts.attachments ?? [], opts.establishedFact === true);
       tempUserId = bubble.id;
       this.transcriptMessages.update((prev) => [...prev, bubble]);
       // A user send always chases the bottom and re-enables auto-scroll (v4).
@@ -3973,6 +4033,9 @@ export class SalonConversation {
             opts.content || hasAttachments || pending.length > 0
               ? (this.activeSpeakerId() ?? undefined)
               : undefined,
+          // === P4.D384 (C4 H1) === absent unless a fact — never `false` (v4 `:1060`)
+          ...(opts.establishedFact ? { isEstablishedFact: true } : {}),
+          // === end P4.D384 (C4 H1) ===
         },
         'chatSend',
       ),
@@ -4055,9 +4118,13 @@ export class SalonConversation {
     this.liveTurnToken = token;
     const sub = this.core.events$
       .pipe(filter((frame) => frame.chatId === chatId))
-      .subscribe((frame) => {
+      .subscribe((ev) => {
         // An abandoned turn's frames no longer fold (v4 aborts its reader).
         if (this.abandonedTurnToken === token) return;
+        // P4.D384: a Salon frame is typed only after the one parser (v4
+        // `handleLine` → `parseFrame`); anything else is dropped here.
+        const frame = parseFrameValue(ev);
+        if (!frame) return;
         const before = state;
         state = reduceChatFrame(state, frame);
         this.stream.set(state);
@@ -4107,7 +4174,9 @@ export class SalonConversation {
     // v4's two `finally` blocks (`:1255-1260` / `:1433-1435`): the stream is
     // over — any hand still up has nobody left to ask, and a stop has finished
     // putting the reply away. After `announceChainPause` has read the belief.
-    this.handRaised.set(false);
+    // P4.D384 (v4 `9eab8d2da` `settleHandAtStreamEnd`): a hand never asked
+    // about says so (`unasked`); one mid-ask goes down; an answer stays.
+    this.handStatus.update(settleHandAtStreamEnd);
     this.stopping.set(false);
     this.pauseBeliefFromStop = false;
     if (this.abandonedTurnToken === token) this.abandonedTurnToken = null;
@@ -4441,16 +4510,21 @@ export class SalonConversation {
       }
     }
     // === end P4.D344 ===
-    // v4 `useSSEStreaming.ts:734-742`: the raised hand has been answered. A
-    // yield speaks for itself (the Host's note, then the floor); a decline is
-    // said here, or the hand would simply go down with no word of why.
+    // P4.D384 (v4 `9eab8d2da` `applyFloorFrame`): the raised hand is being put
+    // to someone, or has been answered. The composer's chip says each step, so
+    // neither the asking nor a decline passes without a word — the decline
+    // TOAST is gone.
+    if (after.handAskedSeq !== before.handAskedSeq && after.handAsked) {
+      this.handStatus.set(handStatusFromFloor({ kind: 'handAsked', characterName: after.handAsked.characterName }));
+    }
     if (after.handAnsweredSeq !== before.handAnsweredSeq && after.handAnswered) {
-      this.handRaised.set(false);
-      if (!after.handAnswered.yielded) {
-        this.toasts.showInfo(
-          `${after.handAnswered.characterName || 'The speaker'} carried on regardless. Your hand is lowered.`,
-        );
-      }
+      this.handStatus.set(
+        handStatusFromFloor({
+          kind: 'handAnswered',
+          characterName: after.handAnswered.characterName ?? '',
+          yielded: after.handAnswered.yielded,
+        }),
+      );
     }
     // v4 `useSSEStreaming.ts:508-519` (`65f5021c8`): `retrying` is the same
     // provider having another go after an empty response, `failing-over` is an
@@ -4575,7 +4649,7 @@ export class SalonConversation {
   protected async stop(): Promise<void> {
     if (this.stopping()) return;
     this.stopping.set(true);
-    this.handRaised.set(false);
+    this.handStatus.set(null);
     const isMultiChar = this.isMultiCharacterRoom();
     const chatId = this.chatId();
     // Reflect the pause at once; the server writes it before it aborts, so the
@@ -4637,27 +4711,36 @@ export class SalonConversation {
 
   /**
    * Soft interrupt: raise (or lower) the operator's hand. The next character
-   * built to speak is asked whether to yield; the answer arrives as a
-   * `handAnswered` event, and the stream's end lowers any hand left up.
+   * built to speak is asked whether to yield (`handAsked`), the answer arrives
+   * as `handAnswered`, and the stream's end settles any hand left up. The
+   * server's reply never overwrites a `handAsked` that beat it here (v4
+   * `604a082c4` / `9eab8d2da` — the reply's `raised` is no longer read).
    */
   protected async toggleRaisedHand(): Promise<void> {
     const raise = !this.handRaised();
     const chatId = this.chatId();
     if (!chatId) return;
-    this.handRaised.set(raise);
+    this.handStatus.set(raise ? { kind: 'raised' } : null);
     try {
       const res = await this.core.dispatchExpect(
         { type: 'chatRaiseHand', chatId, raised: raise },
         'raiseHand',
       );
-      this.handRaised.set(res.data.raised === true);
+      // The stream owns the hand from here. The one thing the reply settles is
+      // that there is no stream: nobody will ever be asked.
       if (raise && res.data.active === false) {
+        this.handStatus.update(lowerIfOnlyRaised);
         this.toasts.showInfo('Nobody is speaking just now. The floor is already yours.');
       }
     } catch (err) {
-      this.handRaised.set(false);
+      this.handStatus.update(lowerIfOnlyRaised);
       this.toasts.showError(`Could not raise your hand: ${coreErrorMessage(err, 'Request failed')}`);
     }
+  }
+
+  /** Put away the raised hand's outcome note (v4 `dismissHandStatus`). */
+  protected dismissHandStatus(): void {
+    this.handStatus.update(dismissedHandStatus);
   }
 
   // -------------------------------------------------------------------------
@@ -4857,7 +4940,12 @@ export class SalonConversation {
    * alone. v4 sets `attachments: undefined` when there are none; v5's
    * `MessageDto.attachments` is required, so it stays `[]`.
    */
-  private makeTempUserMessage(content: string, attachments: MessageAttachment[]): MessageDto {
+  private makeTempUserMessage(
+    content: string,
+    attachments: MessageAttachment[],
+    /** P4.D384 (C4 H1): "The ribbon shows at once" — the same spread as the request. */
+    establishedFact = false,
+  ): MessageDto {
     const displayContent =
       attachments.length > 0
         ? `${content}${content ? '\n' : ''}[Attached: ${attachments.map((f) => f.filename).join(', ')}]`
@@ -4875,7 +4963,7 @@ export class SalonConversation {
       speakingAsId,
       this.impersonatingIds(),
     );
-    return {
+    const bubble: MessageDtoH1 = {
       id: `temp-user-${Date.now()}`,
       role: 'USER',
       content: displayContent,
@@ -4902,7 +4990,9 @@ export class SalonConversation {
       pendingExternalAttachments: null,
       reasoningContent: null,
       reasoningSegments: null,
+      ...(establishedFact ? { isEstablishedFact: true as const } : {}),
     };
+    return bubble;
   }
 
   // -------------------------------------------------------------------------

@@ -35,7 +35,7 @@ beforeAll(() => {
 });
 
 import { CoreClient } from '../core/core-client';
-import type { ChatStreamFrame, ScopedEvent } from '../core/core-contract';
+import type { LegacyStreamBag, ScopedEvent } from '../core/core-contract';
 import { HelpDialog, STORAGE_KEY_TAB } from './help-dialog';
 import { HelpEntry } from './help-entry';
 import { HelpMessageList } from './help-message-list';
@@ -58,7 +58,7 @@ const INCAPABLE = { ...CAPABLE, id: 'c-2', name: 'Bertie', hasToolCapableProfile
 type AnyMock = ReturnType<typeof vi.fn<(...a: any[]) => any>>;
 
 let api: Record<string, AnyMock>;
-let events: Subject<ScopedEvent & ChatStreamFrame>;
+let events: Subject<ScopedEvent & LegacyStreamBag>;
 let go: AnyMock;
 
 function stubApi(chars = [CAPABLE]) {
