@@ -1,6 +1,11 @@
 import type { CoreClient } from '../core/core-client';
 import type {
+  ChatCustomToolPresetsRequest,
   CustomToolListing,
+  CustomToolPreset,
+  CustomToolPresetPool,
+  CustomToolPresetStore,
+  CustomToolPresetUnread,
   CustomToolRunData,
   CustomToolsRosterData,
 } from '../core/core-contract';
@@ -25,17 +30,19 @@ export const customToolsKeys = {
   /** The roster for one chat — the same key the popup refetches fresh on open. */
   byChat: (chatId: string) => ['customTools', chatId] as const,
   /**
-   * Run presets for one tool in one character's vault —
-   * `Tools/{toolName}.{preset}.settings.json`, listed by the run dialog (v4
-   * `queryKeys.customTools.presets`). Invalidated after a save; refetched per
-   * dialog open, same doctrine as `byChat` (the files live in a store the user
-   * edits).
+   * Run presets for one tool as one character sees them —
+   * `Tools/{toolName}.{preset}.settings.json` across the character → group →
+   * project → General walk, listed by the run dialog. Invalidated after a
+   * save; refetched per dialog open, same doctrine as `byChat` (the files
+   * live in stores the user edits). (v4 `lib/query/keys.ts:215-224` at
+   * `624d0d25c`, on v5's `customTools` prefix — R-5.) It sits under
+   * `byChat(chatId)`, so a roster invalidation reaches it, as in v4.
    *
    * v5 has no central keys module — keys are per-feature — so this sits beside
    * `byChat` rather than in v4's `lib/query/keys.ts`.
    */
-  presets: (vaultMountPointId: string, toolName: string) =>
-    ['customTools', 'presets', vaultMountPointId, toolName] as const,
+  presets: (chatId: string, asCharacterId: string | null, toolName: string) =>
+    ['customTools', chatId, 'presets', asCharacterId ?? '', toolName] as const,
   /**
    * The runs held for the operator in one chat (operator intervention, v4
    * `839575d89`). Refreshed by the `customToolInterventions` realtime topic.
@@ -149,4 +156,56 @@ export async function runCustomTool(
     asCharacterId: args.asCharacterId,
   });
   return data as unknown as CustomToolRunData;
+}
+
+/** One preset store as the wire carries it — every field read defensively. */
+function readPresetStore(raw: unknown): CustomToolPresetStore {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    tier: typeof r['tier'] === 'string' ? r['tier'] : '',
+    mountPointId: typeof r['mountPointId'] === 'string' ? r['mountPointId'] : '',
+    mountName: typeof r['mountName'] === 'string' ? r['mountName'] : '',
+  };
+}
+
+const asArray = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+/**
+ * The run dialog's preset pool for one tool as one character sees it (v4
+ * `fd165fce0` — `GET /api/v1/chats/{chatId}/custom-tools?action=presets&tool=…
+ * &asCharacterId=…`, served here by the `chatCustomToolPresets` dispatch,
+ * P4.D379 / contract C11). `presets` is the nearest preset of each name, sorted
+ * by name; `stores` every store on the walk, nearest first; `unread` the stores
+ * that could not be looked in. Read defensively: an absent array is `[]`, an
+ * absent `shadows` is `[]`.
+ */
+export async function fetchCustomToolPresets(
+  core: CoreClient,
+  chatId: string,
+  toolName: string,
+  asCharacterId: string,
+): Promise<CustomToolPresetPool> {
+  const req: ChatCustomToolPresetsRequest = {
+    type: 'chatCustomToolPresets',
+    chatId,
+    tool: toolName,
+    asCharacterId,
+  };
+  const data = await core.dispatchData(req);
+  return {
+    presets: asArray(data['presets']).map((raw): CustomToolPreset => {
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return {
+        ...readPresetStore(r),
+        name: typeof r['name'] === 'string' ? r['name'] : '',
+        path: typeof r['path'] === 'string' ? r['path'] : '',
+        shadows: asArray(r['shadows']).map(readPresetStore),
+      };
+    }),
+    stores: asArray(data['stores']).map(readPresetStore),
+    unread: asArray(data['unread']).map((raw): CustomToolPresetUnread => {
+      const r = (raw ?? {}) as Record<string, unknown>;
+      return { ...readPresetStore(r), reason: typeof r['reason'] === 'string' ? r['reason'] : '' };
+    }),
+  };
 }

@@ -1,0 +1,24 @@
+--- a/apps/web/src/app/chat/custom-tools-popup.ts
++++ b/apps/web/src/app/chat/custom-tools-popup.ts
+@@ -182,14 +182,17 @@
+               </section>
+ 
+               <!-- Presets only make sense where there is something to preserve: a
+-                   tool with parameters, run as a character whose vault can hold
+-                   the file. -->
+-              @if (paramNames().length > 0 && tool.vaultMountPointId) {
++                   tool with parameters. A roster from an older server names nobody
++                   to walk the stores as, so it gets none. -->
++              @if (paramNames().length > 0 && tool.asCharacterId) {
+                 <qt-custom-tool-presets
++                  [chatId]="chatId()"
++                  [asCharacterId]="tool.asCharacterId"
++                  [toolKey]="keyOf(tool)"
+                   [toolName]="tool.name"
+                   [toolTitle]="tool.title"
+                   [parameters]="tool.parameters"
+-                  [vaultMountPointId]="tool.vaultMountPointId"
++                  [vaultMountPointId]="tool.vaultMountPointId ?? null"
+                   [values]="valuesFor(keyOf(tool), tool)"
+                   [disabled]="running()"
+                   (valuesReplace)="onValuesReplace(keyOf(tool), $event)"

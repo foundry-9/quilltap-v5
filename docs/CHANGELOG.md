@@ -1187,6 +1187,12 @@ New tier-1 corpus `established-fact.oracle.ndjson` (207 rows) and the
 `slash-commands.ndjson` regen (186 → 196 rows), both from v4's real code at
 the pin.
 
+#### 2026-11-08 — feat(spa): the Pascal Run dialog's presets read across the tool walk, filed into a chosen store (v4 fd165fce0)
+
+_Versions: SPA 0.5.976._
+
+P4.D388 unit (iv), contract C11. `chat/custom-tool-presets.ts` is rewritten to v4's `ToolPresetsSection` at the pin. It lists presets through the new `fetchCustomToolPresets` (`chatCustomToolPresets {chatId, tool, asCharacterId}`, read defensively). Each option reads `name — store`, with an "Also in …, which this one outranks" title when the preset shadows farther ones. A preset loads from its own store and path, chosen by name. A "Save into" select lists every store on the walk; the default is the character's vault, else the nearest store. Saves file there with v4's `Preset “x” filed in <store>.` toast, the two load refusals name the store, and an "unread" note lists stores the walk could not look in. `customToolsKeys.presets` becomes `['customTools', chatId, 'presets', asCharacterId ?? '', tool]`, under `byChat`. `chatId` / `asCharacterId` are optional: until the popup binds them (HANDOFF H1 to P4.D385, `work-orders/handoffs/p4.d388-custom-tools-popup-presets.patch`), the section renders and dispatches nothing. `pascal/tool-presets.ts`'s note now names its Rust twin (P4.D379). The spec is rewritten (30 cases).
+
 #### 2026-11-08 — feat(spa): the inline Brahma engine select in Settings → Chat → Brahma Console and the project Model Behavior card (v4 c539c82e0)
 
 _Versions: SPA 0.5.975._

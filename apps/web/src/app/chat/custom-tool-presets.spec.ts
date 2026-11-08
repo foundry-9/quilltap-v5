@@ -1,108 +1,106 @@
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
-import { CoreDispatchError } from '../core/core-contract';
-import { CustomToolsPopup } from './custom-tools-popup';
-import type { CustomToolRosterEntry, CustomToolsRoster } from './custom-tools.api';
+import {
+  CoreDispatchError,
+  type ChatCustomToolPresetsRequest,
+  type CustomToolParameterSpec,
+  type CustomToolPresetPool,
+} from '../core/core-contract';
 import { ToastService } from '../ui/toast.service';
+import { CustomToolPresets } from './custom-tool-presets';
+import type { ParameterFormValues } from './custom-tool-params-form';
+import { customToolsKeys } from './custom-tools.api';
 
 /**
  * Run presets in the composer's run dialog (v4 `ToolPresetsSection`,
- * `c988fbd2`) — driven through the POPUP rather than the section alone, because
- * three of the ten behaviors are the wiring: the render gate, the value
- * replacement landing on the popup's own `formValues`, and the section
- * unmounting (so a typed name resets) when the operator goes back to the picker.
+ * `fd165fce0`, at the pin `624d0d25c`): the list rides the server's tool walk
+ * (`chatCustomToolPresets` — contract C11), loads and saves aim at the
+ * preset's OWN store.
  *
- * Nothing here mocks the naming contract: the paths asserted are the bytes the
- * dialog actually asks the mount verbs for, and `tool-presets.spec.ts` proves
- * the contract itself against v4's own suite.
+ * Driven through a host that binds the section exactly as P4.D388's HANDOFF H1
+ * patch makes `custom-tools-popup.ts` bind it (`[chatId]`, `[asCharacterId]`,
+ * `[toolKey]`, `[vaultMountPointId]`). The popup's own wiring — its render
+ * gate, the section's position, the name reset on going back — is the popup's
+ * file (P4.D385), proven on the union by `e2e/spa-smalls-flow.spec.ts` (H) and
+ * the gated presets beat of `salon-custom-tools-flow.spec.ts`.
+ *
+ * Nothing here mocks the naming contract: the save path asserted is the bytes
+ * the section asks `mountFileWrite` for, and `tool-presets.spec.ts` proves the
+ * contract itself against v4's own suite.
  */
 
-const VAULT = 'vault-charlie';
+// A type-level pin of the C11 request (P4.D388 item 2).
+const _request: ChatCustomToolPresetsRequest = { type: 'chatCustomToolPresets', chatId: 'c' };
+void _request;
 
-/** A refusal in the shape the transport actually raises. */
-function dispatchError(message: string): CoreDispatchError {
-  return new CoreDispatchError({ kind: 'internal', message });
-}
-
-/** A tool with one number and one boolean parameter, run as a character with a vault. */
-const UNLOCK: CustomToolRosterEntry = {
-  name: 'unlock',
-  title: 'Force the Lock',
-  description: 'Attempt to pick the lock.',
-  parameters: {
-    bonus: { type: 'number', default: 0, description: 'Skill bonus added to the roll.' },
-    quiet: { type: 'boolean', default: false, description: 'Work without noise.' },
-  },
-  defaultVisibility: 'public',
-  sourceTier: 'project',
-  asCharacterId: 'char-1',
-  vaultMountPointId: VAULT,
-  definitionPath: 'Tools/unlock.tool.json',
-  mountPointId: 'mount-1',
-  mountName: 'Kepler Notes',
+const PARAMS: Record<string, CustomToolParameterSpec> = {
+  bonus: { type: 'number', default: 0, description: 'Skill bonus added to the roll.' },
+  quiet: { type: 'boolean', default: false, description: 'Work without noise.' },
 };
 
-/** No parameters — nothing a preset could preserve. */
-const SPIN: CustomToolRosterEntry = {
-  ...UNLOCK,
-  name: 'spin',
-  title: 'Spin',
-  parameters: {},
-  definitionPath: 'Tools/spin.tool.json',
+const VAULT = { tier: 'character', mountPointId: 'vault-charlie', mountName: 'Charlie Vault' };
+const GROUP = { tier: 'group', mountPointId: 'group-1', mountName: 'The Ring' };
+const GENERAL = { tier: 'general', mountPointId: 'general', mountName: 'Quilltap General' };
+
+const POOL: CustomToolPresetPool = {
+  presets: [
+    { ...GROUP, name: 'brute', path: 'Tools/unlock.brute.settings.json', shadows: [GENERAL] },
+    { ...VAULT, name: 'sneak', path: 'Tools/unlock.sneak.settings.json', shadows: [] },
+  ],
+  stores: [VAULT, GROUP, GENERAL],
+  unread: [],
 };
-
-/** Parameters, but the running character's vault could not be resolved. */
-const VAULTLESS: CustomToolRosterEntry = { ...UNLOCK, vaultMountPointId: null };
-
-interface Stub {
-  calls: Record<string, unknown>[];
-  client: Partial<CoreClient>;
-}
 
 interface StubOptions {
-  /** Vault-relative paths `mountFilesList` answers with. */
-  files?: string[];
-  /** The bytes `mountFileRead` answers with, keyed by path. */
+  pool?: Partial<CustomToolPresetPool> | Record<string, unknown>;
   reads?: Record<string, string>;
-  /** Thrown instead of answering, keyed by verb. */
-  fail?: Partial<Record<'mountFilesList' | 'mountFileRead' | 'mountFileWrite', Error>>;
+  fail?: Partial<Record<'chatCustomToolPresets' | 'mountFileRead' | 'mountFileWrite', Error>>;
 }
 
-function stub(tools: CustomToolRosterEntry[], options: StubOptions = {}): Stub {
+function stub(options: StubOptions = {}) {
   const calls: Record<string, unknown>[] = [];
-  const files = [...(options.files ?? [])];
   const dispatchData = vi.fn(async (req: Record<string, unknown>) => {
     calls.push(req);
     const type = req['type'] as string;
     const failure = options.fail?.[type as keyof NonNullable<StubOptions['fail']>];
     if (failure) throw failure;
-    if (type === 'chatCustomToolsList') {
-      return { tools, errors: [] } as unknown as CustomToolsRoster as unknown as Record<
-        string,
-        unknown
-      >;
-    }
-    if (type === 'mountFilesList') {
-      return { files: files.map((relativePath, i) => ({ id: `f${i}`, relativePath })) };
-    }
+    if (type === 'chatCustomToolPresets') return (options.pool ?? POOL) as Record<string, unknown>;
     if (type === 'mountFileRead') {
-      return { content: options.reads?.[req['path'] as string] ?? '{}' };
-    }
-    if (type === 'mountFileWrite') {
-      // A save shows up in the next listing, as a real vault would.
-      const path = req['path'] as string;
-      if (!files.includes(path)) files.push(path);
-      return {};
+      return { content: options.reads?.[`${req['mountPointId']}:${req['path']}`] ?? '{}' };
     }
     return {};
   });
-  return {
-    calls,
-    client: { dispatchData: dispatchData as unknown as CoreClient['dispatchData'] },
-  };
+  return { calls, client: { dispatchData: dispatchData as unknown as CoreClient['dispatchData'] } };
+}
+
+@Component({
+  imports: [CustomToolPresets],
+  template: `
+    <qt-custom-tool-presets
+      [chatId]="chatId()"
+      [asCharacterId]="asCharacterId()"
+      [toolKey]="'unlock::char-1'"
+      [vaultMountPointId]="vault()"
+      toolName="unlock"
+      toolTitle="Force the Lock"
+      [parameters]="params"
+      [values]="values()"
+      [disabled]="disabled()"
+      (valuesReplace)="values.set($event)"
+    />
+  `,
+})
+class Host {
+  readonly chatId = signal<string | null>('chat-1');
+  readonly asCharacterId = signal<string | null>('char-1');
+  readonly vault = signal<string | null>('vault-charlie');
+  readonly disabled = signal(false);
+  readonly params = PARAMS;
+  readonly values = signal<ParameterFormValues>({ bonus: '0', quiet: false });
 }
 
 async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
@@ -112,368 +110,328 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   }
 }
 
-async function mount(s: Stub): Promise<ComponentFixture<CustomToolsPopup>> {
+async function mount(
+  s: ReturnType<typeof stub>,
+  setup: (h: Host) => void = () => undefined,
+): Promise<{ fixture: ComponentFixture<Host>; client: QueryClient }> {
   TestBed.resetTestingModule();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   TestBed.configureTestingModule({
-    imports: [CustomToolsPopup],
-    providers: [
-      // `retry: false`: the refusal arms below assert what the section renders
-      // ONCE a read has failed, and TanStack's default three retries would
-      // otherwise still be backing off when the fixture settles.
-      provideTanStackQuery(
-        new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-      ),
-      { provide: CoreClient, useValue: s.client },
-    ],
+    imports: [Host],
+    providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: s.client }],
   });
-  const fixture = TestBed.createComponent(CustomToolsPopup);
-  fixture.componentRef.setInput('chatId', 'chat-1');
+  const fixture = TestBed.createComponent(Host);
+  setup(fixture.componentInstance);
   fixture.detectChanges();
   await settle(fixture);
-  return fixture;
+  return { fixture, client };
 }
 
-function q<T extends Element>(fixture: ComponentFixture<unknown>, selector: string): T | null {
-  return fixture.nativeElement.querySelector(selector) as T | null;
-}
-
-function text(fixture: ComponentFixture<unknown>): string {
-  return (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ');
-}
-
-function toasts(): { type: string; message: string }[] {
-  return TestBed.inject(ToastService)
-    .toasts()
-    .map((t) => ({ type: t.type, message: t.message }));
-}
-
-/**
- * Open the dialog and choose the named tool — the dialog's form phase.
- *
- * The title is REQUIRED and the row lookup throws when it misses: an earlier
- * draft fell back to "whatever button is second", which silently clicked the
- * modal's ✕ for any tool not called "Force the Lock" and left three assertions
- * passing against a dialog that had never reached its form phase at all.
- */
-async function openForm(
-  s: Stub,
-  title = 'Force the Lock',
-): Promise<ComponentFixture<CustomToolsPopup>> {
-  const fixture = await mount(s);
-  q<HTMLButtonElement>(fixture, 'button[aria-label="Custom tools"]')!.click();
-  fixture.detectChanges();
-  await settle(fixture);
-  const row = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLButtonElement) =>
-    (b.textContent ?? '').includes(title),
-  ) as HTMLButtonElement | undefined;
-  if (!row) throw new Error(`openForm: no roster row for ${title}`);
-  row.click();
-  fixture.detectChanges();
-  await settle(fixture);
-  // The form phase, not the picker — the Run button only exists on the far side.
-  expect(findButton(fixture, `Run ${title}`)).toBeTruthy();
-  return fixture;
-}
-
-function presetSelect(fixture: ComponentFixture<unknown>): HTMLSelectElement | null {
-  return q<HTMLSelectElement>(fixture, 'select[aria-label^="Load a saved preset"]');
-}
-
-function nameInput(fixture: ComponentFixture<unknown>): HTMLInputElement | null {
-  return q<HTMLInputElement>(fixture, 'input[aria-label="Name to save this preset under"]');
-}
-
-function findButton(fixture: ComponentFixture<unknown>, label: string): HTMLButtonElement {
-  return [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLButtonElement) =>
+const el = (f: ComponentFixture<unknown>) => f.nativeElement as HTMLElement;
+const text = (f: ComponentFixture<unknown>) => (el(f).textContent ?? '').replace(/\s+/g, ' ').trim();
+const loadSelect = (f: ComponentFixture<unknown>) =>
+  el(f).querySelector('select[aria-label^="Load a saved preset"]') as HTMLSelectElement | null;
+const storeSelect = (f: ComponentFixture<unknown>) =>
+  el(f).querySelector('#custom-tool-unlock\\:\\:char-1-preset-store') as HTMLSelectElement | null;
+const nameInput = (f: ComponentFixture<unknown>) =>
+  el(f).querySelector('input[aria-label="Name to save this preset under"]') as HTMLInputElement;
+const button = (f: ComponentFixture<unknown>, label: string) =>
+  Array.from(el(f).querySelectorAll('button')).find((b) =>
     (b.textContent ?? '').trim().startsWith(label),
   ) as HTMLButtonElement;
+const optionText = (o: HTMLOptionElement) => (o.textContent ?? '').replace(/\s+/g, ' ').trim();
+const toasts = () =>
+  TestBed.inject(ToastService)
+    .toasts()
+    .map((t) => ({ type: t.type, message: t.message }));
+
+async function typeName(f: ComponentFixture<unknown>, value: string): Promise<void> {
+  const input = nameInput(f);
+  input.value = value;
+  input.dispatchEvent(new Event('input'));
+  await settle(f);
 }
 
-/** The bonus field's current value, as the parameter form renders it. */
-function bonusField(fixture: ComponentFixture<unknown>): HTMLInputElement {
-  return q<HTMLInputElement>(fixture, 'input[type="number"]')!;
+async function choose(f: ComponentFixture<unknown>, s: HTMLSelectElement, value: string): Promise<void> {
+  s.value = value;
+  s.dispatchEvent(new Event('change'));
+  await settle(f);
 }
 
-async function type(
-  fixture: ComponentFixture<unknown>,
-  el: HTMLInputElement,
-  value: string,
-): Promise<void> {
-  el.value = value;
-  el.dispatchEvent(new Event('input'));
-  fixture.detectChanges();
-  await settle(fixture);
-}
-
-async function choose(
-  fixture: ComponentFixture<unknown>,
-  el: HTMLSelectElement,
-  value: string,
-): Promise<void> {
-  el.value = value;
-  el.dispatchEvent(new Event('change'));
-  fixture.detectChanges();
-  await settle(fixture);
-}
-
-async function click(fixture: ComponentFixture<unknown>, el: HTMLElement): Promise<void> {
-  el.click();
-  fixture.detectChanges();
-  await settle(fixture);
-}
-
-describe('run presets — when the section is dealt at all', () => {
+describe('run presets — the walk (v4 fd165fce0)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('renders for a tool with parameters run as a character with a vault', async () => {
-    const fixture = await openForm(stub([UNLOCK]));
-    expect(presetSelect(fixture)).not.toBeNull();
-    expect(text(fixture)).toContain('Presets');
+  it('renders nothing and dispatches nothing without a chat or a character (PR-6)', async () => {
+    for (const setup of [
+      (h: Host) => h.chatId.set(null),
+      (h: Host) => h.asCharacterId.set(null),
+    ]) {
+      const s = stub();
+      const { fixture } = await mount(s, setup);
+      expect(el(fixture).querySelector('section')).toBeNull();
+      expect(s.calls).toEqual([]);
+    }
   });
 
-  it('stays hidden for a tool that declares no parameters', async () => {
-    const fixture = await openForm(stub([SPIN]), 'Spin');
-    expect(presetSelect(fixture)).toBeNull();
+  it('asks the presets verb for this tool as this character', async () => {
+    const s = stub();
+    await mount(s);
+    expect(s.calls).toEqual([
+      { type: 'chatCustomToolPresets', chatId: 'chat-1', tool: 'unlock', asCharacterId: 'char-1' },
+    ]);
   });
 
-  it('stays hidden when the running character has no vault (vaultMountPointId null)', async () => {
-    const fixture = await openForm(stub([VAULTLESS]));
-    expect(presetSelect(fixture)).toBeNull();
+  it("keys the query v4's way on v5's prefix, under byChat", () => {
+    expect(customToolsKeys.presets('chat-1', 'char-1', 'unlock')).toEqual([
+      'customTools',
+      'chat-1',
+      'presets',
+      'char-1',
+      'unlock',
+    ]);
+    expect(customToolsKeys.presets('chat-1', null, 'unlock')[3]).toBe('');
+    expect(customToolsKeys.presets('c', 'a', 't').slice(0, 2)).toEqual(customToolsKeys.byChat('c'));
   });
 
-  it('stays hidden on a roster from an older server, where the field is absent', async () => {
-    const { vaultMountPointId: _omitted, ...legacy } = UNLOCK;
-    const fixture = await openForm(stub([legacy as CustomToolRosterEntry]));
-    expect(presetSelect(fixture)).toBeNull();
+  it("carries v4's paragraph", async () => {
+    const { fixture } = await mount(stub());
+    expect(el(fixture).querySelector('section p')!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'A hand you set aside earlier, dealt back on request. They are kept wherever the tool itself might be: the character’s vault, their groups’ stores, the project’s, or Quilltap General — and the nearest one of a name wins. Saving under an existing name in the same store replaces it.',
+    );
   });
 
-  it('sits between the parameters and the privacy toggle (v4 position)', async () => {
-    const fixture = await openForm(stub([UNLOCK]));
-    const html = fixture.nativeElement.innerHTML as string;
-    expect(html.indexOf('What you are setting')).toBeLessThan(html.indexOf('Presets'));
-    expect(html.indexOf('Presets')).toBeLessThan(html.indexOf('Roll privately'));
+  it('lists each preset as "name — store", with the shadows title only when shadowed', async () => {
+    const { fixture } = await mount(stub());
+    const options = Array.from(loadSelect(fixture)!.options).slice(1);
+    expect(options.map(optionText)).toEqual(['brute — The Ring', 'sneak — Charlie Vault']);
+    expect(options.map((o) => o.value)).toEqual(['brute', 'sneak']);
+    expect(options[0].getAttribute('title')).toBe('Also in Quilltap General, which this one outranks');
+    expect(options[1].hasAttribute('title')).toBe(false);
   });
 
-  it('renders as a block, so the popup’s vertical rhythm applies to it', async () => {
-    // An unknown element defaults to `display: inline`, which drops the
-    // parent's `space-y-5` margin entirely (the `qt-collapsible-card` /
-    // P4.9E1B bug class). The component pins `:host { display: block }`.
-    const fixture = await openForm(stub([UNLOCK]));
-    const host = fixture.nativeElement.querySelector('qt-custom-tool-presets') as HTMLElement;
-    expect(host).not.toBeNull();
-    expect(getComputedStyle(host).display).toBe('block');
+  it('reads an absent shadows / stores / unread as empty', async () => {
+    const { fixture } = await mount(
+      stub({ pool: { presets: [{ ...GROUP, name: 'brute', path: 'Tools/unlock.brute.settings.json' }] } }),
+    );
+    const options = Array.from(loadSelect(fixture)!.options).slice(1);
+    expect(options[0].hasAttribute('title')).toBe(false);
+    expect(storeSelect(fixture)).toBeNull();
   });
-});
 
-describe('run presets — listing', () => {
-  afterEach(() => TestBed.resetTestingModule());
+  it('offers "No presets yet" on an empty walk, with the load select disabled', async () => {
+    const { fixture } = await mount(stub({ pool: { presets: [], stores: [VAULT], unread: [] } }));
+    expect(optionText(loadSelect(fixture)!.options[0])).toBe('No presets yet');
+    expect(loadSelect(fixture)!.disabled).toBe(true);
+  });
 
-  it("lists only this tool's presets, sorted, and never a definition file", async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], {
-        files: [
-          'Tools/unlock.tool.json',
-          'Tools/unlock.quiet-run.settings.json',
-          'Tools/unlock.brute.settings.json',
-          // Another tool's preset, a nested one, and an illegal segment.
-          'Tools/spin.brute.settings.json',
-          'Tools/deep/unlock.nested.settings.json',
-          'Tools/unlock.Loud.settings.json',
-        ],
+  it('offers "Consulting the stores…" while the walk is out', async () => {
+    const s = stub();
+    s.client.dispatchData = (() => new Promise(() => undefined)) as unknown as CoreClient['dispatchData'];
+    const { fixture } = await mount(s);
+    expect(optionText(loadSelect(fixture)!.options[0])).toBe('Consulting the stores…');
+  });
+
+  it('offers "Load a preset…" once there is one', async () => {
+    const { fixture } = await mount(stub());
+    expect(optionText(loadSelect(fixture)!.options[0])).toBe('Load a preset…');
+    expect(loadSelect(fixture)!.disabled).toBe(false);
+  });
+
+  it("says so, inline, when the stores would not list (the server's sentence)", async () => {
+    const { fixture } = await mount(
+      stub({ fail: { chatCustomToolPresets: new CoreDispatchError({ kind: 'not-found', message: 'Chat not found' }) } }),
+    );
+    expect(el(fixture).querySelector('p.text-xs.qt-text-destructive')!.textContent?.trim()).toBe('Chat not found');
+  });
+
+  it("an Error's own message shows (even empty); a non-Error is v4's fallback sentence", async () => {
+    const { fixture } = await mount(stub({ fail: { chatCustomToolPresets: new Error('') } }));
+    expect(el(fixture).querySelector('p.text-xs.qt-text-destructive')!.textContent?.trim()).toBe('');
+    // coreErrorMessage reads an Error's message as is (the v5 convention); a non-Error is the fallback.
+    const s = stub();
+    s.client.dispatchData = (async () => {
+      throw 'nope';
+    }) as unknown as CoreClient['dispatchData'];
+    const second = await mount(s);
+    expect(el(second.fixture).querySelector('p.text-xs.qt-text-destructive')!.textContent?.trim()).toBe(
+      'The stores would not list their presets.',
+    );
+  });
+
+  it('names the stores it could not look in', async () => {
+    const { fixture } = await mount(
+      stub({
+        pool: { ...POOL, unread: [{ ...GROUP, reason: 'x' }, { ...GENERAL, reason: 'y' }] },
       }),
     );
-    const options = [...presetSelect(fixture)!.querySelectorAll('option')].map((o) => o.value);
-    expect(options).toEqual(['', 'brute', 'quiet-run']);
-  });
-
-  it('asks the vault mount, not the definition mount', async () => {
-    const s = stub([UNLOCK], { files: [] });
-    await openForm(s);
-    const list = s.calls.find((c) => c['type'] === 'mountFilesList');
-    expect(list?.['mountPointId']).toBe(VAULT);
-  });
-
-  it('says so, inline, when the vault would not list', async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], { fail: { mountFilesList: dispatchError('Vault offline.') } }),
+    expect(text(fixture)).toContain(
+      'Could not look in The Ring, Quilltap General — any presets kept there are missing from this list.',
     );
-    expect(text(fixture)).toContain('Vault offline.');
-    // …and the dropdown has nothing to offer.
-    expect(presetSelect(fixture)!.disabled).toBe(true);
+  });
+
+  it('says nothing of unread stores when every store was read', async () => {
+    const { fixture } = await mount(stub());
+    expect(text(fixture)).not.toContain('Could not look in');
   });
 });
 
-describe('run presets — the placeholder and the enablement matrix', () => {
+describe('run presets — where a save goes', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('offers "No presets yet" on an empty vault, with the select disabled', async () => {
-    const fixture = await openForm(stub([UNLOCK], { files: [] }));
-    expect(presetSelect(fixture)!.querySelector('option')!.textContent).toContain('No presets yet');
-    expect(presetSelect(fixture)!.disabled).toBe(true);
+  it('offers "Save into" over every store, defaulting to the vault', async () => {
+    const { fixture } = await mount(stub());
+    const select = storeSelect(fixture)!;
+    expect(el(fixture).querySelector('label[for="custom-tool-unlock::char-1-preset-store"]')!.textContent?.trim()).toBe(
+      'Save into',
+    );
+    expect(Array.from(select.options).map(optionText)).toEqual(['Charlie Vault', 'The Ring', 'Quilltap General']);
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['vault-charlie', 'group-1', 'general']);
+    expect(select.value).toBe('vault-charlie');
   });
 
-  it('offers "Load a preset…" once there is one, and enables the select', async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], { files: ['Tools/unlock.brute.settings.json'] }),
-    );
-    expect(presetSelect(fixture)!.querySelector('option')!.textContent).toContain(
-      'Load a preset…',
-    );
-    expect(presetSelect(fixture)!.disabled).toBe(false);
+  it('defaults to the nearest store when the vault is not on the walk', async () => {
+    const { fixture } = await mount(stub(), (h) => h.vault.set('elsewhere'));
+    expect(storeSelect(fixture)!.value).toBe('vault-charlie');
+    const second = await mount(stub({ pool: { ...POOL, stores: [GROUP, GENERAL] } }));
+    expect(storeSelect(second.fixture)!.value).toBe('group-1');
+  });
+
+  it('hides "Save into" with no stores, and refuses to save', async () => {
+    const { fixture } = await mount(stub({ pool: { presets: [], stores: [], unread: [] } }));
+    expect(storeSelect(fixture)).toBeNull();
+    await typeName(fixture, 'brute');
+    expect(button(fixture, 'Save preset').disabled).toBe(true);
   });
 
   it('refuses to save until the typed name passes the pattern', async () => {
-    const fixture = await openForm(stub([UNLOCK], { files: [] }));
-    const save = findButton(fixture, 'Save preset');
-    expect(save.disabled).toBe(true);
-
-    // The keystroke filter strips the illegal characters as typed…
-    await type(fixture, nameInput(fixture)!, 'Hard Mode!');
-    expect(nameInput(fixture)!.value).toBe('hardmode');
-    expect(findButton(fixture, 'Save preset').disabled).toBe(false);
-
-    // …but cannot fix a leading dash, which the pattern still refuses.
-    await type(fixture, nameInput(fixture)!, '-x');
-    expect(nameInput(fixture)!.value).toBe('-x');
-    expect(findButton(fixture, 'Save preset').disabled).toBe(true);
+    const { fixture } = await mount(stub());
+    expect(button(fixture, 'Save preset').disabled).toBe(true);
+    await typeName(fixture, 'brute');
+    expect(button(fixture, 'Save preset').disabled).toBe(false);
   });
-});
 
-describe('run presets — saving', () => {
-  afterEach(() => TestBed.resetTestingModule());
-
-  it('writes the COERCED values, pretty-printed, at the contract path', async () => {
-    const s = stub([UNLOCK], { files: [] });
-    const fixture = await openForm(s);
-    await type(fixture, bonusField(fixture), '3');
-    await type(fixture, nameInput(fixture)!, 'brute');
-    await click(fixture, findButton(fixture, 'Save preset'));
-
-    const write = s.calls.find((c) => c['type'] === 'mountFileWrite');
-    expect(write?.['mountPointId']).toBe(VAULT);
-    expect(write?.['path']).toBe('Tools/unlock.brute.settings.json');
-    // Coerced: the number field is a number, the boolean a boolean.
-    expect(write?.['content']).toBe(JSON.stringify({ bonus: 3, quiet: false }, null, 2));
-    expect(toasts().at(-1)).toEqual({
-      type: 'success',
-      message: 'Preset “brute” filed in the character\'s vault.',
+  it("files the COERCED values into the vault by default, with v4's toast naming the store", async () => {
+    const s = stub();
+    const { fixture } = await mount(s, (h) => h.values.set({ bonus: '3', quiet: true }));
+    await typeName(fixture, 'brute');
+    button(fixture, 'Save preset').click();
+    await settle(fixture);
+    expect(s.calls.find((c) => c['type'] === 'mountFileWrite')).toEqual({
+      type: 'mountFileWrite',
+      mountPointId: 'vault-charlie',
+      path: 'Tools/unlock.brute.settings.json',
+      content: JSON.stringify({ bonus: 3, quiet: true }, null, 2),
     });
+    expect(toasts()).toEqual([{ type: 'success', message: 'Preset “brute” filed in Charlie Vault.' }]);
   });
 
-  it('refreshes the list so the new preset is immediately loadable', async () => {
-    const s = stub([UNLOCK], { files: [] });
-    const fixture = await openForm(s);
-    await type(fixture, nameInput(fixture)!, 'brute');
-    await click(fixture, findButton(fixture, 'Save preset'));
-    const options = [...presetSelect(fixture)!.querySelectorAll('option')].map((o) => o.value);
-    expect(options).toEqual(['', 'brute']);
+  it('files into the PICKED store when the operator chooses one', async () => {
+    const s = stub();
+    const { fixture } = await mount(s);
+    await choose(fixture, storeSelect(fixture)!, 'general');
+    await typeName(fixture, 'brute');
+    button(fixture, 'Save preset').click();
+    await settle(fixture);
+    expect(s.calls.find((c) => c['type'] === 'mountFileWrite')!['mountPointId']).toBe('general');
+    expect(toasts()).toEqual([{ type: 'success', message: 'Preset “brute” filed in Quilltap General.' }]);
+  });
+
+  it('re-walks after a save, so the new preset is listed', async () => {
+    const s = stub();
+    const { fixture } = await mount(s);
+    await typeName(fixture, 'brute');
+    button(fixture, 'Save preset').click();
+    await settle(fixture);
+    expect(s.calls.filter((c) => c['type'] === 'chatCustomToolPresets')).toHaveLength(2);
   });
 
   it('names the failure when the write is refused', async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], { files: [], fail: { mountFileWrite: dispatchError('Vault is read-only.') } }),
+    const { fixture } = await mount(
+      stub({ fail: { mountFileWrite: new CoreDispatchError({ kind: 'internal', message: 'disk full' }) } }),
     );
-    await type(fixture, nameInput(fixture)!, 'brute');
-    await click(fixture, findButton(fixture, 'Save preset'));
-    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Vault is read-only.' });
+    await typeName(fixture, 'brute');
+    button(fixture, 'Save preset').click();
+    await settle(fixture);
+    expect(toasts()).toEqual([{ type: 'error', message: 'disk full' }]);
   });
 });
 
-describe('run presets — loading, loosely bound', () => {
+describe('run presets — dealing one back', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  const loaded = (over: Record<string, unknown>) =>
-    stub([UNLOCK], {
-      files: ['Tools/unlock.brute.settings.json'],
-      reads: { 'Tools/unlock.brute.settings.json': JSON.stringify(over) },
-    });
+  const READS = {
+    'group-1:Tools/unlock.brute.settings.json': JSON.stringify({ bonus: 5, quiet: true, gone: 1, nested: {} }),
+    'vault-charlie:Tools/unlock.sneak.settings.json': JSON.stringify({ quiet: true }),
+  };
 
-  it('deals the saved values back into the form', async () => {
-    const fixture = await openForm(loaded({ bonus: 4, quiet: true }));
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(bonusField(fixture).value).toBe('4');
-    expect(q<HTMLInputElement>(fixture, 'input[type="checkbox"]')!.checked).toBe(true);
+  it("reads the preset from its OWN store and path, keyed by name", async () => {
+    const s = stub({ reads: READS });
+    const { fixture } = await mount(s);
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(s.calls.find((c) => c['type'] === 'mountFileRead')).toEqual({
+      type: 'mountFileRead',
+      mountPointId: 'group-1',
+      path: 'Tools/unlock.brute.settings.json',
+    });
+    expect(fixture.componentInstance.values()).toEqual({ bonus: '5', quiet: true });
+    expect(loadSelect(fixture)!.value).toBe('');
   });
 
   it('copies the loaded name into the input, so re-saving updates it', async () => {
-    const fixture = await openForm(loaded({ bonus: 4 }));
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(nameInput(fixture)!.value).toBe('brute');
+    const { fixture } = await mount(stub({ reads: READS }));
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(nameInput(fixture).value).toBe('brute');
+  });
+
+  it('a load does not move the save store', async () => {
+    const { fixture } = await mount(stub({ reads: READS }));
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(storeSelect(fixture)!.value).toBe('vault-charlie');
   });
 
   it('leaves a parameter the preset does not mention at its current value', async () => {
-    const fixture = await openForm(loaded({ quiet: true }));
-    await type(fixture, bonusField(fixture), '2');
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(bonusField(fixture).value).toBe('2');
+    const { fixture } = await mount(stub({ reads: READS }), (h) => h.values.set({ bonus: '2', quiet: false }));
+    await choose(fixture, loadSelect(fixture)!, 'sneak');
+    expect(fixture.componentInstance.values()).toEqual({ bonus: '2', quiet: true });
   });
 
-  it('ignores a key the tool no longer declares, and a non-primitive value', async () => {
-    const fixture = await openForm(loaded({ bonus: { nested: 1 }, retired: 'gone', quiet: true }));
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    // bonus stayed at its default: the object was skipped, not stringified.
-    expect(bonusField(fixture).value).toBe('0');
-    expect(q<HTMLInputElement>(fixture, 'input[type="checkbox"]')!.checked).toBe(true);
+  it('refuses a file that would not read as JSON, naming its store', async () => {
+    const { fixture } = await mount(stub({ reads: { 'group-1:Tools/unlock.brute.settings.json': '{not json' } }));
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Preset “brute” would not read as JSON. It stays as written in The Ring.' },
+    ]);
+    expect(fixture.componentInstance.values()).toEqual({ bonus: '0', quiet: false });
   });
 
-  it('refuses a file that would not read as JSON, leaving it as written', async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], {
-        files: ['Tools/unlock.brute.settings.json'],
-        reads: { 'Tools/unlock.brute.settings.json': '{ not json' },
-      }),
-    );
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(toasts().at(-1)).toEqual({
-      type: 'error',
-      message: 'Preset “brute” would not read as JSON. It stays as written in the vault.',
-    });
-  });
-
-  it('refuses a file that parses but is not a settings object', async () => {
-    const fixture = await openForm(loaded([] as unknown as Record<string, unknown>));
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(toasts().at(-1)).toEqual({
-      type: 'error',
-      message: 'Preset “brute” is not a settings object. It stays as written in the vault.',
-    });
+  it('refuses a file that parses but is not a settings object, naming its store', async () => {
+    const { fixture } = await mount(stub({ reads: { 'group-1:Tools/unlock.brute.settings.json': '[1,2]' } }));
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(toasts()).toEqual([
+      { type: 'error', message: 'Preset “brute” is not a settings object. It stays as written in The Ring.' },
+    ]);
   });
 
   it('names the failure when the read is refused', async () => {
-    const fixture = await openForm(
-      stub([UNLOCK], {
-        files: ['Tools/unlock.brute.settings.json'],
-        fail: { mountFileRead: dispatchError('No such file.') },
-      }),
+    const { fixture } = await mount(
+      stub({ fail: { mountFileRead: new CoreDispatchError({ kind: 'not-found', message: 'File not found' }) } }),
     );
-    await choose(fixture, presetSelect(fixture)!, 'brute');
-    expect(toasts().at(-1)).toEqual({ type: 'error', message: 'No such file.' });
-  });
-});
-
-describe('run presets — resetting, and what a close forgets', () => {
-  afterEach(() => TestBed.resetTestingModule());
-
-  it('re-seeds the form from the declared defaults', async () => {
-    const fixture = await openForm(stub([UNLOCK], { files: [] }));
-    await type(fixture, bonusField(fixture), '5');
-    await click(fixture, findButton(fixture, 'Reset to defaults'));
-    expect(bonusField(fixture).value).toBe('0');
+    await choose(fixture, loadSelect(fixture)!, 'brute');
+    expect(toasts()).toEqual([{ type: 'error', message: 'File not found' }]);
   });
 
-  it('forgets the typed name when the operator goes back to the picker', async () => {
-    const fixture = await openForm(stub([UNLOCK], { files: [] }));
-    await type(fixture, nameInput(fixture)!, 'brute');
-    await click(fixture, findButton(fixture, 'Choose another tool'));
-    // …and back into the same tool's form.
-    await click(
-      fixture,
-      [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLButtonElement) =>
-        (b.textContent ?? '').includes('Force the Lock'),
-      ) as HTMLButtonElement,
-    );
-    expect(nameInput(fixture)!.value).toBe('');
-    // The VALUES, by contrast, are the popup's memory and survive (v4 too).
-    expect(bonusField(fixture)).not.toBeNull();
+  it('Reset to defaults re-seeds the form from the declared defaults', async () => {
+    const { fixture } = await mount(stub(), (h) => h.values.set({ bonus: '9', quiet: true }));
+    button(fixture, 'Reset to defaults').click();
+    await settle(fixture);
+    expect(fixture.componentInstance.values()).toEqual({ bonus: '0', quiet: false });
+  });
+
+  it('is inert while a run is in flight', async () => {
+    const { fixture } = await mount(stub(), (h) => h.disabled.set(true));
+    expect(loadSelect(fixture)!.disabled).toBe(true);
+    expect(nameInput(fixture).disabled).toBe(true);
+    expect(storeSelect(fixture)!.disabled).toBe(true);
+    expect(button(fixture, 'Reset to defaults').disabled).toBe(true);
   });
 });

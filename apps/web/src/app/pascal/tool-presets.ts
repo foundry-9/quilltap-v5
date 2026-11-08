@@ -16,10 +16,12 @@
  * preset name too makes `{toolname}.{preset}.settings.json` parse unambiguously
  * — and keeps the name safe on every filesystem shape a vault can take.
  *
- * v5 note: this module has NO Rust twin and needs none. Presets ride the
- * existing `mountFilesList` / `mountFileRead` / `mountFileWrite` verbs as
- * ordinary vault documents, so the server never parses a preset filename —
- * exactly as in v4, where nothing under `lib/` outside the dialog imports it.
+ * v5 note: since v4 `fd165fce0` the SERVER parses preset filenames too — it
+ * walks the character → group → project → General stores for the run dialog
+ * (`chatCustomToolPresets`, v4's `?action=presets`), so this module now has a
+ * Rust twin, `crates/quilltap-core/src/pascal/tool_presets.rs` (P4.D379). The
+ * SPA still builds every path it writes through this module, and loads and
+ * saves still ride `mountFileRead` / `mountFileWrite` as ordinary documents.
  * Its proof is v4's own 92-line suite, ported case-for-case in
  * `tool-presets.spec.ts` (the corpus-free pure-port precedent of
  * `expressions.ts`, P4.D36).
