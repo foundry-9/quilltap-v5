@@ -202350,7 +202350,7 @@ Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed an
     - `item-image-viewer.ts` (`kind`, `pictureFilename`), which would replace the two kind viewers. v4 `item-image-viewer.test.tsx`'s 3 cases are not transcribed, and `WARDROBE_VIEWER_ESCAPE_LAYERED` is untouched.
     - The Inventory picker does carry the pin's copy mode and the toasts with the FILED-folder `where`. The pin's "leave select mode after filing" (`onFiled`) is NOT carried for the Inventory; the wardrobe has always done it.
   - **Tier 2 item 17:** the `aria-expanded` card-lift probe spec.
-  - **e2e by-file results owed (measured under load, then a full disk; see below).**
+  - e2e by file: **all owed files green on the current server** (see below).
 
 **Red-first (§R.7).**
 - `BROWSER`: every new spec failed to compile on `CSS` (modules absent).
@@ -202461,10 +202461,26 @@ Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed an
     - `scenarios-flow`: **2 / 0**.
     - `inventory-flow` on the Oct 28 release bins: 2 failed / 7 passed, deterministic across three runs. Measured cause: **the bins were STALE** — e2e's `webBinary()` prefers `target/release/quilltap-web`, and the cloned Oct 28 build predates the base, so its server never publishes `inventory` on a create. With realtime connected, `refreshUnlessRealtime` correctly leaves the refresh to that publish, which never came (the trace shows `inventoryCreate` 200 and no `inventoryList` after). The stale bins were renamed to `target/release/*.stale-oct28`, so e2e now takes the current `target/debug` build (Nov 8; this lane touches no Rust). On it: **`inventory-flow` 9 / 0**.
     - `wardrobe-flow` on the stale bins: 7 failed / 14 passed. The first red is a real spec pin that has to move with C12. Beat `a composite outfit prompts…` (`:883`) expects 4 character options, and the catalogue offers 3. `characterList` answers Aria, Bram, Cleo and Dax, and Aria is dropped as the source. Fenn is archived and was only ever offered by the retired destinations verb. The other six reds look like the worker-restart cascade: `beforeAll` re-seeds after the failure, so the Masquerade Kit, the moved goggles and the seeded scarf are gone. That is not yet proven. **The re-run on the current server was STOPPED mid-file by the 2026-11-08 shutdown PAUSE.**
-  - **STILL OWED after the next GO:**
-    1. Run `wardrobe-flow` on the current server (stale bins already moved aside).
-    2. If `:883` still sees 3, re-pin it to the catalogue: 3 options, Bram / Cleo / Dax by name, Echo and Fenn absent. Then re-run the file and confirm the six downstream reds clear.
-    3. Re-run on the current server the six files that were green only on the stale bins: `item-browser-flow`, `wardrobe-folders-flow`, `character-wardrobe-pictures-flow`, `workbench-wardrobe-picker-flow`, `salon-scenario-flow`, `projects-flow`. Also re-run `wardrobe-items-editor-flow`, `wardrobe-copy-to-folder-flow` and `scenarios-flow`.
+  - **Final, on the current server (2026-11-08 afternoon, after the reboot; one file at a time, queued behind sibling PIDs; 46 GiB free throughout):**
+    - The composite-copy beat (`:883`) was re-pinned to the catalogue in `3b22f8d47`: 3 options, Bram / Cleo / Dax by name, Echo and Fenn asserted absent.
+    - Results:
+
+      | File | Result |
+      |---|---|
+      | `wardrobe-flow` | **21 / 0** (the six downstream reds WERE the cascade) |
+      | `item-browser-flow` | **3 / 0 / 2 skipped** (gated (d), (e)) |
+      | `wardrobe-folders-flow` | **5 / 0** |
+      | `wardrobe-copy-to-folder-flow` | **1 / 0** |
+      | `wardrobe-items-editor-flow` | **4 / 0** |
+      | `character-wardrobe-pictures-flow` | **1 / 0** |
+      | `workbench-wardrobe-picker-flow` | **8 / 0** |
+      | `scenarios-flow` | **2 / 0** |
+      | `salon-scenario-flow` | **2 / 0** |
+      | `projects-flow` | **7 / 0** |
+      | `inventory-flow` | **9 / 0** (the morning run, same server) |
+
+    - Each file took about 7.5 minutes; the debug server's setup dominates.
+    - **Nothing owed.** The stale bins stay renamed until the lane's `target/` is deleted at close.
 - Selectors changed: none in the existing e2e files beyond the `wardrobe-flow` probe.
 
 **HANDOFFs.**
