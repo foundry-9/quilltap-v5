@@ -526,7 +526,9 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("custom_tools_routes.rs", 9),
     // === end P4.D379 ===
     ("embedding_profiles_routes.rs", 9),
-    ("files_routes.rs", 9),
+    // P4.D381: +2 — `mount_file_get`'s `MountFileLinks` / `MountFileRenderHtml`
+    // (path-sourced, no body keys).
+    ("files_routes.rs", 11),
     ("help_routes.rs", 9),
     ("images_routes.rs", 4),
     // P4.D325 (v4 `4fbdad186` at the `322a5488e` pin): the NEW Inventory
@@ -649,8 +651,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
     let total: usize = by_file.values().sum();
     assert_eq!(
         // === P4.D379 === the union recounts this by NUMBER (H3).
-        total, 159,
-        "159 = 158 + P4.D379's one (`custom_tools_routes.rs`'s GET `presets` arm, \
+        total, 161,
+        "161 = 159 + P4.D381's two (`files_routes.rs`'s `mount_file_get` `?action=links` / \
+         `?action=render-html` arms — `MountFileLinks` / `MountFileRenderHtml`, path-sourced; summed on the union). \
+         159 = 158 + P4.D379's one (`custom_tools_routes.rs`'s GET `presets` arm, \
          `ChatCustomToolPresets`, v4 `fd165fce0`; summed on the union). \
          158 = 157 + P4.D377's one (`wardrobe_routes.rs`'s `WardrobeItemDuplicate`, the collection POST's `?action=duplicate`, v4 `600c2906f`). \
          157 = 153 + P4.D345's four (`custom_tools_routes.rs`'s GET `interventions` arm and the \

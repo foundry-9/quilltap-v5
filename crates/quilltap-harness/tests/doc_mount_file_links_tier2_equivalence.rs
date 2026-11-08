@@ -766,7 +766,7 @@ fn p4d381_browser_listing_and_clear_link_group_match_oracle() {
     repo.bind_link_group(&at("g/a.md"), &at("g/b.md")).unwrap();
     repo.bind_link_group(&at("g/a.md"), &at("g/c.md")).unwrap();
     let before = repo.list_for_browser_or_empty(STORE);
-    let clears = vec![
+    let clears = [
         (
             "clear_first_of_three",
             repo.clear_link_group_or_default(&at("g/b.md")),

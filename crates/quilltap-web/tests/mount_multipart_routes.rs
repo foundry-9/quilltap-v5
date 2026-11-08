@@ -197,8 +197,12 @@ async fn mount_write_and_read_edges() {
     // keys and everything after `deconvert` shifts by one. `write-file` was
     // index 6 and is now 7.
     assert_eq!(body["availableActions"][3], "sync");
-    assert_eq!(body["availableActions"][7], "write-file");
-    assert_eq!(body["availableActions"].as_array().unwrap().len(), 13);
+    // P4.D381 (v4 `aec626eff`): `unlink-file` lands after `link-file` (index
+    // 7) and `copy-folder` after `move-folder` — FIFTEEN keys, `write-file` at 8.
+    assert_eq!(body["availableActions"][7], "unlink-file");
+    assert_eq!(body["availableActions"][8], "write-file");
+    assert_eq!(body["availableActions"][12], "copy-folder");
+    assert_eq!(body["availableActions"].as_array().unwrap().len(), 15);
 
     // …and a request with NO action reaches the other envelope.
     let resp = client
@@ -222,7 +226,8 @@ async fn mount_write_and_read_edges() {
     assert_eq!(resp.status(), 400);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Unknown action: ");
-    assert_eq!(body["availableActions"].as_array().unwrap().len(), 13);
+    // P4.D381: v4's fifteen.
+    assert_eq!(body["availableActions"].as_array().unwrap().len(), 15);
 
     // --- the multipart blob upload (201) ---
     let form = reqwest::multipart::Form::new()

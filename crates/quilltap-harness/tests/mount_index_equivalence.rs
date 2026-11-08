@@ -314,7 +314,6 @@ fn mount_index_matches_oracle() {
         (
             "scan_fs_in_cloud",
             Box::new(|db, rt| {
-                use quilltap_core::services::mount_index::scanner::AllocationProbe as _;
                 let probe = std::sync::Arc::new(EvictOnce {
                     path: std::sync::Mutex::new(None),
                 });
