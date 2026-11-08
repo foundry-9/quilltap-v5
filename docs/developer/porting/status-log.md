@@ -202441,7 +202441,7 @@ Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed an
 - No Rust crate was bumped.
 
 **e2e, by file.**
-- The binaries were main's cloned release bins from Oct 28.
+- The binaries were main's cloned release bins from Oct 28 — STALE (older than the base); see the re-runs below.
 - Every run before the full-disk notice overlapped this lane's cargo gate and sibling builds; the re-runs ran on a full disk.
 - Results:
   - `item-browser-flow`: **3 passed / 2 skipped** (gated (d), (e)).
@@ -202451,12 +202451,20 @@ Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed an
   - `salon-scenario-flow`: 2 / 0.
   - `projects-flow`: 7 / 0.
   - `wardrobe-items-editor-flow`: 4 failed under load, then **4 / 0** alone.
-  - Not yet green, re-run owed after the GO:
+  - First measured under load / a full disk (all since re-run, below):
     - `wardrobe-flow`: 9 failed / 12 passed;
     - `wardrobe-copy-to-folder-flow`: 1 failed;
     - `inventory-flow`: 2 failed / 7 passed, then 3 / 3 on the full disk;
     - `scenarios-flow`: 1 failed / 1 passed.
-  - Most of these reds wait 10–45 s on the `/characters` or `/projects` page heading before any item-browser surface. That is the same shape `wardrobe-items-editor-flow` showed before it went 4/4 alone.
+  - **Re-runs after the GO (2026-11-08, quiet machine, one at a time):**
+    - `wardrobe-copy-to-folder-flow`: **1 / 0**.
+    - `scenarios-flow`: **2 / 0**.
+    - `inventory-flow` on the Oct 28 release bins: 2 failed / 7 passed, deterministic across three runs. Measured cause: **the bins were STALE** — e2e's `webBinary()` prefers `target/release/quilltap-web`, and the cloned Oct 28 build predates the base, so its server never publishes `inventory` on a create. With realtime connected, `refreshUnlessRealtime` correctly leaves the refresh to that publish, which never came (the trace shows `inventoryCreate` 200 and no `inventoryList` after). The stale bins were renamed to `target/release/*.stale-oct28`, so e2e now takes the current `target/debug` build (Nov 8; this lane touches no Rust). On it: **`inventory-flow` 9 / 0**.
+    - `wardrobe-flow` on the stale bins: 7 failed / 14 passed. The first red is a real spec pin that has to move with C12. Beat `a composite outfit prompts…` (`:883`) expects 4 character options, and the catalogue offers 3. `characterList` answers Aria, Bram, Cleo and Dax, and Aria is dropped as the source. Fenn is archived and was only ever offered by the retired destinations verb. The other six reds look like the worker-restart cascade: `beforeAll` re-seeds after the failure, so the Masquerade Kit, the moved goggles and the seeded scarf are gone. That is not yet proven. **The re-run on the current server was STOPPED mid-file by the 2026-11-08 shutdown PAUSE.**
+  - **STILL OWED after the next GO:**
+    1. Run `wardrobe-flow` on the current server (stale bins already moved aside).
+    2. If `:883` still sees 3, re-pin it to the catalogue: 3 options, Bram / Cleo / Dax by name, Echo and Fenn absent. Then re-run the file and confirm the six downstream reds clear.
+    3. Re-run on the current server the six files that were green only on the stale bins: `item-browser-flow`, `wardrobe-folders-flow`, `character-wardrobe-pictures-flow`, `workbench-wardrobe-picker-flow`, `salon-scenario-flow`, `projects-flow`. Also re-run `wardrobe-items-editor-flow`, `wardrobe-copy-to-folder-flow` and `scenarios-flow`.
 - Selectors changed: none in the existing e2e files beyond the `wardrobe-flow` probe.
 
 **HANDOFFs.**
