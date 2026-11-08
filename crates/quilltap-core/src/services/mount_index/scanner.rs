@@ -20,6 +20,9 @@ use crate::db::DbError;
 
 use super::base_path_availability::{assert_base_path_available, BasePathUnavailableError};
 use super::chunker::{chunk_document, ChunkOptions};
+use super::cloud_placeholder::{
+    allocation_stat, is_evicted_cloud_placeholder, AllocationStat, Platform,
+};
 use super::converters::{convert_to_plain_text, DocumentTextExtractor};
 use super::list::matches_pattern;
 use super::path_utils::path_extname;
@@ -33,11 +36,33 @@ pub struct ScanResult {
     pub files_new: i64,
     pub files_modified: i64,
     pub files_deleted: i64,
+    /// v4 `bf7a457f6`: files left alone because a cloud-sync provider has
+    /// evicted them to a placeholder. Reading one would download it; the index
+    /// keeps whatever it had and v4's watcher catches the file when it comes
+    /// back (v5's watcher is the standing deferral).
+    pub files_in_cloud: i64,
     pub chunks_created: i64,
     pub errors: Vec<String>,
 }
 
 impl ScanResult {
+    /// v4 `emptyScanResult(mountPointId, errors = [])` — every count at zero,
+    /// for callers that build one by hand.
+    pub fn empty(mount_point_id: &str, errors: Vec<String>) -> ScanResult {
+        ScanResult {
+            mount_point_id: mount_point_id.to_string(),
+            files_scanned: 0,
+            files_new: 0,
+            files_modified: 0,
+            files_deleted: 0,
+            files_in_cloud: 0,
+            chunks_created: 0,
+            errors,
+        }
+    }
+
+    /// v4's `ScanResult` key order (`filesInCloud` between `filesDeleted` and
+    /// `chunksCreated`).
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "mountPointId": self.mount_point_id,
@@ -45,6 +70,7 @@ impl ScanResult {
             "filesNew": self.files_new,
             "filesModified": self.files_modified,
             "filesDeleted": self.files_deleted,
+            "filesInCloud": self.files_in_cloud,
             "chunksCreated": self.chunks_created,
             "errors": self.errors,
         })
@@ -57,8 +83,15 @@ pub enum ProcessFileOutcome {
     Unchanged,
     Unsupported,
     Empty,
-    New { chunks_created: i64 },
-    Modified { chunks_created: i64 },
+    /// v4 `{status: 'in-cloud'}` (`bf7a457f6`): an evicted cloud placeholder,
+    /// returned BEFORE anything reads the file.
+    InCloud,
+    New {
+        chunks_created: i64,
+    },
+    Modified {
+        chunks_created: i64,
+    },
 }
 
 /// v4 scanner `detectFileType` — the NARROW variant (no json/jsonl; the scan
@@ -108,7 +141,18 @@ fn walk_directory(
     };
     let entries = match std::fs::read_dir(&current_absolute) {
         Ok(e) => e,
-        Err(_) => return, // v4 logs + returns [] on unreadable dirs.
+        Err(e) => {
+            // v4 `walkTree`'s `onReadError` (`scanner.ts:141-146`, P4.D381
+            // Tier 2): WARN and skip the directory. `path` is the absolute
+            // directory (`path.join(basePath, relativeDir)`, or the base).
+            tracing::warn!(
+                target: "quilltap::mount_index",
+                path = %current_absolute,
+                error = %e,
+                "Unable to read directory during walk"
+            );
+            return;
+        }
     };
     for entry in entries.flatten() {
         let file_type = match entry.file_type() {
@@ -151,8 +195,29 @@ fn walk_directory(
     }
 }
 
+/// The test seam over a file's allocation (P4.D381 item 13): production reads
+/// [`HostAllocationProbe`] (the one `allocation_stat` reader, unix-only —
+/// `PLACEHOLDER_CHECK_UNIX_ONLY`); the harness injects `blocks = 0` for named
+/// paths to reproduce an evicted placeholder on a resident file.
+pub trait AllocationProbe {
+    fn allocation(&self, absolute_path: &str, meta: &std::fs::Metadata) -> Option<AllocationStat>;
+}
+
+/// The production [`AllocationProbe`]: the host's own `stat`.
+pub struct HostAllocationProbe;
+
+impl AllocationProbe for HostAllocationProbe {
+    fn allocation(&self, _absolute_path: &str, meta: &std::fs::Metadata) -> Option<AllocationStat> {
+        allocation_stat(meta)
+    }
+}
+
 /// v4 `processMountFile` — hash, compare, convert, chunk, persist. Idempotent:
 /// an unchanged sha returns `Unchanged` without touching the database.
+///
+/// A file evicted to a cloud placeholder returns `InCloud` before anything
+/// reads it — hashing it would make iCloud or OneDrive download it. Its index
+/// entry, if any, is left as it was.
 pub fn process_mount_file(
     conn: &Connection,
     mount_point: &MountServiceInfo,
@@ -160,9 +225,42 @@ pub fn process_mount_file(
     relative_path: &str,
     extractor: &dyn DocumentTextExtractor,
 ) -> Result<ProcessFileOutcome, DbError> {
+    process_mount_file_with_probe(
+        conn,
+        mount_point,
+        absolute_path,
+        relative_path,
+        extractor,
+        &HostAllocationProbe,
+    )
+}
+
+/// [`process_mount_file`] over an injected [`AllocationProbe`] (the
+/// frozen-seam sibling idiom; production passes [`HostAllocationProbe`]).
+pub fn process_mount_file_with_probe(
+    conn: &Connection,
+    mount_point: &MountServiceInfo,
+    absolute_path: &str,
+    relative_path: &str,
+    extractor: &dyn DocumentTextExtractor,
+    probe: &dyn AllocationProbe,
+) -> Result<ProcessFileOutcome, DbError> {
+    // v4 `bf7a457f6`'s order: the type check (no stat for an ignored type),
+    // then the stat, then the placeholder check — all BEFORE the first read.
     let Some(file_type) = detect_file_type(relative_path) else {
         return Ok(ProcessFileOutcome::Unsupported);
     };
+
+    let meta = std::fs::metadata(absolute_path).map_err(|e| DbError::Internal(e.to_string()))?;
+    // No per-file log here (v4's why): a scan of an iCloud-synced folder meets
+    // thousands of these and rolled the log over several times. The scan logs
+    // one summary line.
+    if probe
+        .allocation(absolute_path, &meta)
+        .is_some_and(|stat| is_evicted_cloud_placeholder(stat, Platform::current()))
+    {
+        return Ok(ProcessFileOutcome::InCloud);
+    }
 
     let bytes = std::fs::read(absolute_path).map_err(|e| DbError::Internal(e.to_string()))?;
     let sha256 = sha256_hex(&bytes);
@@ -177,8 +275,6 @@ pub fn process_mount_file(
             return Ok(ProcessFileOutcome::Unchanged);
         }
     }
-
-    let meta = std::fs::metadata(absolute_path).map_err(|e| DbError::Internal(e.to_string()))?;
 
     let plain_text = convert_to_plain_text(absolute_path, file_type, extractor);
     if crate::jsstr::js_trim(&plain_text).is_empty() {
@@ -293,37 +389,63 @@ pub fn scan_mount_point(
     mount_point: &MountServiceInfo,
     extractor: &dyn DocumentTextExtractor,
 ) -> ScanResult {
-    let mut result = ScanResult {
-        mount_point_id: mount_point.id.clone(),
-        files_scanned: 0,
-        files_new: 0,
-        files_modified: 0,
-        files_deleted: 0,
-        chunks_created: 0,
-        errors: Vec::new(),
-    };
+    scan_mount_point_with_probe(conn, mount_point, extractor, &HostAllocationProbe)
+}
+
+/// [`scan_mount_point`] over an injected [`AllocationProbe`] (the harness's
+/// evicted-placeholder plant; production passes [`HostAllocationProbe`]).
+///
+/// Its lines (v4 service `MountIndex:Scanner` → target
+/// `quilltap::mount_index`, the module family's shared target) run on the
+/// WRITER thread when reached through `mount_scan` — a pin reads them through
+/// a process-wide capture.
+pub fn scan_mount_point_with_probe(
+    conn: &Connection,
+    mount_point: &MountServiceInfo,
+    extractor: &dyn DocumentTextExtractor,
+    probe: &dyn AllocationProbe,
+) -> ScanResult {
+    let mut result = ScanResult::empty(&mount_point.id, Vec::new());
     let points = DocMountPointsRepository::new(conn);
 
     if mount_point.mount_type == "database" {
+        tracing::info!(
+            target: "quilltap::mount_index",
+            mountPointId = %mount_point.id,
+            name = %mount_point.name,
+            "Starting database-backed mount point rescan"
+        );
         let _ = points.update_scan_status(&mount_point.id, "scanning", None);
         match rescan_database_mount_point(conn, mount_point, extractor) {
             Ok(count) => {
                 result.files_scanned = count;
                 result.files_modified = count;
                 if let Err(e) = update_mount_point_totals(conn, &mount_point.id) {
-                    result.errors.push(format!("Rescan failed: {e}"));
-                    let _ =
-                        points.update_scan_status(&mount_point.id, "error", Some(&e.to_string()));
+                    let msg = e.to_string();
+                    log_database_rescan_failed(&mount_point.id, &msg);
+                    result.errors.push(format!("Rescan failed: {msg}"));
+                    let _ = points.update_scan_status(&mount_point.id, "error", Some(&msg));
                 }
             }
             Err(e) => {
                 let msg = e.to_string();
+                log_database_rescan_failed(&mount_point.id, &msg);
                 let _ = points.update_scan_status(&mount_point.id, "error", Some(&msg));
                 result.errors.push(format!("Rescan failed: {msg}"));
             }
         }
         return result;
     }
+
+    // v4 logs `basePath` as the mount's value; an absent one is `undefined`
+    // and OMITTED (§R.5) — `Option` renders nothing for `None`.
+    tracing::info!(
+        target: "quilltap::mount_index",
+        mountPointId = %mount_point.id,
+        basePath = mount_point.base_path.as_deref(),
+        name = %mount_point.name,
+        "Starting mount point scan"
+    );
 
     let _ = points.update_scan_status(&mount_point.id, "scanning", None);
 
@@ -354,11 +476,23 @@ pub fn scan_mount_point(
         let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
 
         for (relative_path, absolute_path) in &files_on_disk {
+            // A cloud placeholder counts as seen, so its index entry survives
+            // the stale sweep below (v4 `seenPaths.add` BEFORE processing).
             seen.insert(relative_path.as_str());
-            match process_mount_file(conn, mount_point, absolute_path, relative_path, extractor) {
+            match process_mount_file_with_probe(
+                conn,
+                mount_point,
+                absolute_path,
+                relative_path,
+                extractor,
+                probe,
+            ) {
                 Ok(ProcessFileOutcome::Unsupported)
                 | Ok(ProcessFileOutcome::Unchanged)
                 | Ok(ProcessFileOutcome::Empty) => {}
+                Ok(ProcessFileOutcome::InCloud) => {
+                    result.files_in_cloud += 1;
+                }
                 Ok(ProcessFileOutcome::New { chunks_created }) => {
                     result.files_new += 1;
                     result.chunks_created += chunks_created;
@@ -369,6 +503,12 @@ pub fn scan_mount_point(
                 }
                 Err(e) => {
                     let msg = e.to_string();
+                    tracing::warn!(
+                        target: "quilltap::mount_index",
+                        relativePath = %relative_path,
+                        error = %msg,
+                        "Error processing file during mount scan"
+                    );
                     result.errors.push(format!("{relative_path}: {msg}"));
                     // Best-effort: mark the link failed when one exists.
                     if let Some((_, link_id)) =
@@ -398,16 +538,55 @@ pub fn scan_mount_point(
         }
 
         update_mount_point_totals(conn, &mount_point.id)?;
+
+        tracing::info!(
+            target: "quilltap::mount_index",
+            mountPointId = %mount_point.id,
+            filesScanned = result.files_scanned,
+            filesNew = result.files_new,
+            filesModified = result.files_modified,
+            filesDeleted = result.files_deleted,
+            filesInCloud = result.files_in_cloud,
+            chunksCreated = result.chunks_created,
+            errorCount = result.errors.len(),
+            "Mount point scan completed"
+        );
+        if result.files_in_cloud > 0 {
+            tracing::info!(
+                target: "quilltap::mount_index",
+                mountPointId = %mount_point.id,
+                name = %mount_point.name,
+                filesInCloud = result.files_in_cloud,
+                "Left cloud-evicted files unread; they are indexed once downloaded"
+            );
+        }
         Ok(())
     })();
 
     if let Err(e) = scan {
         let msg = e.to_string();
+        tracing::error!(
+            target: "quilltap::mount_index",
+            mountPointId = %mount_point.id,
+            error = %msg,
+            "Mount point scan failed"
+        );
         let _ = points.update_scan_status(&mount_point.id, "error", Some(&msg));
         result.errors.push(format!("Scan failed: {msg}"));
     }
 
     result
+}
+
+/// v4 `scanner.ts:328-331`: ERROR `Database-backed rescan failed
+/// {mountPointId, error}` (P4.D381 Tier 2).
+fn log_database_rescan_failed(mount_point_id: &str, msg: &str) {
+    tracing::error!(
+        target: "quilltap::mount_index",
+        mountPointId = %mount_point_id,
+        error = %msg,
+        "Database-backed rescan failed"
+    );
 }
 
 /// v4 `rescanDatabaseMountPoint` (`database-store.ts:618`) — walk the mount's
@@ -675,3 +854,307 @@ mod g2g3_fallback_tests {
         );
     }
 }
+
+// === P4.D381 (v4 bf7a457f6): the cloud-placeholder scan + the scanner lines ===
+#[cfg(all(test, unix))]
+mod p4d381_cloud_tests {
+    use super::*;
+    use crate::services::mount_index::cloud_placeholder::AllocationStat;
+    use std::os::unix::fs::PermissionsExt;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// Reports `blocks: 0` (an evicted placeholder) for the named absolute
+    /// paths, the host's own stat for every other.
+    struct Evict(Vec<String>);
+    impl AllocationProbe for Evict {
+        fn allocation(&self, p: &str, meta: &std::fs::Metadata) -> Option<AllocationStat> {
+            if self.0.iter().any(|x| x == p) {
+                Some(AllocationStat {
+                    size: meta.len(),
+                    blocks: 0,
+                })
+            } else {
+                HostAllocationProbe.allocation(p, meta)
+            }
+        }
+    }
+
+    /// Panics if consulted — "does not stat a file type the scanner ignores".
+    struct NeverConsulted;
+    impl AllocationProbe for NeverConsulted {
+        fn allocation(&self, p: &str, _m: &std::fs::Metadata) -> Option<AllocationStat> {
+            panic!("the probe was consulted for {p}");
+        }
+    }
+
+    struct Fx {
+        _dir: tempfile::TempDir,
+        base: std::path::PathBuf,
+        w: crate::db::Writer,
+        fs_mp: MountServiceInfo,
+        db_mp: MountServiceInfo,
+    }
+
+    /// A provisioned instance's mount-index writer with one FILESYSTEM store
+    /// over `<tmp>/tree` holding `notes.md` and `plan.txt`, plus the
+    /// provisioned database store.
+    fn fixture() -> Fx {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
+                .unwrap();
+        let base = dir.path().join("tree");
+        std::fs::create_dir_all(base.join("sub")).unwrap();
+        std::fs::write(base.join("notes.md"), "# Notes\n\nResident text.\n").unwrap();
+        std::fs::write(base.join("plan.txt"), "A plan, in plain text.\n").unwrap();
+        std::fs::write(base.join("sub/deep.md"), "# Deep\n\nDown here.\n").unwrap();
+        let db_id: String = w
+            .connection()
+            .query_row(
+                "SELECT id FROM doc_mount_points WHERE mountType = 'database' LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        w.connection()
+            .execute_batch(&format!(
+                "CREATE TEMP TABLE p4d381_mp AS SELECT * FROM doc_mount_points WHERE id = '{db_id}'; \
+                 UPDATE p4d381_mp SET id = 'p4d381-fs', name = 'P4D381 FS', mountType = 'filesystem', \
+                   basePath = '{}'; \
+                 INSERT INTO doc_mount_points SELECT * FROM p4d381_mp;",
+                base.display()
+            ))
+            .unwrap();
+        let points = crate::db::doc_mount_points::DocMountPointsRepository::new(w.connection());
+        let fs_mp = points
+            .find_service_info_by_id("p4d381-fs")
+            .unwrap()
+            .unwrap();
+        let db_mp = points.find_service_info_by_id(&db_id).unwrap().unwrap();
+        Fx {
+            _dir: dir,
+            base,
+            w,
+            fs_mp,
+            db_mp,
+        }
+    }
+
+    fn abs(fx: &Fx, rel: &str) -> String {
+        format!("{}/{rel}", fx.fs_mp.base_path.as_deref().unwrap())
+    }
+
+    fn link_count(fx: &Fx) -> i64 {
+        fx.w.connection()
+            .query_row(
+                "SELECT COUNT(*) FROM doc_mount_file_links WHERE mountPointId = 'p4d381-fs'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+    }
+
+    fn lines_with<'a>(lines: &'a [String], msg: &str) -> Vec<&'a String> {
+        lines.iter().filter(|l| l.contains(msg)).collect()
+    }
+
+    // v4 `scanner-cloud-placeholder.test.ts` it 1: in-cloud, nothing read. The
+    // file is ALSO mode 000, so any read would error.
+    #[test]
+    fn returns_in_cloud_without_reading_an_evicted_file() {
+        let fx = fixture();
+        let p = abs(&fx, "notes.md");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let out = process_mount_file_with_probe(
+            fx.w.connection(),
+            &fx.fs_mp,
+            &p,
+            "notes.md",
+            ex.as_ref(),
+            &Evict(vec![p.clone()]),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(out, ProcessFileOutcome::InCloud);
+        assert_eq!(link_count(&fx), 0, "an in-cloud file writes nothing");
+    }
+
+    // it 2: a resident file is hashed and indexed as before.
+    #[test]
+    fn hashes_a_resident_file_as_before() {
+        let fx = fixture();
+        let p = abs(&fx, "notes.md");
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let out = process_mount_file_with_probe(
+            fx.w.connection(),
+            &fx.fs_mp,
+            &p,
+            "notes.md",
+            ex.as_ref(),
+            &Evict(vec![]),
+        )
+        .unwrap();
+        assert!(matches!(out, ProcessFileOutcome::New { .. }), "{out:?}");
+    }
+
+    // it 3: an ignored type is never stat'd — the path does not even exist, so
+    // a stat would error, and the probe panics if consulted.
+    #[test]
+    fn does_not_stat_a_file_type_the_scanner_ignores() {
+        let fx = fixture();
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let out = process_mount_file_with_probe(
+            fx.w.connection(),
+            &fx.fs_mp,
+            &abs(&fx, "song.m4a"),
+            "song.m4a",
+            ex.as_ref(),
+            &NeverConsulted,
+        )
+        .unwrap();
+        assert_eq!(out, ProcessFileOutcome::Unsupported);
+    }
+
+    // it 4 (scanMountPoint): evicted files are counted, kept in the index, and
+    // never deleted — plus the summary lines (and the silence leg).
+    #[test]
+    fn counts_evicted_files_and_keeps_their_index_entries() {
+        let fx = fixture();
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let (first, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point(fx.w.connection(), &fx.fs_mp, ex.as_ref())
+        });
+        assert_eq!((first.files_new, first.files_in_cloud), (3, 0));
+        assert_eq!(link_count(&fx), 3);
+        let start = format!(
+            "INFO quilltap::mount_index Starting mount point scan mountPointId=p4d381-fs basePath={} name=P4D381 FS",
+            fx.base.display()
+        );
+        assert_eq!(
+            lines_with(&lines, "Starting mount point scan"),
+            vec![&start]
+        );
+        assert_eq!(
+            lines_with(&lines, "Mount point scan completed"),
+            vec!["INFO quilltap::mount_index Mount point scan completed mountPointId=p4d381-fs filesScanned=3 filesNew=3 filesModified=0 filesDeleted=0 filesInCloud=0 chunksCreated=3 errorCount=0"]
+        );
+        assert!(
+            lines_with(&lines, "Left cloud-evicted files unread").is_empty(),
+            "the silence leg: no in-cloud file, no line"
+        );
+
+        let probe = Evict(vec![abs(&fx, "notes.md"), abs(&fx, "plan.txt")]);
+        let (second, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point_with_probe(fx.w.connection(), &fx.fs_mp, ex.as_ref(), &probe)
+        });
+        assert_eq!(second.files_scanned, 3);
+        assert_eq!(second.files_in_cloud, 2);
+        assert_eq!(second.files_deleted, 0);
+        assert!(second.errors.is_empty(), "{:?}", second.errors);
+        assert_eq!(link_count(&fx), 3, "the evicted files' entries survive");
+        assert_eq!(
+            lines_with(&lines, "Left cloud-evicted files unread"),
+            vec!["INFO quilltap::mount_index Left cloud-evicted files unread; they are indexed once downloaded mountPointId=p4d381-fs name=P4D381 FS filesInCloud=2"]
+        );
+        let json = second.to_json().to_string();
+        assert!(
+            json.contains(r#""filesDeleted":0,"filesInCloud":2,"chunksCreated":0"#),
+            "v4's key order: {json}"
+        );
+    }
+
+    // Tier 2 item 16: the per-file WARN (an unreadable, resident file) and the
+    // walk WARN (an unreadable directory). Silence: the healthy scan above logs
+    // neither.
+    #[test]
+    fn the_per_file_and_walk_warns() {
+        let fx = fixture();
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let p = abs(&fx, "notes.md");
+        let sub = fx.base.join("sub");
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let (r, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point(fx.w.connection(), &fx.fs_mp, ex.as_ref())
+        });
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        std::fs::set_permissions(&sub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+        let warn = lines_with(&lines, "Error processing file during mount scan");
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(warn[0].starts_with(
+            "WARN quilltap::mount_index Error processing file during mount scan relativePath=notes.md error="
+        ));
+        let walk = lines_with(&lines, "Unable to read directory during walk");
+        assert_eq!(walk.len(), 1, "{lines:?}");
+        assert!(walk[0].starts_with(&format!(
+            "WARN quilltap::mount_index Unable to read directory during walk path={} error=",
+            sub.display()
+        )));
+    }
+
+    // Tier 2 item 16: the database-backed rescan's INFO, its failure ERROR, and
+    // the filesystem scan's failure ERROR (a broken `doc_mount_files` column
+    // fails the totals read / the existing-files read).
+    #[test]
+    fn the_rescan_and_scan_failure_lines() {
+        let fx = fixture();
+        let ex = crate::services::mount_index::converters::default_text_extractor();
+        let (_, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point(fx.w.connection(), &fx.db_mp, ex.as_ref())
+        });
+        assert_eq!(
+            lines_with(&lines, "Starting database-backed mount point rescan"),
+            vec![&format!(
+                "INFO quilltap::mount_index Starting database-backed mount point rescan mountPointId={} name={}",
+                fx.db_mp.id, fx.db_mp.name
+            )]
+        );
+        assert!(
+            lines_with(&lines, "rescan failed").is_empty(),
+            "silence leg"
+        );
+        assert!(lines_with(&lines, "Mount point scan failed").is_empty());
+
+        fx.w.connection()
+            .execute_batch(
+                "ALTER TABLE doc_mount_files RENAME COLUMN fileSizeBytes TO fileSizeBytes_x",
+            )
+            .unwrap();
+        let (r, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point(fx.w.connection(), &fx.db_mp, ex.as_ref())
+        });
+        assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+        let failed = lines_with(&lines, "Database-backed rescan failed");
+        assert_eq!(failed.len(), 1, "{lines:?}");
+        assert!(failed[0].starts_with(&format!(
+            "ERROR quilltap::mount_index Database-backed rescan failed mountPointId={} error=",
+            fx.db_mp.id
+        )));
+
+        let (r, lines) = crate::test_support::captured_with(|| {
+            scan_mount_point(fx.w.connection(), &fx.fs_mp, ex.as_ref())
+        });
+        assert_eq!(r.errors.len(), 1, "{:?}", r.errors);
+        assert!(r.errors[0].starts_with("Scan failed: "), "{:?}", r.errors);
+        let failed = lines_with(&lines, "Mount point scan failed");
+        assert_eq!(failed.len(), 1, "{lines:?}");
+        assert!(failed[0].starts_with(
+            "ERROR quilltap::mount_index Mount point scan failed mountPointId=p4d381-fs error="
+        ));
+        assert!(lines_with(&lines, "Mount point scan completed").is_empty());
+    }
+
+    #[test]
+    fn empty_is_every_count_at_zero() {
+        let r = ScanResult::empty("mp-1", vec!["boom".into()]);
+        assert_eq!(
+            r.to_json().to_string(),
+            r#"{"mountPointId":"mp-1","filesScanned":0,"filesNew":0,"filesModified":0,"filesDeleted":0,"filesInCloud":0,"chunksCreated":0,"errors":["boom"]}"#
+        );
+    }
+}
+// === /P4.D381 ===

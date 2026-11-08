@@ -469,6 +469,7 @@ fn mount_ops_match_oracle() {
     let _planted = PlantedBases::plant(PLANT_ROOT);
 
     let mut checked = 0usize;
+    let mut failures: Vec<String> = Vec::new();
     for (name, run) in &cases {
         let want = oracle
             .get(*name)
@@ -478,17 +479,26 @@ fn mount_ops_match_oracle() {
         let (status, body) = response_to_status_body(resp);
         let tables = dump_tables(&db);
         let got = json!({ "name": name, "status": status, "body": body, "tables": tables });
-        assert_eq!(
-            norm(&got),
-            norm(want),
-            "case {name}\n{}",
-            diff_first_line(&norm(&got), &norm(want))
-        );
+        // P4.D381: collect every red row by id (the red-first record needs
+        // the whole set, not the first divergence).
+        if norm(&got) != norm(want) {
+            failures.push(format!(
+                "case {name}
+{}",
+                diff_first_line(&norm(&got), &norm(want))
+            ));
+        }
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
         checked += 1;
     }
 
+    assert!(
+        failures.is_empty(),
+        "{} row(s) diverge:\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
     assert_eq!(checked, 42, "expected the 42 mount-ops cases");
     eprintln!("OK: mount-ops matched oracle ({checked} cases).");
 }

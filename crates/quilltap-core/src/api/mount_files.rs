@@ -21,7 +21,7 @@ use crate::services::mount_index::list::mount_files_list as svc_list;
 use crate::services::mount_index::read_file::{
     read_mount_file, FileEncoding, MountFileError, ReadMountFileOptions,
 };
-use crate::services::mount_index::scanner::{scan_mount_point, CreateFolderError};
+use crate::services::mount_index::scanner::CreateFolderError;
 
 use super::types::{ErrorKind, Response};
 
@@ -93,22 +93,74 @@ pub(crate) fn load_mount_service_info(
 /// enqueue embedding jobs for the freshly-indexed content. Response body:
 /// `{ scanResult, embeddingJobsEnqueued }`.
 pub async fn mount_scan(db: &Db, mount_point_id: &str) -> Response {
+    mount_scan_with_probe(
+        db,
+        mount_point_id,
+        std::sync::Arc::new(crate::services::mount_index::scanner::HostAllocationProbe),
+    )
+    .await
+}
+
+/// [`mount_scan`] over an injected allocation probe (the harness's
+/// evicted-placeholder plant — P4.D381 item 13; production passes
+/// `HostAllocationProbe`).
+///
+/// v4's order, kept: the scan, THEN the route's `[Mount Points v1] Scan
+/// completed` INFO, THEN `enqueueEmbeddingJobsForMountPoint`. The scan and the
+/// enqueue are two writes (v4 awaits them separately), so the route line runs
+/// on the caller thread between them — after the scanner's own lines and
+/// before the enqueue's.
+pub async fn mount_scan_with_probe(
+    db: &Db,
+    mount_point_id: &str,
+    probe: std::sync::Arc<dyn crate::services::mount_index::scanner::AllocationProbe + Send + Sync>,
+) -> Response {
     let id = mount_point_id.to_string();
-    let write = db
+    let scan = db
         .write(move |ws| {
             let mount = mount_conn(ws)?;
             let Some(mp) = load_mount_service_info(mount, &id)? else {
                 return Ok(None);
             };
             let extractor = default_text_extractor();
-            let scan_result = scan_mount_point(mount, &mp, extractor.as_ref());
-            let main = ws.main().connection();
-            let enqueued = enqueue_embedding_jobs_for_mount_point(main, mount, &id)?;
-            Ok(Some((scan_result, enqueued)))
+            let scan_result = crate::services::mount_index::scanner::scan_mount_point_with_probe(
+                mount,
+                &mp,
+                extractor.as_ref(),
+                probe.as_ref(),
+            );
+            Ok(Some((mp.name, scan_result)))
         })
         .await;
-    match write {
-        Ok(Some((scan_result, enqueued))) => {
+    let (name, scan_result) = match scan {
+        Ok(Some(v)) => v,
+        Ok(None) => return Response::error(ErrorKind::NotFound, "Mount point not found"),
+        Err(e) => return scan_failed(mount_point_id, &e),
+    };
+
+    tracing::info!(
+        target: "quilltap::api::mount_files",
+        mountPointId = %mount_point_id,
+        name = %name,
+        filesScanned = scan_result.files_scanned,
+        filesNew = scan_result.files_new,
+        filesModified = scan_result.files_modified,
+        filesDeleted = scan_result.files_deleted,
+        filesInCloud = scan_result.files_in_cloud,
+        chunksCreated = scan_result.chunks_created,
+        errors = scan_result.errors.len(),
+        "[Mount Points v1] Scan completed"
+    );
+
+    let id = mount_point_id.to_string();
+    let enqueued = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            enqueue_embedding_jobs_for_mount_point(ws.main().connection(), mount, &id)
+        })
+        .await;
+    match enqueued {
+        Ok(enqueued) => {
             // v4 enqueueJob wakes the pump per job; one post-batch wake is
             // equivalent (idempotent hook).
             if enqueued > 0 {
@@ -119,12 +171,21 @@ pub async fn mount_scan(db: &Db, mount_point_id: &str) -> Response {
                 "embeddingJobsEnqueued": enqueued,
             }))
         }
-        Ok(None) => Response::error(ErrorKind::NotFound, "Mount point not found"),
-        Err(e) => {
-            eprintln!("[Mount Points v1] Error scanning mount point: {e}");
-            Response::error(ErrorKind::Internal, "Failed to scan mount point")
-        }
+        Err(e) => scan_failed(mount_point_id, &e),
     }
+}
+
+/// v4 `handleScan`'s catch: ERROR `[Mount Points v1] Error scanning mount
+/// point {mountPointId}` (the error object rides v4's third argument — its
+/// message is carried as `error`, as the ported route ERRORs carry it) + 500.
+fn scan_failed(mount_point_id: &str, e: &DbError) -> Response {
+    tracing::error!(
+        target: "quilltap::api::mount_files",
+        mountPointId = %mount_point_id,
+        error = %e,
+        "[Mount Points v1] Error scanning mount point"
+    );
+    Response::error(ErrorKind::Internal, "Failed to scan mount point")
 }
 
 /// v4's per-handler catch split: the FILE-op handlers
