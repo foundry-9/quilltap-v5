@@ -5,6 +5,7 @@ import { request as pwRequest } from '@playwright/test';
 import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, type MockLlm } from './support/mock-llm';
 import { openSidebarSection } from './support/sidebar';
+import { expectTooltip, readTooltip } from './support/tooltips';
 
 /**
  * P4.D181 — In Their Own Words, end to end (v4 `686954937`), re-shaped by
@@ -248,7 +249,7 @@ async function retakeSeat(page: Page, name: string, mode: 'ask' | 'always'): Pro
   await waitForFloor(page);
   const portrait = page.locator('.qt-speaking-as-avatar');
   const armed = portraitCue(mode, name);
-  if ((await portrait.getAttribute('title')) === armed) return;
+  if ((await readTooltip(portrait)) === armed) return;
   // The rotation has moved the composer onto the owner persona (no Skip banner
   // there — the banner is an impersonated seat's). The operator's route back is
   // the participant card: release the seat and take it again, which v4's
@@ -259,7 +260,7 @@ async function retakeSeat(page: Page, name: string, mode: 'ask' | 'always'): Pro
   const speakAs = page.locator(`qt-participant-card button[title="Speak as ${name}"]`);
   await expect(speakAs).toBeVisible({ timeout: 15_000 });
   await speakAs.click();
-  await expect(portrait).toHaveAttribute('title', armed, { timeout: 15_000 });
+  await expect.poll(() => readTooltip(portrait), { timeout: 15_000 }).toBe(armed);
 }
 
 /**
@@ -303,9 +304,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       // inside the portrait, bottom-right, which needs BOTH its own
       // `position: absolute` and the wrapper's `position: relative`.
       const portrait = page.locator('.qt-speaking-as-avatar');
-      await expect(portrait).toHaveAttribute('title', portraitCue('always', name), {
-        timeout: 15_000,
-      });
+      await expect.poll(() => readTooltip(portrait), { timeout: 15_000 }).toBe(portraitCue('always', name));
       const badge = portrait.locator('.qt-speaking-as-avatar-voice-badge');
       await expect(badge).toBeVisible({ timeout: 15_000 });
       expect(await badge.evaluate((el) => getComputedStyle(el).position)).toBe('absolute');
@@ -412,14 +411,12 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
     try {
       // The portrait and the Send button say the SAME thing, through v4's one
       // `voiceRehearsalTitle`.
-      await expect(page.locator('.qt-speaking-as-avatar')).toHaveAttribute(
-        'title',
-        portraitCue('ask', name),
-        { timeout: 15_000 },
-      );
+      await expect
+        .poll(() => readTooltip(page.locator('.qt-speaking-as-avatar')), { timeout: 15_000 })
+        .toBe(portraitCue('ask', name));
       await waitForFloor(page);
-      await expect(page.locator('button.qt-chat-composer-send[aria-label="Send message"]')).toHaveAttribute(
-        'title',
+      await expectTooltip(
+        page.locator('button.qt-chat-composer-send[aria-label="Send message"]'),
         `Opens your draft for review — send it as written or have ${name} restate it`,
       );
 

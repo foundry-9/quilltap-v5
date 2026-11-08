@@ -3,6 +3,7 @@ import { expect, test, type Page } from './support/fixtures';
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
+import { expectTooltip } from './support/tooltips';
 
 /**
  * The P4.6ak∥al∥am unification beats — the composer features whose salon wiring
@@ -63,7 +64,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await maybeUnlock(page);
     await openChat(page, 'Solo Voyage');
 
-    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -86,7 +87,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await page.reload();
     await expect(composerEditor(page)).toContainText('First line.', { timeout: 15_000 });
     await expect(
-      page.getByRole('button', { name: 'Toggle composition mode' }),
+      page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ }),
     ).toHaveAttribute('aria-pressed', 'true');
 
     // Mod+Enter sends: the two-line message lands in the flow and the mock
@@ -99,7 +100,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await expect(page.getByText(MOCK_LLM_REPLY).first()).toBeVisible({ timeout: 15_000 });
 
     // Leave the chat in chat mode for the sibling specs.
-    const toggleAfter = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggleAfter = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await toggleAfter.click();
     await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
   });
@@ -115,7 +116,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // sending, a writer never accumulates lines inside the fence to be stuck
     // in. The escape itself is bound in both composer modes (v4 checks it
     // ahead of its chat/composition branch).
-    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -149,7 +150,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await page.keyboard.press('Backspace');
     await expect(editor.locator('pre')).toHaveCount(0);
     await page.waitForTimeout(1200); // the 800ms draft debounce
-    const toggleAfter = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggleAfter = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await toggleAfter.click();
     await expect(toggleAfter).toHaveAttribute('aria-pressed', 'false');
   });
@@ -213,7 +214,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // Chat mode: no toolbar (v4 gates it on documentEditingMode).
     await expect(page.locator('.qt-chat-composer .qt-formatting-toolbar')).toHaveCount(0);
 
-    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -243,7 +244,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     await maybeUnlock(page);
     await openChat(page, 'Solo Voyage');
 
-    const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const toggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
@@ -266,14 +267,14 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // The code-block button is a TOGGLE, and its label + title flip with the
     // caret's block (v4 `inCodeBlock`).
     const codeButton = toolbar.locator('.qt-formatting-button-code-block');
-    await expect(codeButton).toHaveAttribute('title', 'Insert code block');
+    await expectTooltip(codeButton, 'Insert code block');
     await editor.click();
     await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
     await page.keyboard.press('Backspace');
     await page.keyboard.type('x = 1');
     await codeButton.click();
     await expect(editor.locator('pre')).toBeVisible();
-    await expect(codeButton).toHaveAttribute('title', 'End code block');
+    await expectTooltip(codeButton, 'End code block');
     await expect(codeButton).toHaveText('/CODE');
 
     // Enter still escapes a fence from inside it — the dogfood #82 fix, which
@@ -287,7 +288,7 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
 
     // And the button toggles back out of a code block.
     await editor.locator('pre').click();
-    await expect(codeButton).toHaveAttribute('title', 'End code block');
+    await expectTooltip(codeButton, 'End code block');
     await codeButton.click();
     await expect(editor.locator('pre')).toHaveCount(0);
 

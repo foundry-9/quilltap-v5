@@ -2,6 +2,7 @@ import { expect, test, type Page } from './support/fixtures';
 
 import { E2E_PASSPHRASE } from './support/env';
 import { openSidebarSection } from './support/sidebar';
+import { expectTooltip } from './support/tooltips';
 
 /**
  * P4.81 item 8 — the composer's `[hasActiveCharacters]` input. v4's composer
@@ -107,6 +108,6 @@ test.describe('P4.81 — the composer stays enabled when the only active charact
     const send = page.getByRole('button', { name: 'Send message' });
     await expect(send).toBeVisible();
     await expect(send).toBeEnabled();
-    await expect(send).toHaveAttribute('title', 'Send message');
+    await expectTooltip(send, 'Send message');
   });
 });

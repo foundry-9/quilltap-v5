@@ -200,7 +200,7 @@ test.describe('Composer character insertion (P4.D75)', () => {
 
     // The pickers' composer entrance — deferred by name since the P4.D75 round,
     // because until p4.9l the composer had no toolbar to hang them on.
-    const modeToggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const modeToggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await modeToggle.click();
     await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
 

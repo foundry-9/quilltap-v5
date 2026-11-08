@@ -4,6 +4,7 @@ import { expect, test, type Page } from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
+import { expectTooltip } from './support/tooltips';
 
 /**
  * P4.D206 — Inform, the quiet word out of character (v4 `e7d77bb60`).
@@ -99,7 +100,7 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
     const gutter = page.locator('.qt-composer-gutter-tools');
     const inform = gutter.getByRole('button', { name: 'Inform the cast' });
     await expect(inform).toBeVisible();
-    await expect(inform).toHaveAttribute('title', 'Inform the cast');
+    await expectTooltip(inform, 'Inform the cast');
 
     await inform.click();
     const dialog = page.getByRole('dialog');
@@ -181,7 +182,7 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
       hasText: 'Informing Aria before their next turn',
     });
     await expect(chip).toBeVisible({ timeout: 15_000 });
-    await expect(chip).toHaveAttribute('title', 'You see that Bram pocketed the key.');
+    await expectTooltip(chip.locator('.text-foreground'), 'You see that Bram pocketed the key.');
 
     // The cross withdraws the batch. Nothing had consumed it, so the record
     // goes with it — the note was fed to the fire before anyone read it.
@@ -367,8 +368,8 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
         hasText: `Informing ${seat!.name} on every turn in this chat`,
       });
       await expect(chip).toBeVisible({ timeout: 15_000 });
-      await expect(chip).toHaveAttribute(
-        'title',
+      await expectTooltip(
+        chip.locator('.text-foreground'),
         'Standing in this chat until withdrawn — You are the ship’s cat.',
       );
 
@@ -429,7 +430,7 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
 
       // The cross withdraws it whole, under the standing title.
       const cross = chip.getByRole('button', { name: `Withdraw the inform for ${seat!.name}` });
-      await expect(cross).toHaveAttribute('title', 'Withdraw this standing inform');
+      await expectTooltip(cross, 'Withdraw this standing inform');
       await cross.click();
       await expect(page.getByText('The note has been withdrawn')).toBeVisible();
       await expect(chip).toHaveCount(0);

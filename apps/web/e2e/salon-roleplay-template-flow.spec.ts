@@ -3,6 +3,7 @@ import { expect, test, type Page } from './support/fixtures';
 import { E2E_PASSPHRASE, MOCK_LLM_PORT } from './support/env';
 import { openSidebarSection } from './support/sidebar';
 import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
+import { expectTooltip } from './support/tooltips';
 
 /**
  * P4.30 — the chat's roleplay template reaching message rendering, live.
@@ -277,7 +278,7 @@ test.describe('P4.30 — roleplay-template rendering', () => {
       await openSidebarSection(page, 'Chat');
       await templatePicker(page).selectOption({ label: NOVEL_TEMPLATE_NAME });
 
-      const modeToggle = page.getByRole('button', { name: 'Toggle composition mode' });
+      const modeToggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
       await modeToggle.click();
       await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
       const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
@@ -337,7 +338,7 @@ test.describe('P4.30 — roleplay-template rendering', () => {
       // beat that dies with it on leaves Enter inserting newlines in the shared
       // Group Expedition for every later spec (the `236c04e35` full run's
       // smart-typography red). Put it back before anything else.
-      const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+      const toggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
       if ((await toggle.count()) && (await toggle.getAttribute('aria-pressed')) === 'true') {
         await toggle.click();
         await expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -397,7 +398,7 @@ test.describe('P4.30 — roleplay-template rendering', () => {
     await openChat(page, 'Group Expedition');
 
     // Composition mode is where v4 shows the toolbar at all.
-    const modeToggle = page.getByRole('button', { name: 'Toggle composition mode' });
+    const modeToggle = page.getByRole('button', { name: /^Switch to (chat|composition) mode$/ });
     await modeToggle.click();
     await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
 
@@ -415,7 +416,7 @@ test.describe('P4.30 — roleplay-template rendering', () => {
     const narration = toolbar.locator('.qt-rp-annotation-button');
     await expect(narration).toHaveCount(1, { timeout: 20_000 });
     // v4's `getDelimiterTooltip` string, byte for byte.
-    await expect(narration.first()).toHaveAttribute('title', 'Narration (%...%)');
+    await expectTooltip(narration.first(), 'Narration (%...%)');
     await expect(narration.first()).toHaveText('Nar');
 
     // Type a line, select it, press the button.

@@ -727,7 +727,11 @@ test.describe('P4.42 — Web search', () => {
 
     // Count the existing tool-run chips (the P4.17 seed leaves one on Solo Voyage)
     // so the run's own chip can be awaited by count rather than raced.
-    const runChips = page.getByRole('button', { name: 'Expand Prospero tool run message' });
+    // v4 94f041764 dropped the chip's `aria-label`: its visible text names it.
+    const runChips = page
+      .locator('.qt-chat-announcement-chip')
+      .filter({ hasText: 'Prospero' })
+      .filter({ hasText: 'tool run' });
     const chipsBefore = await runChips.count();
 
     const dialog = page.getByRole('dialog');
