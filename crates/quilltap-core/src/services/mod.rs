@@ -70,6 +70,7 @@ pub mod compression;
 pub mod compression_cache;
 pub mod concierge_notifications;
 pub mod connection_profile_legacy_fields;
+pub mod connection_profiles; // P4.D362
 pub mod consolidation;
 pub mod context_summary;
 pub mod context_summary_job;

@@ -101,7 +101,13 @@ mod common;
 /// `matchCurlyQuotes` / `closeOptional` / `addOns`, `narrationDelimiters`
 /// `null`), `b27e5089a` (`humanoid`), `eb90d9ed8` (`pronounGuidance`),
 /// `6588972d5` (`canDrawDiagrams` / `diagramStyle`).
-const VENDORED_BYTES: usize = 115_274;
+///
+/// P4.D362: 117,110 at v4 `624d0d25c` (md5 `43817a725eba85bd74aa8ce94da00804`),
+/// re-vendored WHOLE (§R.10 (o)) — `b09ca46bb` (`character.kind`), `db6190b44`
+/// (message `isEstablishedFact` + the `systemKind` sentence), `d439f6dc9`
+/// (profile `supportsImageUpload` + `maxImagesPerRequest`), `c539c82e0`
+/// (project `brahmaConnectionProfileId`).
+const VENDORED_BYTES: usize = 117_110;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

@@ -1004,7 +1004,8 @@ mod tests {
                supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
                totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
                messageCount REAL, createdAt TEXT, updatedAt TEXT, \
-               \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0)",
+               \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0, \
+               \"maxImagesPerRequest\" INTEGER DEFAULT 4)", // === P4.D362 === (a TEST-ONLY hunk; the file's production code is P4.D374's)
         )
         .unwrap();
     }

@@ -154,6 +154,19 @@ pub struct Capabilities {
     pub web_search: bool,
     #[serde(default, rename = "toolUse")]
     pub tool_use: bool,
+    /// v4 `capabilities.samplingParameters?` (P4.D362, v4 `544c7ab1e`) —
+    /// `false` for a provider whose API refuses `temperature` / `top_p` /
+    /// `top_k` outright (Anthropic at `2026-10-21`). OMITTED on every other
+    /// manifest, and omitted means the provider accepts them.
+    #[serde(default, rename = "samplingParameters")]
+    pub sampling_parameters: Option<bool>,
+}
+
+impl Capabilities {
+    /// v4 `capabilities?.samplingParameters ?? true`.
+    pub fn accepts_sampling_parameters(&self) -> bool {
+        self.sampling_parameters.unwrap_or(true)
+    }
 }
 
 /// Configuration requirements (`ProviderConfigRequirements`).
@@ -541,6 +554,17 @@ impl Registry {
         self.providers.iter().find(|p| p.id == name)
     }
 
+    /// v4 `acceptsSamplingParameters(provider)`
+    /// (`lib/plugins/provider-validation.ts:101-103`): the manifest's
+    /// `capabilities.samplingParameters`, omitted → `true`; a provider the
+    /// registry does not know also answers `true`, so nothing is stripped on a
+    /// guess.
+    pub fn accepts_sampling_parameters(&self, provider: &str) -> bool {
+        self.get_provider(provider)
+            .map(|m| m.capabilities.accepts_sampling_parameters())
+            .unwrap_or(true)
+    }
+
     /// `getAllProviders()` — every provider, in registration order.
     pub fn all_providers(&self) -> &[Manifest] {
         &self.providers
@@ -877,4 +901,28 @@ mod tests {
         assert!(!oac.config_requirements.requires_api_key);
         assert!(oac.config_requirements.accepts_api_key());
     }
+
+    // === P4.D362 ===
+    /// Only Anthropic declares `samplingParameters` (`false`, v4's plugin
+    /// object LAST); every other manifest omits it and accepts; an unknown
+    /// provider accepts (v4 `?? true`).
+    #[test]
+    fn only_anthropic_refuses_sampling_parameters() {
+        let registry = Registry::built_in();
+        for m in registry.all_providers() {
+            if m.id == "ANTHROPIC" {
+                assert_eq!(m.capabilities.sampling_parameters, Some(false));
+            } else {
+                assert_eq!(m.capabilities.sampling_parameters, None, "{}", m.id);
+            }
+        }
+        assert!(!registry.accepts_sampling_parameters("ANTHROPIC"));
+        assert!(registry.accepts_sampling_parameters("OPENAI"));
+        assert!(registry.accepts_sampling_parameters("NOPE"));
+        assert!(
+            registry.accepts_sampling_parameters("anthropic"),
+            "exact-case lookup, as v4's Map.get"
+        );
+    }
+    // === end P4.D362 ===
 }

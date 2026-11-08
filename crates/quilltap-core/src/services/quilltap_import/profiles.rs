@@ -269,6 +269,13 @@ fn create_connection_profile(
     // membership on the STORED casing where v4 upcases first — so a legacy
     // bundle whose `provider` read `openai` lost its vision flag.
     let seeded = seed_legacy_connection_profile_fields(raw);
+    // P4.D362: v4's create parse refuses a bad seeded cap — the whole profile,
+    // into the per-item catch, with the ZodError's message.
+    let max_images_per_request =
+        crate::services::connection_profiles::validate_max_images_per_request(
+            &seeded.max_images_per_request,
+        )
+        .map_err(DbError::Internal)?;
     if seeded.seeded_anything() {
         tracing::debug!(
             profile_id = %source_id,
@@ -312,6 +319,7 @@ fn create_connection_profile(
         max_tokens: p.max_tokens,
         is_dangerous_compatible: p.is_dangerous_compatible,
         supports_image_upload: seeded.supports_image_upload,
+        max_images_per_request,
         tags: p.tags,
         sort_index: p.sort_index,
         total_tokens: p.total_tokens,
@@ -614,7 +622,8 @@ mod tests {
                isDangerousCompatible INTEGER, supportsImageUpload INTEGER, \
                tags TEXT, sortIndex REAL, totalTokens REAL, totalPromptTokens REAL, \
                totalCompletionTokens REAL, messageCount REAL, createdAt TEXT, \
-               updatedAt TEXT)",
+               updatedAt TEXT, \
+               \"maxImagesPerRequest\" INTEGER DEFAULT 4)", // P4.D362: appended, as the ensure does
         )
         .unwrap();
     }

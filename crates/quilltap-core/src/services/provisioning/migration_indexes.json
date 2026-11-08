@@ -1,8 +1,8 @@
 {
   "source": {
     "dumper": "harness/oracle/provision/dump-migration-indexes.ts",
-    "v4Commit": "236c04e35ab23ccc604fd188e5b73d0141066697",
-    "v4Version": "4.12.0-dev.0",
+    "v4Commit": "624d0d25c6cbb68daa54e08fc57e21e16ce205aa",
+    "v4Version": "4.13.0-dev.8",
     "note": "Generated - never hand-edit (D23). Re-dump from a pinned v4 worktree."
   },
   "main": [

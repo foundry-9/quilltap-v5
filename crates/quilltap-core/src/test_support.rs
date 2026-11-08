@@ -354,6 +354,31 @@ pub fn ensure_llm_logs_storyteller_round_id_on(conn: &rusqlite::Connection) {
 }
 // === end P4.D341 ===
 
+// === P4.D362 ===
+/// P4.D362 — the v5 twin of the oracle's `plant412Columns`: the round's two
+/// COLUMN ensures (`chat_messages.isEstablishedFact`,
+/// `connection_profiles.maxImagesPerRequest` + its backfill) through the SAME
+/// chain the host runs ([`crate::db::schema_4_12_repair::run_4_12_column_ensures`]
+/// — NOT the stamped Anthropic strip: a plant is not a boot). For a fixture
+/// that predates the round, before a write naming either column. Idempotent;
+/// self-checking.
+pub fn ensure_4_12_columns_on(conn: &rusqlite::Connection) {
+    crate::db::schema_4_12_repair::run_4_12_column_ensures(conn)
+        .expect("the 4.12 column ensures on a test fixture");
+    for (table, column) in [
+        ("chat_messages", "isEstablishedFact"),
+        ("connection_profiles", "maxImagesPerRequest"),
+    ] {
+        let names = crate::db::schema_probe::column_names(conn, table)
+            .expect("read a planted table's columns");
+        assert!(
+            names.is_empty() || names.iter().any(|n| n == column),
+            "ensure_4_12_columns_on: {table}.{column} is absent after the plant"
+        );
+    }
+}
+// === end P4.D362 ===
+
 pub fn ensure_memory_tiers_columns(conn: &rusqlite::Connection) {
     crate::db::memory_tiers_repair::ensure_memory_tiers(conn)
         .expect("ensure the memory-tiers columns on a test fixture");

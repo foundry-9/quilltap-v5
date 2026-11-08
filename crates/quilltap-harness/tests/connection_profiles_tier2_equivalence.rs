@@ -123,6 +123,9 @@ enum Op {
     Update { id: String, data: UpdateData },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D362: a plant both sides run verbatim.
+    #[serde(rename = "raw")]
+    Raw { sql: String },
 }
 
 #[derive(Deserialize)]
@@ -176,6 +179,9 @@ struct CreateData {
     is_dangerous_compatible: bool,
     #[serde(rename = "supportsImageUpload")]
     supports_image_upload: bool,
+    // P4.D362: v4's create always names it (Zod's `.default(4)`).
+    #[serde(default = "default_max_images", rename = "maxImagesPerRequest")]
+    max_images_per_request: i64,
     tags: Vec<String>,
     #[serde(rename = "sortIndex")]
     sort_index: f64,
@@ -187,6 +193,11 @@ struct CreateData {
     total_completion_tokens: f64,
     #[serde(rename = "messageCount")]
     message_count: f64,
+}
+
+/// P4.D362: v4 `DEFAULT_MAX_IMAGES_PER_REQUEST`.
+fn default_max_images() -> i64 {
+    quilltap_core::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST
 }
 
 #[derive(Deserialize)]
@@ -253,6 +264,9 @@ struct UpdateData {
     is_dangerous_compatible: Option<bool>,
     #[serde(default, rename = "supportsImageUpload")]
     supports_image_upload: Option<bool>,
+    // P4.D362.
+    #[serde(default, rename = "maxImagesPerRequest")]
+    max_images_per_request: Option<i64>,
     #[serde(default)]
     tags: Option<Vec<String>>,
     #[serde(default, rename = "sortIndex")]
@@ -351,6 +365,7 @@ fn connection_profiles_tier2_matches_oracle() {
                             max_tokens: data.max_tokens,
                             is_dangerous_compatible: data.is_dangerous_compatible,
                             supports_image_upload: data.supports_image_upload,
+                            max_images_per_request: data.max_images_per_request,
                             tags: data.tags.clone(),
                             sort_index: data.sort_index,
                             total_tokens: data.total_tokens,
@@ -392,6 +407,7 @@ fn connection_profiles_tier2_matches_oracle() {
                                 max_tokens: data.max_tokens,
                                 is_dangerous_compatible: data.is_dangerous_compatible,
                                 supports_image_upload: data.supports_image_upload,
+                                max_images_per_request: data.max_images_per_request,
                                 tags: data.tags.clone(),
                                 sort_index: data.sort_index,
                                 total_tokens: data.total_tokens,
@@ -408,6 +424,9 @@ fn connection_profiles_tier2_matches_oracle() {
                 Op::Delete { id } => {
                     let found = repo.delete(id).expect("cp.delete");
                     assert!(found, "delete target {id} not found in fixture");
+                }
+                Op::Raw { sql } => {
+                    writer.connection().execute_batch(sql).expect("raw plant");
                 }
             }
         }

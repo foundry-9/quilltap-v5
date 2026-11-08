@@ -109,6 +109,22 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         "is_silent_reads_integer_cells_from_a_migrated_instance",
         F,
     ),
+    // P4.D362: the `isEstablishedFact` slot + pre-column pins (unit tests).
+    (
+        "db/chats_messages_read.rs",
+        "established_fact_is_emitted_right_after_is_silent_message",
+        F,
+    ),
+    (
+        "db/chats_messages_read.rs",
+        "established_fact_is_emitted_right_after_is_silent_message",
+        F,
+    ),
+    (
+        "db/chats_messages_read.rs",
+        "a_pre_column_table_reads_with_the_key_absent",
+        F,
+    ),
     (
         "db/chats_messages_read.rs",
         "is_silent_still_reads_fresh_ddl_text_cells",
@@ -514,7 +530,10 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // (`api/chat_absent_mentions.rs`): 79 and 49.
     // P4.D343 added ONE fallback site in a new file
     // (`services/storyteller_rounds.rs::rotation_order`): 80 and 50.
-    assert_eq!((swallowing, strict), (80, 7), "census totals");
+    // P4.D362 added THREE unit-test fallback calls in an existing file (the
+    // `isEstablishedFact` slot pin ×2 and the pre-column read in
+    // `db/chats_messages_read.rs`): 83 and 50.
+    assert_eq!((swallowing, strict), (83, 7), "census totals");
     assert_eq!(file_count, 50, "census files");
 }
 

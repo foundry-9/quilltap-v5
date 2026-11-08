@@ -46,7 +46,10 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  // P4.D362: `raw` — a SQL statement both sides run verbatim (a plant the
+  // repository cannot make, e.g. a stored blob with whitespace).
+  kind: 'create' | 'update' | 'delete' | 'raw';
+  sql?: string;
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
@@ -93,6 +96,24 @@ async function main(): Promise<void> {
   );
 
   await initializeDatabase();
+  // === P4.D362 ===
+  // v4's repository strip asks the PLUGIN REGISTRY whether a provider accepts
+  // sampling parameters (`acceptsSamplingParameters`, `?? true` for an unknown
+  // provider). The registry is empty in a bare script, so register the real
+  // Anthropic plugin (the only one declaring `samplingParameters`) the
+  // runtime way — v5's manifests always know it.
+  {
+    const { createRequire } = await import('node:module');
+    const req = createRequire(join(process.cwd(), 'noop.js'));
+    const m = req(join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-anthropic', 'index.js'));
+    const plugin = m.plugin || m.default?.plugin || m.default;
+    const { registerProvider, getProvider } = await import('@/lib/plugins/provider-registry');
+    registerProvider(plugin);
+    if (getProvider('ANTHROPIC')?.capabilities?.samplingParameters !== false) {
+      throw new Error('the Anthropic plugin did not register with samplingParameters: false');
+    }
+  }
+  // === end P4.D362 ===
   const repo = new ConnectionProfilesRepository();
 
   for (const op of spec.ops) {
@@ -100,6 +121,8 @@ async function main(): Promise<void> {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
+    } else if (op.kind === 'raw') {
+      await rawQuery(op.sql as string);
     } else {
       await repo.delete(op.id as string);
     }

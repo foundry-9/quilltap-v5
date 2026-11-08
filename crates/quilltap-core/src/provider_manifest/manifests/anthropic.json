@@ -30,7 +30,8 @@
     "imageGeneration": false,
     "embeddings": false,
     "webSearch": false,
-    "toolUse": true
+    "toolUse": true,
+    "samplingParameters": false
   },
   "optionsSchema": {
     "groups": [

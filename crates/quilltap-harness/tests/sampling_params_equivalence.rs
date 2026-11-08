@@ -164,7 +164,9 @@ fn sampling_params_match_v4() {
     let rows: Vec<Value> = text
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).expect("parse oracle line"))
+        .map(|l| serde_json::from_str::<Value>(l).expect("parse oracle line"))
+        // P4.D362: the `withoutSamplingParameters` section is its own test.
+        .filter(|r| r.get("section").is_none())
         .collect();
 
     let corpus = corpus();
@@ -214,3 +216,45 @@ fn sampling_params_match_v4() {
     );
     eprintln!("sampling_params: {} cases matched v4 exactly", corpus.len());
 }
+
+// === P4.D362 (v4 `544c7ab1e`) ===
+/// `SAMPLING_PARAMETER_KEYS` and `withoutSamplingParameters` against v4's REAL
+/// exports: the key list exactly; each row's cleaned `parameters` by
+/// serialised BYTES (key order is the point — `serde_json`'s `Map ==` is
+/// order-blind), `removed` exactly, and v4's always-a-copy rule.
+#[test]
+fn without_sampling_parameters_matches_v4() {
+    use quilltap_core::sampling_params::{without_sampling_parameters, SAMPLING_PARAMETER_KEYS};
+    let Some(path) = env_or_skip("QT_ORACLE_SAMPLING_PARAMS") else {
+        return;
+    };
+    let text = std::fs::read_to_string(&path).expect("read oracle ndjson");
+    let rows: Vec<Value> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|r| r.get("section").is_some())
+        .collect();
+    let keys = rows
+        .iter()
+        .find(|r| r["section"] == "keys")
+        .expect("the keys line");
+    assert_eq!(keys["keys"], json!(SAMPLING_PARAMETER_KEYS));
+    let mut n = 0;
+    for row in rows.iter().filter(|r| r["section"] == "without") {
+        let name = row["case"].as_str().unwrap();
+        let input = row["input"].as_object().expect("object input");
+        let (parameters, removed) = without_sampling_parameters(input);
+        assert_eq!(
+            serde_json::to_string(&parameters).unwrap(),
+            serde_json::to_string(&row["parameters"]).unwrap(),
+            "{name}: parameters bytes"
+        );
+        assert_eq!(json!(removed), row["removed"], "{name}: removed");
+        assert_eq!(row["sameObject"], json!(false), "{name}: v4 always copies");
+        n += 1;
+    }
+    assert!(n >= 7, "too few without rows: {n}");
+    eprintln!("withoutSamplingParameters: {n} rows matched v4 exactly");
+}
+// === end P4.D362 ===

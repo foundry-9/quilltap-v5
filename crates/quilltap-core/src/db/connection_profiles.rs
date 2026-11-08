@@ -107,6 +107,7 @@ use rusqlite::types::ToSql;
 use rusqlite::{params, Connection};
 
 use super::DbError;
+use serde_json::Value;
 
 /// Fields for creating a connection profile (the `Omit<ConnectionProfile,'id'|
 /// timestamps>` shape) — every persisted column in schema (on-disk) order.
@@ -174,6 +175,13 @@ pub struct CpCreate {
     pub max_tokens: Option<f64>,
     pub is_dangerous_compatible: bool,
     pub supports_image_upload: bool,
+    /// P4.D362 (v4 `d439f6dc9`, the 23rd D23 move): the most images one request
+    /// to this profile may carry. v4's create always names it (Zod's
+    /// `.default(4)`), so it is ALWAYS bound — STRICT, as v4's write is (a
+    /// pre-column table refuses it on both sides). Callers state the value:
+    /// [`crate::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST`]
+    /// unless a carried one applies.
+    pub max_images_per_request: i64,
     /// JSON array column → compact JSON text (`["id1","id2"]`, `[]` when empty).
     pub tags: Vec<String>,
     pub sort_index: f64,
@@ -244,6 +252,8 @@ pub struct CpUpdate {
     pub max_tokens: Option<f64>,
     pub is_dangerous_compatible: Option<bool>,
     pub supports_image_upload: Option<bool>,
+    /// P4.D362: `maxImagesPerRequest` (the route PUT's validated `1..=50`).
+    pub max_images_per_request: Option<i64>,
     pub tags: Option<Vec<String>>,
     pub sort_index: Option<f64>,
     pub total_tokens: Option<f64>,
@@ -268,7 +278,18 @@ impl<'c> ConnectionProfilesRepository<'c> {
     /// `f64`/`Option<f64>`, the boolean columns bind `i64::from(bool)`, the two
     /// JSON columns bind compact JSON text, the enums bind plain `String`.
     pub fn create(&self, data: &CpCreate, opts: &CreateOptions) -> Result<(), DbError> {
-        let parameters_json = serde_json::to_string(&data.parameters)
+        // P4.D362 — v4's repository strip (`create`: only when
+        // `data.parameters` is truthy; an object always is, `{}` included).
+        let sanitized;
+        let parameters = match &data.parameters {
+            serde_json::Value::Object(map) => {
+                sanitized =
+                    sanitize_parameters_for_provider(&data.provider, map, None).map(Value::Object);
+                sanitized.as_ref().unwrap_or(&data.parameters)
+            }
+            _ => &data.parameters,
+        };
+        let parameters_json = serde_json::to_string(parameters)
             .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
         let tags_json = serde_json::to_string(&data.tags)
             .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
@@ -278,7 +299,7 @@ impl<'c> ConnectionProfilesRepository<'c> {
         // (letting the DDL default decide); a document that carries the key —
         // including as an explicit `null` — names it. See the field's doc.
         let (prefill_col, prefill_placeholder) = match data.multi_character_prefill {
-            Some(_) => ("multiCharacterPrefill, ", "?32, "),
+            Some(_) => ("multiCharacterPrefill, ", "?33, "),
             None => ("", ""),
         };
         let sql = format!(
@@ -287,10 +308,10 @@ impl<'c> ConnectionProfilesRepository<'c> {
                 modelName, parameters, isDefault, isCheap, allowWebSearch, useNativeWebSearch, \
                 allowToolUse, pseudoToolMode, {prefill_col}modelClass, fallbackProfileId, \
                 allowTierFallback, maxContext, maxTokens, \
-                isDangerousCompatible, supportsImageUpload, tags, sortIndex, totalTokens, \
+                isDangerousCompatible, supportsImageUpload, maxImagesPerRequest, tags, sortIndex, totalTokens, \
                 totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-                     {prefill_placeholder}?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, \
+                     {prefill_placeholder}?17, ?18, ?19, ?20, ?21, ?22, ?23, ?32, ?24, ?25, ?26, \
                      ?27, ?28, ?29, ?30, ?31)"
         );
         let mut binds: Vec<Box<dyn ToSql>> = vec![
@@ -325,6 +346,9 @@ impl<'c> ConnectionProfilesRepository<'c> {
             Box::new(data.message_count),
             Box::new(opts.created_at.clone()),
             Box::new(opts.updated_at.clone()),
+            // ?32 — P4.D362's `maxImagesPerRequest`, bound after
+            // `supportsImageUpload` in the column list.
+            Box::new(data.max_images_per_request),
         ];
         if let Some(prefill) = data.multi_character_prefill {
             // `Some(None)` binds SQL NULL; `Some(Some(b))` binds 0/1.
@@ -342,6 +366,43 @@ impl<'c> ConnectionProfilesRepository<'c> {
         if !self.row_exists(id)? {
             return Ok(false);
         }
+
+        // P4.D362 — v4's repository strip (`update`): when the patch carries
+        // `parameters` OR `provider`, read the stored row ONLY for the half the
+        // patch lacks (v4's `findById`), and when the resolved provider refuses
+        // sampling parameters the patch's `parameters` BECOMES the cleaned copy —
+        // even with nothing removed (v4's `cleaned !== parameters` is an
+        // IDENTITY test and `withoutSamplingParameters` always copies, so a
+        // provider-only patch re-writes the stored blob).
+        let cleaned_parameters: Option<Value> = if patch.parameters.is_some()
+            || patch.provider.is_some()
+        {
+            let existing = if patch.parameters.is_some() && patch.provider.is_some() {
+                None
+            } else {
+                find_by_id(self.conn, id)?
+            };
+            let provider = patch.provider.clone().or_else(|| {
+                existing
+                    .as_ref()?
+                    .get("provider")?
+                    .as_str()
+                    .map(str::to_string)
+            });
+            let parameters = patch
+                .parameters
+                .clone()
+                .or_else(|| existing.as_ref()?.get("parameters").cloned());
+            match (provider, parameters) {
+                (Some(provider), Some(Value::Object(map))) if !provider.is_empty() => {
+                    sanitize_parameters_for_provider(&provider, &map, Some(id)).map(Value::Object)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let patch_parameters = cleaned_parameters.as_ref().or(patch.parameters.as_ref());
 
         let mut assignments: Vec<String> = Vec::new();
         let mut values: Vec<Box<dyn ToSql>> = Vec::new();
@@ -377,7 +438,7 @@ impl<'c> ConnectionProfilesRepository<'c> {
                 None => assignments.push("apiKeyId = NULL".to_string()),
             }
         }
-        if let Some(parameters) = &patch.parameters {
+        if let Some(parameters) = patch_parameters {
             let json = serde_json::to_string(parameters)
                 .map_err(|e| DbError::Internal(format!("parameters serialize: {e}")))?;
             assignments.push(format!("parameters = ?{}", values.len() + 1));
@@ -451,6 +512,10 @@ impl<'c> ConnectionProfilesRepository<'c> {
         if let Some(supports_image_upload) = patch.supports_image_upload {
             assignments.push(format!("supportsImageUpload = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(supports_image_upload)));
+        }
+        if let Some(max_images) = patch.max_images_per_request {
+            assignments.push(format!("maxImagesPerRequest = ?{}", values.len() + 1));
+            values.push(Box::new(max_images));
         }
         if let Some(tags) = &patch.tags {
             let tags_json = serde_json::to_string(tags)
@@ -589,10 +654,14 @@ const CP_COLUMNS_HEAD: &str = "id, userId, name, provider, transport, courierDel
 const CP_COLUMNS_MODEL_CLASS: &str = "modelClass";
 /// The rest, from `maxContext` on. `multiCharacterPrefill` sits between
 /// [`CP_COLUMNS_HEAD`] and [`CP_COLUMNS_MODEL_CLASS`]; `fallbackProfileId` +
-/// `allowTierFallback` sit between [`CP_COLUMNS_MODEL_CLASS`] and this.
-const CP_COLUMNS_TAIL: &str = "maxContext, maxTokens, isDangerousCompatible, \
-     supportsImageUpload, tags, sortIndex, totalTokens, totalPromptTokens, \
-     totalCompletionTokens, messageCount, createdAt, updatedAt";
+/// `allowTierFallback` sit between [`CP_COLUMNS_MODEL_CLASS`] and this; and
+/// (P4.D362) `maxImagesPerRequest` — read tolerantly — between this and
+/// [`CP_COLUMNS_TAIL_AFTER_MAX_IMAGES`].
+const CP_COLUMNS_TAIL: &str = "maxContext, maxTokens, isDangerousCompatible, supportsImageUpload";
+/// P4.D362: the columns after `maxImagesPerRequest` (generateDDL's position at
+/// `624d0d25c` — between `supportsImageUpload` and `tags`).
+const CP_COLUMNS_TAIL_AFTER_MAX_IMAGES: &str = "tags, sortIndex, totalTokens, \
+     totalPromptTokens, totalCompletionTokens, messageCount, createdAt, updatedAt";
 
 /// The full `SELECT` list: [`CP_COLUMNS_HEAD`], then `multiCharacterPrefill` —
 /// **or a literal `NULL` when the table predates it** — then [`CP_COLUMNS_TAIL`].
@@ -630,9 +699,15 @@ fn cp_select_columns(conn: &Connection) -> String {
     // `.default(false)`.
     let fallback_profile_id = tolerant("fallbackProfileId");
     let allow_tier_fallback = tolerant("allowTierFallback");
+    // P4.D362 (v4 `d439f6dc9`): the image cap, same tolerance — every committed
+    // fixture pair predates the column (R-9). A NULL (or absent) cell marshals
+    // to v4's `.default(4)` (measured: v4's `findById` hydrates a NULL cell
+    // `undefined`, and Zod fills `4` — R-L7).
+    let max_images = tolerant("maxImagesPerRequest");
     format!(
         "{CP_COLUMNS_HEAD}, {prefill}, {CP_COLUMNS_MODEL_CLASS}, \
-         {fallback_profile_id}, {allow_tier_fallback}, {CP_COLUMNS_TAIL}"
+         {fallback_profile_id}, {allow_tier_fallback}, {CP_COLUMNS_TAIL}, {max_images}, \
+         {CP_COLUMNS_TAIL_AFTER_MAX_IMAGES}"
     )
 }
 
@@ -653,6 +728,8 @@ pub fn cp_schema_key_order() -> Vec<&'static str> {
     keys.push("fallbackProfileId");
     keys.push("allowTierFallback");
     keys.extend(split(CP_COLUMNS_TAIL));
+    keys.push("maxImagesPerRequest");
+    keys.extend(split(CP_COLUMNS_TAIL_AFTER_MAX_IMAGES));
     keys
 }
 
@@ -776,34 +853,89 @@ fn marshal_cp_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
         "supportsImageUpload".into(),
         Value::Bool(r.get::<_, i64>(23)? == 1),
     );
+    // P4.D362: `maxImagesPerRequest` — `z.number().int().min(1).max(50)
+    // .default(4)`, so ALWAYS present; a NULL cell or an absent column (the
+    // literal NULL of `cp_select_columns`) → v4's `4`.
+    obj.insert(
+        "maxImagesPerRequest".into(),
+        r.get::<_, Option<f64>>(24)?
+            .map(super::js_number_to_json)
+            .unwrap_or_else(|| {
+                Value::from(crate::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST)
+            }),
+    );
     obj.insert(
         "tags".into(),
-        array_or_empty(r.get::<_, Option<String>>(24)?),
+        array_or_empty(r.get::<_, Option<String>>(25)?),
     );
     obj.insert(
         "sortIndex".into(),
-        super::js_number_to_json(r.get::<_, f64>(25)?),
-    );
-    obj.insert(
-        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(26)?),
     );
     obj.insert(
-        "totalPromptTokens".into(),
+        "totalTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(27)?),
     );
     obj.insert(
-        "totalCompletionTokens".into(),
+        "totalPromptTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(28)?),
     );
     obj.insert(
-        "messageCount".into(),
+        "totalCompletionTokens".into(),
         super::js_number_to_json(r.get::<_, f64>(29)?),
     );
-    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(30)?));
-    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(31)?));
+    obj.insert(
+        "messageCount".into(),
+        super::js_number_to_json(r.get::<_, f64>(30)?),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(31)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(32)?));
     Ok(Value::Object(obj))
 }
+
+// === P4.D362 (v4 `544c7ab1e`, `connection-profiles.repository.ts:28-44`) ===
+/// v4 `sanitizeParametersForProvider`: drop the sampling keys from a parameters
+/// blob bound for a provider that refuses them (`capabilities.samplingParameters:
+/// false` — [`crate::provider_manifest::Registry::accepts_sampling_parameters`]).
+/// Every profile write passes through [`ConnectionProfilesRepository`], so an
+/// editor save, an auto-configure, a `.qtap` import or a restore cannot put back
+/// what the provider would reject. `None` when the provider accepts them (v4
+/// returns the SAME object); else the cleaned COPY, with v4's DEBUG when a key
+/// was actually removed (`profileId` omitted on a create — v4's `undefined`).
+/// The repository's ONE copy of the rule; it runs on the caller's thread (a
+/// test thread or a `Db::write` closure — the writer).
+fn sanitize_parameters_for_provider(
+    provider: &str,
+    parameters: &serde_json::Map<String, Value>,
+    profile_id: Option<&str>,
+) -> Option<serde_json::Map<String, Value>> {
+    if crate::provider_manifest::Registry::built_in().accepts_sampling_parameters(provider) {
+        return None;
+    }
+    let (cleaned, removed) = crate::sampling_params::without_sampling_parameters(parameters);
+    if !removed.is_empty() {
+        let removed_json = serde_json::to_string(&removed).unwrap_or_default();
+        match profile_id {
+            Some(profile_id) => tracing::debug!(
+                target: "quilltap::db",
+                context = "ConnectionProfilesRepository",
+                profileId = profile_id,
+                provider,
+                removedJson = %removed_json,
+                "Stripped sampling parameters the provider does not accept"
+            ),
+            None => tracing::debug!(
+                target: "quilltap::db",
+                context = "ConnectionProfilesRepository",
+                provider,
+                removedJson = %removed_json,
+                "Stripped sampling parameters the provider does not accept"
+            ),
+        }
+    }
+    Some(cleaned)
+}
+// === end P4.D362 ===
 
 /// Reproduce v4's `repos.connections.create` RETURN shape from a [`find_by_id`]
 /// re-read. v4's `handleCreate` create-input explicitly sets `apiKeyId`/`baseUrl`/
@@ -869,6 +1001,7 @@ pub fn create_return_shape(reread: &serde_json::Value) -> serde_json::Value {
     for key in [
         "isDangerousCompatible",
         "supportsImageUpload",
+        "maxImagesPerRequest", // P4.D362
         "tags",
         "sortIndex",
         "totalTokens",
@@ -1061,7 +1194,133 @@ mod tests {
         supportsImageUpload INTEGER, tags TEXT, sortIndex REAL, \
         totalTokens REAL, totalPromptTokens REAL, totalCompletionTokens REAL, \
         messageCount REAL, createdAt TEXT, updatedAt TEXT, \
-        \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0);";
+        \"fallbackProfileId\" TEXT, \"allowTierFallback\" INTEGER DEFAULT 0, \
+        \"maxImagesPerRequest\" INTEGER DEFAULT 4);"; // P4.D362: the migrated (appended) cap
+
+    // === P4.D362 ===
+    /// [`cp_schema_key_order`] — derived from the column consts — matches the
+    /// D23 dump's `connection_profiles` column order exactly (the
+    /// `chats_read::all_columns_follow_the_d23_dump_order` idiom): every
+    /// positional marshal read sits where generateDDL puts its column.
+    #[test]
+    fn the_schema_key_order_follows_the_d23_dump_column_order() {
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"connection_profiles\" ("))
+            .expect("the dump carries connection_profiles");
+        let declared: Vec<String> = ddl
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim().strip_prefix('"')?;
+                Some(t[..t.find('"')?].to_string())
+            })
+            .collect();
+        assert_eq!(cp_schema_key_order(), declared);
+    }
+
+    /// The cap reads `4` off a table without the column (the tolerant SELECT)
+    /// and off a NULL cell (v4's `findById`, R-L7 measured), and the stored
+    /// value otherwise; it sits right after `supportsImageUpload`.
+    #[test]
+    fn the_image_cap_reads_tolerantly_at_its_schema_slot() {
+        let c = Connection::open_in_memory().unwrap();
+        c.execute_batch(&DDL.replace(
+            ", \
+        \"maxImagesPerRequest\" INTEGER DEFAULT 4",
+            "",
+        ))
+        .unwrap();
+        plant(&c, "p1", "'a'", "'OPENAI'");
+        let p = find_by_id(&c, "p1").unwrap().unwrap();
+        assert_eq!(p["maxImagesPerRequest"], serde_json::json!(4));
+        let keys: Vec<&String> = p.as_object().unwrap().keys().collect();
+        let at = keys
+            .iter()
+            .position(|k| *k == "maxImagesPerRequest")
+            .unwrap();
+        assert_eq!(keys[at - 1], "supportsImageUpload");
+        assert_eq!(keys[at + 1], "tags");
+        let c = conn();
+        plant(&c, "p1", "'a'", "'OPENAI'");
+        plant(&c, "p2", "'b'", "'OPENAI'");
+        c.execute_batch("UPDATE connection_profiles SET maxImagesPerRequest = NULL WHERE id = 'p1'; UPDATE connection_profiles SET maxImagesPerRequest = 9 WHERE id = 'p2'").unwrap();
+        assert_eq!(
+            find_by_id(&c, "p1").unwrap().unwrap()["maxImagesPerRequest"],
+            serde_json::json!(4)
+        );
+        assert_eq!(
+            find_by_id(&c, "p2").unwrap().unwrap()["maxImagesPerRequest"],
+            serde_json::json!(9)
+        );
+    }
+
+    /// v4's repository strip: an Anthropic create loses its sampling keys; a
+    /// provider-only update re-writes the stored blob (the identity rule); an
+    /// OpenAI blob is untouched.
+    #[test]
+    fn the_repository_strips_sampling_parameters_for_anthropic() {
+        let c = conn();
+        plant(&c, "p1", "'a'", "'OPENAI'");
+        c.execute(
+            "UPDATE connection_profiles SET parameters = '{\"temperature\":0.7,\"max_tokens\":9}' WHERE id = 'p1'",
+            [],
+        )
+        .unwrap();
+        let repo = ConnectionProfilesRepository::new(&c);
+        let patch = CpUpdate {
+            provider: Some("ANTHROPIC".into()),
+            updated_at: "2026-11-05T00:00:00.000Z".into(),
+            ..Default::default()
+        };
+        assert!(repo.update("p1", &patch).unwrap());
+        let stored: String = c
+            .query_row(
+                "SELECT parameters FROM connection_profiles WHERE id = 'p1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, r#"{"max_tokens":9}"#);
+        let patch = CpUpdate {
+            parameters: Some(serde_json::json!({"top_p": 1, "x": true})),
+            updated_at: "2026-11-05T00:00:01.000Z".into(),
+            ..Default::default()
+        };
+        assert!(repo.update("p1", &patch).unwrap());
+        let stored: String = c
+            .query_row(
+                "SELECT parameters FROM connection_profiles WHERE id = 'p1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            stored, r#"{"x":true}"#,
+            "the stored provider (ANTHROPIC) decides"
+        );
+        let patch = CpUpdate {
+            provider: Some("OPENAI".into()),
+            parameters: Some(serde_json::json!({"temperature": 1})),
+            updated_at: "2026-11-05T00:00:02.000Z".into(),
+            ..Default::default()
+        };
+        assert!(repo.update("p1", &patch).unwrap());
+        let stored: String = c
+            .query_row(
+                "SELECT parameters FROM connection_profiles WHERE id = 'p1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, r#"{"temperature":1}"#);
+    }
+    // === end P4.D362 ===
 
     /// One profile for `u-1`; `name` / `provider` are SQL expressions so a
     /// BLOB can be planted in either.

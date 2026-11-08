@@ -204,7 +204,11 @@ mod tests {
         // P4.D341: 115,274 at v4 `236c04e35` (the 4.11.0 code — the keystone,
         // Storyteller, intervention, Novel-template, humanoid, pronoun-guidance
         // and diagram keys; one vendor, R-7).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 115_274);
+        // P4.D362: 117,110 at v4 `624d0d25c` (`character.kind`, the message
+        // `isEstablishedFact` + `systemKind`'s sentence, the profile
+        // `supportsImageUpload` + `maxImagesPerRequest`, the project
+        // `brahmaConnectionProfileId`; re-vendored WHOLE, §R.10 (o)).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 117_110);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

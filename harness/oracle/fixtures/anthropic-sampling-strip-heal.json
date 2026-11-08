@@ -1,0 +1,21 @@
+{
+  "comment": "P4.D362 strip-heal family — the shared row spec both sides build the reduced connection_profiles table from (the heal reads only id/provider/parameters and writes only parameters). `parameters` is the RAW TEXT cell (null = SQL NULL). The DIFF against v4's real migration is the authority; `note` is for the reader.",
+  "rows": [
+    { "id": "anth-mixed",   "provider": "ANTHROPIC", "parameters": "{\"temperature\":0.7,\"top_p\":1,\"max_tokens\":512}", "note": "cleaned, max_tokens kept" },
+    { "id": "anth-lower",   "provider": "anthropic", "parameters": "{\"topK\":5}", "note": "upper(provider) catches the lowercase row" },
+    { "id": "anth-max",     "provider": "ANTHROPIC", "parameters": "{\"max_tokens\":4096}", "note": "examined, not cleaned, NOT rewritten" },
+    { "id": "anth-order",   "provider": "ANTHROPIC", "parameters": "{\"top_p\":0.9,\"temperature\":1}", "note": "removed in KEY-LIST order: temperature, top_p" },
+    { "id": "anth-null",    "provider": "ANTHROPIC", "parameters": null, "note": "skipped" },
+    { "id": "anth-empty",   "provider": "ANTHROPIC", "parameters": "", "note": "falsy, skipped" },
+    { "id": "anth-notjson", "provider": "ANTHROPIC", "parameters": "not json", "note": "JSON.parse throws, skipped" },
+    { "id": "anth-array",   "provider": "ANTHROPIC", "parameters": "[1]", "note": "array, skipped" },
+    { "id": "anth-string",  "provider": "ANTHROPIC", "parameters": "\"str\"", "note": "scalar, skipped" },
+    { "id": "anth-jsnull",  "provider": "ANTHROPIC", "parameters": "null", "note": "parsed null, skipped" },
+    { "id": "anth-nested",  "provider": "ANTHROPIC", "parameters": "{ \"anthropic\": { \"cacheControl\": { \"type\": \"ephemeral\" }, \"temperature\": 1 }, \"top_p\": 1 }", "note": "whitespace + nested provider options — shallow strip, key order kept" },
+    { "id": "anth-numbers", "provider": "ANTHROPIC", "parameters": "{\"b\":1.0,\"2\":\"x\",\"topP\":null,\"max_tokens\":1e3}", "note": "JS number formatting + integer-key order; a null-valued key IS removed" },
+    { "id": "anth-all",     "provider": "ANTHROPIC", "parameters": "{\"topK\":1,\"top_k\":2,\"topP\":3,\"top_p\":4,\"temperature\":5}", "note": "all five" },
+    { "id": "anth-dup",     "provider": "ANTHROPIC", "parameters": "{\"temperature\":1,\"x\":1,\"temperature\":2}", "note": "duplicate key" },
+    { "id": "openai-temp",  "provider": "OPENAI",    "parameters": "{\"temperature\":0.7}", "note": "untouched" },
+    { "id": "courier-anth", "provider": "ANTHROPIC ", "parameters": "{\"temperature\":0.7}", "note": "trailing space — upper() does not trim, untouched" }
+  ]
+}

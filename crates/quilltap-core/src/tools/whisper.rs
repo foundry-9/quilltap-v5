@@ -321,6 +321,7 @@ async fn execute_whisper_inner(
                 confirmation_notes: None,
                 confirmation_original_content: None,
                 is_silent_message: None,
+                is_established_fact: None,
                 system_sender: None,
                 system_kind: None,
                 opaque_content: None,

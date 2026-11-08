@@ -170,6 +170,17 @@ const KEYSTONE_236: [&str; 4] = [
     quilltap_core::db::roleplay_templates_unmarked_repair::MIGRATION_ID,
 ];
 
+// === P4.D362 (v4 544c7ab1e / db6190b44 / d439f6dc9) ===
+/// P4.D362: the `624d0d25c` three (`PIN_624_MIGRATIONS`), registered after the
+/// unmarked pair — the strip STAMPED (R-7), the two columns UNSTAMPED. The FTS
+/// reindex v4 registers among them is P4.D363's block (appended after this).
+const PIN_624: [&str; 3] = [
+    quilltap_core::db::connection_profiles_sampling_strip_heal::MIGRATION_ID,
+    quilltap_core::db::chat_messages_established_fact_repair::MIGRATION_ID,
+    quilltap_core::db::connection_profiles_max_images_repair::MIGRATION_ID,
+];
+// === end P4.D362 ===
+
 /// The llm-logs sibling of a mode's file (`<x>.after-v5.db` →
 /// `<x>.llm-logs.after-v5.db`).
 fn logs_sibling(main: &Path) -> PathBuf {
@@ -216,6 +227,13 @@ fn run_chain(path: &Path) {
     )
     .expect("the template unmarked ensure");
     // === end P4.D341 ===
+    // === P4.D362: the ONE `624d0d25c` chain, as the host runs it ===
+    quilltap_core::db::schema_4_12_repair::run_4_12_ensures(
+        w.connection(),
+        "2026-11-05T00:00:00.000Z",
+    )
+    .expect("the 4.12 chain");
+    // === end P4.D362 ===
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run),
@@ -289,6 +307,11 @@ fn write_after_v5() {
                 .execute("DELETE FROM migrations_state WHERE id = ?1", [id])
                 .expect("unstamp");
         }
+        // === P4.D362: the strip's stamp taken too — the arm that PROVES it ===
+        w.connection()
+            .execute("DELETE FROM migrations_state WHERE id = ?1", [PIN_624[0]])
+            .expect("unstamp the strip");
+        // === end P4.D362 ===
         // P4.D315: the history twin — the HISTORY rows deleted instead.
         let twin = dir.join(format!("{mode}-history-unstamped.after-v5.db"));
         let _ = std::fs::remove_file(&twin);
@@ -341,8 +364,8 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        24,
-        "v4 ran the twelve + the three 4.11 chat_settings migrations (P4.D341's middle one) + \
+        27,
+        "P4.D362: + the `624d0d25c` three; v4 ran the twelve + the three 4.11 chat_settings migrations (P4.D341's middle one) + \
          the history table and seed (the column is `not needed` on a table born at its final \
          shape — P4.D315) + the Inventory's two columns (P4.D324) + the terminal geometry \
          (P4.D337) + the round's last four (P4.D341) on the planted base"
@@ -391,6 +414,18 @@ fn no_migration_reruns_after_the_v5_chain() {
         );
     }
     // === end P4.D341 ===
+    // === P4.D362: v4's build RAN and stamped the three ===
+    for id in PIN_624 {
+        assert!(
+            build_ran.contains(&id),
+            "v4's build ran {id}: {build_ran:?}"
+        );
+        assert!(
+            v4_ledger.iter().any(|(i, _)| i == id),
+            "v4's build stamped {id}"
+        );
+    }
+    // === end P4.D362 ===
     let row_of = |mode: &str| -> &Value {
         v4.iter()
             .find(|r| r["mode"] == mode)
@@ -509,7 +544,50 @@ fn no_migration_reruns_after_the_v5_chain() {
                 }
             }
             // === end P4.D337 ===
+            // === P4.D362: the two column ids never stamped by v5 ===
+            for id in &PIN_624[1..] {
+                if ledger_by_id(&row["before"]["ledger"])
+                    .iter()
+                    .any(|(i, _)| i == id)
+                {
+                    failures.push(format!("{mode}: a ledger row for the unstamped {id}"));
+                }
+            }
+            // === end P4.D362 ===
         }
+        // === P4.D362: the strip's stamp — present on every base, v4's bytes ===
+        let v5_strip = ledger_by_id(&row["before"]["ledger"])
+            .into_iter()
+            .find(|(i, _)| i == PIN_624[0]);
+        let v4_build_strip = v4_ledger.iter().find(|(i, _)| i == PIN_624[0]).cloned();
+        match (mode, &v5_strip) {
+            (_, None) => failures.push(format!("{mode}: v5 did not stamp {}", PIN_624[0])),
+            ("planted" | "v4-migrated", Some((_, v5_row))) => match &v4_build_strip {
+                Some((_, v4_row))
+                    if serde_json::to_string(v4_row).unwrap()
+                        == serde_json::to_string(v5_row).unwrap() => {}
+                other => failures.push(format!(
+                    "{mode}: the strip stamp is not v4's build row\n  v5 {v5_row}\n  v4 {other:?}"
+                )),
+            },
+            (_, Some((_, v5_row))) => {
+                // fresh / fresh-used: v4's re-run on the `-unstamped` twin IS
+                // v4's row for the strip on the same instance.
+                let twin = row_of(&format!("{mode}-unstamped"));
+                match ledger_by_id(&twin["after"]["ledger"])
+                    .into_iter()
+                    .find(|(i, _)| i == PIN_624[0])
+                {
+                    Some((_, v4_row))
+                        if serde_json::to_string(&v4_row).unwrap()
+                            == serde_json::to_string(v5_row).unwrap() => {}
+                    other => failures.push(format!(
+                        "{mode}: the strip stamp is not v4's twin row\n  v5 {v5_row}\n  v4 {other:?}"
+                    )),
+                }
+            }
+        }
+        // === end P4.D362 ===
         match mode {
             "planted" => {
                 for (id, v5_row) in &v5_rows {
@@ -561,6 +639,10 @@ fn no_migration_reruns_after_the_v5_chain() {
         let twin = row_of(&format!("{mode}-unstamped"));
         let mut want: Vec<String> = v5_rows.iter().map(|(id, _)| id.clone()).collect();
         want.sort_by_key(|id| SPAN.iter().position(|s| s == id));
+        // === P4.D362: the strip re-runs LAST on the twin (registration order) —
+        // its stamp is the one thing that stops it (`STRIP_STAMP_RED_FIRST`) ===
+        want.push(PIN_624[0].to_string());
+        // === end P4.D362 ===
         let twin_ran = ran_of(twin);
         if twin_ran != want {
             failures.push(format!(

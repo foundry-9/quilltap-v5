@@ -80,6 +80,9 @@ import {
   // === P4.D341 ===
   KEYSTONE_236_MIGRATIONS,
   // === end P4.D341 ===
+  // === P4.D362 ===
+  PIN_624_MIGRATIONS,
+  // === end P4.D362 ===
 } from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
@@ -105,6 +108,9 @@ const TOUCHED = [
   'roleplay_templates',
   'storyteller_rounds',
   // === end P4.D341 ===
+  // === P4.D362: the strip's rows + the cap column (chat_messages is above) ===
+  'connection_profiles',
+  // === end P4.D362 ===
 ];
 
 const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -216,6 +222,9 @@ async function runTwelve(path: string, logsPath?: string): Promise<string[]> {
     // === P4.D341: the round's last four, LAST (registration order) ===
     ...KEYSTONE_236_MIGRATIONS,
     // === end P4.D341 ===
+    // === P4.D362: the `624d0d25c` three (strip, established fact, image cap), LAST ===
+    ...PIN_624_MIGRATIONS,
+    // === end P4.D362 ===
   ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
   }
@@ -279,7 +288,14 @@ function buildPlanted(path: string): void {
       s = strip(s, [`  "supersededAt" TEXT,\n`, /* P4.D341 */ `  "keystone" INTEGER DEFAULT 0,\n`]);
     }
     // === P4.D341: the Storyteller message column + the template pair ===
-    if (s.startsWith('CREATE TABLE "chat_messages" (')) s = strip(s, [`  "storytellerBid" TEXT,\n`]);
+    if (s.startsWith('CREATE TABLE "chat_messages" (')) {
+      s = strip(s, [`  "storytellerBid" TEXT,\n`, /* P4.D362 */ `  "isEstablishedFact" TEXT,\n`]);
+    }
+    // === P4.D362: the image cap taken back (pre-d439f6dc9) ===
+    if (s.startsWith('CREATE TABLE "connection_profiles" (')) {
+      s = strip(s, [`  "maxImagesPerRequest" INTEGER DEFAULT 4,\n`]);
+    }
+    // === end P4.D362 ===
     if (s.startsWith('CREATE TABLE "roleplay_templates" (')) {
       s = strip(s, [`  "unmarkedStyle" TEXT,\n`, `  "markdownAsterisks" INTEGER DEFAULT 1,\n`]);
     }
@@ -379,6 +395,17 @@ function buildPlanted(path: string): void {
     `INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) VALUES ('msg1', 'c1', 'message', 'USER', 'hi', ?)`,
   ).run(T0);
   // === end P4.D341 ===
+  // === P4.D362: two profiles for the Anthropic strip (one it cleans, one it never examines) ===
+  for (const [id, provider, parameters] of [
+    ['cp-anth', 'ANTHROPIC', '{"temperature":0.7,"max_tokens":512}'],
+    ['cp-oai', 'OPENAI', '{"temperature":0.7}'],
+  ]) {
+    db.prepare(
+      `INSERT INTO connection_profiles (id, userId, name, provider, modelName, parameters, tags, createdAt, updatedAt)
+       VALUES (?, 'u1', ?, ?, 'm', ?, '[]', ?, ?)`,
+    ).run(id, id, provider, parameters, T0, T0);
+  }
+  // === end P4.D362 ===
   db.close();
 
   // === P4.D341 (R-8): the planted llm-logs SIBLING ===

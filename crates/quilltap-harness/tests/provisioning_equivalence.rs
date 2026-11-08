@@ -814,6 +814,10 @@ const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
             "exampleDialogues",
             "firstMessage",
             "identity",
+            // P4.D362 (v4 `b09ca46bb`, measured at `624d0d25c`): generateDDL
+            // renders `kind` (R-4, fresh-only), but it is a MANAGED field and no
+            // v4 migration adds it, so a real v4 boot's slim row never has it.
+            "kind",
             "manifesto",
             "metadata",
             "personality",
@@ -834,6 +838,10 @@ const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
             "allowAnyCharacter",
             "answerConfirmationOverride",
             "backgroundDisplayMode",
+            // P4.D362 (v4 `c539c82e0`, measured at `624d0d25c`): a
+            // `PROJECT_STORE_MANAGED_FIELDS` key generateDDL renders (R-4,
+            // fresh-only); no v4 migration adds it to the slim row.
+            "brahmaConnectionProfileId",
             "characterRoster",
             "color",
             "defaultAgentModeEnabled",

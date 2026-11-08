@@ -23,7 +23,13 @@
  *     > /tmp/oracle-sampling-params.ndjson
  */
 
-import { resolveSamplingParams } from '@/lib/llm/sampling-params';
+import {
+  resolveSamplingParams,
+  // === P4.D362 ===
+  SAMPLING_PARAMETER_KEYS,
+  withoutSamplingParameters,
+  // === end P4.D362 ===
+} from '@/lib/llm/sampling-params';
 
 /**
  * The corpus. `params` is what the call site hands the resolver; `undefined`
@@ -97,6 +103,25 @@ const CORPUS: Array<{ name: string; params: unknown }> = [
   { name: 'null-bag', params: null },
 ];
 
+// === P4.D362 (v4 `544c7ab1e`) — `withoutSamplingParameters` + the key list ===
+// One line per row, tagged `section: 'without'` (the resolver test reads only
+// untagged lines). `input` is emitted with JSON.stringify — the object's own
+// key order — and the Rust side compares `parameters` by serialised BYTES.
+const THIRTY: Record<string, unknown> = {};
+for (let i = 0; i < 30; i++) THIRTY[`k${(i * 7) % 30}`] = i;
+THIRTY.top_p = 1;
+THIRTY.zeta = 'z';
+const WITHOUT: Array<{ name: string; params: Record<string, unknown> }> = [
+  { name: 'empty', params: {} },
+  { name: 'only-max-tokens', params: { max_tokens: 512 } },
+  { name: 'all-five', params: { topK: 1, top_k: 2, topP: 3, top_p: 4, temperature: 5, max_tokens: 6 } },
+  { name: 'removed-order', params: { top_p: 0.9, temperature: 1 } },
+  { name: 'null-valued-key', params: { topP: null, max_tokens: 1 } },
+  { name: 'nested-not-removed', params: { anthropic: { temperature: 1 }, x: true } },
+  { name: 'thirty-keys-order', params: THIRTY },
+];
+// === end P4.D362 ===
+
 function main(): void {
   for (const { name, params } of CORPUS) {
     const result = resolveSamplingParams(params as Record<string, unknown> | undefined);
@@ -112,6 +137,22 @@ function main(): void {
       }) + '\n',
     );
   }
+  // === P4.D362 ===
+  process.stdout.write(JSON.stringify({ section: 'keys', keys: SAMPLING_PARAMETER_KEYS }) + '\n');
+  for (const { name, params } of WITHOUT) {
+    const { parameters, removed } = withoutSamplingParameters(params);
+    process.stdout.write(
+      JSON.stringify({
+        section: 'without',
+        case: name,
+        input: params,
+        parameters,
+        removed,
+        sameObject: parameters === params,
+      }) + '\n',
+    );
+  }
+  // === end P4.D362 ===
 }
 
 main();

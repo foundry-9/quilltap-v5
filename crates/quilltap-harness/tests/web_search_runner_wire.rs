@@ -186,6 +186,9 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
     // P4.D171: the same idiom for the two `78b381a96`-round schema moves —
     // this fixture predates those too.
     quilltap_core::test_support::ensure_p4d171_columns(conn);
+    // P4.D362: and the two 4.12 columns (`CpCreate` binds
+    // `maxImagesPerRequest` on every insert).
+    quilltap_core::test_support::ensure_4_12_columns_on(conn);
 
     let cp = connection_profiles::CpCreate {
         user_id: USER.to_string(),
@@ -211,6 +214,8 @@ fn seed_web_search_chat(db_main: &std::path::Path) {
         max_tokens: None,
         is_dangerous_compatible: false,
         supports_image_upload: false,
+        max_images_per_request:
+            quilltap_core::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST,
         tags: Vec::new(),
         sort_index: 0.0,
         total_tokens: 0.0,

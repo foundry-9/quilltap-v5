@@ -353,6 +353,9 @@ fn project_message_for_new_chat(
         "hostEvent": new_host_event,
         "targetParticipantIds": new_targets,
         "isSilentMessage": take("isSilentMessage"),
+        // P4.D362 (v4 `apply-chat-continuation.ts:238`, `source.isEstablishedFact
+        // ?? null`): right after `isSilentMessage`.
+        "isEstablishedFact": take("isEstablishedFact"),
         "dangerFlags": take("dangerFlags"),
     }))
 }

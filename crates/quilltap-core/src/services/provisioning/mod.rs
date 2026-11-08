@@ -270,6 +270,23 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// no ensure, no reader). llm-logs: `llm_logs` GAINS `"storytellerRoundId" TEXT`
 /// after `autonomousRunId` (one column, no new statement). mount-index
 /// `cmp`-identical.
+///
+/// `624d0d25c` (P4.D362 — D23 #22 / #23 + the two fresh-only moves, ONE
+/// re-dump FROM the pin, 2026-11-08): main 85 → 85, EXACTLY four statements
+/// change TEXT, one line each — `chat_messages` GAINS `"isEstablishedFact"
+/// TEXT` between `isSilentMessage` and `systemSender` (the mixed union →
+/// bare TEXT; the migration appends `INTEGER DEFAULT NULL` — TWO shapes,
+/// `db::chat_messages_established_fact_repair`); `connection_profiles` GAINS
+/// `"maxImagesPerRequest" INTEGER DEFAULT 4` between `supportsImageUpload` and
+/// `tags` (the migration's clause is byte-equal, appended + its NULL → 4
+/// backfill — `db::connection_profiles_max_images_repair`); and, FRESH-ONLY
+/// with NO ensure and NO v5 reader or writer (R-4 — the `canDrawDiagrams`
+/// precedent; a v4-MIGRATED instance never has them), `characters` GAINS
+/// `"kind" TEXT DEFAULT 'roleplay'` between `diagramStyle` and
+/// `systemTransparency` (P4.D369's) and `projects` GAINS
+/// `"brahmaConnectionProfileId" TEXT` between `answerConfirmationOverride` and
+/// `storyBackgroundsEnabled` (P4.D374's). mount-index 31 and llm-logs 7
+/// byte-equal.
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -307,6 +324,9 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// gains `"punctuationWarnings":true` as its fourth key (v4
 /// `chat-settings.repository.ts:113-118` — a SEED-ONLY move: the DDL default
 /// stays three keys); 35 → 36 columns; nothing else moved.
+/// `624d0d25c` (P4.D362): re-captured at the pin, `cmp`-IDENTICAL (36 columns;
+/// `brahmaConsole.inlineConnectionProfileId` is nullable-optional with no
+/// default, so the seed does not move).
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 /// P4.153 (dogfood #149): v4's OTHER index family — the one its MIGRATIONS
@@ -373,6 +393,11 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// ("chatId", "status")` (`add-storyteller-mode-v1`); llm-logs GAINS
 /// `idx_llm_logs_storytellerRoundId ("storytellerRoundId")`. main 54 /
 /// mount-index 5 / llm-logs 6 = 65.
+/// `624d0d25c` (P4.D362 — re-dumped from the pin, the REAL `tsx server.ts`
+/// first boot's `sqlite_master` the cross-check, ZERO findings): none of the
+/// round's three migrations makes an index, so main 54 / mount-index 5 /
+/// llm-logs 6 = 65 UNMOVED; only `source.v4Commit` (→ `624d0d25c…`) and
+/// `source.v4Version` (→ `4.13.0-dev.8`) move.
 static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 
 /// One artifact's statements per partition (`fresh_schema.json` and
@@ -1091,6 +1116,70 @@ mod tests {
             )
         );
     }
+
+    // === P4.D362 ===
+    /// P4.D362 (D23 #22 / #23 + the two fresh-only moves): a fresh instance
+    /// carries all four columns at the dump's positions, with generateDDL's
+    /// declarations.
+    #[test]
+    fn a_fresh_instance_carries_the_4_12_columns_at_the_dump_positions() {
+        let dir = tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let conn = main.connection();
+        let decl = |table: &str| -> Vec<(String, String)> {
+            conn.prepare(&format!(
+                "SELECT name, type || coalesce(' DEFAULT ' || dflt_value, '') FROM pragma_table_info('{table}')"
+            ))
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
+        };
+        for (table, before, column, after, want) in [
+            (
+                "chat_messages",
+                "isSilentMessage",
+                "isEstablishedFact",
+                "systemSender",
+                "TEXT",
+            ),
+            (
+                "connection_profiles",
+                "supportsImageUpload",
+                "maxImagesPerRequest",
+                "tags",
+                "INTEGER DEFAULT 4",
+            ),
+            (
+                "characters",
+                "diagramStyle",
+                "kind",
+                "systemTransparency",
+                "TEXT DEFAULT 'roleplay'",
+            ),
+            (
+                "projects",
+                "answerConfirmationOverride",
+                "brahmaConnectionProfileId",
+                "storyBackgroundsEnabled",
+                "TEXT",
+            ),
+        ] {
+            let cols = decl(table);
+            let at = cols
+                .iter()
+                .position(|(n, _)| n == column)
+                .unwrap_or_else(|| panic!("{table} lacks {column}"));
+            assert_eq!(cols[at - 1].0, before, "{table}.{column}");
+            assert_eq!(cols[at + 1].0, after, "{table}.{column}");
+            assert_eq!(cols[at].1, want, "{table}.{column}");
+        }
+    }
+    // === end P4.D362 ===
 
     #[test]
     fn provisions_a_bootable_seeded_instance() {

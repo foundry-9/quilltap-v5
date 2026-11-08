@@ -129,6 +129,28 @@ pub(crate) fn classify_base_url(v: &Value) -> BaseUrlPatch<'_> {
 fn internal(e: impl std::fmt::Display) -> Response {
     Response::error(ErrorKind::Internal, e.to_string())
 }
+// === P4.D362 ===
+/// The providers listing's `capabilities` object — v4 emits the plugin's
+/// object WHOLE (`app/api/v1/providers/route.ts:50`), so `samplingParameters`
+/// rides after `toolUse` ONLY on a provider that declares it (Anthropic).
+fn provider_capabilities_wire(c: &crate::provider_manifest::Capabilities) -> Value {
+    let mut caps = Map::new();
+    caps.insert("chat".into(), json!(c.chat));
+    caps.insert("imageGeneration".into(), json!(c.image_generation));
+    caps.insert("embeddings".into(), json!(c.embeddings));
+    caps.insert("webSearch".into(), json!(c.web_search));
+    caps.insert("toolUse".into(), json!(c.tool_use));
+    if let Some(sampling) = c.sampling_parameters {
+        caps.insert("samplingParameters".into(), json!(sampling));
+    }
+    Value::Object(caps)
+}
+
+/// v4's refusal for a bad `maxImagesPerRequest` on both routes
+/// (`` `maxImagesPerRequest must be a whole number from 1 to ${MAX_IMAGES_PER_REQUEST_CEILING}` ``).
+const MAX_IMAGES_REFUSAL: &str = "maxImagesPerRequest must be a whole number from 1 to 50";
+// === end P4.D362 ===
+
 fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
 }
@@ -1528,6 +1550,20 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         Some(Value::Bool(b)) => *b,
         Some(_) => return bad_request("allowTierFallback must be a boolean"),
     };
+    // === P4.D362 (v4 `d439f6dc9`, `route.ts:188-194`) ===
+    // The image cap: right AFTER the `allowTierFallback` gate and BEFORE the
+    // fallback-profile lookup (v4's order). Absent / `null` → the default;
+    // anything else through `parseMaxImagesPerRequest`.
+    let max_images_per_request = match bag.get("maxImagesPerRequest") {
+        None | Some(Value::Null) => {
+            crate::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST
+        }
+        Some(v) => match crate::services::connection_profiles::parse_max_images_per_request(v) {
+            Some(n) => n,
+            None => return bad_request(MAX_IMAGES_REFUSAL),
+        },
+    };
+    // === end P4.D362 ===
     // A brand-new profile has no id yet, so the self-reference rule cannot bite
     // here; what can is a target that is not the user's, or one whose transport
     // is Courier — a request a human carries by hand is no kind of automatic
@@ -1743,6 +1779,7 @@ pub async fn connection_profile_create(db: &Db, user_id: &str, bag: &Value) -> R
         } else {
             resolved_supports_image_upload
         },
+        max_images_per_request,
         tags: vec![],
         sort_index: max_sort_index + 1.0,
         total_tokens: 0.0,
@@ -2136,6 +2173,17 @@ pub async fn connection_profile_update(db: &Db, user_id: &str, id: &str, bag: &V
             patch.supports_image_upload = Some(b);
         }
     }
+
+    // === P4.D362 (v4 `d439f6dc9`, `[id]/route.ts:385-392`) ===
+    // AFTER `supportsImageUpload`, NOT courier-gated, only when present — and
+    // an explicit `null` parses to `null`, so it 400s (unlike the create).
+    if let Some(v) = bag.get("maxImagesPerRequest") {
+        match crate::services::connection_profiles::parse_max_images_per_request(v) {
+            Some(n) => patch.max_images_per_request = Some(n),
+            None => return bad_request(MAX_IMAGES_REFUSAL),
+        }
+    }
+    // === end P4.D362 ===
 
     patch.updated_at = crate::clock::now_iso();
     let cleared = cleared_null_keys(&patch);
@@ -2569,13 +2617,7 @@ pub fn provider_list(search_providers: &[&SearchManifest]) -> Response {
                 "colors": { "bg": m.colors.bg, "text": m.colors.text, "icon": m.colors.icon },
                 "icon": Value::Null,
                 "type": "llm",
-                "capabilities": {
-                    "chat": m.capabilities.chat,
-                    "imageGeneration": m.capabilities.image_generation,
-                    "embeddings": m.capabilities.embeddings,
-                    "webSearch": m.capabilities.web_search,
-                    "toolUse": m.capabilities.tool_use,
-                },
+                "capabilities": provider_capabilities_wire(&m.capabilities),
                 "configRequirements": Value::Object(config),
                 "optionsSchema": m.options_schema.clone().unwrap_or(Value::Null),
                 // v4 bug 85 (`97d2fcb5`): how the profile editor tells whether

@@ -171,6 +171,12 @@ pub mod roleplay_templates_unmarked_repair;
 pub mod storyteller_mode_repair;
 pub mod storyteller_rounds; // P4.D343
                             // === end P4.D341 ===
+                            // === P4.D362 (the 22nd / 23rd D23 moves + the Anthropic strip) ===
+pub mod chat_messages_established_fact_repair;
+pub mod connection_profiles_max_images_repair;
+pub mod connection_profiles_sampling_strip_heal;
+pub mod schema_4_12_repair;
+// === end P4.D362 ===
 pub mod text_compression;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;

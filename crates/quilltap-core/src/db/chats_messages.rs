@@ -42,11 +42,11 @@
 //! ## `isSilentMessage` — the TEXT-affinity seam (WRITE side, now closed)
 //!
 //! A `message` insert also carries `isSilentMessage` (a `MessageEvent` member,
-//! `z.boolean().nullable().optional()`), routed through [`is_silent_stored`] which
+//! `z.boolean().nullable().optional()`), routed through [`zero_one_stored`] which
 //! reproduces v4's exact stored bytes: `true` → TEXT `"1.0"`, `false` → TEXT
 //! `"0.0"`, absent → SQL NULL (see that fn for the why). `context-summary` /
 //! `system` inserts omit the column (SQLite fills its DDL default `NULL`). The
-//! read companion is [`crate::db::chats_messages_read::put_is_silent`] (seam #8).
+//! read companion is [`crate::db::chats_messages_read::put_zero_one_flag`] (seam #8).
 
 use rusqlite::types::Value as SqlValue;
 use rusqlite::Connection;
@@ -149,6 +149,17 @@ pub struct MessageEventInput {
     // TEXT-affinity seam (see `insert_message` + `chats_messages_read`).
     #[serde(default)]
     pub is_silent_message: Option<bool>,
+    // === P4.D362 (v4 `db6190b44` — the 22nd D23 move) ===
+    // `isEstablishedFact` (`z.boolean().nullable().optional()`): set only on an
+    // operator's USER row posted as established fact (Deus Ex Machina; P4.D372
+    // gives it meaning). Its ROW column is the SAME union seam as
+    // `isSilentMessage`, through the same codec ([`zero_one_stored`]) — but
+    // BOUND ONLY WHEN `Some` (R-L1): v4's `_create` names only the keys a
+    // document defines, so `None` leaves the cell NULL by omission on every
+    // shape, and a pre-column fixture still inserts.
+    #[serde(default)]
+    pub is_established_fact: Option<bool>,
+    // === end P4.D362 ===
     #[serde(default)]
     pub system_sender: Option<String>,
     #[serde(default)]
@@ -1045,6 +1056,22 @@ fn cell(c: TextCell) -> SqlValue {
 }
 
 fn message_columns(m: &MessageEventInput) -> Result<Vec<MemberColumn>, DbError> {
+    let mut columns = message_columns_named(m)?;
+    // === P4.D362 ===
+    // Right after `isSilentMessage`, and ONLY when the document carries it
+    // (R-L1 — see the field's doc).
+    if let Some(flag) = m.is_established_fact {
+        let at = columns
+            .iter()
+            .position(|(name, _)| *name == "isSilentMessage")
+            .map_or(columns.len(), |i| i + 1);
+        columns.insert(at, ("isEstablishedFact", opt(zero_one_stored(Some(flag)))));
+    }
+    // === end P4.D362 ===
+    Ok(columns)
+}
+
+fn message_columns_named(m: &MessageEventInput) -> Result<Vec<MemberColumn>, DbError> {
     // The four REGISTERED COMPRESSED COLUMNS of `chat_messages` (v4
     // `manager.ts:134-139`) go through the codec on the way in. v4's write
     // chokepoint is ONE `documentToRow`; v5's is these member marshalers, so a
@@ -1077,10 +1104,7 @@ fn message_columns(m: &MessageEventInput) -> Result<Vec<MemberColumn>, DbError> 
             "targetParticipantIds",
             opt(opt_json(&m.target_participant_ids)?),
         ),
-        (
-            "isSilentMessage",
-            opt(is_silent_stored(m.is_silent_message)),
-        ),
+        ("isSilentMessage", opt(zero_one_stored(m.is_silent_message))),
         ("systemSender", opt(m.system_sender.clone())),
         ("systemKind", opt(m.system_kind.clone())),
         (
@@ -1159,7 +1183,10 @@ fn system_columns(s: &SystemEventInput) -> Vec<MemberColumn> {
     ]
 }
 
-/// The stored `isSilentMessage` cell (the TEXT-affinity seam, verified against v4).
+/// The stored `isSilentMessage` / `isEstablishedFact` cell — ONE codec for both
+/// columns (P4.D362 generalised it by key: v4's `ChatMessageRowSchema` declares
+/// BOTH as `z.union([z.boolean(), z.number().transform(v => v === 1)])`), the
+/// TEXT-affinity seam, verified against v4.
 ///
 /// v4's write path runs `prepareForStorage(bool)` → the JS **number** `1`/`0`,
 /// which better-sqlite3 binds as a REAL (every JS number is an IEEE-754 double).
@@ -1168,8 +1195,11 @@ fn system_columns(s: &SystemEventInput) -> Vec<MemberColumn> {
 /// converts the bound REAL to text — landing `"1.0"` / `"0.0"` (NOT `"1"`/`"0"`),
 /// and `NULL` when the field is absent. We reproduce that byte-for-byte by binding
 /// `Some(1.0_f64)` / `Some(0.0_f64)` (a REAL, TEXT-converted the same way) / `None`.
-/// The read side (`chats_messages_read::put_is_silent`) coerces this back.
-fn is_silent_stored(v: Option<bool>) -> Option<f64> {
+/// The read side (`chats_messages_read::put_zero_one_flag`) coerces this back.
+/// On a MIGRATED instance the column is INTEGER-affinity (the migrations'
+/// `INTEGER DEFAULT NULL`), so the same REAL lands `1` / `0` — measured on both
+/// shapes for `isEstablishedFact` (P4.D362's ensure family).
+pub(crate) fn zero_one_stored(v: Option<bool>) -> Option<f64> {
     v.map(|b| if b { 1.0 } else { 0.0 })
 }
 

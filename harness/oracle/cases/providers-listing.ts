@@ -85,6 +85,14 @@ function main() {
         embeddings: !!plugin.capabilities.embeddings,
         webSearch: !!plugin.capabilities.webSearch,
         toolUse: !!plugin.capabilities.toolUse,
+        // === P4.D362 (R-L4; v4 `544c7ab1e`) ===
+        // v4's route emits `plugin.capabilities` WHOLE, so the one plugin that
+        // declares `samplingParameters` (Anthropic, `false`, LAST) carries it;
+        // every other row omits it. (P4.D364 owns this file — a fenced hunk.)
+        ...(plugin.capabilities.samplingParameters !== undefined
+          ? { samplingParameters: plugin.capabilities.samplingParameters }
+          : {}),
+        // === end P4.D362 ===
       },
       // v4's route spreads `plugin.config` WHOLE (`route.ts:51`), so this does
       // too. It used to hand-pick the six fields the manifest models, which made

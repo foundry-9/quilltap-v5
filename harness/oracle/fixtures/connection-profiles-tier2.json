@@ -523,6 +523,261 @@
       "kind": "delete",
       "comment": "P4.D135 THE CASCADE: delete the understudy the Grok row still points at. v4's repository nulls fallbackProfileId on every OTHER profile that named it, so the Grok row's column comes back NULL in the dump while the Sonnet row (which now names Grok) is untouched.",
       "id": "bb100000-0000-4000-8000-00000000cd01"
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D362: an Anthropic create loses its sampling keys (v4's repository strip, the registry loaded)",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "P4D362 0001",
+        "provider": "ANTHROPIC",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "m",
+        "parameters": {
+          "temperature": 0.7,
+          "top_p": 1,
+          "max_tokens": 512
+        },
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "dd362000-0000-4000-8000-000000000001",
+        "createdAt": "2026-11-05T00:00:00.000Z",
+        "updatedAt": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D362: an OpenAI create keeps them",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "P4D362 0002",
+        "provider": "OPENAI",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "m",
+        "parameters": {
+          "temperature": 0.7
+        },
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "dd362000-0000-4000-8000-000000000002",
+        "createdAt": "2026-11-05T00:00:00.000Z",
+        "updatedAt": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D362: a carried cap",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "P4D362 0003",
+        "provider": "OPENAI",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "m",
+        "parameters": {
+          "max_tokens": 5
+        },
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0,
+        "maxImagesPerRequest": 9
+      },
+      "options": {
+        "id": "dd362000-0000-4000-8000-000000000003",
+        "createdAt": "2026-11-05T00:00:00.000Z",
+        "updatedAt": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D362: an unknown provider — accepts (v4 `?? true`), untouched",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "P4D362 0004",
+        "provider": "MYSTERY",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "m",
+        "parameters": {
+          "temperature": 1
+        },
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "dd362000-0000-4000-8000-000000000004",
+        "createdAt": "2026-11-05T00:00:00.000Z",
+        "updatedAt": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D362: the identity-rewrite base (whitespace planted raw below)",
+      "data": {
+        "userId": "00000000-0000-4000-8000-0000000000aa",
+        "name": "P4D362 0005",
+        "provider": "OPENAI",
+        "transport": "api",
+        "courierDeltaMode": true,
+        "apiKeyId": null,
+        "baseUrl": null,
+        "modelName": "m",
+        "parameters": {
+          "b": 2
+        },
+        "isDefault": false,
+        "isCheap": false,
+        "allowWebSearch": false,
+        "useNativeWebSearch": false,
+        "allowToolUse": true,
+        "pseudoToolMode": "auto",
+        "modelClass": null,
+        "maxContext": null,
+        "maxTokens": null,
+        "isDangerousCompatible": false,
+        "supportsImageUpload": false,
+        "tags": [],
+        "sortIndex": 0,
+        "totalTokens": 0,
+        "totalPromptTokens": 0,
+        "totalCompletionTokens": 0,
+        "messageCount": 0
+      },
+      "options": {
+        "id": "dd362000-0000-4000-8000-000000000005",
+        "createdAt": "2026-11-05T00:00:00.000Z",
+        "updatedAt": "2026-11-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D362: only parameters — the STORED provider (ANTHROPIC) decides",
+      "id": "dd362000-0000-4000-8000-000000000001",
+      "data": {
+        "parameters": {
+          "topK": 5,
+          "x": 1
+        },
+        "updatedAt": "2026-11-05T01:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D362: only provider — the stored blob is stripped",
+      "id": "dd362000-0000-4000-8000-000000000002",
+      "data": {
+        "provider": "ANTHROPIC",
+        "updatedAt": "2026-11-05T01:00:00.000Z"
+      }
+    },
+    {
+      "kind": "raw",
+      "comment": "P4.D362: plant a stored blob with whitespace and no sampling keys",
+      "sql": "UPDATE connection_profiles SET parameters = '{ \"b\" : 2 }' WHERE id = 'dd362000-0000-4000-8000-000000000005'"
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D362: only provider over a blob with NO sampling keys — v4 re-writes it anyway (identity rule)",
+      "id": "dd362000-0000-4000-8000-000000000005",
+      "data": {
+        "provider": "ANTHROPIC",
+        "updatedAt": "2026-11-05T01:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D362: both fields",
+      "id": "dd362000-0000-4000-8000-000000000003",
+      "data": {
+        "provider": "ANTHROPIC",
+        "parameters": {
+          "temperature": 1,
+          "y": 2
+        },
+        "updatedAt": "2026-11-05T01:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D362: the cap updated",
+      "id": "dd362000-0000-4000-8000-000000000004",
+      "data": {
+        "maxImagesPerRequest": 12,
+        "updatedAt": "2026-11-05T01:00:00.000Z"
+      }
     }
   ]
 }

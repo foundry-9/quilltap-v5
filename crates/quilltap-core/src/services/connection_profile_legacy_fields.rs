@@ -99,6 +99,15 @@ pub struct SeededLegacyFields {
     /// Whether a carried `fallbackProfileId` named the profile itself and was
     /// dropped. v4 does this silently; v5 surfaces it on the debug line.
     pub dropped_self_reference: bool,
+    /// P4.D362 (v4 `d439f6dc9`, the "Vision cap (4.12)" step): the RAW
+    /// `maxImagesPerRequest` the record carries — absent → `4` (the table
+    /// DEFAULT, stated); an explicit `null` (or any junk) passes through
+    /// untouched, and v4's create then refuses the profile
+    /// ([`crate::services::connection_profiles::validate_max_images_per_request`]).
+    pub max_images_per_request: Value,
+    /// v4's `rawProfileData.maxImagesPerRequest === undefined`. Not on the
+    /// restore DEBUG — v4 logs only the two 4.9 columns there (measured).
+    pub seeded_max_images_per_request: bool,
 }
 
 impl SeededLegacyFields {
@@ -177,7 +186,17 @@ pub fn seed_legacy_connection_profile_fields(raw: &Value) -> SeededLegacyFields 
         carried_fallback
     };
 
+    // Vision cap (4.12). The table DEFAULT is the documented default, so this
+    // only states it — a pre-4.12 profile gets the same cap a new one does.
+    let stored_max_images = raw.get("maxImagesPerRequest");
+    let seeded_max_images_per_request = stored_max_images.is_none();
+    let max_images_per_request = stored_max_images.cloned().unwrap_or_else(|| {
+        Value::from(crate::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST)
+    });
+
     SeededLegacyFields {
+        max_images_per_request,
+        seeded_max_images_per_request,
         supports_image_upload,
         multi_character_prefill,
         seeded_supports_image_upload,
@@ -218,6 +237,8 @@ mod tests {
                 seeded_fallback_profile_id: true,
                 seeded_allow_tier_fallback: true,
                 dropped_self_reference: false,
+                max_images_per_request: json!(4),
+                seeded_max_images_per_request: true,
             }
         );
     }
@@ -243,9 +264,38 @@ mod tests {
                 seeded_fallback_profile_id: true,
                 seeded_allow_tier_fallback: true,
                 dropped_self_reference: false,
+                max_images_per_request: json!(4),
+                seeded_max_images_per_request: true,
             }
         );
     }
+
+    // === P4.D362 ===
+    /// The 4.12 vision cap: absent → `4` (seeded); a carried value — an
+    /// explicit `null` and junk included — passes through for the create's
+    /// Zod parse to judge.
+    #[test]
+    fn the_image_cap_is_seeded_only_when_absent() {
+        let out = seed(json!({"provider": "OPENAI"}));
+        assert_eq!(
+            (
+                out.max_images_per_request,
+                out.seeded_max_images_per_request
+            ),
+            (json!(4), true)
+        );
+        for carried in [json!(9), json!(null), json!("4"), json!(0)] {
+            let out = seed(json!({"provider": "OPENAI", "maxImagesPerRequest": carried.clone()}));
+            assert_eq!(
+                (
+                    out.max_images_per_request,
+                    out.seeded_max_images_per_request
+                ),
+                (carried, false)
+            );
+        }
+    }
+    // === end P4.D362 ===
 
     #[test]
     fn a_carried_understudy_rides_through() {

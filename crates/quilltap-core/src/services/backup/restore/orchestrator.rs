@@ -498,6 +498,12 @@ fn restore_on_writer(
                 );
             }
             taken.insert(normalize_profile_name(&unique));
+            // P4.D362 (v4 `d439f6dc9`): v4's create parse refuses a bad seeded
+            // `maxImagesPerRequest` — the whole profile, with the ZodError's
+            // message, through the same per-profile WARN as any create failure.
+            let max_images = crate::services::connection_profiles::validate_max_images_per_request(
+                &seeded.max_images_per_request,
+            );
             let create = crate::db::connection_profiles::CpCreate {
                 user_id: target_user_id.to_string(),
                 name: unique,
@@ -543,6 +549,10 @@ fn restore_on_writer(
                 // predates the per-profile flag (v4 `e000d6bfc`); a carried
                 // value — a stored `false` included — is passed through.
                 supports_image_upload: seeded.supports_image_upload,
+                // P4.D362: the seeded cap; a bad one is refused below.
+                max_images_per_request: max_images.clone().unwrap_or(
+                    crate::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST,
+                ),
                 tags: sa(p, "tags"),
                 sort_index: n(p, "sortIndex", 0.0),
                 total_tokens: n(p, "totalTokens", 0.0),
@@ -553,10 +563,13 @@ fn restore_on_writer(
             warn_only!(
                 w,
                 format!("Failed to restore connection profile \"{original}\""),
-                repo.create(
-                    &create,
-                    &copts!(id_of(p), crate::db::connection_profiles::CreateOptions)
-                ),
+                match &max_images {
+                    Err(zod) => Err(crate::db::DbError::Internal(zod.clone())),
+                    Ok(_) => repo.create(
+                        &create,
+                        &copts!(id_of(p), crate::db::connection_profiles::CreateOptions)
+                    ),
+                },
                 "Failed to restore connection profile",
                 profileId = id_of(p),
             );

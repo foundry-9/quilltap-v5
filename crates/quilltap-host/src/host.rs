@@ -2387,6 +2387,42 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                     "Set aside a shelf for the unadorned novel"
                 );
             }
+            // === P4.D362 (v4 544c7ab1e / db6190b44 / d439f6dc9 — the 22nd / 23rd D23 moves + the Anthropic strip) ===
+            // The `624d0d25c` round's three main-partition migrations, re-homed
+            // as ONE chain in v4's registration order (`index.ts:950-960`,
+            // after the unmarked pair): the STAMPED Anthropic sampling strip
+            // (it logs v4's own INFO / DEBUG / ERROR — §R.5's R-7 exception),
+            // then the two UNSTAMPED column moves. FATAL on failure. ONE v5 INFO
+            // per column step that changed anything; v4's column-migration
+            // lines and prettify labels are NO-PORT. P4.D363's FTS reindex is
+            // NOT in this chain — it runs before the FTS reconcile.
+            let ensures_412 = quilltap_core::db::schema_4_12_repair::run_4_12_ensures(
+                main,
+                &quilltap_core::clock::now_iso(),
+            )?;
+            if ensures_412.established_fact_added {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId =
+                        quilltap_core::db::chat_messages_established_fact_repair::MIGRATION_ID,
+                    columnAdded = true,
+                    "Made room in the transcript for established fact"
+                );
+            }
+            if let quilltap_core::db::connection_profiles_max_images_repair::MaxImagesEnsureOutcome::Added {
+                backfilled,
+            } = ensures_412.max_images
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId =
+                        quilltap_core::db::connection_profiles_max_images_repair::MIGRATION_ID,
+                    columnAdded = true,
+                    backfilled,
+                    "Set each connection profile's image allowance"
+                );
+            }
+            // === end P4.D362 ===
             // `TEMPLATE_SEED_AFTER_ENSURES` (P4.D341): v4 runs its migrations
             // (PHASE 1) BEFORE `seedInitialData` (PHASE 1.25), and at the pin
             // the built-in template seeder writes `unmarkedStyle` /

@@ -239,6 +239,21 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage instance (P4.D341)");
     // === end P4.D341 ===
+    // === P4.D362: mirror-boot ensures ===
+    // The `624d0d25c` round's ONE chain (`run_4_12_ensures` — the strip, the
+    // established-fact column, the profile image cap), exactly as the host runs
+    // it. The restore's profile create binds `maxImagesPerRequest` (measured
+    // red-first: four reds without this block). P4.D363 appends its block
+    // after this one.
+    db.write_blocking(|writers| {
+        quilltap_core::db::schema_4_12_repair::run_4_12_ensures(
+            writers.main().connection(),
+            &quilltap_core::clock::now_iso(),
+        )
+        .map(|_| ())
+    })
+    .expect("boot-align the vintage instance (P4.D362)");
+    // === end P4.D362 ===
     db
 }
 

@@ -47,8 +47,8 @@
 //! **Verified empirically against v4 that this is NOT what happens**: the read
 //! applies the ROW-schema union (coerce to a number, `=== 1`) → a real `boolean`,
 //! so `getMessages` KEEPS the message with `isSilentMessage: true`. So the port
-//! reads the column and reproduces that coercion in [`put_is_silent`] (numeric-TEXT
-//! `=== 1.0` → bool; `NULL` → the key is omitted as v4 `undefined`). Proven by a
+//! reads the column and reproduces that coercion in [`put_zero_one_flag`] (TEXT
+//! truthiness — see its doc for P4.D362's correction; `NULL` → the key is omitted as v4 `undefined`). Proven by a
 //! silent-message row in the read corpus. (See "Deferred seams #8" in
 //! `docs/developer/porting/phase-2-onramp.md`.)
 //!
@@ -90,7 +90,32 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
      estimatedCostUSD, createdAt, isSilentMessage, confirmed, confirmationChecked, \
      confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, routeTrail, \
-     storytellerBid";
+     storytellerBid, isEstablishedFact";
+
+// === P4.D362 (R-L1 — the tolerant message read) ===
+/// The 48th column (index 47), appended by P4.D362 (v4 `db6190b44`).
+const ESTABLISHED_FACT_COLUMN: &str = "isEstablishedFact";
+
+/// [`COLUMNS`], with the literal `NULL` standing in for `isEstablishedFact`
+/// when this `chat_messages` lacks it (a pre-round instance before its boot
+/// ensure, or any of the committed pre-column fixture pairs). v4 reads with
+/// `SELECT *`, so on such a table the key is simply absent — exactly what a
+/// NULL cell marshals to here. The `connection_profiles::cp_select_columns`
+/// idiom; every query builder in this module that selects [`COLUMNS`] goes
+/// through it.
+fn message_select_columns(conn: &Connection) -> Result<std::borrow::Cow<'static, str>, DbError> {
+    if super::schema_probe::column_exists(conn, "chat_messages", ESTABLISHED_FACT_COLUMN)? {
+        Ok(std::borrow::Cow::Borrowed(COLUMNS))
+    } else {
+        let head = COLUMNS
+            .strip_suffix(ESTABLISHED_FACT_COLUMN)
+            .expect("isEstablishedFact is the last selected column");
+        Ok(std::borrow::Cow::Owned(format!(
+            "{head}NULL AS {ESTABLISHED_FACT_COLUMN}"
+        )))
+    }
+}
+// === end P4.D362 ===
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -130,28 +155,34 @@ fn put_opt_json(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
     }
 }
 
-/// `isSilentMessage` — its ROW schema (`ChatMessageRowSchema`) is
+/// `isSilentMessage` / `isEstablishedFact` (P4.D362 generalised the codec by
+/// KEY — v4's `ChatMessageRowSchema` declares both as
 /// `z.union([z.boolean(), z.number().transform(v => v === 1)]).nullable().optional()`
-/// → TEXT affinity, so a stored boolean `true` is persisted as numeric TEXT
-/// (`"1.0"`). v4's read applies that union (coerce to a number, compare `=== 1`) →
-/// a `boolean`, which passes `MessageEventSchema`'s `z.boolean()` (so the message
-/// is KEPT, not dropped — verified empirically against v4). A `NULL` cell → the
-/// key is omitted (v4 `undefined`, dropped by `JSON.stringify`). A non-numeric
-/// stored value coerces to `NaN`, and `NaN === 1` is `false` (matching JS
-/// `Number()`).
-fn put_is_silent(obj: &mut Map<String, Value>, v: rusqlite::types::Value) {
+/// → TEXT affinity on a fresh instance, INTEGER on a migrated one).
+///
+/// v4's read is its SQLite backend's `hydrateRow` boolean arm
+/// (`backends/sqlite/backend.ts:445-453` — the key starts with `is`): `NULL` →
+/// `undefined` (the key is omitted here); a NUMBER → `value === 1`; ANYTHING
+/// ELSE → `Boolean(value)`. So a migrated INTEGER / REAL cell compares `== 1`,
+/// but a fresh-shape TEXT cell is TRUTHY whenever it is non-empty — v4's own
+/// write of `false` (`"0.0"`) reads back `true` there (measured P4.D362 at the
+/// pin through v4's REAL `addMessage` → `getMessages`, both flags; a v4 bug
+/// recorded for filing, ported faithfully — before P4.D362 this arm compared
+/// the TEXT numerically and answered `false`). A BLOB is a `Buffer`, truthy.
+fn put_zero_one_flag(obj: &mut Map<String, Value>, key: &str, v: rusqlite::types::Value) {
     use rusqlite::types::Value as SqlValue;
-    let is_one = match &v {
+    let flag = match &v {
         // NULL → the key is omitted (v4 `undefined`).
         SqlValue::Null => return,
         // The migration-affinity cell (INTEGER 1/0 on a real instance).
         SqlValue::Integer(i) => *i == 1,
         SqlValue::Real(f) => *f == 1.0,
-        // The fresh-DDL TEXT-affinity cell ("1.0"/"0.0").
-        SqlValue::Text(s) => s.trim().parse::<f64>().map(|n| n == 1.0).unwrap_or(false),
-        SqlValue::Blob(_) => false,
+        // The fresh-DDL TEXT-affinity cell ("1.0"/"0.0"): JS `Boolean(string)`.
+        SqlValue::Text(s) => !s.is_empty(),
+        // JS `Boolean(Buffer)`.
+        SqlValue::Blob(_) => true,
     };
-    obj.insert("isSilentMessage".to_string(), Value::Bool(is_one));
+    obj.insert(key.to_string(), Value::Bool(flag));
 }
 
 /// `attachments` (`z.array(UUIDSchema).default([])`, baked on write): parsed
@@ -240,7 +271,10 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut o, "pendingExternalPrompt", row.get(26)?);
     put_opt_string(&mut o, "pendingExternalPromptFull", row.get(27)?);
     put_opt_json(&mut o, "pendingExternalAttachments", row.get(28)?);
-    put_is_silent(&mut o, row.get(38)?);
+    put_zero_one_flag(&mut o, "isSilentMessage", row.get(38)?);
+    // P4.D362: IMMEDIATELY after `isSilentMessage` (v4's MessageEventSchema
+    // order); NULL (and a pre-column table's literal NULL) → absent.
+    put_zero_one_flag(&mut o, "isEstablishedFact", row.get(47)?);
     put_opt_bool(&mut o, "confirmed", row.get(39)?);
     put_opt_bool(&mut o, "confirmationChecked", row.get(40)?);
     put_opt_bool(&mut o, "confirmationRevised", row.get(41)?);
@@ -462,7 +496,10 @@ pub(crate) fn find_event_raw(
     chat_id: &str,
     message_id: &str,
 ) -> Result<Option<Value>, DbError> {
-    let sql = format!("SELECT {COLUMNS} FROM chat_messages WHERE id = ?1 AND chatId = ?2 LIMIT 1");
+    let sql = format!(
+        "SELECT {} FROM chat_messages WHERE id = ?1 AND chatId = ?2 LIMIT 1",
+        message_select_columns(conn)?
+    );
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query([message_id, chat_id])?;
     let Some(row) = rows.next()? else {
@@ -489,8 +526,10 @@ pub(crate) fn find_event_raw(
 /// convention turns it into `errors: [...]`), with zod 4.6.5's union collapse
 /// ([`crate::api::zod_issues::zod_chat_event_issues`]).
 pub fn get_messages_strict(conn: &Connection, chat_id: &str) -> Result<Vec<Value>, DbError> {
-    let sql =
-        format!("SELECT {COLUMNS} FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC");
+    let sql = format!(
+        "SELECT {} FROM chat_messages WHERE chatId = ?1 ORDER BY createdAt ASC",
+        message_select_columns(conn)?
+    );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([chat_id], read_row)?;
     let mut out = Vec::new();
@@ -612,8 +651,15 @@ mod tests {
             .filter(|c| c != "chatId")
             .collect();
         let mut selected: Vec<String> = COLUMNS.split(',').map(|c| c.trim().to_string()).collect();
-        assert_eq!(selected.len(), 47, "46 + `storytellerBid` (P4.D341)");
-        assert_eq!(selected.last().map(String::as_str), Some("storytellerBid"));
+        assert_eq!(
+            selected.len(),
+            48,
+            "46 + `storytellerBid` (P4.D341) + `isEstablishedFact` (P4.D362)"
+        );
+        assert_eq!(
+            selected.last().map(String::as_str),
+            Some("isEstablishedFact")
+        );
         declared.sort();
         selected.sort();
         assert_eq!(selected, declared);
@@ -712,6 +758,106 @@ mod tests {
         // NULL → the key is omitted (v4 `undefined`).
         assert!(msgs[2].get("isSilentMessage").is_none());
     }
+
+    // === P4.D362 ===
+    /// `isEstablishedFact` is emitted IMMEDIATELY after `isSilentMessage` and
+    /// before `confirmed`, through the same codec, both storage classes; NULL →
+    /// absent.
+    #[test]
+    fn established_fact_is_emitted_right_after_is_silent_message() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
+        crate::test_support::ensure_4_12_columns_on(&conn);
+        let insert = |id: &str, fact: rusqlite::types::Value, at: &str| {
+            conn.execute(
+                "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
+                 isSilentMessage, isEstablishedFact, confirmed) \
+                 VALUES (?1, 'c1', 'message', 'USER', 'hi', ?2, 0, ?3, 1)",
+                rusqlite::params![id, at, fact],
+            )
+            .unwrap();
+        };
+        use rusqlite::types::Value as V;
+        insert(M1, V::Integer(1), "2026-11-05T00:00:01.000Z");
+        insert(M2, V::Text("0.0".into()), "2026-11-05T00:00:02.000Z");
+        insert(M3, V::Null, "2026-11-05T00:00:03.000Z");
+        let msgs = get_messages(&conn, "c1").unwrap();
+        let keys: Vec<&str> = msgs[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
+        assert_eq!(
+            at("isEstablishedFact"),
+            at("isSilentMessage") + 1,
+            "{keys:?}"
+        );
+        assert_eq!(at("confirmed"), at("isEstablishedFact") + 1, "{keys:?}");
+        assert_eq!(msgs[0]["isEstablishedFact"], Value::Bool(true));
+        // INTEGER affinity converts the planted '0.0' to INTEGER 0 → false.
+        assert_eq!(msgs[1]["isEstablishedFact"], Value::Bool(false));
+        assert!(msgs[2].get("isEstablishedFact").is_none());
+
+        // The FRESH (TEXT-affinity) shape: v4 `Boolean('0.0')` is TRUE — see
+        // `put_zero_one_flag` (measured through v4's REAL addMessage →
+        // getMessages, both flags, P4.D362).
+        let fresh = Connection::open_in_memory().unwrap();
+        fresh
+            .execute_batch(
+                &MIGRATED_DDL
+                    .replace("isSilentMessage INTEGER", "isSilentMessage TEXT")
+                    .replace(
+                        "confirmationOriginalContent TEXT, storytellerBid TEXT);",
+                        "confirmationOriginalContent TEXT, storytellerBid TEXT, isEstablishedFact TEXT);",
+                    ),
+            )
+            .unwrap();
+        crate::test_support::ensure_p4d171_columns(&fresh);
+        for (id, cell, silent) in [(M1, "1.0", "0.0"), (M2, "0.0", "1.0")] {
+            fresh
+                .execute(
+                    "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, \
+                     isSilentMessage, isEstablishedFact) VALUES (?1, 'c1', 'message', 'USER', 'hi', \
+                     '2026-11-05T00:00:01.000Z', ?3, ?2)",
+                    rusqlite::params![id, cell, silent],
+                )
+                .unwrap();
+        }
+        let msgs = get_messages(&fresh, "c1").unwrap();
+        for m in &msgs {
+            assert_eq!(m["isEstablishedFact"], Value::Bool(true), "{m}");
+            assert_eq!(m["isSilentMessage"], Value::Bool(true), "{m}");
+        }
+    }
+
+    /// R-L1: on a pre-column table the SELECT substitutes the literal NULL, so
+    /// the read still works and the key is absent (v4's `SELECT *`).
+    #[test]
+    fn a_pre_column_table_reads_with_the_key_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
+        assert!(!super::super::schema_probe::column_exists(
+            &conn,
+            "chat_messages",
+            "isEstablishedFact"
+        )
+        .unwrap());
+        conn.execute(
+            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
+             VALUES (?1, 'c1', 'message', 'USER', 'hi', '2026-11-05T00:00:01.000Z')",
+            [M1],
+        )
+        .unwrap();
+        let msgs = get_messages(&conn, "c1").unwrap();
+        assert_eq!(msgs.len(), 1);
+        assert!(msgs[0].get("isEstablishedFact").is_none());
+        assert!(find_event_raw(&conn, "c1", M1).unwrap().is_some());
+    }
+    // === end P4.D362 ===
 
     #[test]
     fn is_silent_still_reads_fresh_ddl_text_cells() {

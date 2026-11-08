@@ -238,6 +238,28 @@ mod tests {
             after("character", "canDrawDiagrams"),
             ("canChooseOutfit".into(), "diagramStyle".into())
         );
+        // === P4.D362 (the `624d0d25c` re-dump): the 22nd / 23rd moves + the
+        // two fresh-only keys, at their schema slots ===
+        assert_eq!(
+            after("chat_message", "isEstablishedFact"),
+            ("isSilentMessage".into(), "systemSender".into())
+        );
+        assert_eq!(
+            after("connection_profile", "maxImagesPerRequest"),
+            ("supportsImageUpload".into(), "tags".into())
+        );
+        assert_eq!(
+            after("character", "kind"),
+            ("diagramStyle".into(), "systemTransparency".into())
+        );
+        assert_eq!(
+            after("project", "brahmaConnectionProfileId"),
+            (
+                "answerConfirmationOverride".into(),
+                "storyBackgroundsEnabled".into()
+            )
+        );
+        // === end P4.D362 ===
     }
 
     #[test]
@@ -258,8 +280,9 @@ mod tests {
             "and precedes canChooseOutfit"
         );
         // P4.D341: 47 → 49 (`6588972d5`'s two diagram keys — P4.D349's to
-        // write; the dump carries them, R-14).
-        assert_eq!(t.len(), 49);
+        // write; the dump carries them, R-14). P4.D362: 49 → 50 (`kind`,
+        // v4 `b09ca46bb` — P4.D369's to write; the dump carries it).
+        assert_eq!(t.len(), 50);
     }
 
     #[test]

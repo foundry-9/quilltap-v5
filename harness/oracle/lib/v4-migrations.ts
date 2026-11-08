@@ -352,6 +352,70 @@ export async function plantKeystoneColumns(
 }
 // === end P4.D341 ===
 
+// === P4.D362 (v4 544c7ab1e / db6190b44 / d439f6dc9 — the 22nd / 23rd D23 moves + the Anthropic strip) ===
+/**
+ * P4.D362 — the three `624d0d25c` migrations v5's
+ * `db::schema_4_12_repair::run_4_12_ensures` re-homes, in v4's registration
+ * order (`migrations/scripts/index.ts:950-960`, after the unmarked pair):
+ * the STAMPED Anthropic sampling strip, then the two UNSTAMPED column moves.
+ * The FTS character-only reindex v4 registers between the strip and the
+ * established-fact column is P4.D363's — EXCLUDED here; P4.D363 appends its own
+ * block after this one.
+ */
+export const PIN_624_MIGRATIONS: V4MigrationRef[] = [
+  {
+    file: 'migrations/scripts/strip-anthropic-sampling-parameters-v1.ts',
+    exportName: 'stripAnthropicSamplingParametersMigration',
+  },
+  { file: 'migrations/scripts/add-established-fact-field-v1.ts', exportName: 'addEstablishedFactFieldMigration' },
+  {
+    file: 'migrations/scripts/add-profile-max-images-per-request-v1.ts',
+    exportName: 'addProfileMaxImagesPerRequestMigration',
+  },
+];
+
+/**
+ * P4.D362 — the round's per-case fixture plant (R-L1): the two COLUMN
+ * migrations of {@link PIN_624_MIGRATIONS} (NOT the strip — a plant is not a
+ * boot) through {@link runV4Migrations}' direct arm, no ledger rows, onto a
+ * PER-RUN copy of a pre-round main file (never a committed pair). Needed
+ * wherever a case WRITES a connection profile on a pre-column pair (v4's
+ * `_create` always names `maxImagesPerRequest` — Zod's default 4 — so v4
+ * itself fails `no column named maxImagesPerRequest` otherwise) or plants an
+ * established-fact message. Close every connection on the file first.
+ * Idempotent (each `shouldRun` is structural) and self-checking: it throws
+ * unless each present table carries its column afterwards. The v5 side's twin
+ * is `test_support::ensure_4_12_columns_on`.
+ */
+export async function plant412Columns(mainPath: string, pepperBase64: string): Promise<string[]> {
+  const report = await runV4Migrations({
+    dbPath: mainPath,
+    pepperBase64,
+    migrations: PIN_624_MIGRATIONS.filter((m) => m.exportName !== 'stripAnthropicSamplingParametersMigration'),
+  });
+  const Database = createRequire(process.cwd() + '/')('better-sqlite3');
+  const db = new Database(mainPath, { readonly: true });
+  try {
+    db.pragma(`key = "x'${keyHex(pepperBase64)}'"`);
+    const hasTable = (t: string) =>
+      !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(t);
+    const cols = (t: string) =>
+      (db.prepare(`PRAGMA table_info("${t}")`).all() as Array<{ name: string }>).map((c) => c.name);
+    for (const [t, c] of [
+      ['chat_messages', 'isEstablishedFact'],
+      ['connection_profiles', 'maxImagesPerRequest'],
+    ]) {
+      if (hasTable(t) && !cols(t).includes(c)) {
+        throw new Error(`plant412Columns: ${t}.${c} is absent after the plant (${mainPath})`);
+      }
+    }
+  } finally {
+    db.close();
+  }
+  return report;
+}
+// === end P4.D362 ===
+
 const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR', 'SQLITE_LLM_LOGS_PATH'] as const;
 
 function keyHex(pepperBase64: string): string {

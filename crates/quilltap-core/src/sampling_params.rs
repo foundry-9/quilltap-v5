@@ -75,6 +75,37 @@ pub fn resolve_sampling_params(params: Option<&Value>) -> SamplingParams {
     }
 }
 
+// === P4.D362 (v4 `544c7ab1e`, `lib/llm/sampling-params.ts:71-92`) ===
+
+/// v4 `SAMPLING_PARAMETER_KEYS`: every key under which a profile's
+/// `parameters` blob may carry a sampling knob that some providers refuse
+/// outright — the editor's snake_case keys plus the camelCase spellings
+/// `read_number` tolerates, and `top_k`, which no editor writes but an imported
+/// or hand-edited profile might. The ORDER is v4's and is the order `removed`
+/// reports in.
+pub const SAMPLING_PARAMETER_KEYS: [&str; 5] = ["temperature", "top_p", "topP", "top_k", "topK"];
+
+/// v4 `withoutSamplingParameters(params)`: a COPY of a profile's `parameters`
+/// blob with every sampling key removed (shallow — a nested provider-options
+/// object keeps its own keys), for a provider that declares
+/// `capabilities.samplingParameters: false`. `max_tokens` and provider options
+/// are kept, in their original order. `removed` lists the keys that were
+/// actually present, in [`SAMPLING_PARAMETER_KEYS`] order (v4's `key in
+/// parameters` — a key whose value is `null` IS present and IS removed).
+pub fn without_sampling_parameters(
+    params: &serde_json::Map<String, Value>,
+) -> (serde_json::Map<String, Value>, Vec<&'static str>) {
+    let mut parameters = params.clone();
+    let mut removed = Vec::new();
+    for key in SAMPLING_PARAMETER_KEYS {
+        if parameters.shift_remove(key).is_some() {
+            removed.push(key);
+        }
+    }
+    (parameters, removed)
+}
+// === end P4.D362 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;

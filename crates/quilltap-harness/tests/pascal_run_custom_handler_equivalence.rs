@@ -305,6 +305,8 @@ fn insert_consult_profile(main: &std::path::Path, pepper: &str, user_id: &str) {
                 max_tokens: None,
                 is_dangerous_compatible: false,
                 supports_image_upload: false,
+                max_images_per_request:
+                    quilltap_core::services::connection_profiles::DEFAULT_MAX_IMAGES_PER_REQUEST,
                 tags: Vec::new(),
                 sort_index: 0.0,
                 total_tokens: 0.0,
