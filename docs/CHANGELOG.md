@@ -24,6 +24,12 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — docs(porting): P4.D362 Status — SCHEMA landed as 4e3a1584e, C2 final spellings
+
+_Docs-only change._
+
+The order's Status records the `SCHEMA` sha and the C2 names as landed (the new `services/connection_profiles.rs`, the chain's append point, the oracle plant signature, and the measured `'0.0'` → true read rule).
+
 #### 2026-11-08 — SCHEMA: the 624d0d25c D23 re-dump (moves 22 / 23 + kind / brahma fresh-only), the Anthropic sampling strip and two column ensures as one chain, the column plumbing, the export dumps (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._
