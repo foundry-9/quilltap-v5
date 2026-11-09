@@ -45,7 +45,7 @@ import {
  *      `wardrobe` topic).
  */
 // ACTIVATE-AT-UNIFY: P4.D377's duplicate verb + the wardrobe topic (C12)
-const P4D377_SERVER_LANDED = false;
+const P4D377_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D377 — the `wardrobeItemDuplicate` verb and the `wardrobe` topic published from every wardrobe location write (C12), wired at unification';
 

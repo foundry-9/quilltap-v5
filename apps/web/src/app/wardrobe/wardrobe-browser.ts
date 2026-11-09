@@ -11,6 +11,8 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
+import { refreshUnlessRealtime } from '../item-browser/refresh-unless-realtime';
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import {
   BrowserTogglesAfter,
@@ -233,6 +235,7 @@ export interface WardrobeRowWearControls {
 export class WardrobeBrowser {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
+  private readonly realtime = inject(RealtimeService);
 
   readonly container = input.required<WardrobeContainer | null>();
   readonly data = input.required<WardrobeListData>();
@@ -349,13 +352,17 @@ export class WardrobeBrowser {
     searching: computed(() => this.titleFilter().trim().length > 0),
   });
 
-  /** v4 `:206-230` — the wardrobe's folder wording; each write ends in `refreshLists()` (R-J). */
+  /** v4 `:206-230` — the wardrobe's folder wording; each write ends in `refreshLists()` unless realtime is up (R-J, H-U1). */
   protected readonly folderHandlers = createItemFolderHandlers<WardrobeItemDto>({
     state: this.state,
     ops: () => {
       const container = this.container();
       if (!container) return null;
-      const settled = <T>(p: Promise<T>): Promise<T> => p.finally(() => void this.actions().refreshLists());
+      // v4 `600c2906f` (`use-item-folders.ts` `onSettled: refreshUnlessRealtime`):
+      // the server publishes from every wardrobe folder write, so while the
+      // socket is up that publish does the re-read.
+      const settled = <T>(p: Promise<T>): Promise<T> =>
+        p.finally(() => void refreshUnlessRealtime(this.realtime, [() => this.actions().refreshLists()]));
       const ops: ItemFolderOps = {
         create: (path) => settled(createWardrobeFolder(this.core, container, path)),
         rename: (path, name) => settled(renameWardrobeFolder(this.core, container, path, name)),

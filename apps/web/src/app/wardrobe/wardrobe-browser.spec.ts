@@ -3,6 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
+import { RealtimeService } from '../core/realtime.service';
 import type { CoreRequest, WardrobeItemDto } from '../core/core-contract';
 import { ToastService } from '../ui/toast.service';
 import { WardrobeBrowser } from './wardrobe-browser';
@@ -32,6 +33,9 @@ import type { PronounGuidanceFilter } from './pronoun-guidance-filter';
  * ungated twin pinning the browser's own half today.
  */
 const P4D286_ROW_LANDED = true;
+
+/** The realtime socket's state for the browser's `refreshUnlessRealtime` (P4.D386 H-U1). */
+const socketUp = signal(false);
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -163,7 +167,10 @@ async function renderBrowser(
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [BrowserHost],
-    providers: [{ provide: CoreClient, useValue: core }],
+    providers: [
+      { provide: CoreClient, useValue: core },
+      { provide: RealtimeService, useValue: { connected: socketUp, onTopic: () => undefined } },
+    ],
   });
   const toasts = TestBed.inject(ToastService);
   const showSuccess = vi.spyOn(toasts, 'showSuccess').mockImplementation(() => '');
@@ -743,6 +750,46 @@ describe('WardrobeBrowser — filing (v4 `WardrobeBrowser.tsx:249-381`)', () => 
       'Wardrobe',
       'Project: Blackwood',
     ]);
+  });
+
+  // ---- v4 `use-item-folders.test.tsx` (600c2906f), the wardrobe kind (P4.D386 H-U1) ----
+
+  async function makeFolderGala(): Promise<{ seen: AnyRequest[]; reloadLists: ReturnType<typeof vi.fn> }> {
+    const { el, fixture, seen, reloadLists } = await renderBrowser(
+      characterContainer,
+      makeData([COAT], ownOnly),
+      {
+        route: (req) =>
+          req['type'] === 'wardrobeFolderCreate'
+            ? { folder: { path: 'Gala', name: 'Gala', itemCount: 0 } }
+            : { folders: TREE },
+      },
+    );
+    buttonNamed(el, 'New folder')!.click();
+    await settle(fixture);
+    const input = el.querySelector<HTMLInputElement>('input[aria-label="New folder name"]')!;
+    type(input, 'Gala');
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    await settle(fixture);
+    return { seen, reloadLists };
+  }
+
+  it('creates a folder and leaves the refresh to the realtime publish while the socket is up', async () => {
+    socketUp.set(true);
+    try {
+      const { seen, reloadLists } = await makeFolderGala();
+      expect(seen.some((r) => r['type'] === 'wardrobeFolderCreate')).toBe(true);
+      expect(reloadLists).not.toHaveBeenCalled();
+    } finally {
+      socketUp.set(false);
+    }
+  });
+
+  it('refreshes the kind\'s lists and folders itself while the socket is down', async () => {
+    socketUp.set(false);
+    const { seen, reloadLists } = await makeFolderGala();
+    expect(seen.some((r) => r['type'] === 'wardrobeFolderCreate')).toBe(true);
+    expect(reloadLists).toHaveBeenCalled();
   });
 });
 
