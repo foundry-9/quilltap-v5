@@ -251,6 +251,12 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — docs(porting): P4.D372 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+Adds the P4.D372 lane record to `status-log.md` and marks the order `LANE COMPLETE`. The record covers red-first per family, the mutation proofs, the measured survey corrections (including the NaN-floor reversal and the compression-window family), the named divergences, the H1–H7 handoffs and the gate.
+
 #### 2026-11-09 — test: the get_messages census and the submission-ledger DEBUG parse follow P4.D372 (P4.D372 gate)
 
 _No crate versions bumped._

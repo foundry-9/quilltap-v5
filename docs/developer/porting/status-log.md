@@ -199699,3 +199699,221 @@ As the order lists: the Wizard's system prompt on an existing assistant characte
 ### Versions at close
 
 core 0.0.1435 (no other crate bumped; harness frozen 0.0.1110).
+
+## P4.D372 — Deus Ex Machina (established facts), server — LANE COMPLETE (2026-11-09)
+
+Branch `claude/p4-d372-deus-38a4f9`, a worktree the app created at `SCHEMA` `4e3a1584e` (P4.D362's Tier-1 commit). The session started on that branch at that sha with no commits of its own, so it did not move, and no `SCHEMA` amendment was cherry-picked. It is not a stacking root. Pin `/tmp/qt-v4-pin-p4.d372-624d0d25c` (HEAD `624d0d25c6cb…`, `4.13.0-dev.8`). Its `npm ci --offline` succeeded on the first try: better-sqlite3 13.0.3, zod 4.6.7, openai 7.47.0. The plugin/CLI floor install reported driver 13.0.3 / SQLite 3.53.4 / chacha20, anthropic 1.4.0 and genai 2.32.0.
+
+### §R.2 probe (an observation)
+
+**v4 moved:** `88c9cc81d` was observed at 2026-11-08 23:42 CST, 31 commits past the pin (4.12.2 released and merged back, Turns mode, Salon line edit, Green Room carried items, the wardrobe image-prompt optimizer, the folder-move fix). `bugfix` sits at `d67c70a51`. The tree was clean on `main`. Nothing past the pin was ported.
+
+### Commits (thirteen + this record), in order
+
+| sha | unit |
+|---|---|
+| `fa14df5ce` | items 2 + 3: `established_fact.rs`, `established_fact_equivalence`, the name-leak guard |
+| `a592bece6` | item 20: `CandidatePass::EstablishedFact` |
+| `b1d27b398` | item 9: `speaker_label` widened to `SpeakerRow` (R2) |
+| `3c8e315c3` | items 4, 5, 12: the context frame pass + mwp mark, the attribution exemptions, the in-scene rehearsal |
+| `4ba8dcb6d` | item 7: `to_visible_conversation_message` + ONE `RawMessage::from_event` (R-L1) |
+| `7f50db549` | items 8, 10: the fold, `FOLD_SUMMARY_PROMPT` (R-L4), the extraction stretch + the turn transcript |
+| `2c6e8bed1` | item 11: the Courier delta |
+| `3dc9fec43` | item 6: the since-you-last-spoke reminder |
+| `3f285dc57` | items 13, 14, 27, 28: the send flag and its refines, the operator post, the framed posting turn |
+| `9342df04c` | items 16–19, 26: the announcement's fact sender, `post_established_fact`, the job and its handler |
+| `195d15b55` | item 21: the projection (R4) |
+| `2b635d353` | item 15: `build_context_tier3`'s `deus_*` rows + `QT_BC_COMPARE_ONLY` |
+| `21eb90426` | gate: the census + the submission-ledger parse |
+| (this record) | docs |
+
+### Red-first, per family
+
+**New families (mutation runs):**
+- `established_fact_equivalence` (250 rows; the 90-row field grid). Four mutants flip a named row:
+  - strip tests only the SEAT opener → 47 diverge, `frame` re-frame first;
+  - a non-bool flag counts as a seat line → 70, `predicates seatLine`;
+  - `!systemSender` read as `None` only (the empty sender) → 21;
+  - no `opaqueContent` on a machine fact → 12, `frameAll`.
+
+  **Mutant that stayed green:** testing the announcement AFTER the seat. It is an EQUIVALENT mutant, and no row can be added: an announcement needs `systemSender: 'host'` and a seat line needs no sender, so the two predicates are mutually exclusive and the order is unobservable.
+- `established_fact_reminder_equivalence` (28 rows). Five mutants each flip a named row:
+  - the cap in bytes → `cap: multi-byte CJK…`;
+  - the cap dropping the newest → `one unit over…`;
+  - `<` for `<=` → `equal-ms fact…`;
+  - a NaN parse kept under a floor → `unparseable joinedAt…`;
+  - the loader called eagerly → `loaderCalls` (21 rows).
+- `established_fact_memories_tier3_equivalence` (8 cases): the removed-seat filter dropped → `cast_admits`; the user-controlled filter dropped → `cast_admits`.
+- `send_message_schema_equivalence` (288 rows): Rust `trim` for `js_trim` → 40 diverge, U+FEFF first.
+- `deus_ex_machina_name_leak_guard`: a planted `const … = "Deus Ex Machina"` → red, naming the file:line; plus its own self-test.
+
+**Grown families (regenerated from the pin, Rust UNCHANGED). Each was red by name:**
+- `memory_candidate` — `established-fact pass` (v5's 8-value refusal);
+- `speaker_names` — label 12, `Character` vs `Established fact`;
+- `message_attribution` — `deus-pre-join-fact-kept`;
+- `in_scene_voiced_tier3` — `deus_service_facts_nohist_result` / `_prompt`;
+- `chat_tasks` — `deus-seat-line`;
+- `turn_history` — `window_start/deus|4` (v4 1, v5 0);
+- `context_summary` — `deus-machine-fact-mid-turn`;
+- `context_summary_service_tier3` — on the canned fold key;
+- `turn_transcript` — `deus_fact_opener` (3 diverge);
+- `courier_transport_tier3` — `delta_send_whisper_filter_and_boundary` (frames assert set aside);
+- `post_office_routes` — case coverage, the six `announcement_fact*` rows;
+- the job lists:
+  - `system_jobs_collection` — `jobs_collection_post_bad_type`;
+  - `activity_tables` — `job_type_activity`;
+  - `realtime_topics` — `completed_full_ESTABLISHED_FACT_MEMORIES`;
+- `transcript_route` — `deus_fact_rows_project_the_flag`;
+- `build_context_tier3` — the reminder-unwired and history-mark mutants redden `deus_pre_join_fact_and_reminder`;
+- `dispatch_wrong_type_census` — `ChatSend.is_established_fact` unclassified.
+
+**Unmoved:** `system_jobs_routes` and `background_jobs_tier2` don't carry the type list. `core_whisper` was green after the `WhisperEvent` widening.
+
+### The five survey corrections, measured
+
+1. **The compression-window count.** It moves ONLY for a tool-markup-only machine fact. At `deus|4`, v4's window start is index 1 and unported v5's is 0. Every other row is unmoved. **Family-name correction:** `verbatimWindowStart` lives in `turn_history_equivalence` (`cases/turn-history.ts`), not `context_compression`. That is where the rows went. The compression SUMMARY's input is `extract_visible_conversation`, pinned by `chat_tasks`.
+2. **The candidate's targeting keys** are `{temporal: 'present', scope: 'wide', context: 'information'}`, as the order says (verbatim in `established_fact_candidate`).
+3. **The four region corrections:**
+   - `WhisperMessage` + `from_value` (`message_context.rs`);
+   - `MessageWithParticipant` + `ExistingMessage` (`build_context.rs`);
+   - `orchestrator.rs:2474` (`RawMessage`);
+   - `spine.rs`'s mapping.
+
+   All are fenced and additive.
+
+   **Further fenced compile-only spills outside the named regions:**
+   - `orchestrator.rs`'s two DISCARDED placeholders (`multi_character_fields`' `mwp` field and its responder);
+   - `orchestrator.rs`'s real `RespondingParticipant` construction (`created_at` / `has_history_access` — v4's `respondingParticipant` is the full row, read by the reminder in single- AND multi-character chats);
+   - `services/recall_replay.rs` (`PartitionInputMessage::from_event` — v4's replay passes raw rows, so a machine fact starts a turn there too). **HANDOFF to P4.D373, which owns `recall_replay_equivalence`.** No corpus row holds a fact; expected unmoved.
+4. **The order's NaN-floor prose is wrong.** "A NaN floor drops every fact" is false: v4's `ms <= NaN` is false, so a NaN floor KEEPS every parseable fact. Only an unparseable fact is dropped (`unparseable joinedAt → NaN floor`, `selected=1`).
+5. **`ExistingMessage` on the production path** is measured `None` on both sides. v4's `buildContext` receives `existingMessages: conversationMessages` (`context-builder.service.ts:1193`): role and content only, the fact already framed. So neither estimator sees the flag.
+
+### Other measurements
+
+- **R-L1, the `RawMessage` site count:** 5 production literals before, 2 after (`from_event`'s own + the typed `ExistingMessage` arm). Pinned by `raw_message_sites_census`.
+- **R-L4, the extractor:** its allow-list is `['ESTABLISHED_FACT_TRANSCRIPT_RULE']` (literal-only tokenizer). Self-checks:
+  - `236c04e35`'s `chat-tasks.ts` reproduces the PRE file byte for byte;
+  - at the pin, only `FOLD_SUMMARY_PROMPT` moves, by the rule plus one space;
+  - a non-allow-listed name and a non-literal right-hand side both throw.
+- **`speaker_label`'s callers:**
+  - the fold (`turns_to_chat_messages`) and the stretch window pass the FULL row (`SpeakerRow::from_value`);
+  - the referent ledger passes `system_sender: None, system_kind: None` (v4 `turn-trailing.ts:160`; unit-pinned);
+  - P4.D374's two lookups are H3.
+- **`final_user_message` on the posting row** (from the v4 oracle): `[Operator] (Established fact: what follows is true in this story and known to everyone; it needs no verification.)\n\nThe bridge to Ashford collapsed in the night.`. v5's full-miss dump is byte-equal in the framed body, the reminder and the closing echo.
+- **The DEBUG key's move on `orchestrator_tier3`.** The `isEstablishedFact` field rides every `[OperatorPost] User message persisted` capture: v4's `!!params.isEstablishedFact`, v5's `isEstablishedFact = <bool>`. It moves every row that posts. The family cannot be counted green on this branch (see the reds below), so the count is the unifier's on the union. The INFO joined the spine capture set (10 → 11 tags).
+- **The announcement rows:**
+  - in `V4_CREATED_CASES`: `announcement_fact`, `announcement_fact_null_targets_ok`, `announcement_fact_extra_key`;
+  - in `VALIDATION_DETAILS_GAP`: `announcement_fact_empty_array_refused`, `announcement_fact_with_uuid_targets_refused`;
+  - `announcement_fact_whitespace` → v4's 400 sentence.
+- **R-L5's serde behaviour, measured:** BOTH an empty-struct and a unit variant ignore `{"kind":"fact","extra":1}` under the internally-tagged decode. The struct form is kept (unit test `fact_sender_serde_tests`).
+- **The four job lists' insertion lines:**
+  - `job_runner.rs` `KNOWN_JOB_TYPES` (the line after `CARINA_MEMORY_EXTRACTION`, v4's 24 at the pin);
+  - `api/system_data.rs` `JOB_TYPES`;
+  - `activity_kinds.rs` `JOB_TYPE_ACTIVITY`;
+  - `realtime/job_topics.rs`'s `memories` arm.
+
+  `the_four_job_lists_agree_on_the_insertion_point` pins them.
+- **The handler's per-seat outcomes on the corpus:**
+
+  | case | outcome |
+  |---|---|
+  | `cast_admits` | 4 seats; admitted 3 (active, absent, silent: `insert`); notAdmitted 1 (missing character) |
+  | `repeat_post_dedups` | admitted 3 (`absorb`), notAdmitted 1 |
+  | `missing_chat` / `missing_message` / `not_a_fact_row` | the WARN |
+  | `whitespace_fact` | silent |
+  | `project_chat` | `insert`, `projectId` carried |
+  | `archived_seat` | notAdmitted 1 |
+
+  A characterless seat is UNREACHABLE: v4's chat schema requires a `characterId` (`chat.types.ts:818-859`). It is recorded in the corpus and not planted.
+- **Every `CandidatePass` match arm:** only `memory_candidate.rs`'s `CANDIDATE_PASS_VALUES` / enum / `as_str` / `from_wire` match it exhaustively. No pass-keyed admission rule exists (v4 has none for `'established-fact'` either — grep at the pin). Nothing else changes.
+
+### Named divergences
+
+- **`SEND_REFINE_ISSUE_LIST`** (R3). v4 renders every Zod issue (35 multi-issue rows on the grid); v5's one 400 message is v4's FIRST. Pinned both ways in `send_message_schema_equivalence`. It retires if a later order renders Zod issue bodies at the dispatch edge.
+- **`V4_CREATED_CASES`** grows by three (Tier 3 item 26).
+- **The wrong-type `isEstablishedFact`** (item 28) is classified in `dispatch_wrong_type_census` (`V4::BodyParse`), not fixed.
+
+### HANDOFFs
+
+| id | to | the item | how it is measured |
+|---|---|---|---|
+| H1 | P4.D385 → P4.D384 (C4) | `send` gains `{establishedFact?: true}` → `chatSend.isEstablishedFact` | the gated SPA beat against `Request::ChatSend.is_established_fact` (LAST field, `#[serde(default)]`) |
+| H2 | P4.D385 / P4.D384 | `RaisedHandStatus` in `chat/raised-hand.ts` | not this lane's (C4 record) |
+| H3 | the unifier, P4.D374 | `speaker_label(&SpeakerRow { participant_id, role, system_sender: None, system_kind: None }, …)` at `brahma-lookup-handler.ts:446`; `speaker_label(&SpeakerRow::from_value(row), …)` at `:538` | the union compiles |
+| H4 | the unifier (§S.5) | the extraction prompt bytes are P4.D373's | see below |
+| H5 | P4.D383 | CSS + `[data-icon="deus-ex-machina"]` | not this lane's |
+| H6 | P4.D382 | `docs/developer/features/deus-ex-machina.md` + help | not this lane's |
+| H7 (new) | P4.D373 | `services/recall_replay.rs`'s fenced `PartitionInputMessage::from_event` conversion | `recall_replay_equivalence` unmoved on the union |
+
+**H4 in detail:**
+- **Already measured:** `context_summary_service_tier3_equivalence` is GREEN with P4.D373's `624d0d25c` `prompt_text.rs` overlaid (measured here; `STORED_BYTE_DIVERGENCES` 4 → 6 on that shape). On this branch alone it stops at the memories rows.
+- **To re-run on the union:** `memory_tasks_equivalence`, `memory_pipeline_jobs_tier3_equivalence`, `fold_episode_tier3_equivalence` and `fold_other_pass_tier3_equivalence`. Then un-ignore `established_fact::union_leak_tests::the_extraction_prompts_carry_the_transcript_rule`.
+
+### Leak guard
+
+- **Literal scan:** 1,153 `.rs` files / ~100,350 string literals, 0 hits, allow-list EMPTY.
+- **Behavioural walk:**
+  - `established_fact::leak_tests` (constants, the frame pass);
+  - `leak_tests_read_paths` (visible conversation, the fold + `FOLD_SUMMARY_PROMPT`, the stretch, the turn transcript);
+  - `message_context::established_fact_pass` (normalise + conversation, both voices);
+  - the in-scene and Courier unit tests.
+- **`union_leak_tests`:** `the_extraction_prompts_carry_the_transcript_rule` (ignored: `union: P4.D373 prompt_text.rs`).
+
+### Reds recorded for their owners
+
+- **`orchestrator_tier3_equivalence`** — every call misses its canned stream on this branch. The system prompt carries:
+  - P4.D373's `GROUP_SCENE_DISCIPLINE` rewrite and anchor wording;
+  - P4.D370's tool rule ("A tool call is something you do…");
+  - P4.D375's window-first search rule;
+  - plus a recall "gist" section v5 emits on `rng_no_fire` too, a call this lane never touches.
+
+  The `deus_*` rows are union-measured.
+- **`build_context_tier3_equivalence`** — full-compare red first at `retrospective_recall_turn` (sibling recall drift: P4.D373 / P4.D375). The `deus_*` rows are green via `QT_BC_COMPARE_ONLY`.
+- **`courier_transport_tier3_equivalence`** — the event trace is in P4.D366's kind-tagged frame dialect at the pin.
+- **`realtime_topics_equivalence`** — `realtime_topics_list` lacks `wardrobe` (P4.D377, C12).
+- **`context_summary_service_tier3_equivalence`** — H4, above.
+
+### Gate
+
+- **fmt, and clippy (plain and `--features quilltap-core/native-transport`):** clean, after `apps/web` `npm ci` + `npm run build` for the dist.
+- **`cargo test --workspace --no-fail-fast`** with the lane env block (`/tmp/p4d372/env.sh`; `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **909 binaries / 6,077 passed / 12 failed / 4 ignored.**
+  - **Three of the twelve were THIS lane's and are fixed in `21eb90426`:**
+    - `get_messages_caller_census`, the three new fallback sites (86 / 7, 53 files);
+    - two `chat_send_submission_ledger` DEBUG parsers, now handling the new third key.
+  - **The other nine, by owner:**
+    - standing at `SCHEMA`: `spelling_guard` (a survey doc, fixed on main), `builtin_prompt_templates_guard` (`the_vendored_catalogue_equals_v4s_shipped_prompts`, P4.D373), `cli_differential` (P4.D365);
+    - `provider_sdk_version_guard` (P4.D364);
+    - `realtime_topics` (P4.D377 `wardrobe`);
+    - the four union / sibling families above: `orchestrator_tier3`, `build_context_tier3`, `courier_transport_tier3`, `context_summary_service_tier3`.
+- **By name, with `--nocapture` and `TZ=UTC`:** every family this lane authored or grew is green with ZERO SKIP:
+  - `established_fact` / `_reminder` / `_memories_tier3`, `send_message_schema`, the leak guard;
+  - `message_attribution`, `chat_tasks`, `turn_history`, `context_summary`, `speaker_names`, `turn_transcript`, `in_scene_voiced_tier3`;
+  - `post_office_routes`, `memory_candidate`, the four job-list families that pass, `transcript_route`, `core_whisper`.
+
+  Also green:
+  - `get_messages_caller_census`, `fallback_home_guard`, `realtime_publish_sites_guard`, `web_edge_body_parse_guard` (unmoved);
+  - `dispatch_wrong_type_census` (14/14), `chat_send_submission_ledger` (6/6);
+  - `cadence_events_are_read_at_most_once` + the core `established*` units (33 passed, 1 ignored: the union leak row).
+
+  `host_zone_sites_census` ran inside the workspace gate, green. `context_compression`, `chat_continuation_tier2` and `salon_reads` were NOT regenerated by this lane and SKIP (no oracle set). None of their rows moves here:
+  - the compression window lives in `turn_history`;
+  - the continuation copy is P4.D362's;
+  - `salon_reads` shares `project_message` with `transcript_route`.
+- **`recipe_sweep.py --self-test`:** 0 failures.
+- **No SPA and no Playwright** (no SPA file moved).
+
+### Versions at close
+
+core 0.0.1439, host 0.0.226; web 0.0.256, cli 0.0.38, tauri 0.0.9, SPA 0.5.971 unchanged; harness frozen 0.0.1110; sys 0.1.0.
+
+### 💸 for the owed dogfood pass
+
+The order's four rows stand unchanged (§ "for the owed dogfood pass").
+
+### Regen recipes (all outputs under `/tmp/p4d372/`)
+
+The recipe headers in each case file and Rust test are canonical. This lane's lane-local commands:
+- **Simple oracles:** `/tmp/p4d372/tsx.sh <case> <out> [ENV…]` (the pin, Node 24).
+- **Jest oracles:** `/tmp/p4d372/jest.sh <case.test.ts> <pattern> "<fixtures>" "" [ENV…]` (it copies `cases/`, `fixtures/` and all of `lib/` into `/tmp/p4d372/jest-<case>`).
+
+The env block is `/tmp/p4d372/env.sh`.
