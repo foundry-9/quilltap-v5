@@ -1293,6 +1293,31 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the store detail page browses its Files on the document-store browser; D18 retired whole under a dead-import census (P4.D387; v4 c34986421, ruling R-D)
+
+_Versions: SPA 0.5.980._
+
+P4.D387 commit 7 (items 14, 15 and Tier 2 item 24).
+
+**Store detail (v4 `DocumentStoreDetailView.tsx` at `c34986421`).** `screens/scriptorium/store-detail.ts` now titles its section **Files** and renders `qt-document-store-browser` for the store. The record read moved onto `mountPointKeys.detail(id)`, the same key the browser reads (v4 `useDocumentStoreDetail`), so the `mountPoints` topic keeps the counts current. A tab re-activation invalidates `mountPointKeys.store(id)` plus the store lists (v4's `refresh()`). The edit and scan now raise v4's toasts (`Document store updated successfully!` / `Failed to update document store`; `Scan complete: N files scanned, M embedding jobs queued` / `Failed to scan document store`); v5 had shown none. A "where else this appears" jump into another store opens it: in the Scriptorium tab, `scriptorium-list.ts` drills to it (v4 `ScriptoriumView.tsx:146`); on the routed page, the router goes to `/scriptorium/<id>` (v4 `DocumentStoreDetailPageClient.tsx:21`).
+
+**D18 retired (ruling R-D).**
+- Deleted:
+  - all 16 files of `apps/web/src/app/files/**`;
+  - `screens/scriptorium/file-table.ts`, `file-detail-row.ts`, `file-detail-row.spec.ts` and `file-table-opener.spec.ts`;
+  - the "New file manager (beta)" toggle;
+  - `e2e/scriptorium-file-manager-flow.spec.ts`.
+- Re-aimed:
+  - `screens/custom-tools/entry-points.spec.ts`'s six cases now target `documentFileActions` and the row's emitted Workbench action.
+  - `scriptorium.spec.ts`'s FileTable block now targets the browser: Upload gated on `canWrite`, the empty text, the store search, and the delete confirm. The column-sort case was removed; it has no v4 counterpart.
+  - `store-detail.spec.ts` now covers the Files heading, the browser mount, both `openStore` hosts, and the re-activation invalidation.
+  - `e2e/scriptorium-flow.spec.ts` beats `:70` and `:134` now drive the row's ⋮ (Edit description…, Download, Delete with its in-page confirm).
+- Three comments that named the retired components were rewritten.
+
+New `document-browser/d18-retirement.census.spec.ts` asserts, over every `.ts` under `src/app` and `e2e/*.ts`, that there is no import resolving into `app/files/`, no `file-table` / `file-detail-row` / `file-manager` import, no retired selector, no `useFileManager` and no toggle text. It found 65 sites before the deletion and finds 0 now; no built chunk names a retired module.
+
+**`scriptorium.api.ts` (item 24).** `ScanResult.errors` is `string[]`, matching the server's `Vec<String>` and v4; it was typed `Array<{file, error}>`. It gains `filesInCloud?`. The dead per-file ops (`fetchStoreFiles`, `listMountBlobs`, `DocumentStoreBlob`, `deleteMountFile`, `describeMountFile`) are deleted.
+
 #### 2026-11-08 — feat(spa): ProjectStoreBrowser — a project's own store from officialMountPointId, else the primary linked one (P4.D387; v4 c17033f04)
 
 _Versions: SPA 0.5.979._

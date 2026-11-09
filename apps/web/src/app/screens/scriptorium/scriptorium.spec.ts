@@ -1,17 +1,18 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { describe, expect, it, vi } from 'vitest';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import type { DocMountPointDto } from '../../core/core-contract';
 import { WORKSPACE_TAB_ID, WORKSPACE_TAB_VISIBLE } from '../../workspace/workspace-contract';
 import { CreateStoreDialog } from './create-store-dialog';
 import { DirectoryPicker } from './directory-picker';
-import { FileTable } from './file-table';
+import { DocumentStoreBrowser } from '../../document-browser/document-store-browser';
+import { AlertModalService } from '../../ui/alert-modal.service';
 import { ScriptoriumList } from './scriptorium-list';
 import { ScriptoriumStore } from './scriptorium.store';
-import type { DocumentStoreFile } from './scriptorium.api';
 import { ToastService } from '../../ui/toast.service';
 
 interface DispatchReq {
@@ -60,26 +61,6 @@ function store(over: Partial<DocMountPointDto> = {}): DocMountPointDto {
     createdAt: '2024-01-01T00:00:00Z',
     updatedAt: '2024-01-01T00:00:00Z',
     embeddedChunkCount: 0,
-    ...over,
-  };
-}
-
-function file(over: Partial<DocumentStoreFile> = {}): DocumentStoreFile {
-  return {
-    id: 'f1',
-    mountPointId: 'm1',
-    relativePath: 'notes/intro.md',
-    fileName: 'intro.md',
-    fileType: 'markdown',
-    sha256: 'abc',
-    fileSizeBytes: 1024,
-    lastModified: '2024-01-01T00:00:00Z',
-    conversionStatus: 'converted',
-    conversionError: null,
-    plainTextLength: 100,
-    chunkCount: 3,
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-01T00:00:00Z',
     ...over,
   };
 }
@@ -227,6 +208,7 @@ describe('ScriptoriumList (in-tab drill)', () => {
       imports: [ScriptoriumList],
       providers: [
         provideRouter([]),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
         { provide: CoreClient, useValue: stubClient(handler) },
         { provide: WORKSPACE_TAB_ID, useValue: 'tab-s' },
       ],
@@ -244,7 +226,8 @@ describe('ScriptoriumList (in-tab drill)', () => {
     card.click();
     await settle(fixture);
     expect(fixture.nativeElement.querySelector('qt-store-detail')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('Indexed Files');
+    // v4 `c34986421`: the section is `Files`, the document-store browser.
+    expect(fixture.nativeElement.querySelector('qt-document-store-browser')).toBeTruthy();
 
     // The detail's back button restores the list.
     const back = [...fixture.nativeElement.querySelectorAll('button')].find(
@@ -282,6 +265,7 @@ describe('Scriptorium tab re-activation (P4.D90, v4 ScriptoriumView.tsx:67-72 + 
       imports: [ScriptoriumList],
       providers: [
         provideRouter([]),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
         {
           provide: CoreClient,
           useValue: stubClient((r) => {
@@ -391,72 +375,106 @@ describe('DirectoryPicker', () => {
 });
 
 // ---------------------------------------------------------------------------
-// FileTable — rows, filter, sort, upload gating, and the delete confirm.
+// The store's files — RE-AIMED from the retired FileTable (D18 retirement,
+// ruling R-D) onto the document-store browser (v4 `c34986421`). Each case
+// names the v4 line it now pins. REMOVED, no counterpart after `c34986421`:
+// the column-sort toggle (`handleSort` / `sortDir`) — v4's browser always
+// sorts by name, case-insensitively (`DocumentStoreBrowser.tsx:90-93`).
 // ---------------------------------------------------------------------------
-describe('FileTable', () => {
-  function render(
-    files: DocumentStoreFile[],
-    mountType: string,
-    client: Partial<CoreClient> = {},
-  ): ComponentFixture<FileTable> {
+describe('the store browser (re-aimed from FileTable; v4 DocumentStoreBrowser.tsx)', () => {
+  const caps = (write: boolean) => ({
+    canWrite: write,
+    canDelete: write,
+    canCreateFolder: write,
+    canMoveIn: write,
+    canMoveOut: write,
+    canConvert: write,
+  });
+  const row = (relativePath: string, over: Record<string, unknown> = {}) => ({
+    id: `l-${relativePath}`,
+    mountPointId: 'm1',
+    relativePath,
+    fileName: relativePath.split('/').pop(),
+    fileType: 'markdown',
+    fileSizeBytes: 1024,
+    lastModified: '2024-01-01T00:00:00Z',
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: '2024-01-01T00:00:00Z',
+    conversionStatus: 'converted',
+    linkGroupId: null,
+    source: 'database',
+    ...over,
+  });
+
+  async function render(write: boolean, files: unknown[], seen: DispatchReq[] = [], confirm = 'Confirm') {
     TestBed.configureTestingModule({
-      imports: [FileTable],
-      providers: [{ provide: CoreClient, useValue: client }],
+      imports: [DocumentStoreBrowser],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        {
+          provide: CoreClient,
+          useValue: stubClient((r) => {
+            seen.push(r);
+            if (r.type === 'mountPointGet') return { mountPoint: { ...store({ mountType: 'database' }), capabilities: caps(write) } };
+            if (r.type === 'mountFilesList') return { files, folders: [] };
+            if (r.type === 'mountPointList') return { mountPoints: [] };
+            return {};
+          }),
+        },
+        { provide: AlertModalService, useValue: { show: async () => confirm, current: signal(null) } },
+      ],
     });
-    const fixture = TestBed.createComponent(FileTable);
-    fixture.componentRef.setInput('files', files);
-    fixture.componentRef.setInput('mountPointId', 'm1');
-    fixture.componentRef.setInput('mountType', mountType);
+    const fixture = TestBed.createComponent(DocumentStoreBrowser);
+    fixture.componentRef.setInput('storeId', 'm1');
+    document.body.appendChild(fixture.nativeElement);
     fixture.detectChanges();
+    await settle(fixture);
     return fixture;
   }
 
-  it('renders file rows and hides Upload for a filesystem mount', () => {
-    const fixture = render([file({ fileName: 'intro.md' })], 'filesystem');
+  it('renders file rows and hides Upload where the store cannot be written (v4 :413 caps.canWrite)', async () => {
+    const fixture = await render(false, [row('intro.md')]);
     expect(fixture.nativeElement.textContent).toContain('intro.md');
-    expect(fixture.nativeElement.textContent).toContain('1 files');
+    expect(fixture.nativeElement.textContent).toContain('1 file · 1.0 KB');
     expect(fixture.nativeElement.querySelector('input[type="file"]')).toBeFalsy();
+    document.body.innerHTML = '';
+    TestBed.resetTestingModule();
   });
 
-  it('shows Upload for a database mount', () => {
-    const fixture = render([], 'database');
+  it('shows Upload here on a writable store, and the empty text (v4 :333-335, :413-427)', async () => {
+    const fixture = await render(true, []);
     expect(fixture.nativeElement.querySelector('input[type="file"]')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('No files yet');
+    expect(fixture.nativeElement.textContent).toContain('Upload here');
+    expect(fixture.nativeElement.textContent).toContain('Nothing filed here yet. Upload something, or make a folder.');
+    document.body.innerHTML = '';
+    TestBed.resetTestingModule();
   });
 
-  it('filters by name and toggles sort direction', () => {
-    const fixture = render([file({ id: 'a', fileName: 'apple.md' }), file({ id: 'b', fileName: 'zeta.md' })], 'filesystem');
-    fixture.componentInstance['filter'].set('zeta');
-    fixture.detectChanges();
-    expect(fixture.componentInstance['filteredAndSorted']().map((f) => f.id)).toEqual(['b']);
-
-    fixture.componentInstance['filter'].set('');
-    fixture.componentInstance['handleSort']('fileName');
-    // already default asc on fileName → toggles to desc
-    expect(fixture.componentInstance['sortDir']()).toBe('desc');
-    expect(fixture.componentInstance['filteredAndSorted']().map((f) => f.fileName)).toEqual([
-      'zeta.md',
-      'apple.md',
-    ]);
-  });
-
-  it('delete confirms then dispatches mountFileDelete + refresh', async () => {
-    const calls: DispatchReq[] = [];
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const fixture = render(
-      [file({ fileType: 'pdf', relativePath: 'a.pdf' })],
-      'database',
-      stubClient((r) => {
-        calls.push(r);
-        return {};
-      }),
+  it('filters by the store search (v4 :94-97 — lower-cased relativePath includes)', async () => {
+    const fixture = await render(false, [row('apple.md'), row('Drafts/zeta.md')]);
+    const search = fixture.nativeElement.querySelector('input[type="search"]') as HTMLInputElement;
+    search.value = 'ZETA';
+    search.dispatchEvent(new Event('input'));
+    await settle(fixture);
+    const names = [...fixture.nativeElement.querySelectorAll('[data-testid="document-row"]')].map(
+      (r) => (r as HTMLElement).getAttribute('data-path'),
     );
-    const refreshed = vi.fn();
-    fixture.componentInstance.refresh.subscribe(refreshed);
-    await fixture.componentInstance['handleBlobDelete'](file({ fileType: 'pdf', relativePath: 'a.pdf' }));
-    expect(confirmSpy).toHaveBeenCalled();
-    expect(calls.some((c) => c.type === 'mountFileDelete' && c['path'] === 'a.pdf')).toBe(true);
-    expect(refreshed).toHaveBeenCalled();
-    confirmSpy.mockRestore();
+    expect(names).toEqual(['Drafts/zeta.md']);
+    document.body.innerHTML = '';
+    TestBed.resetTestingModule();
+  });
+
+  it('delete confirms then dispatches mountFileDelete (v4 :165-185)', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(true, [row('a.pdf', { fileType: 'pdf' })], seen);
+    (fixture.nativeElement.querySelector('[aria-label="Actions for a.pdf"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const del = [...document.querySelectorAll('[role="menuitem"]')].find((b) => b.textContent!.trim() === 'Delete') as HTMLButtonElement;
+    del.click();
+    await settle(fixture);
+    expect(seen.some((c) => c.type === 'mountFileDelete' && c['path'] === 'a.pdf')).toBe(true);
+    document.body.innerHTML = '';
+    TestBed.resetTestingModule();
   });
 });

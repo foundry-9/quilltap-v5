@@ -49,8 +49,9 @@ interface DeleteConfirmation {
  * orphan-cleanup dialogs. There is NO upload affordance here (v4 parity: general
  * files arrive via chat-attachment promote, not this page).
  *
- * The mount-mode FileBrowser is the already-ported Scriptorium `qt-file-manager`
- * (`app/files/**`) — untouched this round.
+ * A document store's files are not browsed here: v4 `c17033f04` made
+ * `FileBrowser` general-only and moved store browsing onto the document-store
+ * browser (`document-browser/document-store-browser.ts`, P4.D387).
  */
 @Component({
   selector: 'qt-files-browser',

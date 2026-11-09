@@ -4,50 +4,45 @@ import {
   computed,
   inject,
   input,
-  OnInit,
   output,
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
+import { QueryClient, injectQuery } from '@tanstack/angular-query-experimental';
 import { map } from 'rxjs';
 
-import { WORKSPACE_TAB_ID, onTabActivated } from '../../workspace/workspace-contract';
-import { CoreClient } from '../../core/core-client';
-import { FileManager } from '../../files/file-manager/file-manager';
-import type { MountType } from '../../files/types';
+import { onTabActivated } from '../../workspace/workspace-contract';
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
+import { DocumentStoreBrowser } from '../../document-browser/document-store-browser';
+import { mountPointKeys } from '../../document-browser/document-store.keys';
 import { formatBytes } from '../../ui/format-bytes';
 import { Icon } from '../../ui/icon';
+import { ToastService } from '../../ui/toast.service';
 import { EditStoreDialog } from './edit-store-dialog';
-import { FileTable } from './file-table';
-import {
-  fetchStore,
-  fetchStoreFiles,
-  scanStore,
-  updateStore,
-} from './scriptorium.api';
-import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from './scriptorium.api';
+import { fetchStore, scanStore, updateStore } from './scriptorium.api';
+import type { DocumentStore, UpdateDocumentStoreData } from './scriptorium.api';
 
 /**
  * The document-store detail page (v4 `[id]/DocumentStoreDetailView.tsx`): the
  * header (badges, mono basePath / "Stored encrypted…" line, scan/re-chunk +
  * edit), 4 info cards (files / size / last-scanned / embedding status), the
  * scan-error panel, include/exclude pattern cards (hidden for database mounts),
- * and the Indexed Files section with the classic {@link FileTable}. Scanning
- * re-fetches BOTH the store and its files.
+ * and the **Files** section — v4 `c34986421`'s document-store browser
+ * (`qt-document-store-browser`), which retired the classic file table and the
+ * D18 file manager (ruling R-D; P4.D387 item 14).
  *
- * The file-manager toggle is the UNIFICATION wire of the P4.6z∥P4.6aa round
- * (Shared contract §4), pasted at unification: the Indexed-Files header gains
- * the "New file manager (beta)" / "Classic view" toggle (the v4
- * `DocumentStoreDetailView.tsx:229-236` affordance) and an
- * `@if (useFileManager())` branch renders the sibling lane's
- * {@link FileManager} (`@defer`-loaded) over the server-derived capability
- * bag; the classic FileTable stays the default.
+ * The record is the TanStack query the browser reads too
+ * (`mountPointKeys.detail`, v4 `useDocumentStoreDetail`), so the `mountPoints`
+ * realtime topic keeps the page's counts current as files come and go. A
+ * "where else this appears" location in another store opens that store: in the
+ * Scriptorium tab the list drills to it (`openStore`), on the routed page the
+ * router goes there (v4 `DocumentStoreDetailPageClient.tsx:21`).
  */
 @Component({
   selector: 'qt-store-detail',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, FileTable, FileManager, EditStoreDialog],
+  imports: [Icon, DocumentStoreBrowser, EditStoreDialog],
   template: `
     @if (loading()) {
       <div class="flex min-h-screen items-center justify-center">
@@ -56,8 +51,12 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
     } @else if (error() || !store()) {
       <div class="flex min-h-screen items-center justify-center">
         <div class="text-center">
-          <p class="text-lg qt-text-destructive mb-4">{{ error() || 'Document store not found' }}</p>
-          <button type="button" class="qt-button-secondary" (click)="goBack()">Back to The Scriptorium</button>
+          <p class="text-lg qt-text-destructive mb-4">
+            {{ error() || 'Document store not found' }}
+          </p>
+          <button type="button" class="qt-button-secondary" (click)="goBack()">
+            Back to The Scriptorium
+          </button>
         </div>
       </div>
     } @else if (store(); as s) {
@@ -84,7 +83,9 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
                 }
               </div>
               @if (s.mountType === 'database') {
-                <p class="mt-1 qt-text-small text-xs italic">Stored encrypted in the mount-index database.</p>
+                <p class="mt-1 qt-text-small text-xs italic">
+                  Stored encrypted in the mount-index database.
+                </p>
               } @else {
                 <p class="mt-1 qt-text-small font-mono text-xs">{{ s.basePath }}</p>
               }
@@ -97,10 +98,16 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
                 class="qt-button-secondary inline-flex items-center gap-1.5"
                 [class.opacity-50]="scanDisabled()"
                 [class.cursor-not-allowed]="scanDisabled()"
-                [title]="s.mountType === 'database' ? 'Rechunk all documents in this database-backed store' : ''"
+                [title]="
+                  s.mountType === 'database'
+                    ? 'Rechunk all documents in this database-backed store'
+                    : ''
+                "
               >
                 <qt-icon name="refresh" class="w-4 h-4" [class.animate-spin]="scanning()" />
-                {{ scanning() ? 'Scanning...' : s.mountType === 'database' ? 'Re-chunk' : 'Scan Now' }}
+                {{
+                  scanning() ? 'Scanning...' : s.mountType === 'database' ? 'Re-chunk' : 'Scan Now'
+                }}
               </button>
               <button
                 type="button"
@@ -136,13 +143,17 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
                 <span class="h-2 w-2 rounded-full qt-dot-success"></span>
                 <span class="qt-label qt-text-success">Complete</span>
               </div>
-              <div class="text-xs qt-text-secondary">{{ s.embeddedChunkCount }}/{{ s.chunkCount }} chunks embedded</div>
+              <div class="text-xs qt-text-secondary">
+                {{ s.embeddedChunkCount }}/{{ s.chunkCount }} chunks embedded
+              </div>
             } @else {
               <div class="flex items-center gap-1.5">
                 <span class="h-2 w-2 animate-pulse rounded-full qt-dot-warning"></span>
                 <span class="qt-label qt-text-warning">{{ embeddedPct() }}%</span>
               </div>
-              <div class="text-xs qt-text-secondary">{{ s.embeddedChunkCount }}/{{ s.chunkCount }} chunks embedded</div>
+              <div class="text-xs qt-text-secondary">
+                {{ s.embeddedChunkCount }}/{{ s.chunkCount }} chunks embedded
+              </div>
             }
           </div>
         </div>
@@ -160,7 +171,10 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
               <h3 class="qt-text-secondary uppercase tracking-wider mb-2">Include Patterns</h3>
               <div class="flex flex-wrap gap-1.5">
                 @for (p of s.includePatterns; track $index) {
-                  <span class="inline-flex rounded qt-bg-success/10 qt-text-success px-2 py-0.5 text-xs font-mono">{{ p }}</span>
+                  <span
+                    class="inline-flex rounded qt-bg-success/10 qt-text-success px-2 py-0.5 text-xs font-mono"
+                    >{{ p }}</span
+                  >
                 }
               </div>
             </div>
@@ -168,60 +182,44 @@ import type { DocumentStore, DocumentStoreFile, UpdateDocumentStoreData } from '
               <h3 class="qt-text-secondary uppercase tracking-wider mb-2">Exclude Patterns</h3>
               <div class="flex flex-wrap gap-1.5">
                 @for (p of s.excludePatterns; track $index) {
-                  <span class="inline-flex rounded qt-bg-destructive/10 qt-text-destructive px-2 py-0.5 text-xs font-mono">{{ p }}</span>
+                  <span
+                    class="inline-flex rounded qt-bg-destructive/10 qt-text-destructive px-2 py-0.5 text-xs font-mono"
+                    >{{ p }}</span
+                  >
                 }
               </div>
             </div>
           </div>
         }
 
-        <!-- Indexed Files — the file-manager toggle (the P4.6z∥P4.6aa unification
-             wire, contract §4). The FileTable stays the default view. -->
+        <!-- Files and folders — text documents, pdf/docx extracts and binary
+             blobs alike, browsed like the wardrobe (v4 c34986421). -->
         <div class="border-t qt-border-default/60 pt-6">
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <h2 class="qt-heading-3">Indexed Files</h2>
-            @if (s.capabilities) {
-              <button
-                type="button"
-                class="qt-button-ghost inline-flex items-center gap-1.5 text-sm"
-                title="Preview the new SVAR-powered file manager"
-                (click)="useFileManager.set(!useFileManager())"
-              >
-                <qt-icon name="layers" class="w-4 h-4" />
-                {{ useFileManager() ? 'Classic view' : 'New file manager (beta)' }}
-              </button>
-            }
-          </div>
-          @if (useFileManager() && s.capabilities) {
-            @defer {
-              <qt-file-manager
-                [mountPointId]="s.id"
-                [capabilities]="s.capabilities"
-                [mountType]="mountKind()"
-              />
-            } @placeholder {
-              <p class="qt-section-title p-6">Summoning the file manager…</p>
-            }
-          } @else {
-            <qt-file-table
-              [files]="files()"
-              [loading]="filesLoading()"
-              [mountPointId]="s.id"
-              [mountType]="s.mountType"
-              (refresh)="loadFiles()"
+          <h2 class="qt-heading-3 mb-4">Files</h2>
+          @for (id of [s.id]; track id) {
+            <qt-document-store-browser
+              [storeId]="id"
+              [opensStores]="true"
+              (openStore)="openOtherStore($event)"
             />
           }
         </div>
       </div>
 
       @if (editOpen()) {
-        <qt-edit-store-dialog [store]="s" (close)="editOpen.set(false)" (submitted)="handleUpdate($event)" />
+        <qt-edit-store-dialog
+          [store]="s"
+          (close)="editOpen.set(false)"
+          (submitted)="handleUpdate($event)"
+        />
       }
     }
   `,
 })
-export class StoreDetail implements OnInit {
+export class StoreDetail {
   private readonly core = inject(CoreClient);
+  private readonly queryClient = inject(QueryClient);
+  private readonly toasts = inject(ToastService);
   private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly router = inject(Router);
 
@@ -232,28 +230,31 @@ export class StoreDetail implements OnInit {
    */
   readonly storeIdInput = input<string | null>(null, { alias: 'storeId' });
   readonly back = output<void>();
+  /** In-tab: open another store in place (v4 `ScriptoriumView.tsx:146`'s `setSelectedStoreId`). */
+  readonly openStore = output<string>();
   protected readonly embedded = computed(() => this.storeIdInput() != null);
 
   private readonly routeStoreId = this.route
     ? toSignal(this.route.paramMap.pipe(map((p) => p.get('id') ?? '')), { initialValue: '' })
     : undefined;
-  protected readonly storeId = computed(
-    () => this.storeIdInput() ?? this.routeStoreId?.() ?? '',
-  );
+  protected readonly storeId = computed(() => this.storeIdInput() ?? this.routeStoreId?.() ?? '');
 
-  protected readonly store = signal<DocumentStore | null>(null);
-  protected readonly files = signal<DocumentStoreFile[]>([]);
-  protected readonly loading = signal(true);
-  protected readonly filesLoading = signal(true);
-  protected readonly error = signal<string | null>(null);
+  /** v4 `useDocumentStoreDetail`'s record query — the SAME key the browser reads. */
+  private readonly storeQuery = injectQuery(() => ({
+    queryKey: mountPointKeys.detail(this.storeId()),
+    queryFn: () => fetchStore(this.core, this.storeId()),
+    enabled: this.storeId() !== '',
+  }));
+
+  protected readonly store = computed<DocumentStore | null>(() => this.storeQuery.data() ?? null);
+  protected readonly loading = computed(() => this.storeQuery.isLoading());
+  protected readonly error = computed(() =>
+    this.storeQuery.error()
+      ? coreErrorMessage(this.storeQuery.error(), 'Failed to fetch document store')
+      : null,
+  );
   protected readonly scanning = signal(false);
   protected readonly editOpen = signal(false);
-  /** The unification toggle (contract §4): file manager vs the classic table. */
-  protected readonly useFileManager = signal(false);
-  /** `DocMountPointDto.mountType` is `string`; the widget input is the union. */
-  protected readonly mountKind = computed(
-    () => (this.store()?.mountType ?? 'filesystem') as MountType,
-  );
 
   protected readonly sizeLabel = computed(() => formatBytes(this.store()?.totalSizeBytes ?? 0));
   protected readonly embeddedPct = computed(() => {
@@ -270,19 +271,20 @@ export class StoreDetail implements OnInit {
 
   constructor() {
     // Navigating back to the containing workspace tab refreshes the store and
-    // its file list in place (silent store load — no loading flip, which would
-    // swap the page for its loading state; v4 leaves the FILE load loud, as
-    // `DocumentStoreDetailView.tsx:63-70` does). v5's document stores are
-    // hand-rolled signals, so this hook IS the refresh for this surface.
+    // its listing in place (a background refetch — the page stays on screen;
+    // v4 `DocumentStoreDetailView`'s `useOnTabActivated(() => refresh())`).
     onTabActivated(() => {
-      void this.loadStore({ silent: true });
-      void this.loadFiles();
+      void this.refresh();
     });
   }
 
-  ngOnInit(): void {
-    void this.loadStore();
-    void this.loadFiles();
+  /** v4 `useDocumentStoreDetail`'s `invalidate` / `refresh`: this store's reads and the store lists. */
+  protected refresh(): Promise<void> {
+    const id = this.storeId();
+    return Promise.all([
+      this.queryClient.invalidateQueries({ queryKey: mountPointKeys.store(id) }),
+      this.queryClient.invalidateQueries({ queryKey: mountPointKeys.lists }),
+    ]).then(() => undefined);
   }
 
   protected goBack(): void {
@@ -294,59 +296,40 @@ export class StoreDetail implements OnInit {
     void this.router.navigate(['/scriptorium']);
   }
 
-  /**
-   * `silent` refreshes in place without flipping `loading` (tab re-activation)
-   * — v4 `useDocumentStoreDetail.fetchStore({ silent })`.
-   */
-  protected async loadStore(opts?: { silent?: boolean }): Promise<void> {
-    if (!opts?.silent) {
-      this.loading.set(true);
+  /** The browser's "where else this appears" → another store (v4 `onOpenStore`, both hosts). */
+  protected openOtherStore(id: string): void {
+    if (this.embedded()) {
+      this.openStore.emit(id);
+      return;
     }
-    this.error.set(null);
-    try {
-      this.store.set(await fetchStore(this.core, this.storeId()));
-    } catch (err) {
-      this.error.set(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      this.loading.set(false);
-    }
+    void this.router.navigate(['/scriptorium', id]);
   }
 
-  protected async loadFiles(): Promise<void> {
-    this.filesLoading.set(true);
+  protected async handleUpdate(event: {
+    id: string;
+    data: UpdateDocumentStoreData;
+  }): Promise<void> {
     try {
-      this.files.set(await fetchStoreFiles(this.core, this.storeId()));
-    } catch {
-      /* v4 swallows the files-fetch error (the store still renders). */
-    } finally {
-      this.filesLoading.set(false);
-    }
-  }
-
-  protected async handleUpdate(event: { id: string; data: UpdateDocumentStoreData }): Promise<void> {
-    try {
-      const updated = await updateStore(this.core, this.storeId(), event.data);
-      this.store.set(updated);
+      await updateStore(this.core, this.storeId(), event.data);
+      await this.refresh();
+      this.toasts.showSuccess('Document store updated successfully!');
       this.editOpen.set(false);
-    } catch {
-      /* the edit dialog stays open; the error surfaces via the list flash on the next visit. */
+    } catch (err) {
+      this.toasts.showError(coreErrorMessage(err, 'Failed to update document store'));
     }
   }
 
   protected async handleScan(): Promise<void> {
     this.scanning.set(true);
-    this.store.update((prev) => (prev ? { ...prev, scanStatus: 'scanning' } : prev));
     try {
-      await scanStore(this.core, this.storeId());
-      // Refresh store AND files after scan (v4 `useDocumentStoreDetail.scanStore`).
-      const [store, files] = await Promise.all([
-        fetchStore(this.core, this.storeId()),
-        fetchStoreFiles(this.core, this.storeId()),
-      ]);
-      this.store.set(store);
-      this.files.set(files);
-    } catch {
-      this.store.update((prev) => (prev ? { ...prev, scanStatus: 'error' } : prev));
+      const result = await scanStore(this.core, this.storeId());
+      await this.refresh();
+      this.toasts.showSuccess(
+        `Scan complete: ${result.scanResult.filesScanned} files scanned, ${result.embeddingJobsEnqueued} embedding jobs queued`,
+      );
+    } catch (err) {
+      this.toasts.showError(coreErrorMessage(err, 'Failed to scan document store'));
+      await this.refresh();
     } finally {
       this.scanning.set(false);
     }

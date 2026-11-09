@@ -1,7 +1,8 @@
 /**
  * The Scriptorium data layer (v4 `app/scriptorium/hooks/*` + `types.ts`): the
- * view-model types plus thin `CoreClient` dispatch helpers for the store list,
- * the routed detail, and the FileTable's per-file ops. Reads go through
+ * view-model types plus thin `CoreClient` dispatch helpers for the store list
+ * and the routed detail. A store's files are the document-store browser's
+ * (`document-browser/document-store.api.ts`, P4.D387). Reads go through
  * {@link CoreClient.dispatchData} (raw `data`) — the P4.6v/P4.6y Shared contract
  * pins the response bodies via its differentials.
  */
@@ -41,26 +42,6 @@ export interface DocumentStoreFile {
   updatedAt: string;
 }
 
-/** A blob-backed file's detail (v4 `DocumentStoreBlob`). */
-export interface DocumentStoreBlob {
-  id: string;
-  mountPointId: string;
-  relativePath: string;
-  originalFileName: string;
-  originalMimeType: string;
-  storedMimeType: string;
-  sizeBytes: number;
-  sha256: string;
-  description: string;
-  descriptionUpdatedAt: string | null;
-  extractedText: string | null;
-  extractedTextSha256: string | null;
-  extractionStatus: 'none' | 'pending' | 'converted' | 'failed' | 'skipped';
-  extractionError: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** The scan result (v4 `ScanResult`). */
 export interface ScanResult {
   filesScanned: number;
@@ -68,7 +49,15 @@ export interface ScanResult {
   filesModified: number;
   filesDeleted: number;
   chunksCreated: number;
-  errors: Array<{ file: string; error: string }>;
+  /**
+   * One line per file the scan could not read — `Vec<String>` on the server
+   * (`services/mount_index/scanner.rs:37`), `string[]` in v4's `ScanResult`.
+   * This was typed `Array<{file, error}>` (a live SPA type error; P4.D387 item
+   * 24).
+   */
+  errors: string[];
+  /** Files left as iCloud placeholders, skipped (P4.D381's `ScanResult.filesInCloud`). */
+  filesInCloud?: number;
 }
 
 /** The create result (`{mountPoint, warning?}`). */
@@ -145,14 +134,6 @@ export async function deconvertStore(
   await core.dispatchData({ type: 'mountDeconvert', mountPointId: id, targetPath });
 }
 
-export async function fetchStoreFiles(
-  core: CoreClient,
-  id: string,
-): Promise<DocumentStoreFile[]> {
-  const data = await core.dispatchData({ type: 'mountFilesList', mountPointId: id });
-  return (data['files'] as DocumentStoreFile[]) ?? [];
-}
-
 // --- The DirectoryPicker ----------------------------------------------------
 
 export async function browseDirectory(
@@ -165,37 +146,11 @@ export async function browseDirectory(
   return data as unknown as BrowseDirectoryResult;
 }
 
-// --- FileTable per-file ops -------------------------------------------------
-
-export async function listMountBlobs(
-  core: CoreClient,
-  mountPointId: string,
-): Promise<DocumentStoreBlob[]> {
-  const data = await core.dispatchData({ type: 'mountBlobsList', mountPointId });
-  return (data['blobs'] as DocumentStoreBlob[]) ?? [];
-}
-
-export async function deleteMountFile(
-  core: CoreClient,
-  mountPointId: string,
-  path: string,
-): Promise<void> {
-  await core.dispatchData({ type: 'mountFileDelete', mountPointId, path });
-}
-
-export async function describeMountFile(
-  core: CoreClient,
-  mountPointId: string,
-  path: string,
-  description: string,
-): Promise<void> {
-  await core.dispatchData({ type: 'mountFileUpdate', mountPointId, path, description });
-}
-
 /**
- * Upload a file to a database-backed store (v4 FileTable: multipart PUT to the
- * item route, the byte-preserving `storeMountFile` ingest — the P4.6y
- * `mount_file_put` web-edge leg). Not a `/api/dispatch` verb.
+ * Upload a file to a database-backed store (v4 `useDocumentStoreSource`'s
+ * `uploadFile`: multipart PUT to the item route, the byte-preserving
+ * `storeMountFile` ingest — the P4.6y `mount_file_put` web-edge leg). Not a
+ * `/api/dispatch` verb.
  */
 export async function uploadMountFile(
   mountPointId: string,

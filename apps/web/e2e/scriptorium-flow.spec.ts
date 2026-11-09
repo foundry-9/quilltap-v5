@@ -66,11 +66,11 @@ async function deleteStoreFromList(page: Page, name: string): Promise<void> {
   });
 }
 
-test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
+test.describe('P4.6z — the Scriptorium (stores + the document-store browser, P4.D387)', () => {
   test('database store: create → upload → expand → describe → delete file → delete store', async ({
     page,
   }) => {
-    // window.confirm on the blob delete → auto-accept.
+    // Any native dialog → auto-accept (the deletes now confirm in-page, an alertdialog).
     page.on('dialog', (d) => void d.accept());
 
     const storeName = `E2E DB Store ${Date.now()}`;
@@ -90,7 +90,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await expect(card).toBeVisible({ timeout: 15_000 });
     await card.getByRole('heading', { name: storeName }).click();
     await expect(page.getByRole('heading', { name: storeName })).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByRole('heading', { name: 'Indexed Files' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Files', exact: true })).toBeVisible();
 
     // Upload a small BINARY file (a generic blob — so the row is blob-backed and
     // exposes the description editor + delete) via the multipart PUT leg.
@@ -102,26 +102,31 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
       buffer: Buffer.from([0x51, 0x54, 0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]),
     });
 
-    // The row appears in the table.
-    const row = page.locator('table tr', { hasText: 'artifact.bin' });
+    // The row appears in the browser (v4 `c34986421`'s DocumentRow).
+    const row = page.locator('[data-testid="document-row"]', { hasText: 'artifact.bin' });
     await expect(row.first()).toBeVisible({ timeout: 15_000 });
 
-    // Expand the row → the lazy blob detail loads → edit the description → Save.
-    await row.first().click();
-    const desc = page.locator('qt-file-detail-row textarea');
-    await expect(desc).toBeVisible({ timeout: 15_000 });
-    await desc.fill('A curious brass artifact.');
-    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Save' }).click();
+    // ⋮ → Edit description… → the description dialog → Save (a blob on a
+    // database store is describable, v4 `hasDescription`).
+    await row.first().getByRole('button', { name: 'Actions for artifact.bin' }).click();
+    await page.getByRole('menuitem', { name: 'Edit description…' }).click();
+    const describe = page.getByRole('dialog', { name: 'Describe artifact.bin' });
+    await expect(describe).toBeVisible({ timeout: 15_000 });
+    await describe.getByLabel('Description or transcript (searchable)').fill('A curious brass artifact.');
+    await describe.getByRole('button', { name: 'Save' }).click();
+    await expect(describe).toBeHidden({ timeout: 15_000 });
 
-    // The detail row's Download button (v4 `af1bc479`) fetches the stored bytes
-    // and saves them under the STORED name — a real browser download.
+    // ⋮ → Download fetches the raw bytes and saves them under the file's name.
     const downloadPromise = page.waitForEvent('download', { timeout: 15_000 });
-    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Download' }).click();
+    await row.first().getByRole('button', { name: 'Actions for artifact.bin' }).click();
+    await page.getByRole('menuitem', { name: 'Download' }).click();
     expect((await downloadPromise).suggestedFilename()).toBe('artifact.bin');
 
-    // Delete the file (database mount → the per-row Delete button; confirm auto-accepts).
-    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Delete' }).click();
-    await expect(page.locator('table tr', { hasText: 'artifact.bin' })).toHaveCount(0, {
+    // ⋮ → Delete → the confirmation (v4 `showConfirmation`) → the row goes.
+    await row.first().getByRole('button', { name: 'Actions for artifact.bin' }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.locator('[data-testid="document-row"]', { hasText: 'artifact.bin' })).toHaveCount(0, {
       timeout: 15_000,
     });
 
@@ -134,7 +139,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
   test('database store: an image blob is transcoded to WebP on upload (ACTIVATE-AT-UNIFY, P4.6bf S1)', async ({
     page,
   }) => {
-    // window.confirm on the blob delete → auto-accept.
+    // Any native dialog → auto-accept (the deletes now confirm in-page, an alertdialog).
     page.on('dialog', (d) => void d.accept());
 
     const storeName = `E2E WebP Store ${Date.now()}`;
@@ -151,7 +156,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     const card = page.locator('qt-store-card', { hasText: storeName });
     await expect(card).toBeVisible({ timeout: 15_000 });
     await card.getByRole('heading', { name: storeName }).click();
-    await expect(page.getByRole('heading', { name: 'Indexed Files' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Files', exact: true })).toBeVisible();
 
     // Upload a real (1×1) PNG image. v4's blob-upload pipeline transcodes bitmap
     // images to WebP (`transcodeToWebP`) and rewrites the stored relative path's
@@ -170,8 +175,8 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     });
 
     // The row lands under EITHER name depending on whether the wire is live.
-    const webpRow = page.locator('table tr', { hasText: 'portrait.webp' });
-    const pngRow = page.locator('table tr', { hasText: 'portrait.png' });
+    const webpRow = page.locator('[data-testid="document-row"]', { hasText: 'portrait.webp' });
+    const pngRow = page.locator('[data-testid="document-row"]', { hasText: 'portrait.png' });
     await expect(webpRow.or(pngRow).first()).toBeVisible({ timeout: 15_000 });
     const webpCount = await webpRow.count();
     const pngCount = await pngRow.count();
@@ -179,9 +184,11 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
 
     // Always clean up (a skipped beat must leave the shared mount-index clean).
     const rowText = transcoded ? 'portrait.webp' : 'portrait.png';
-    await page.locator('table tr', { hasText: rowText }).first().click();
-    await page.locator('qt-file-detail-row').getByRole('button', { name: 'Delete' }).click();
-    await expect(page.locator('table tr', { hasText: rowText })).toHaveCount(0, {
+    const imageRow = page.locator('[data-testid="document-row"]', { hasText: rowText }).first();
+    await imageRow.getByRole('button', { name: `Actions for ${rowText}` }).click();
+    await page.getByRole('menuitem', { name: 'Delete' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
+    await expect(page.locator('[data-testid="document-row"]', { hasText: rowText })).toHaveCount(0, {
       timeout: 15_000,
     });
     await page.getByRole('button', { name: 'Back to The Scriptorium' }).click();
@@ -225,7 +232,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     await expect(page.getByRole('heading', { name: storeName })).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: 'Scan Now' }).click();
-    const row = page.locator('table tr', { hasText: 'chronicle.md' });
+    const row = page.locator('[data-testid="document-row"]', { hasText: 'chronicle.md' });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
 
     await page.getByRole('button', { name: 'Back to The Scriptorium' }).click();

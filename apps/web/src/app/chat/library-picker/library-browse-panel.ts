@@ -55,9 +55,9 @@ export interface BrowseScope {
  * reuse in place was not available:
  *
  * - v4 has ONE `FileBrowser` covering both legacy and mount modes. v5 split it
- *   in two — `qt-files-browser` (the legacy `/files` PAGE) and the Scriptorium
- *   `qt-file-manager` (mount mode, behind its own beta toggle) — so no single v5
- *   component answers both, and the picker needs both in the same step.
+ *   in two — `qt-files-browser` (the legacy `/files` PAGE) and the Scriptorium's
+ *   store view (mount mode) — so no single v5 component answered both, and the
+ *   picker needed both in the same step.
  * - `qt-files-browser` takes NO inputs and emits NO file-click: it hardcodes
  *   `filesList({filter:'general'})` and owns page chrome (an `<h2>`, the
  *   sync/orphan-cleanup toolbar, the preview lightbox and the create-folder /

@@ -55,7 +55,7 @@ import type {
   ],
   template: `
     @if (selectedStoreId(); as sid) {
-      <qt-store-detail [storeId]="sid" (back)="onDrillBack()" />
+      <qt-store-detail [storeId]="sid" (back)="onDrillBack()" (openStore)="selectedStoreId.set($event)" />
     } @else {
     @if (store.loading()) {
       <div class="flex min-h-screen items-center justify-center">
