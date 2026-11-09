@@ -2370,7 +2370,13 @@ where
         );
         Some(build_text_block_system_instructions(&opts))
     } else if !actual_tools.is_empty() {
-        Some(build_native_tool_system_instructions())
+        // === P4.D370 === (v4 `turn-tools.service.ts:190`: the responding
+        // character's kind picks the preamble — roleplay `## Using tools`,
+        // assistant the MANDATORY one)
+        Some(build_native_tool_system_instructions(
+            crate::characters::kind::character_kind_policy(Some(&character)).tool_rules,
+        ))
+        // === P4.D370 ===
     } else {
         None
     };

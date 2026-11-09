@@ -258,7 +258,12 @@ pub fn build_one_shot_tool_instructions(
     if use_text_block_tools && !built.tools.is_empty() {
         tool_instructions = build_text_block_system_instructions(text_block_options);
     } else if !built.tools.is_empty() {
-        tool_instructions = build_native_tool_system_instructions();
+        // === P4.D370 === (v4 `one-shot-loop.ts:115`: an assistant surface hears the
+        // assistant preamble, whatever kind a character carries)
+        tool_instructions = build_native_tool_system_instructions(
+            crate::characters::kind::ToolRulesVariant::Assistant,
+        );
+        // === P4.D370 ===
     }
 
     let agent_instructions = build_agent_mode_instructions(max_agent_turns);

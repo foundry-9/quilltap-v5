@@ -816,7 +816,12 @@ where
         );
         tool_instructions = build_text_block_system_instructions(&opts);
     } else if !tools.is_empty() {
-        tool_instructions = build_native_tool_system_instructions();
+        // === P4.D370 === (v4 `help-chat/orchestrator.service.ts:271`: an assistant surface hears the
+        // assistant preamble, whatever kind a character carries)
+        tool_instructions = build_native_tool_system_instructions(
+            crate::characters::kind::ToolRulesVariant::Assistant,
+        );
+        // === P4.D370 ===
     }
     // Agent mode instructions (always enabled for help chats; the fixed budget).
     let agent_instructions = build_agent_mode_instructions(HELP_MAX_AGENT_TURNS);

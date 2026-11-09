@@ -16,7 +16,7 @@
 
 import { buildSimpleJsonToolInstructions } from '@/lib/tools/simple-json-prompt';
 import { buildTextBlockInstructions } from '@/lib/tools/legacy/text-block-prompt';
-import { buildNativeToolInstructions } from '@/lib/tools/native-tool-prompt';
+import { buildNativeToolInstructions, NATIVE_TOOL_RULES } from '@/lib/tools/native-tool-prompt';
 import {
   buildNativeToolSystemInstructions,
   determineEnabledToolOptions,
@@ -32,10 +32,19 @@ function emit(row: unknown): void {
 }
 
 // ---- native ----
-emit({ fn: 'build_native', id: 'native-true', hasTools: true, out: buildNativeToolInstructions(true) });
-emit({ fn: 'build_native', id: 'native-false', hasTools: false, out: buildNativeToolInstructions(false) });
-emit({ fn: 'build_native', id: 'native-default', hasTools: true, out: buildNativeToolInstructions() });
-emit({ fn: 'build_native_system', id: 'native-system', out: buildNativeToolSystemInstructions() });
+// === P4.D370 === (v4 `96156566b`): the builder takes the speaker's
+// `ToolRulesVariant` FIRST. tsx strips types, so the old one-argument calls kept
+// compiling and every native row recorded `PREAMBLES[true|false|undefined]` =
+// "undefined\n\n1. **Never narrate…" at the pin. Each row now names its variant;
+// a `<default>` row omits `hasTools` (v4's `hasTools = true`).
+for (const variant of ['assistant', 'roleplay'] as const) {
+  emit({ fn: 'build_native', id: `native-${variant}-true`, variant, hasTools: true, out: buildNativeToolInstructions(variant, true) });
+  emit({ fn: 'build_native', id: `native-${variant}-false`, variant, hasTools: false, out: buildNativeToolInstructions(variant, false) });
+  emit({ fn: 'build_native', id: `native-${variant}-default`, variant, out: buildNativeToolInstructions(variant) });
+  emit({ fn: 'build_native_system', id: `native-system-${variant}`, variant, out: buildNativeToolSystemInstructions(variant) });
+}
+emit({ fn: 'native_tool_rules', id: 'native-tool-rules', out: NATIVE_TOOL_RULES });
+// === P4.D370 ===
 
 // ---- prompt flag combos (shared shape between simple-json + text-block) ----
 const combos: Array<[string, Record<string, boolean>]> = [

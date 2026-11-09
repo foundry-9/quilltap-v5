@@ -463,7 +463,12 @@ where
         };
         tool_instructions = build_text_block_system_instructions(&opts);
     } else if !tools.is_empty() {
-        tool_instructions = build_native_tool_system_instructions();
+        // === P4.D370 === (v4 `brahma-console/orchestrator.service.ts:257`: an assistant surface hears the
+        // assistant preamble, whatever kind a character carries)
+        tool_instructions = build_native_tool_system_instructions(
+            crate::characters::kind::ToolRulesVariant::Assistant,
+        );
+        // === P4.D370 ===
     }
     // Agent mode instructions (always enabled). The turn budget is operator-set
     // (Settings → Chat → Brahma Console); the stuck-loop guard below still stops

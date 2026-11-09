@@ -8,6 +8,7 @@
 
 use serde_json::Value;
 
+use crate::characters::kind::ToolRulesVariant;
 use crate::tools::inventory_tool_flags::inventory_tool_flags;
 use crate::tools::native_tool_prompt::build_native_tool_instructions;
 use crate::tools::pseudo_tool_support::{
@@ -73,9 +74,14 @@ pub struct ToolCallRequest {
     pub arguments: Value,
 }
 
-/// v4 `buildNativeToolSystemInstructions`.
-pub fn build_native_tool_system_instructions() -> String {
-    build_native_tool_instructions(true)
+/// v4 `buildNativeToolSystemInstructions`: native tool instructions to inject
+/// into the system prompt. Guides models with native function calling to
+/// actually invoke tools rather than narrating tool usage in prose.
+///
+/// `variant` is `Roleplay` for a roleplay character, `Assistant` for an
+/// assistant character or an assistant surface (from `KindPolicy::tool_rules`).
+pub fn build_native_tool_system_instructions(variant: ToolRulesVariant) -> String {
+    build_native_tool_instructions(variant, true)
 }
 
 /// v4 `determineEnabledToolOptions`.

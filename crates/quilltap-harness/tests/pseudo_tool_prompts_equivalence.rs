@@ -7,12 +7,15 @@
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/pseudo-tool-prompts.ts \
 //!     > /tmp/oracle-pseudo-tool-prompts.ndjson
+//! (P4.D370: the native rows carry `variant` — v4 `96156566b`'s preamble by
+//! kind — and `native_tool_rules` compares v4's exported `NATIVE_TOOL_RULES`.)
 //! Run:
 //!   QT_ORACLE_PSEUDO_TOOL_PROMPTS=/tmp/oracle-pseudo-tool-prompts.ndjson \
 //!     cargo test -p quilltap-harness --test pseudo_tool_prompts_equivalence
 
+use quilltap_core::characters::kind::ToolRulesVariant;
 use quilltap_core::services::pseudo_tool::{self, TextBlockEnabledToolOptions};
-use quilltap_core::tools::native_tool_prompt::build_native_tool_instructions;
+use quilltap_core::tools::native_tool_prompt::{build_native_tool_instructions, NATIVE_TOOL_RULES};
 use quilltap_core::tools::simple_json_prompt::{
     build_simple_json_tool_instructions, SimpleJsonPromptOptions,
 };
@@ -20,6 +23,16 @@ use quilltap_core::tools::text_block_prompt::{
     build_text_block_instructions, TextBlockPromptOptions,
 };
 use serde_json::Value;
+
+/// ONE parse of a row's `variant` onto C5's `ToolRulesVariant`. An absent or
+/// unknown spelling PANICS — never a default (a vacuous row would pass).
+fn variant_of(row: &Value, id: &str) -> ToolRulesVariant {
+    match row.get("variant").and_then(Value::as_str) {
+        Some("assistant") => ToolRulesVariant::Assistant,
+        Some("roleplay") => ToolRulesVariant::Roleplay,
+        other => panic!("row '{id}': unknown or absent variant {other:?}"),
+    }
+}
 
 #[test]
 fn pseudo_tool_prompts_match_oracle() {
@@ -43,12 +56,17 @@ fn pseudo_tool_prompts_match_oracle() {
         let want = &row["out"];
 
         let got: Value = match f {
+            // P4.D370 (v4 `96156566b`): every native row names its kind's
+            // `ToolRulesVariant`; a `<default>` row omits `hasTools` (v4's
+            // `hasTools = true`).
             "build_native" => Value::String(build_native_tool_instructions(
-                row["hasTools"].as_bool().unwrap(),
+                variant_of(&row, id),
+                row.get("hasTools").is_none_or(|v| v.as_bool().unwrap()),
             )),
-            "build_native_system" => {
-                Value::String(pseudo_tool::build_native_tool_system_instructions())
-            }
+            "build_native_system" => Value::String(
+                pseudo_tool::build_native_tool_system_instructions(variant_of(&row, id)),
+            ),
+            "native_tool_rules" => Value::String(NATIVE_TOOL_RULES.to_string()),
             "build_text_block" => {
                 let opts: TextBlockPromptOptions =
                     serde_json::from_value(row["options"].clone()).unwrap();
