@@ -149,6 +149,17 @@ describe('getPreviewType', () => {
   it('honors the isPlainText override', () => {
     expect(getPreviewType('application/octet-stream', true)).toBe('text');
   });
+
+  // v4 `c34986421`: `getPreviewType` delegates to `previewKindOf` (markdown →
+  // text, docx → unsupported), so the MIME tables move with it.
+  it('reads the previewKindOf MIME tables (v4 c34986421)', () => {
+    expect(getPreviewType('application/x-ndjson')).toBe('text');
+    expect(getPreviewType('application/yaml')).toBe('text');
+    expect(getPreviewType('application/markdown')).toBe('text');
+    expect(
+      getPreviewType('application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
+    ).toBe('unsupported');
+  });
 });
 
 describe('getFileTypeLabel', () => {

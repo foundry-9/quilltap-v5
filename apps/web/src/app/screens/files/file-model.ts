@@ -6,11 +6,12 @@
  * derivation are pinned exactly to v4.
  *
  * The wire row is {@link FileEntry} (v4 `serializeFileEntry`); this module works
- * against it directly (legacy general-files mode only — the mount-mode
- * `qt-file-manager` lives in `app/files/**` and is untouched this round).
+ * against it directly (general files only — a document store's files open in
+ * the `document-browser/` store browser, v4 `c34986421`).
  */
 
 import type { FileEntry } from '../../core/core-contract';
+import { previewKindOf } from '../../document-browser/preview-kind';
 
 /** A derived folder in the current directory (v4 `FolderInfo`). */
 export interface FolderInfo {
@@ -89,23 +90,16 @@ export function supportsThumbnail(mimeType: string): boolean {
 }
 
 /**
- * The preview renderer for a file (v4 `getPreviewType`): image, pdf, text (any
- * plain-text/code/json/xml/js/ts), else unsupported.
+ * The preview renderer for a file (v4 `components/files/FilePreview/types.ts`
+ * `getPreviewType`, `c34986421`): `previewKindOf`, narrowed to the viewers the
+ * file modal has — Markdown reads as text, and DOCX (which only the
+ * document-store viewer renders) as unsupported.
  */
 export function getPreviewType(mimeType: string, isPlainText?: boolean): PreviewType {
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType === 'application/pdf') return 'pdf';
-  if (
-    isPlainText ||
-    mimeType.startsWith('text/') ||
-    mimeType === 'application/json' ||
-    mimeType === 'application/javascript' ||
-    mimeType === 'application/typescript' ||
-    mimeType === 'application/xml'
-  ) {
-    return 'text';
-  }
-  return 'unsupported';
+  const kind = previewKindOf({ mimeType, isPlainText });
+  if (kind === 'markdown') return 'text';
+  if (kind === 'docx') return 'unsupported';
+  return kind;
 }
 
 /** The display name for a file (v4's `originalFilename || filename` idiom). */

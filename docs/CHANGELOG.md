@@ -1293,6 +1293,14 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the document-store browser's pure half — preview-kind, document-actions, mount capabilities, folderTreeOf, getPreviewType delegation, the C13/C14 wire block (P4.D387; v4 c34986421)
+
+_Versions: SPA 0.5.974._
+
+P4.D387 commit 1 (items 2–3), on `BROWSER`. Adds `apps/web/src/app/document-browser/` with v4's client-safe modules ported verbatim at the pin `624d0d25c`: `preview-kind.ts` (`previewKindOf`, `mimeTypeForName`), `document-actions.ts` (`documentFileActions` / `documentFolderActions` / `canLinkBetween` and the gating helpers), `mount-capabilities.ts` (`deriveMountCapabilities`; v5's list rows carry no capabilities, so the destination catalogue derives them), and `folderTreeOf` in `document-store.source.ts`. `screens/files/file-model.ts`'s `getPreviewType` now delegates to `previewKindOf`, as v4's does. That moves `application/x-ndjson`, `application/yaml` and any `…markdown…` MIME type to `text`. `core-contract.ts` gains ONE fenced block: `DocMountBrowserEntry`, `MountFilesBrowserListing`, `DocMountLinkLocation`, `DocumentViewTarget`, `ProjectMountPointsResult`, `OpenDocumentResultWithViewer`, and the folder / file / links / render-html requests under P4.D381's type names, joined to `CoreRequest` by one fenced line.
+
+New tier-1 SPA differential: `apps/web/oracle/document-browser.recorder.ts` drives v4's REAL `preview-kind.ts`, `document-actions.ts`, `capabilities.ts`, `FilePreview/types.ts` and `useDocumentStoreSource.ts` at the pin, seeded with every case of v4's `document-actions.test.ts`. It writes 422 rows to `src/testing/fixtures/document-browser.oracle.ndjson`, which `document-browser.oracle.spec.ts` replays. Also cherry-picks P4.D386's two backward-compatible `BROWSER` amendments from `a84ac25ba`: a menu entry template receives its entry as `$implicit`, and `qt-item-folder-field` / `qt-container-select` clear their host `id`.
+
 #### 2026-11-08 — BROWSER: the shared item-browser shell — fixed menu, ⋮ menu, folder view + state + shell, destination picker, folder field, container catalogue + select (v4 624d0d25c)
 
 _Versions: SPA 0.5.973._

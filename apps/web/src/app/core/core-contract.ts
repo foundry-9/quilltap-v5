@@ -2802,6 +2802,8 @@ export type FilesFamilyRequest =
 /** The internally-tagged request union (one variant per user-meaningful op). */
 export type CoreRequest =
   | { type: 'health' }
+  // === P4.D387 ===
+  | DocumentStoreBrowserRequest // === end P4.D387 ===
   | { type: 'unlockState' }
   | { type: 'unlock'; passphrase: string }
   | { type: 'lock' }
@@ -10577,3 +10579,169 @@ export interface ChatCustomToolPresetsRequest {
   asCharacterId?: string;
 }
 // === end P4.D388 ===
+
+// === P4.D387 ===
+// The document-store browser's wire (C13, P4.D381) and Document Mode's viewer
+// / libraries (C14, P4.D380), v4 `c34986421` / `aec626eff` / `5efe53ea7` /
+// `c17033f04` at the pin `624d0d25c`. Appended whole (§R.10 (s)); the request
+// `type` strings are P4.D381's (`api/types.rs`): `mountFolderCopy`,
+// `mountFileUnlink`, `mountFileLinks`, `mountFileRenderHtml`, plus the widened
+// `mountFolderMove` (`destMountPointId?`) / `mountFolderDelete` (`recursive?`).
+// The two GET actions ride dispatch: P4.D381 landed `MountFileLinks` /
+// `MountFileRenderHtml` variants beside the REST `?action=` legs (ruling L-2's
+// switch, recorded).
+
+/** One listed file as v4 `listForBrowser` answers it (no `extractedText`). */
+export interface DocMountBrowserEntry {
+  id: string;
+  fileId: string;
+  mountPointId: string;
+  relativePath: string;
+  fileName: string;
+  folderId: string | null;
+  originalFileName: string | null;
+  originalMimeType: string | null;
+  description: string;
+  descriptionUpdatedAt: string | null;
+  conversionStatus: 'pending' | 'converted' | 'failed' | 'skipped';
+  conversionError: string | null;
+  plainTextLength: number | null;
+  extractedTextSha256: string | null;
+  extractionStatus: 'none' | 'pending' | 'converted' | 'failed' | 'skipped';
+  extractionError: string | null;
+  chunkCount: number;
+  allowEmbed: boolean;
+  allowCharacterRead: boolean;
+  allowCharacterWrite: boolean;
+  /** The deliberate hard-link group, when one exists. */
+  linkGroupId: string | null;
+  lastModified: string;
+  createdAt: string;
+  updatedAt: string;
+  sha256: string;
+  fileSizeBytes: number;
+  fileType: 'pdf' | 'docx' | 'markdown' | 'txt' | 'json' | 'jsonl' | 'blob';
+  source: 'filesystem' | 'database';
+  /** Every link (any store) that shares this link's content row, itself included. */
+  linkCount: number;
+}
+
+/** `mountFilesList` — the browser's listing. */
+export interface MountFilesBrowserListing {
+  files: DocMountBrowserEntry[];
+  folders: string[];
+}
+
+/** One place a file appears (v4 `DocMountLinkLocation`, `mount-index.types.ts:205`). */
+export interface DocMountLinkLocation {
+  linkId: string;
+  mountPointId: string;
+  mountPointName: string;
+  relativePath: string;
+  /** In the same deliberate hard-link group as the file asked about. */
+  grouped: boolean;
+  /** This is the file asked about. */
+  self: boolean;
+}
+
+/** `?action=links` — where else one file appears. */
+export interface MountFileLinksResult {
+  linkGroupId: string | null;
+  locations: DocMountLinkLocation[];
+}
+
+/**
+ * A store file Document Mode shows read-only instead of editing (v4
+ * `lib/folder-browser/document-actions.ts` `DocumentViewTarget`).
+ */
+export interface DocumentViewTarget {
+  mountPointId: string;
+  relativePath: string;
+  fileName: string;
+  fileType: string;
+  fileSizeBytes: number;
+  originalMimeType: string | null;
+  updatedAt: string;
+}
+
+/** A library a picker can browse (`ProjectLibraryTargetDto`'s shape, widened to General). */
+export type LibraryTargetDto = ProjectLibraryTargetDto;
+
+/** `projectMountPointList` with C14's `officialMountPointId`. */
+export interface ProjectMountPointsResult {
+  mountPoints: DocMountPointDto[];
+  officialMountPointId: string | null;
+}
+
+/** The open / read results with C14's `viewer` (absent for a text file). */
+export type OpenDocumentResultWithViewer = OpenDocumentResultDto & { viewer?: DocumentViewTarget };
+
+export interface MountFolderCreateRequest {
+  type: 'mountFolderCreate';
+  mountPointId: string;
+  path: string;
+}
+
+/** Rename = `{fromPath, toPath}` in one store; a move adds `destMountPointId`. */
+export interface MountFolderMoveRequest {
+  type: 'mountFolderMove';
+  mountPointId: string;
+  fromPath: string;
+  toPath: string;
+  destMountPointId?: string;
+}
+
+export interface MountFolderCopyRequest {
+  type: 'mountFolderCopy';
+  mountPointId: string;
+  fromPath: string;
+  toPath: string;
+  destMountPointId?: string;
+}
+
+/** `recursive: true` deletes the folder and the files inside it (`deletedFiles`). */
+export interface MountFolderDeleteRequest {
+  type: 'mountFolderDelete';
+  mountPointId: string;
+  path: string;
+  recursive?: boolean;
+}
+
+/** The three file transfers share one body (`move-file` / `copy-file` / `link-file`). */
+export interface MountFileTransferRequest {
+  type: 'mountFileMove' | 'mountFileCopy' | 'mountFileLink';
+  mountPointId: string;
+  sourcePath: string;
+  destMountPointId: string;
+  destPath: string;
+}
+
+export interface MountFileUnlinkRequest {
+  type: 'mountFileUnlink';
+  mountPointId: string;
+  path: string;
+}
+
+export interface MountFileLinksRequest {
+  type: 'mountFileLinks';
+  mountPointId: string;
+  path: string;
+}
+
+/** `.docx` → 422 `not_available` (R-E, `DOCX_RENDER_HTML_REFUSED`). */
+export interface MountFileRenderHtmlRequest {
+  type: 'mountFileRenderHtml';
+  mountPointId: string;
+  path: string;
+}
+
+export type DocumentStoreBrowserRequest =
+  | MountFolderCreateRequest
+  | MountFolderMoveRequest
+  | MountFolderCopyRequest
+  | MountFolderDeleteRequest
+  | MountFileTransferRequest
+  | MountFileUnlinkRequest
+  | MountFileLinksRequest
+  | MountFileRenderHtmlRequest;
+// === end P4.D387 ===
