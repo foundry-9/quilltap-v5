@@ -99,6 +99,9 @@ pub fn topics_for_completed_job(job_type: Option<&str>, payload: Option<&Value>)
 
         Some("MEMORY_EXTRACTION")
         | Some("CARINA_MEMORY_EXTRACTION")
+        // === P4.D372 === (v4 `db6190b44`, `job-topics.ts:80`)
+        | Some("ESTABLISHED_FACT_MEMORIES")
+        // === /P4.D372 ===
         | Some("MEMORY_REGENERATE_CHAT") => {
             // Every one of these carries `chatId` on its payload, which is what
             // the Salon sidebar's count is scoped by.

@@ -1204,6 +1204,55 @@ pub async fn enqueue_carina_memory_extraction(
     enqueue_job(db, user_id, "CARINA_MEMORY_EXTRACTION", payload, 3.0).await
 }
 
+// === P4.D372 ===
+/// v4 `enqueueEstablishedFactMemories` (`queue-service.ts:651-676`,
+/// `db6190b44`): enqueue the memory job for a machine-delivered established
+/// fact. Runs once per post — dedupe is keyed on the posted message id, across
+/// the user's in-flight jobs (PENDING first, then PROCESSING; the first match
+/// in that order is returned). A failed check is v4's WARN
+/// `[EstablishedFactMemories] Failed to check for existing jobs during
+/// enqueue` and falls through to enqueue anyway. No options: priority 0,
+/// `maxAttempts` 3. The payload is `{ chatId, messageId }`.
+pub async fn enqueue_established_fact_memories(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    message_id: &str,
+) -> Result<String, DbError> {
+    let uid = user_id.to_string();
+    let in_flight = db.read_main(|conn| {
+        let repo = crate::db::background_jobs::BackgroundJobsRepository::new(conn);
+        let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
+        jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+        Ok(jobs)
+    });
+    match in_flight {
+        Ok(jobs) => {
+            let existing = jobs.iter().find(|j| {
+                j.job_type == "ESTABLISHED_FACT_MEMORIES"
+                    && serde_json::from_str::<Value>(&j.payload)
+                        .ok()
+                        .as_ref()
+                        .and_then(|p| p.get("messageId"))
+                        .and_then(Value::as_str)
+                        == Some(message_id)
+            });
+            if let Some(existing) = existing {
+                return Ok(existing.id.clone());
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                error = %crate::db::fallback::error_text(&error),
+                "[EstablishedFactMemories] Failed to check for existing jobs during enqueue"
+            );
+        }
+    }
+    let payload = serde_json::json!({ "chatId": chat_id, "messageId": message_id });
+    enqueue_job(db, user_id, "ESTABLISHED_FACT_MEMORIES", payload, 3.0).await
+}
+// === /P4.D372 ===
+
 /// v4 `enqueueChatDangerClassification` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `CHAT_DANGER_CLASSIFICATION` job at priority `-1`, deduping via
 /// `findPendingForChat` (any PENDING/PROCESSING classification job for the same

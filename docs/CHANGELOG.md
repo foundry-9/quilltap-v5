@@ -251,6 +251,24 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the announcement's fact sender, post_established_fact, the ESTABLISHED_FACT_MEMORIES job and its handler (P4.D372 items 16–19, 26)
+
+_Versions: core 0.0.1438, host 0.0.226._
+
+**The route.** `AnnouncerSenderWire::Fact {}` is an empty struct variant (R-L5). Measured: a unit variant also ignores the extra key, so the struct form is kept as ordered. `chat_announcement_post` takes `user_id` (the engine passes `SINGLE_USER_ID`). The fact sender skips the lowering. Any audience array, `[]` included, is refused, while JSON `null` passes. The fact arm runs before the character check and the audience resolve. An empty-after-trim body answers v4's `Failed to post established fact (empty content or unknown chat).`. A post logs `[Chats v1] Established fact posted` and answers 200 (v4 201: `V4_CREATED_CASES`).
+
+**The writer.** NEW `post_established_fact` writes v4's Host row in its key order and logs the INFO, then, outside the write's error arm, enqueues. The enqueue logs v4's DEBUG on success; a failure is a WARN, and the fact stands. An unknown chat is a WARN with no enqueue. A failed write is the ERROR.
+
+**The job.** `enqueue_established_fact_memories` dedupes on `messageId` across PENDING then PROCESSING, and logs v4's WARN on a failed check. `ESTABLISHED_FACT_MEMORIES` is placed right after `CARINA_MEMORY_EXTRACTION` in `KNOWN_JOB_TYPES` (v4's 24), `system_data::JOB_TYPES`, `JOB_TYPE_ACTIVITY` (memory) and the `memories` topic arm. A unit test pins the four agreeing.
+
+**The handler.** NEW `handle_established_fact_memories`, registered once in the host (`EstablishedFactMemoriesHandler`: the wire's embedding provider, one admission key scope per run). It admits one MANUAL semantic memory at 0.8 per non-removed, non-user LLM seat through the one admission path, with v4's six lines.
+
+**Tests:**
+- `post_office_routes_equivalence` gains six fact rows, including the job row. It was red first on case coverage.
+- The five job-list families were regenerated from the pin. Four were red first and are now green. `background_jobs_tier2` doesn't carry the list. The remaining `realtime_topics_list` red is P4.D377's `wardrobe` topic.
+- NEW tier-3 `established_fact_memories_tier3_equivalence` covers 8 cases: the cast, a repeat post (absorb), a missing chat or message, a non-fact row, whitespace, a project chat and an archived seat. Both of the order's filter mutants flip `cast_admits`.
+- Writer unit tests pin the lines and their silence legs.
+
 #### 2026-11-09 — deus: the send flag + two refines, the operator post's flag and lines, the framed posting turn (P4.D372 items 13, 14, 27, 28)
 
 _Versions: core 0.0.1437, host 0.0.225._

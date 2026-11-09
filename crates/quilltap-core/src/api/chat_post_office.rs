@@ -147,6 +147,9 @@ fn lower_sender(w: &AnnouncerSenderWire) -> Option<AnnouncerSender> {
                 display_name: display_name.clone(),
             })
         }
+        // P4.D372: the fact arm branches BEFORE the lowering (its own writer);
+        // it has no `AnnouncerSender` counterpart.
+        AnnouncerSenderWire::Fact {} => None,
     }
 }
 
@@ -203,6 +206,7 @@ fn load_chat(db: &Db, chat_id: &str) -> Result<Option<Value>, crate::db::DbError
 /// surface.
 pub async fn chat_announcement_post(
     db: &Db,
+    user_id: &str,
     chat_id: &str,
     content_markdown: &str,
     sender: &AnnouncerSenderWire,
@@ -218,13 +222,49 @@ pub async fn chat_announcement_post(
     if !min1(content_markdown) {
         return validation_error();
     }
-    let Some(sender) = lower_sender(sender) else {
+    // === P4.D372 === (v4 `db6190b44`) the fact sender skips the lowering.
+    let is_fact = matches!(sender, AnnouncerSenderWire::Fact {});
+    let lowered = if is_fact { None } else { lower_sender(sender) };
+    if !is_fact && lowered.is_none() {
         return validation_error();
-    };
+    }
+    // === /P4.D372 ===
     // `targetParticipantIds: z.array(z.uuid()).nullable().optional()`.
     if target_participant_ids.is_some_and(|ids| ids.iter().any(|id| !zod_uuid_ok(id))) {
         return validation_error();
     }
+
+    // === P4.D372 === the schema's `superRefine`: `sender.kind === 'fact' &&
+    // targetParticipantIds != null` — ANY array (`[]` included) is refused; an
+    // absent key or JSON `null` (both `None` here) passes. Then the fact arm,
+    // BEFORE the character check and the audience resolve: its own writer,
+    // then its own memory job. v4 answers `created()` (201); the dispatch
+    // boundary answers 200 (`V4_CREATED_CASES`).
+    if is_fact {
+        if target_participant_ids.is_some() {
+            return validation_error();
+        }
+        let fact = crate::services::announcer::writer::post_established_fact(
+            db,
+            &crate::services::announcer::writer::EstablishedFactParams {
+                chat_id: chat_id.to_string(),
+                user_id: user_id.to_string(),
+                content_markdown: Some(content_markdown.to_string()),
+            },
+        )
+        .await;
+        let Some(fact) = fact else {
+            return bad_request("Failed to post established fact (empty content or unknown chat).");
+        };
+        tracing::info!(
+            chatId = %chat_id,
+            messageId = %fact.get("id").and_then(serde_json::Value::as_str).unwrap_or_default(),
+            "[Chats v1] Established fact posted"
+        );
+        return ok(json!({ "success": true, "message": fact }));
+    }
+    let sender = lowered.expect("a non-fact sender lowered above");
+    // === /P4.D372 ===
 
     // For the 'character' branch, verify the referenced character actually
     // exists so we fail fast with a clear error rather than persisting a
@@ -1168,3 +1208,32 @@ mod tests {
         assert!(!min1_max120(&"🎲".repeat(61)));
     }
 }
+
+// === P4.D372 ===
+#[cfg(test)]
+mod fact_sender_serde_tests {
+    use crate::api::types::AnnouncerSenderWire;
+    use serde_json::json;
+
+    /// R-L5, measured: the empty-STRUCT variant ignores an extra key (as
+    /// `z.object` strips it) and serializes `{"kind":"fact"}`. A UNIT variant
+    /// in the same internally tagged enum also ignores the extra key under
+    /// serde's internally-tagged decode — so the two forms behave the same and
+    /// the struct form is kept (the order's call).
+    #[test]
+    fn the_fact_sender_decodes_with_an_extra_key_and_serializes_bare() {
+        let s: AnnouncerSenderWire =
+            serde_json::from_value(json!({"kind": "fact", "extra": 1})).unwrap();
+        assert!(matches!(s, AnnouncerSenderWire::Fact {}));
+        assert_eq!(serde_json::to_value(&s).unwrap(), json!({"kind": "fact"}));
+
+        #[derive(serde::Deserialize, Debug)]
+        #[serde(tag = "kind", rename_all = "camelCase")]
+        enum UnitForm {
+            Fact,
+        }
+        let u: Result<UnitForm, _> = serde_json::from_value(json!({"kind": "fact", "extra": 1}));
+        assert!(u.is_ok(), "the unit form refused the extra key: {u:?}");
+    }
+}
+// === /P4.D372 ===

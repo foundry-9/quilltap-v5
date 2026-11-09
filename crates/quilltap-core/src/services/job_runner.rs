@@ -138,7 +138,9 @@ pub struct HandlerRegistry {
 /// loud-fallback failure (naming the ported vs unported split); a type NOT in this
 /// set gets v4 `getHandler`'s `No handler registered for job type: <type>`. Kept in
 /// sync with the v4 registry so an unported type fails loudly and traceably rather
-/// than silently vanishing. v4's 23 at the `83334b9a5` pin, in v4's enum order.
+/// than silently vanishing. v4's 24 at the `624d0d25c` pin, in v4's enum order
+/// (P4.D372: `ESTABLISHED_FACT_MEMORIES`, `db6190b44`, after
+/// `CARINA_MEMORY_EXTRACTION`).
 pub const KNOWN_JOB_TYPES: &[&str] = &[
     "MEMORY_EXTRACTION",
     "CONTEXT_SUMMARY",
@@ -166,6 +168,7 @@ pub const KNOWN_JOB_TYPES: &[&str] = &[
     "AUTONOMOUS_ROOM_TURN",
     "AUTONOMOUS_ROOM_SCHEDULE_TICK",
     "CARINA_MEMORY_EXTRACTION",
+    "ESTABLISHED_FACT_MEMORIES", // P4.D372
     "CHARACTER_HEADSHOULDERS_BACKFILL",
     "REGENERATE_CONVERSATION_SUMMARIES",
 ];

@@ -417,3 +417,310 @@ mod tests {
         );
     }
 }
+
+// === P4.D372 (v4 `db6190b44`, `announcer/writer.ts:250-337`) ===
+
+/// Parameters for [`post_established_fact`] (v4 `EstablishedFactParams`).
+pub struct EstablishedFactParams {
+    pub chat_id: String,
+    pub user_id: String,
+    /// v4 `contentMarkdown?` — `None` reads as `''`.
+    pub content_markdown: Option<String>,
+}
+
+/// Post a machine-delivered established fact (v4 `postEstablishedFact`): a
+/// public Host row (`systemSender: 'host'`, `systemKind: 'established-fact'`,
+/// no participant) whose body is the trimmed text in BOTH `content` and
+/// `opaqueContent` — the frame is applied at read time and never stored
+/// ([`crate::established_fact`]). Then, OUTSIDE the write's error arm, it
+/// enqueues `ESTABLISHED_FACT_MEMORIES`, which admits the fact to every
+/// non-removed LLM seat; an enqueue failure is a WARN and the post stands.
+///
+/// Returns the persisted message, or `None` on empty content (silently) /
+/// unknown chat (WARN) / a failed write (ERROR). **Errors never propagate**
+/// (the Staff-announcer convention). The realtime hint rides `add_message`'s
+/// own publish, as every announcer post's does — no new publish site.
+pub async fn post_established_fact(db: &Db, params: &EstablishedFactParams) -> Option<Value> {
+    use crate::established_fact::ESTABLISHED_FACT_KIND;
+    let trimmed = js_trim(params.content_markdown.as_deref().unwrap_or("")).to_string();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let fail = |error: &str| {
+        tracing::error!(
+            target: "quilltap::announcer",
+            context = "announcer",
+            chatId = %params.chat_id,
+            error = %error,
+            "[Announcer] Failed to post established fact",
+        );
+    };
+
+    let cid = params.chat_id.clone();
+    match db.read_main(move |c| crate::db::chats_read::find_by_id(c, &cid)) {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            tracing::warn!(
+                target: "quilltap::announcer",
+                context = "announcer",
+                chatId = %params.chat_id,
+                "[Announcer] Established fact skipped — unknown chat",
+            );
+            return None;
+        }
+        Err(e) => {
+            fail(&crate::db::fallback::error_text(&e));
+            return None;
+        }
+    }
+
+    let message_id = uuid::Uuid::new_v4().to_string();
+    // v4's key order.
+    let message = json!({
+        "type": "message",
+        "id": message_id,
+        "role": "ASSISTANT",
+        "content": trimmed,
+        "opaqueContent": trimmed,
+        "attachments": [],
+        "createdAt": crate::clock::now_iso(),
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": ESTABLISHED_FACT_KIND,
+        "targetParticipantIds": null,
+        "customAnnouncer": null,
+    });
+    let event: ChatEventInput = match serde_json::from_value(message.clone()) {
+        Ok(e) => e,
+        Err(e) => {
+            fail(&e.to_string());
+            return None;
+        }
+    };
+    let chat_id = params.chat_id.clone();
+    if let Err(e) = db
+        .write(move |writers| writers.main().chat_messages().add_message(&chat_id, &event))
+        .await
+    {
+        fail(&crate::db::fallback::error_text(&e));
+        return None;
+    }
+    tracing::info!(
+        target: "quilltap::announcer",
+        context = "announcer",
+        chatId = %params.chat_id,
+        messageId = %message_id,
+        "[Announcer] Established fact posted",
+    );
+
+    match crate::services::queue_service::enqueue_established_fact_memories(
+        db,
+        &params.user_id,
+        &params.chat_id,
+        &message_id,
+    )
+    .await
+    {
+        Ok(job_id) => tracing::debug!(
+            target: "quilltap::announcer",
+            context = "announcer",
+            chatId = %params.chat_id,
+            messageId = %message_id,
+            jobId = %job_id,
+            "[Announcer] Established-fact memory job enqueued",
+        ),
+        Err(e) => tracing::warn!(
+            target: "quilltap::announcer",
+            context = "announcer",
+            chatId = %params.chat_id,
+            messageId = %message_id,
+            error = %crate::db::fallback::error_text(&e),
+            "[Announcer] Could not enqueue the established-fact memory job; the fact stands",
+        ),
+    }
+    Some(message)
+}
+// === end P4.D372 ===
+
+// === P4.D372 ===
+#[cfg(test)]
+mod established_fact_writer_tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c3720000-0000-4000-8000-0000000000e1";
+
+    fn instance() -> (tempfile::TempDir, Db, tokio::runtime::Runtime) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID, "title": "Facts", "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        rt.block_on(db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        }))
+        .unwrap();
+        (dir, db, rt)
+    }
+
+    fn params(chat: &str, content: Option<&str>) -> EstablishedFactParams {
+        EstablishedFactParams {
+            chat_id: chat.to_string(),
+            user_id: crate::api::SINGLE_USER_ID.to_string(),
+            content_markdown: content.map(str::to_string),
+        }
+    }
+
+    fn jobs(db: &Db) -> Vec<(String, String)> {
+        db.read_main(|c| {
+            let mut s = c.prepare("SELECT type, payload FROM background_jobs")?;
+            let rows = s
+                .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_fact_posts_a_host_row_logs_and_enqueues_once() {
+        let (_d, db, rt) = instance();
+        let (msg, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(post_established_fact(
+                &db,
+                &params(CHAT, Some("  The bell is cracked.  ")),
+            ))
+        });
+        let msg = msg.expect("posted");
+        let keys: Vec<&str> = msg
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                "type",
+                "id",
+                "role",
+                "content",
+                "opaqueContent",
+                "attachments",
+                "createdAt",
+                "participantId",
+                "systemSender",
+                "systemKind",
+                "targetParticipantIds",
+                "customAnnouncer"
+            ]
+        );
+        assert_eq!(msg["content"], "The bell is cracked.");
+        assert_eq!(msg["opaqueContent"], "The bell is cracked.");
+        let id = msg["id"].as_str().unwrap();
+        let info = format!(
+            "INFO quilltap::announcer [Announcer] Established fact posted context=announcer chatId={CHAT} messageId={id}"
+        );
+        assert!(lines.contains(&info), "{lines:#?}");
+        let enq: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("Established-fact memory job enqueued"))
+            .collect();
+        assert_eq!(enq.len(), 1, "{lines:#?}");
+        assert!(enq[0].starts_with("DEBUG") && enq[0].contains(&format!("messageId={id} jobId=")));
+        let j = jobs(&db);
+        assert_eq!(j.len(), 1);
+        assert_eq!(j[0].0, "ESTABLISHED_FACT_MEMORIES");
+        assert_eq!(
+            j[0].1,
+            format!(r#"{{"chatId":"{CHAT}","messageId":"{id}"}}"#)
+        );
+    }
+
+    #[test]
+    fn empty_is_silent_and_an_unknown_chat_warns_without_enqueue() {
+        let (_d, db, rt) = instance();
+        let (none, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(post_established_fact(
+                &db,
+                &params(CHAT, Some(" \u{feff} ")),
+            ))
+        });
+        assert!(none.is_none());
+        assert!(lines.is_empty(), "{lines:#?}");
+        let (none, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(post_established_fact(&db, &params(CHAT, None)))
+        });
+        assert!(none.is_none() && lines.is_empty());
+        let missing = "c3720000-0000-4000-8000-0000000000ff";
+        let (none, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(post_established_fact(&db, &params(missing, Some("x"))))
+        });
+        assert!(none.is_none());
+        assert_eq!(
+            lines,
+            vec![format!(
+                "WARN quilltap::announcer [Announcer] Established fact skipped — unknown chat context=announcer chatId={missing}"
+            )]
+        );
+        assert!(jobs(&db).is_empty(), "no enqueue on a refusal");
+    }
+
+    #[test]
+    fn a_failed_enqueue_warns_and_the_fact_stands() {
+        let (_d, db, rt) = instance();
+        rt.block_on(db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE background_jobs")?;
+            Ok(())
+        }))
+        .unwrap();
+        let (msg, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(post_established_fact(
+                &db,
+                &params(CHAT, Some("The bell is cracked.")),
+            ))
+        });
+        let msg = msg.expect("the fact stands");
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN")
+                && l.contains(
+                    "Could not enqueue the established-fact memory job; the fact stands"
+                )
+                && l.contains(&format!("messageId={}", msg["id"].as_str().unwrap()))
+                && !l.contains("sqlite error")),
+            "{lines:#?}"
+        );
+        assert!(lines
+            .iter()
+            .any(|l| l.contains("Failed to check for existing jobs during enqueue")));
+        let rows = db
+            .read_main(|c| crate::db::chats_messages_read::get_messages(c, CHAT))
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+    }
+}
+// === /P4.D372 ===

@@ -107,6 +107,10 @@ const V4_CREATED_CASES: &[&str] = &[
     "announcement_whisper_duplicate_ids",
     "announcement_whisper_ghost_participant",
     "announcement_whisper_custom_sender",
+    // P4.D372: the fact arm's `created()`.
+    "announcement_fact",
+    "announcement_fact_null_targets_ok",
+    "announcement_fact_extra_key",
     "send_mail_ok",
     "send_mail_reply",
     "send_mail_reply_bare_name",
@@ -120,6 +124,9 @@ const VALIDATION_DETAILS_GAP: &[&str] = &[
     "announcement_display_name_too_long",
     "announcement_unknown_staff",
     "announcement_whisper_invalid_uuid",
+    // P4.D372: the fact sender's audience refine.
+    "announcement_fact_empty_array_refused",
+    "announcement_fact_with_uuid_targets_refused",
     "preview_empty_seed",
     "send_mail_empty_body",
     // P4.162: the RFC-invalid id rows (`RFC_INVALID` × five gates).
@@ -352,6 +359,46 @@ fn dump_messages(db: &Db, chat_id: &str) -> Value {
     )
 }
 
+/// P4.D372: the background jobs (the oracle's `readFactJobs`), the posted
+/// fact's minted id replaced by `<fact>`.
+fn dump_fact_jobs(db: &Db, posted_id: Option<&str>) -> Value {
+    let rows = db
+        .read_main(|c| {
+            let mut s = c.prepare(
+                "SELECT type, status, priority, attempts, maxAttempts, lastError, payload \
+                 FROM background_jobs ORDER BY createdAt, id",
+            )?;
+            let rows = s
+                .query_map([], |r| {
+                    Ok(json!({
+                        "type": r.get::<_, String>(0)?,
+                        "status": r.get::<_, String>(1)?,
+                        "priority": r.get::<_, f64>(2)?,
+                        "attempts": r.get::<_, f64>(3)?,
+                        "maxAttempts": r.get::<_, f64>(4)?,
+                        "lastError": r.get::<_, Option<String>>(5)?,
+                        "payload": r.get::<_, String>(6)?,
+                    }))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .unwrap();
+    Value::Array(
+        rows.into_iter()
+            .map(|mut r| {
+                let mut payload: Value =
+                    serde_json::from_str(r["payload"].as_str().unwrap()).unwrap();
+                if posted_id.is_some() && payload["messageId"].as_str() == posted_id {
+                    payload["messageId"] = json!("<fact>");
+                }
+                r["payload"] = payload;
+                r
+            })
+            .collect(),
+    )
+}
+
 fn dump_character_vault_fk(db: &Db, character_id: &str) -> Value {
     let cid = character_id.to_string();
     let row = db
@@ -551,6 +598,7 @@ fn post_office_routes_match_oracle() {
         let db = fresh_db(&spec, tag);
         let r = rt.block_on(chat_post_office::chat_announcement_post(
             &db,
+            quilltap_core::api::SINGLE_USER_ID,
             chat,
             content,
             &sender,
@@ -732,6 +780,75 @@ fn post_office_routes_match_oracle() {
         Some(&["not-a-uuid"]),
         false,
     );
+    // === P4.D372 (v4 `db6190b44`) === the established-fact sender. The
+    // sender is DECODED from v4's JSON (R-L5: the empty-struct variant drops
+    // the extra key as `z.object` strips it).
+    let mut fact =
+        |tag: &str, name: &str, content: &str, sender: Value, targets: Option<Vec<String>>| {
+            let sender: AnnouncerSenderWire = serde_json::from_value(sender).expect("fact sender");
+            let db = fresh_db(&spec, tag);
+            let r = rt.block_on(chat_post_office::chat_announcement_post(
+                &db,
+                quilltap_core::api::SINGLE_USER_ID,
+                CHAT,
+                content,
+                &sender,
+                targets.as_deref(),
+            ));
+            let posted = match &r {
+                Response::ChatPostOffice(v) => v["message"]["id"].as_str().map(str::to_string),
+                _ => None,
+            };
+            let tables = json!({
+                "messages": dump_messages(&db, CHAT),
+                "jobs": dump_fact_jobs(&db, posted.as_deref()),
+            });
+            check(name, &r, Some(tables));
+        };
+    fact(
+        "fact1",
+        "announcement_fact",
+        "  The bell is cracked.  ",
+        json!({"kind": "fact"}),
+        None,
+    );
+    fact(
+        "fact2",
+        "announcement_fact_whitespace",
+        "   ",
+        json!({"kind": "fact"}),
+        None,
+    );
+    fact(
+        "fact3",
+        "announcement_fact_empty_array_refused",
+        "Known to all.",
+        json!({"kind": "fact"}),
+        Some(vec![]),
+    );
+    // JSON `null` decodes to `None` (the dispatch field's `#[serde(default)]`).
+    fact(
+        "fact4",
+        "announcement_fact_null_targets_ok",
+        "Known to all, again.",
+        json!({"kind": "fact"}),
+        None,
+    );
+    fact(
+        "fact5",
+        "announcement_fact_with_uuid_targets_refused",
+        "A whispered fact.",
+        json!({"kind": "fact"}),
+        Some(vec![P_ARIA.to_string()]),
+    );
+    fact(
+        "fact6",
+        "announcement_fact_extra_key",
+        "Extra key, same fact.",
+        json!({"kind": "fact", "extra": 1}),
+        None,
+    );
+    // === /P4.D372 ===
 
     // `announcement_unknown_staff` — v4 rejects `staffId: 'quartermaster'` at the
     // enum. The typed boundary makes an unknown staff id unrepresentable, so the
@@ -953,6 +1070,7 @@ fn post_office_routes_match_oracle() {
         let db = fresh_db(&spec, &format!("rfc-sender-{tag}"));
         let r = rt.block_on(chat_post_office::chat_announcement_post(
             &db,
+            quilltap_core::api::SINGLE_USER_ID,
             CHAT,
             "From an impossible sender.",
             &AnnouncerSenderWire::Character {
@@ -966,6 +1084,7 @@ fn post_office_routes_match_oracle() {
         let targets = vec![bad.to_string()];
         let r = rt.block_on(chat_post_office::chat_announcement_post(
             &db,
+            quilltap_core::api::SINGLE_USER_ID,
             CHAT,
             "To an impossible audience.",
             &staff(StaffSenderWire::Host),

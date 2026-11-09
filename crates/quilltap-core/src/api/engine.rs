@@ -1346,6 +1346,7 @@ impl CoreEngine {
                 Ok(db) => {
                     super::chat_post_office::chat_announcement_post(
                         &db,
+                        SINGLE_USER_ID, // P4.D372: the fact arm enqueues for the user
                         &chat_id,
                         &content_markdown,
                         &sender,

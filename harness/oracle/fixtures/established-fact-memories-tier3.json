@@ -1,0 +1,242 @@
+{
+  "_comment": "P4.D372 (v4 db6190b44): tier-3 corpus for v4's REAL handleEstablishedFactMemories, run in order over ONE copy of the carina-memory-extraction fixture pair (built per run by build-carina-memory-extraction-fixture.ts). Plants are applied identically on both sides: the chat participant lists (raw UPDATE), the fact rows (addMessage), and an archive (raw UPDATE) before the last case. No LLM is called; the embedding boundary is canned by exact text prefix.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "00000000-0000-4000-8000-0000000000ee",
+  "nowMs": 1700000000000,
+  "chatParticipants": {
+    "1c000000-0000-4000-8000-00000000c0a1": [
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a1",
+        "type": "CHARACTER",
+        "characterId": "aa000000-0000-4000-8000-0000000000a1",
+        "controlledBy": "llm",
+        "displayOrder": 0,
+        "isActive": true,
+        "status": "active",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a2",
+        "type": "CHARACTER",
+        "characterId": "bb000000-0000-4000-8000-0000000000b1",
+        "controlledBy": "llm",
+        "displayOrder": 1,
+        "isActive": true,
+        "status": "absent",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a3",
+        "type": "CHARACTER",
+        "characterId": "cc000000-0000-4000-8000-0000000000c1",
+        "controlledBy": "llm",
+        "displayOrder": 2,
+        "isActive": true,
+        "status": "silent",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a4",
+        "type": "CHARACTER",
+        "characterId": "aa000000-0000-4000-8000-0000000000a1",
+        "controlledBy": "llm",
+        "displayOrder": 3,
+        "isActive": true,
+        "status": "removed",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a5",
+        "type": "CHARACTER",
+        "characterId": "cc000000-0000-4000-8000-0000000000c1",
+        "controlledBy": "user",
+        "displayOrder": 4,
+        "isActive": true,
+        "status": "active",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      },
+      {
+        "id": "9b000000-0000-4000-8000-0000000000a7",
+        "type": "CHARACTER",
+        "characterId": "dd000000-0000-4000-8000-00000000dead",
+        "controlledBy": "llm",
+        "displayOrder": 5,
+        "isActive": true,
+        "status": "active",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      }
+    ],
+    "1c000000-0000-4000-8000-00000000c0a7": [
+      {
+        "id": "9b000000-0000-4000-8000-0000000000b1",
+        "type": "CHARACTER",
+        "characterId": "cc000000-0000-4000-8000-0000000000c1",
+        "controlledBy": "llm",
+        "displayOrder": 0,
+        "isActive": true,
+        "status": "active",
+        "hasHistoryAccess": false,
+        "createdAt": "2020-01-01T00:00:00.000Z",
+        "updatedAt": "2020-01-01T00:00:00.000Z"
+      }
+    ]
+  },
+  "facts": [
+    {
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "event": {
+        "type": "message",
+        "id": "fa000000-0000-4000-8000-0000000000f1",
+        "role": "ASSISTANT",
+        "content": "The harbour bell was cracked in the storm of last spring.",
+        "opaqueContent": "The harbour bell was cracked in the storm of last spring.",
+        "attachments": [],
+        "createdAt": "2023-06-01T10:00:00.000Z",
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": "established-fact",
+        "targetParticipantIds": null,
+        "customAnnouncer": null
+      }
+    },
+    {
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "event": {
+        "type": "message",
+        "id": "fa000000-0000-4000-8000-0000000000f2",
+        "role": "ASSISTANT",
+        "content": "   ",
+        "opaqueContent": "   ",
+        "attachments": [],
+        "createdAt": "2023-06-01T10:00:00.000Z",
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": "established-fact",
+        "targetParticipantIds": null,
+        "customAnnouncer": null
+      }
+    },
+    {
+      "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+      "event": {
+        "type": "message",
+        "id": "fa000000-0000-4000-8000-0000000000f3",
+        "role": "ASSISTANT",
+        "content": "The barometer ledger is kept in the north tower.",
+        "opaqueContent": "The barometer ledger is kept in the north tower.",
+        "attachments": [],
+        "createdAt": "2023-06-01T10:00:00.000Z",
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": "established-fact",
+        "targetParticipantIds": null,
+        "customAnnouncer": null
+      }
+    },
+    {
+      "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+      "event": {
+        "type": "message",
+        "id": "fa000000-0000-4000-8000-0000000000f4",
+        "role": "ASSISTANT",
+        "content": "Sorrel no longer keeps the ledger.",
+        "opaqueContent": "Sorrel no longer keeps the ledger.",
+        "attachments": [],
+        "createdAt": "2023-06-02T10:00:00.000Z",
+        "participantId": null,
+        "systemSender": "host",
+        "systemKind": "established-fact",
+        "targetParticipantIds": null,
+        "customAnnouncer": null
+      }
+    }
+  ],
+  "cannedEmbeddings": {
+    "The harbour bell was cracked in the storm of last spring.\n\nThe harbour bell was cracked in the storm of last spring.": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "The barometer ledger is kept in the north tower.\n\nThe barometer ledger is kept in the north tower.": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "cases": [
+    {
+      "name": "cast_admits",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "messageId": "fa000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "repeat_post_dedups",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "messageId": "fa000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "missing_chat",
+      "chatId": "1c000000-0000-4000-8000-0000000000ff",
+      "messageId": "fa000000-0000-4000-8000-0000000000f1"
+    },
+    {
+      "name": "missing_message",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "messageId": "fa000000-0000-4000-8000-0000000000ee"
+    },
+    {
+      "name": "not_a_fact_row",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "messageId": "3a000000-0000-4000-8000-00000000aa01"
+    },
+    {
+      "name": "whitespace_fact",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a1",
+      "messageId": "fa000000-0000-4000-8000-0000000000f2"
+    },
+    {
+      "name": "project_chat",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+      "messageId": "fa000000-0000-4000-8000-0000000000f3"
+    },
+    {
+      "name": "archived_seat",
+      "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+      "messageId": "fa000000-0000-4000-8000-0000000000f4",
+      "archiveBefore": "cc000000-0000-4000-8000-0000000000c1"
+    }
+  ],
+  "_characterlessSeat": "A CHARACTER participant without a characterId is unreachable: v4's chat schema requires one (chat.types.ts:818-859, `Participants must have characterId`), so a planted row makes findById refuse the whole chat. v4's `!!p.characterId` filter arm is defensive only; not planted."
+}

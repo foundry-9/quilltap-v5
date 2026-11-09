@@ -4794,6 +4794,13 @@ pub enum AnnouncerSenderWire {
     Character { character_id: String },
     #[serde(rename_all = "camelCase")]
     Custom { display_name: String },
+    // === P4.D372 ===
+    /// v4 `z.object({ kind: z.literal('fact') })` (`db6190b44`): an
+    /// established fact — no speaker, always public; posted as a Host row by
+    /// `post_established_fact`. An EMPTY STRUCT variant (R-L5) so extra keys
+    /// are ignored as `z.object` strips them; serializes `{"kind":"fact"}`.
+    Fact {},
+    // === /P4.D372 ===
 }
 
 /// v4 `STAFF_SENDER_ENUM` (`schemas.ts:180`) — exactly these ten, this spelling.

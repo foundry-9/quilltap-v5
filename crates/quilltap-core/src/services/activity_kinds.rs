@@ -86,6 +86,8 @@ pub const JOB_TYPE_ACTIVITY: &[(&str, Option<ActivityKind>)] = &[
     // job replaces housekeeping + consolidation; `INTER_CHARACTER_MEMORY` gone.
     ("MEMORY_MAINTENANCE", Some(ActivityKind::Memory)),
     ("CARINA_MEMORY_EXTRACTION", Some(ActivityKind::Memory)),
+    // P4.D372 (v4 `db6190b44`, `activity-kinds.ts:45`).
+    ("ESTABLISHED_FACT_MEMORIES", Some(ActivityKind::Memory)),
     // ── Emb ──────────────────────────────────────────────────────────────────
     ("EMBEDDING_GENERATE", Some(ActivityKind::Embedding)),
     ("EMBEDDING_REFIT", Some(ActivityKind::Embedding)),

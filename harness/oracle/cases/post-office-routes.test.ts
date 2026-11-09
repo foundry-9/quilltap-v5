@@ -159,6 +159,42 @@ async function readMessages(chatId: string): Promise<unknown> {
   return (await getRepositories().chats.getMessages(chatId)) as unknown;
 }
 
+// === P4.D372 ===
+/**
+ * The established-fact memory jobs on this case's copy (v4 `db6190b44`), with
+ * the minted message id replaced by `<fact>` when it is the posted fact's.
+ * v4's job host is held off for the fact cases, so every job stays PENDING.
+ */
+async function readFactJobs(postedId: string | null): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as {
+    prepare: (s: string) => { all: () => Array<Record<string, unknown>> };
+  };
+  return db
+    .prepare('SELECT type, status, priority, attempts, maxAttempts, lastError, payload FROM background_jobs ORDER BY createdAt, id')
+    .all()
+    .map((r) => {
+      const payload = JSON.parse(String(r.payload)) as Record<string, unknown>;
+      if (postedId && payload.messageId === postedId) payload.messageId = '<fact>';
+      return { ...r, payload };
+    });
+}
+
+async function postFact(
+  post: (chatId: string, action: string, body: unknown) => Promise<unknown>,
+  body: Record<string, unknown>,
+): Promise<{ status: number; body: unknown; tables: unknown }> {
+  (globalThis as Record<string, unknown>).__quilltapJobHost = { shuttingDown: true };
+  const { status, body: out } = await respond(await post(CHAT, 'announcement', body));
+  const posted = (out as { message?: { id?: string } }).message?.id ?? null;
+  return {
+    status,
+    body: out,
+    tables: { messages: await readMessages(CHAT), jobs: await readFactJobs(posted) },
+  };
+}
+// === /P4.D372 ===
+
 /**
  * Plant a tombstone on this case's FRESH COPY (P4.D65).
  *
@@ -628,6 +664,42 @@ async function main(): Promise<void> {
         return { status, body, tables: { messages: await readMessages(CHAT) } };
       },
     },
+    // === P4.D372 (v4 `db6190b44`) === the established-fact sender.
+    {
+      name: 'announcement_fact',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: '  The bell is cracked.  ', sender: { kind: 'fact' } }),
+    },
+    {
+      // `min(1)` passes; the writer trims it empty → the route's 400 sentence.
+      name: 'announcement_fact_whitespace',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: '   ', sender: { kind: 'fact' } }),
+    },
+    {
+      // `targetParticipantIds != null` — an EMPTY array is refused too.
+      name: 'announcement_fact_empty_array_refused',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: 'Known to all.', sender: { kind: 'fact' }, targetParticipantIds: [] }),
+    },
+    {
+      // JSON `null` is "no audience": accepted.
+      name: 'announcement_fact_null_targets_ok',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: 'Known to all, again.', sender: { kind: 'fact' }, targetParticipantIds: null }),
+    },
+    {
+      name: 'announcement_fact_with_uuid_targets_refused',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: 'A whispered fact.', sender: { kind: 'fact' }, targetParticipantIds: [P_ARIA] }),
+    },
+    {
+      // `z.object` strips the unknown key (R-L5's empty-struct variant).
+      name: 'announcement_fact_extra_key',
+      freezeClock: true,
+      run: async () => postFact(post, { contentMarkdown: 'Extra key, same fact.', sender: { kind: 'fact', extra: 1 } }),
+    },
+    // === /P4.D372 ===
     {
       // `z.array(z.uuid())` — a non-uuid never reaches the resolver.
       name: 'announcement_whisper_invalid_uuid',

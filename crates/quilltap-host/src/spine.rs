@@ -3273,6 +3273,43 @@ impl<PF: PricingFetch + Send + Sync + 'static> JobHandler for CarinaMemoryExtrac
     }
 }
 
+// === P4.D372 ===
+/// `ESTABLISHED_FACT_MEMORIES` (v4 `db6190b44`) — the differential-verified
+/// [`handle_established_fact_memories`](quilltap_core::services::established_fact_memories::handle_established_fact_memories):
+/// one MANUAL memory per non-removed LLM seat, through the one admission
+/// path. The embedding provider is the wire's (as the Carina wrapper and the
+/// Memories API have it); one admission key scope per run (v4's child job
+/// scope); `tz` is the memory calendar's fallback zone.
+pub struct EstablishedFactMemoriesHandler {
+    pub wire: WireConfig,
+    pub tz: String,
+}
+
+impl JobHandler for EstablishedFactMemoriesHandler {
+    fn handle<'a>(&'a self, db: &'a Db, job: &'a BackgroundJob) -> JobFuture<'a> {
+        Box::pin(async move {
+            let embedding = self.wire.embedding(db);
+            let scope = quilltap_core::services::admission::AdmissionKeyScope::new(job.id.clone());
+            match quilltap_core::services::established_fact_memories::handle_established_fact_memories(
+                db,
+                job,
+                quilltap_core::services::established_fact_memories::EstablishedFactMemoriesDeps {
+                    provider: &embedding,
+                    key_scope: Some(&scope),
+                    host_zone_fallback: &self.tz,
+                    now_ms: quilltap_core::clock::now_unix_ms() as f64,
+                },
+            )
+            .await
+            {
+                Ok(()) => JobOutcome::Completed(None),
+                Err(e) => JobOutcome::Failed(e),
+            }
+        })
+    }
+}
+// === /P4.D372 ===
+
 /// `MEMORY_EXTRACTION` — a payload decode around the differential-verified
 /// [`handle_memory_extraction`](quilltap_core::services::memory_extraction_job::handle_memory_extraction):
 /// a closed turn past the chat's `turn` cursor, or (any other grain) a fold
@@ -3991,6 +4028,15 @@ impl SpineFactory for ProductionSpineFactory {
                     tz: self.tz.clone(),
                 }),
             ),
+            // === P4.D372 ===
+            (
+                "ESTABLISHED_FACT_MEMORIES".to_string(),
+                Box::new(EstablishedFactMemoriesHandler {
+                    wire: wire.clone(),
+                    tz: self.tz.clone(),
+                }),
+            ),
+            // === /P4.D372 ===
             (
                 "MEMORY_EXTRACTION".to_string(),
                 Box::new(MemoryExtractionJobHandler {
