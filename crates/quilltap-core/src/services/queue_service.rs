@@ -1333,8 +1333,14 @@ pub async fn enqueue_title_update(
 
 /// v4 `enqueueCharacterAvatarGeneration` (`lib/background-jobs/queue-service.ts`):
 /// enqueue a `CHARACTER_AVATAR_GENERATION` job, deduping via `findPendingForChat`
-/// (any PENDING/PROCESSING avatar job for the SAME chat + character → no-op
+/// onto a still-PENDING avatar job for the SAME chat + character (no-op
 /// returning the existing id). `max_attempts` is v4's default 3.
+///
+/// v4 `d4ddeb943`: "Dedup: collapse onto a still-PENDING avatar job for this
+/// chat+character. The handler reads the outfit and the carried objects when it
+/// runs, so one queued job covers any later change. A PROCESSING job has already
+/// built its prompt, so a change made after that point needs a fresh job." (the
+/// sibling wardrobe item-image path's shape).
 ///
 /// The payload is `{ chatId, characterId, imageProfileId, [equippedSlotsOverride] }`
 /// (v4's `CharacterAvatarGenerationPayload` object literal — the override key is
@@ -1354,9 +1360,11 @@ pub async fn enqueue_character_avatar_generation(
         crate::db::background_jobs::BackgroundJobsRepository::new(conn).find_pending_for_chat(&cid)
     })?;
     let existing = pending.iter().find(|j| {
-        if j.job_type != "CHARACTER_AVATAR_GENERATION" {
+        // === P4.D368 === v4 `d4ddeb943`: `&& job.status === 'PENDING'`.
+        if j.job_type != "CHARACTER_AVATAR_GENERATION" || j.status != "PENDING" {
             return false;
         }
+        // === end P4.D368 ===
         serde_json::from_str::<Value>(&j.payload)
             .ok()
             .and_then(|p| {
@@ -1369,12 +1377,12 @@ pub async fn enqueue_character_avatar_generation(
     });
     if let Some(existing) = existing {
         // P4.D238 (the `caller_context` rider): v4's two INFO lines, absent
-        // until now.
+        // until now. P4.D368 (R-6): v4's camelCase keys.
         tracing::info!(
             context = "background-jobs.queue",
-            chat_id = %chat_id,
-            character_id = %character_id,
-            existing_job_id = %existing.id,
+            chatId = %chat_id,
+            characterId = %character_id,
+            existingJobId = %existing.id,
             "[CharacterAvatar] Reusing existing pending job"
         );
         return Ok((existing.id.clone(), false));
@@ -1410,9 +1418,9 @@ pub async fn enqueue_character_avatar_generation(
     .await?;
     tracing::info!(
         context = "background-jobs.queue",
-        chat_id = %chat_id,
-        character_id = %character_id,
-        job_id = %job_id,
+        chatId = %chat_id,
+        characterId = %character_id,
+        jobId = %job_id,
         "[CharacterAvatar] Avatar generation job enqueued"
     );
     Ok((job_id, true))

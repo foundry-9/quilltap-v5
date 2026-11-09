@@ -571,6 +571,14 @@ _Versions: core 0.0.1429, web 0.0.257._
 
 The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
 
+#### 2026-11-09 — fix(jobs): avatar regeneration reuses only a still-PENDING job; the [CharacterAvatar] lines log v4's camelCase keys (P4.D368 items 13–14, v4 d4ddeb943)
+
+_Versions: core 0.0.1431._
+
+- `enqueue_character_avatar_generation` collapses onto an existing avatar job for the chat and character only while it is PENDING. A PROCESSING job has already built its prompt, so an outfit or Inventory change made during it now queues a fresh job (v4 `d4ddeb943`).
+- The `[CharacterAvatar] Reusing existing pending job` and `Avatar generation job enqueued` INFO lines log `chatId` / `characterId` / `existingJobId` / `jobId`, as v4 does (they logged snake_case keys).
+- `chat_cast_routes_equivalence` gains the `add_dedup_processing_job_mints_new` row against v4's real route and a log test (red-first 4; green 12/12); the jobs dump breaks ties by status on both sides.
+
 #### 2026-11-09 — feat(spa): the Storyteller board's All at once button re-enabled with v4's rule; e2e beat (K) gated on the frames reducer (P4.D368 items 9–10)
 
 _Versions: SPA 0.5.972._

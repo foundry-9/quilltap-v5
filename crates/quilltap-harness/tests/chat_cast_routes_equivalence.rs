@@ -105,6 +105,8 @@ const V4_CREATED_CASES: &[&str] = &[
     // P4.D238's planted fresh adds.
     "add_autonomous_room_no_job",
     "add_dedup_pending_job",
+    // P4.D368 (v4 `d4ddeb943`): a PROCESSING job is not reused.
+    "add_dedup_processing_job_mints_new",
     "add_gen_on_no_image_profile_no_job",
 ];
 
@@ -486,7 +488,7 @@ fn dump_jobs(db: &Db) -> Value {
         // uuid on both sides, so ordering by it is ordering by randomness.
         let mut stmt = c.prepare(
             "SELECT id, userId, type, status, priority, attempts, maxAttempts, payload \
-             FROM background_jobs ORDER BY type, json_extract(payload, '$.characterId')",
+             FROM background_jobs ORDER BY type, json_extract(payload, '$.characterId'), status",
         )?;
         let rows = stmt
             .query_map([], |r| {
@@ -561,6 +563,10 @@ enum Plant {
     /// `enqueueCharacterAvatarGeneration(userId, {chatId: chatQuiet,
     /// characterId: dora, imageProfileId})` — a PENDING job the join must reuse.
     PendingDoraJobQuiet,
+    /// P4.D368 (v4 `d4ddeb943`): the [`Plant::PendingDoraJobQuiet`] job, then
+    /// `repos.backgroundJobs.update(jobId, {status: 'PROCESSING'})` — a job
+    /// that has already built its prompt, so the join must mint a fresh one.
+    ProcessingDoraJobQuiet,
     /// `repos.imageProfiles.update(imageProfile, {isDefault: false})` — no image
     /// profile resolves (the chats carry no `imageProfileId`).
     NoDefaultImageProfile,
@@ -634,6 +640,31 @@ async fn plant(db: &Db, spec: &Spec, p: Plant) {
                 .await
                 .expect("plant job");
             assert!(is_new, "the pending-job plant must mint a row");
+        }
+        Plant::ProcessingDoraJobQuiet => {
+            let (job_id, is_new) =
+                quilltap_core::services::queue_service::enqueue_character_avatar_generation(
+                    db,
+                    &spec.user_id,
+                    &id("chatQuiet"),
+                    &id("dora"),
+                    &id("imageProfile"),
+                    None,
+                    false,
+                )
+                .await
+                .expect("plant job");
+            assert!(is_new, "the processing-job plant must mint a row");
+            let n = db
+                .write(move |w| {
+                    Ok(w.main().connection().execute(
+                        r#"UPDATE "background_jobs" SET "status" = 'PROCESSING' WHERE "id" = ?1"#,
+                        rusqlite::params![job_id],
+                    )?)
+                })
+                .await
+                .expect("flip the job to PROCESSING");
+            assert_eq!(n, 1, "the processing-job plant must flip its row");
         }
     }
 }
@@ -1071,6 +1102,13 @@ fn chat_cast_routes_match_oracle() {
             "add_dedup_pending_job",
             &chat_quiet,
             &[Plant::PendingDoraJobQuiet],
+            json!({ "type": "CHARACTER", "characterId": id("dora") }),
+        );
+        planted(
+            "p5b",
+            "add_dedup_processing_job_mints_new",
+            &chat_quiet,
+            &[Plant::ProcessingDoraJobQuiet],
             json!({ "type": "CHARACTER", "characterId": id("dora") }),
         );
         planted(
@@ -1868,6 +1906,20 @@ fn arrival_in_a_generation_on_chat_requests_and_enqueues_a_force_less_job() {
         enqueued.contains("context=background-jobs.queue"),
         "{enqueued}"
     );
+    // P4.D368 (R-6): v4's camelCase keys (`queue-service.ts:1496-1501`).
+    assert!(
+        enqueued.contains(&format!("chatId={}", spec.ids["chatQuiet"])),
+        "{enqueued}"
+    );
+    assert!(
+        enqueued.contains(&format!("characterId={dora}")),
+        "{enqueued}"
+    );
+    assert!(enqueued.contains("jobId="), "{enqueued}");
+    assert!(
+        !enqueued.contains("chat_id=") && !enqueued.contains("job_id="),
+        "silence leg: no snake keys: {enqueued}"
+    );
     // The dress ran FIRST (v4 pins it by `invocationCallOrder`): a fresh
     // arrival has NO equipped entry until the dress writes one, so a refresh
     // run before it would take the skip and queue nothing. The skip's absence
@@ -1944,10 +1996,46 @@ fn a_pending_job_is_reused_not_duplicated() {
     );
     let reused = line(&lines, REUSED);
     assert!(reused.starts_with("INFO "), "{reused}");
-    assert!(reused.contains("existing_job_id="), "{reused}");
+    // P4.D368 (R-6): v4's camelCase keys (`queue-service.ts:1483-1488`).
+    assert!(reused.contains("existingJobId="), "{reused}");
+    assert!(
+        reused.contains(&format!("characterId={}", spec.ids["dora"])),
+        "{reused}"
+    );
+    assert!(
+        !reused.contains("existing_job_id=") && !reused.contains("character_id="),
+        "silence leg: no snake keys: {reused}"
+    );
     assert!(!has(&lines, ENQUEUED), "silence leg: no second row");
     assert!(has(&lines, REQUESTED));
     assert_eq!(jobs.as_array().unwrap().len(), 1);
+}
+
+/// P4.D368 (v4 `d4ddeb943`): the only avatar job for the chat + character is
+/// PROCESSING — it has already built its prompt — so the arrival enqueues a
+/// FRESH job (a second row, `ENQUEUED` logged) and reuses nothing.
+#[test]
+fn a_processing_job_is_not_reused_a_fresh_one_is_enqueued() {
+    let spec = load_spec();
+    let (_, lines, jobs) = captured_add(
+        "log4b",
+        "chatQuiet",
+        &[Plant::ProcessingDoraJobQuiet],
+        json!({ "type": "CHARACTER", "characterId": spec.ids["dora"] }),
+    );
+    let enqueued = line(&lines, ENQUEUED);
+    assert!(enqueued.starts_with("INFO "), "{enqueued}");
+    assert!(
+        !has(&lines, REUSED),
+        "silence leg: the PROCESSING job is not reused"
+    );
+    let jobs = jobs.as_array().unwrap();
+    assert_eq!(jobs.len(), 2, "{jobs:#?}");
+    let statuses: Vec<&str> = jobs.iter().map(|j| j["status"].as_str().unwrap()).collect();
+    assert!(
+        statuses.contains(&"PROCESSING") && statuses.contains(&"PENDING"),
+        "{statuses:?}"
+    );
 }
 
 #[test]

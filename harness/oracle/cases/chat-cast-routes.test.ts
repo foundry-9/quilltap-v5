@@ -196,7 +196,7 @@ async function readJobs(): Promise<unknown> {
   // on both sides, so ordering by it is ordering by randomness.
   const rows = (await rawQuery(
     'SELECT id, userId, type, status, priority, attempts, maxAttempts, payload ' +
-      "FROM background_jobs ORDER BY type, json_extract(payload, '$.characterId')",
+      "FROM background_jobs ORDER BY type, json_extract(payload, '$.characterId'), status",
   )) as Array<Record<string, unknown>>;
   return rows.map((r) => ({
     ...r,
@@ -650,6 +650,26 @@ async function main(): Promise<void> {
       },
       { type: 'CHARACTER', characterId: I.dora },
     ),
+    // === P4.D368 === (d2) v4 `d4ddeb943`: the same plant, then the job is
+    //     PROCESSING (it has already built its prompt) → a FRESH job is
+    //     enqueued for the change, a second CHARACTER_AVATAR_GENERATION row.
+    plantedAddCase(
+      'add_dedup_processing_job_mints_new',
+      I.chatQuiet,
+      async (repos) => {
+        const { enqueueCharacterAvatarGeneration } = await import(
+          '@/lib/background-jobs/queue-service'
+        );
+        const { jobId } = await enqueueCharacterAvatarGeneration(spec.userId, {
+          chatId: I.chatQuiet,
+          characterId: I.dora,
+          imageProfileId: I.imageProfile,
+        });
+        await repos.backgroundJobs.update(jobId, { status: 'PROCESSING' } as never);
+      },
+      { type: 'CHARACTER', characterId: I.dora },
+    ),
+    // === end P4.D368 ===
     // (e) generation on but no image profile resolves → no job.
     plantedAddCase(
       'add_gen_on_no_image_profile_no_job',
