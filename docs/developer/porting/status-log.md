@@ -198914,3 +198914,170 @@ They were green after it.
 - `9024789a2` ripple;
 - `59f621808` mutation proofs;
 - then the close commit.
+
+## P4.D363 — lane record (the chat-message FTS index without the Staff; v4 `902c6efe9` + `c539c82e0`'s hit hunk; pin `624d0d25c`)
+
+**Branch** `claude/p4-d363-fts-2fa9d0`, worktree `.claude/worktrees/p4-d363-fts-2fa9d0`. The app opened the session already on a clean branch sitting exactly at `SCHEMA` `4e3a1584e` (P4.D362's Tier-1 commit, confirmed against `p4d362-SCHEMA-landed.md` and `git log --all`), so no move was needed. No `SCHEMA` amendment was received or cherry-picked.
+
+### §2 probe (an observation, §R.2) and pin checks
+
+- 2026-11-08 23:43 CST: v4 is on branch `main` and its tree is clean. **v4 moved:** `624d0d25c..main` is non-empty; HEAD was `88c9cc81d` ("fix: folder moves match folder paths case-insensitively") at observation, with 4.12.2 released in between (`c9b281ec9`). `997657639..bugfix` is non-empty (the 4.12.2 bug branch). Expected; I continued.
+- Pin `/tmp/qt-v4-pin-p4d363-624d0d25c` is HEAD `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`; `package.json` reads `4.13.0-dev.8`. Its own `npm ci --offline --ignore-scripts` + `npm rebuild better-sqlite3` gave `better-sqlite3` 13.0.3 and `zod` 4.6.7. `.claude/pin-plugin-sdks.sh` printed the floors (openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3; CLI driver 13.0.3 / sqlite 3.53.4 / chacha20).
+
+### Survey corrections measured
+
+1. **L-2's premise is FALSE at the pin, and porting it literally would make every fresh v5 boot fatal.** v4's `run()` calls `countIndexedChatMessages` (a `SELECT COUNT(*) FROM "chat_messages_fts_map"`) BEFORE `ensureChatMessageFtsSchema`. On a base with no FTS objects it throws `no such table: chat_messages_fts_map`. This was measured in the new family's `missing-all` row, through v4's real runner sequence (`path: "threw"`). v4 never meets that base, because `dependsOn` runs `create-chat-message-fts-v1` first. v5 does: the reconcile creates the objects after this pass, and L-1 makes the call fatal.
+   - **RULED (coordinator, 2026-11-09 — "A, with one measurement first"):** the literal `should_run` / `run` pair is kept and compared, including the throw. The ENTRY point has one more arm, `DependencyPending`: with no map table, nothing runs, nothing is stamped, and nothing is logged.
+   - The reconcile then builds the index under the current rule. That is v4's own fresh-boot end state: `create-chat-message-fts-v1` runs, then the reindex is skipped unstamped.
+   - **The ruling's measurement, pinned as a DIFFERENTIAL ROW** (`fresh-create-then-reindex` in the new family): v4's REAL `create-chat-message-fts-v1` then the reindex, through the runner's sequence, on a base with no FTS objects. v4 RUNS create ("Indexed 1 message for search") and leaves the reindex UNSTAMPED (`shouldRun` false, `not-needed`). v5's boot order on the same base (the reindex, `DependencyPending`; then the reconcile) ends with no reindex row and the same map and `sqlite_master`.
+   - **`FRESH_INSTANCE_REINDEX_STAMP` therefore RETIRES by measurement:** v5 converges and writes no row on a fresh instance. `host_boot_chat_message_fts` beat 1 also pins zero reindex rows at the host.
+   - The named both-ways table is `DEPENDENCY_PENDING` = `[("missing-all", "threw", "dependency-pending")]`.
+2. **`jest.setup.ts` does NOT mock `@/lib/logger` at the pin** (the order said it did). v4's logger filters `debug` below its INFO default inside the method, so the oracles capture the module's lines with `jest.spyOn(logger, level)`, not through the transports.
+3. **v4's runner creates the ledger tables on every pass** (`loadMigrationState` → `ensureSQLiteMigrationsTable`), before any migration is asked. v5's skip arms create nothing, as the order demands. An absent table therefore compares as empty. This is named `RUNNER_CREATES_LEDGER_TABLES` in the family.
+4. **The zero-rerun planted base had no FTS objects.** With the reindex in the narrowed runner, v4's build would have thrown (the same cause as item 1). The base now carries a PRE-ROUND index, built through v4's real module: `create-chat-message-fts-v1`'s objects with the legacy `_ai`, rebuilt, plus one Staff row the legacy trigger indexes. Also, `run_chain` now runs the reconcile after the reindex, as the host does; without it `fresh.after-v5` has no index and v4 throws.
+5. **The reindex id is a SEPARATE ref** (`PIN_624_FTS_REINDEX_MIGRATION`), not an element of `PIN_624_MIGRATIONS`. `plant412Columns` runs every non-strip element of that array as a column plant, and the reindex is not one. The zero-rerun runner list splices it in at v4's registration position (after the strip, before the established fact). P4.D362 had left it out (§R.10 (j9)), so H4 does not apply.
+6. **The P4.D362 hand-over note's suggestion conflicts with R-6.** It suggested appending the ensure to `run_4_12_ensures`, but that chain runs at `host.rs:~2420`, AFTER the reconcile at `:1727`. The order wins: the reindex is its own fenced block immediately before P4.D204's reconcile.
+7. The order's corrections were all confirmed:
+   - `chat-message-fts-ddl.json` was an orphan (nothing read it);
+   - the update-fts corpus is not reduced;
+   - the fragment lives in `chat_message_fts.rs`, not in the reconcile.
+
+### Red-first (§R.7), measured at `SCHEMA` before any source edit
+
+The oracle side came first: every corpus was grown and regenerated from the pin. The UNMODIFIED `SCHEMA` harness and core then ran against the new NDJSONs and corpora, in a scratch worktree at `4e3a1584e` (since removed).
+
+| Family | At `SCHEMA` | Body |
+|---|---|---|
+| `chat_message_fts_equivalence` | RED | the `ddl` row: `eligibility SQL diverged for alias ""` (v5 three conjuncts, v4 five) |
+| `chat_message_fts_reconcile_equivalence` | RED | `triggers a table rebuild dropped…: log COUNT diverged` (v4's module lines; Staff rows counted) |
+| `chats_search_equivalence` | RED | `plain: read 6 (searchMessagesGlobal "quick")` returned the three Staff rows and no `participantId` |
+| `ui_search_equivalence` | GREEN | measured, not a finding: the fixture's index is built by v4's REAL ensure + rebuild at the pin, so the Staff rows were never indexed, and no `messages` case reaches the LIKE arm. The new planted-row assertion is a vacuity guard |
+| the NEW family | v5 could not compile | v4 recorded 10 rows; paths `already-completed`, `not-applicable`, `not-needed`, `threw` (missing-all), and six `ran` |
+| `chat_message_update_fts_tier2` | — | its fixture is built through v4's real repository, so `chat_messages` carries both columns; GREEN in the gate (below) |
+
+The v5 unit tests were measured with the fragment / trigger moved and the two `REDUCED_DDL`s NOT widened (mutation M6): **14 reds**, every seed failing `no such column: new.customAnnouncer`.
+
+### Mutation proofs (each run, then restored)
+
+- **M1**: a space appended to `_ai`'s `WHEN`. Reddens `insert_trigger_when_is_the_fragment`, `the_ddl_equals_v4s_recording`, `chat_message_fts_matches_oracle` (the `ddl` row) and `trigger_text_no_ping_pong`.
+- **M2**: the FTS joined-row line dropped. Reddens `an_indexed_staff_row_is_filtered_on_the_joined_row`, `the_fts_sql_re_applies_the_eligibility_rule` and `chats_search_matches_oracle`.
+- **M4**: the stamp dropped. Reddens `a_pre_round_instance_runs_logs_and_stamps`, `a_counts_only_drift_runs_with_the_zero_message`, `chat_message_fts_character_only_reindex_matches_oracle` and the host pre-round test, at its second-boot leg.
+- **M5a**: the stale-replace `tracing::debug!` DELETED. Reddens `a_stale_trigger_is_replaced_with_v4s_debug_line`, `two_stale_triggers_are_reported_in_sqlite_master_order`, `chat_message_fts_matches_oracle`, `chat_message_fts_reconcile_matches_oracle`, `chat_message_fts_character_only_reindex_matches_oracle` and the host pre-round test.
+  - A RENAME of that line (an appended suffix) was first tried and survived the harness pins, because they match by substring.
+  - It is recorded as a weak mutation and replaced by the deletion.
+- **M5b/c**: the two INFO messages replaced. Reddens `a_pre_round_instance_runs_logs_and_stamps`, the NEW family and the host pre-round test.
+- **M3**: the host insertion moved AFTER the reconcile. Reddens the host pre-round test (0 of 2 INFO lines: the reconcile rebuilt first with its WARN, and the reindex then found nothing).
+- **M6**: the `REDUCED_DDL` narrowing, 14 unit reds (above).
+
+### The trigger text and `TRIGGER_TEXT_NO_PING_PONG`
+
+- `_ai` as stored, on both sides: `CREATE TRIGGER "chat_messages_fts_ai" AFTER INSERT ON "chat_messages"\n  WHEN new."type" = 'message' AND new."role" IN ('USER','ASSISTANT') AND new."content" IS NOT NULL AND new."systemSender" IS NULL AND new."customAnnouncer" IS NULL\nBEGIN…`.
+  - It is byte-equal per scenario: the `sqliteMaster` rows (27 scenarios) and the `master` steps.
+- **(a)**: over v4's `fts` fixture (triggers written by v4's REAL ensure, the last call a stale REPLACE), v5's stale check answers `[]`. v5's ensure logs nothing, and `sqlite_master` is byte-unchanged (`trigger_text_no_ping_pong`).
+- **(b)**: by transitivity (the `ddl` row + the stored text).
+
+### The ensure's arms and the host
+
+- `AlreadyCompleted`, `NotApplicable`, `DependencyPending`, `NotNeeded` and `Ran` are each pinned at unit tier, in the family, and at the host (the four bases).
+- The insertion is `host.rs:1697-1723` (the fenced `=== P4.D363` block), immediately before P4.D204's `:1725` reconcile block. It is ~700 lines above P4.D362's region (`:2410-2445` after the insert).
+- It is fatal (`?`, L-1).
+
+### Named divergences / tables
+
+- **`DEPENDENCY_PENDING`** (new; see survey correction 1). It replaces `FRESH_INSTANCE_REINDEX_STAMP`, which RETIRES: v5 no longer stamps on a fresh instance. The retiring condition for `DEPENDENCY_PENDING`: a v5 migration runner that runs `create-chat-message-fts-v1` first.
+- **`EMPTY_AUTHOR_TRUTHINESS_VS_IS_NULL`** (L-3).
+  - Rows `('', NULL)`, `(NULL, '')` and `('', '')` for `(systemSender, customAnnouncer)`, each on USER and ASSISTANT: the SQL excludes them, the predicate includes them.
+  - Pinned both ways by `the_sql_and_the_predicate_agree`, plus the corpus scenario `an empty-string author is still an author to the index` (the SQL half, both sides) and the family's `empty-string-author`.
+  - `CONTENT_IS_NOT_NULL_HAS_NO_PREDICATE_TWIN` is carved by name in the same test.
+  - Retiring condition: v4 aligns the two tests (a filing candidate, below).
+- **`REINDEX_STAMP_IS_FIDELITY`**: zero-rerun's twins re-run every other stamped id and NOT the reindex. This is asserted by name, never dropped.
+- **`RUNNER_CREATES_LEDGER_TABLES`**: an absent v5 ledger table compares as v4's empty one, in the family.
+
+### Zero-rerun and vintage (L-6 appends)
+
+- `PIN_624_MIGRATIONS` did NOT carry the reindex at `SCHEMA` (P4.D362 left it out, §R.10 (j9)), so **H4 does not apply**.
+- v4's build now RUNS 28: the reindex on the planted pre-round index, `itemsAffected 1`, "Removed 1 Staff message from the search index".
+- After v5's chain, v4 runs NOTHING on any of the four bases.
+- v5's reindex stamp:
+  - equals v4's build row on `planted` / `v4-migrated` (where it IS v4's own row);
+  - is absent on `fresh` / `fresh-used` (`DependencyPending`, then the reconcile builds the index).
+- `restore_vintage_state` gains the ensure in its mirror-boot list. It is GREEN with the append (10 / 10); the without-append run was not measured separately (the family is green at `SCHEMA` in P4.D362's record). It belongs on the list regardless, since the list mirrors the host's boot.
+- **Builder Staff shapes v4's `MessageEventSchema` accepted** through the REAL repository: `systemSender: 'commonplaceBook'` / `'host'`, and `customAnnouncer: {kind: 'custom', displayName: 'Town Crier'}` (an object; the repository serializes it).
+
+### HANDOFFs
+
+| id | to | what | measurable |
+|---|---|---|---|
+| H1 | P4.D374 (union, §S.5) | `search_messages_global` hits carry `participantId` (C8). LANDED here | `brahma_lookup_tools_equivalence`'s `lookup_messages` rows green on the union |
+| H2 | P4.D382 | `help/search.md` (+6) and `docs/v4/…/DDL.md` (+12) re-vendor; ratify the NO-PORT list below | the vendor guards green |
+| H3 | the unifier | `almanack/phase1_premises.rs:256`'s "no `migrations_state` table at all" is false on every booted v5 instance (P4.D288's stamps already made it so). This lane adds NO stamp on a fresh boot, so no Almanack premise moves | one doc line |
+| H4 | — | does not apply (P4.D362 left the id out) | — |
+| H5 | — | the `DependencyPending` ruling — RULED A by the coordinator (2026-11-09) and measured | done |
+
+### NO-PORT (for P4.D382's ratification record)
+
+- the legacy non-SQLite loop's `isCharacterAuthoredMessage` arm, and its `participantId` line;
+- `reportProgress` / the progress callback;
+- the `prettify.ts` label;
+- `create-chat-message-fts.ts`'s `dependsOn` growth, and the migration's own `dependsOn` / `introducedInVersion` / `description` (recorded verbatim in the module doc);
+- the `README.md` / `docs/CHANGELOG.md` / `package.json` stamps.
+
+### v4 filing CANDIDATE (R-Z; drafted, NOT filed — the human's go-ahead first)
+
+> **`isCharacterAuthoredMessage` and `chatMessageFtsEligibilitySql` disagree on empty-string authors.** `lib/chat/chat-activity.ts` tests `systemSender` / `customAnnouncer` for truthiness (`if (m.systemSender) return false`); `lib/database/backends/sqlite/chat-message-fts.ts` tests `IS NULL`. Both docblocks say "change one and you must change the other". A row with `systemSender = ''` (or `customAnnouncer = ''`) counts as a character line for chat activity but is never indexed for search. Measured at `624d0d25c`, through v4's real fragment and trigger in the port's oracle (`an empty-string author is still an author to the index`: both rows ineligible, `"sender"*` finds only the plain row). The predicate's include side is pinned by v5's twin. Neither write path is known to store `''` today, so this is latent.
+
+### Dogfood 💸 (unchanged from the order; no spend)
+
+These three rows stand: the post-round boot of a v4-migrated Friday copy (`AlreadyCompleted`, no WARN / DEBUG); a pre-round v5 copy if one exists; global search for a Commonplace whisper and for a Host announcement. Add one row: a FRESH `setup` instance's first boot stamps no reindex row.
+
+### Commits (the order's cut)
+
+1. (a) items 2–5, 9 and 15: `4874a1e1a` (core 0.0.1429).
+2. (b) items 6, 8 and 11: `dc00a0bb1`, the reindex module + family (core 0.0.1430).
+3. (c) items 7, 10, 12, 13 and 14: host + appends + pins + census + this record (core 0.0.1431, host 0.0.225).
+
+The full workspace gate ran once, on the final tree. The two intermediate commits were not gated separately.
+
+### Gate (final tree, `CARGO_INCREMENTAL=0`, the env block under `/tmp/p4d363/`)
+
+- `cargo fmt --all --check`, and `cargo clippy --workspace --all-targets -- -D warnings` with and without `--features quilltap-core/native-transport`: clean. `apps/web/dist` was built after an `npm ci`. One `cmp_owned` hit was fixed on the way.
+- `cargo test --workspace --no-fail-fast`: **907 binaries / 6,068 passed / 4 failed / 3 ignored.** All four reds are the standing `SCHEMA` reds named in P4.D362's record, none of them this lane's:
+  - `spelling_guard`: a committed survey doc;
+  - `cli_differential` `[db help]`: P4.D365;
+  - `builtin_prompt_templates_guard`: P4.D373;
+  - `provider_sdk_version_guard`: P4.D364.
+- Families by name with `--nocapture`, zero `SKIP:`:
+  - `chat_message_fts` (27 scenarios, 151 comparisons);
+  - `chat_message_fts_reconcile` (8);
+  - the new reindex-ensure family (11);
+  - `chats_search` (both venues + poisoned, + `trigger_text_no_ping_pong`);
+  - `ui_search`;
+  - `chat_message_update_fts_tier2` (regenerated from the pin: 8 ops, 5 indexed rows, GREEN as expected);
+  - `zero_migrations_rerun` (both phases);
+  - `restore_vintage_state`;
+  - `host_boot_chat_message_fts`, `host_boot_p4d363_fts_character_only_reindex`;
+  - the census.
+- Tier 2 item 16 (`chats_messages_ops_tier2`, `characters_reads`, `search_replace`, `compressed_column_write_sites_census`, `dqs_sql_literal_census`, `get_messages_caller_census`): green in the gate.
+- NDJSON line counts:
+  - `oracle-chat-message-fts` 152 (`systemSender\" IS NULL` ×30, `Replacing outdated` ×2);
+  - `oracle-chat-message-fts-reconcile` 8 (`out of step` ×6, `Replacing outdated` ×1);
+  - `oracle-fts-reindex-ensure` 11;
+  - `oracle-chsearch` 3 (`"participantId"` in every hit);
+  - `oracle-ui-search` 37 (Staff ids ×0);
+  - `oracle-chatmsgupdatefts` 1.
+
+### Regen recipes (lane copies under `/tmp/p4d363/`; the committed headers stay canonical)
+
+- `/tmp/p4d363/regen-fts.sh <case-stem> <out.ndjson> <fixture.json…>`: the jest mirror recipe for `chat-message-fts`, `chat-message-fts-reconcile` and `chat-message-fts-character-only-reindex-ensure`. It stages the case and fixtures under `/tmp/p4d363/oracle-<stem>/` and runs from the pin.
+- `/tmp/p4d363/regen-chsearch.sh`: the two builders, then the three venues.
+- `/tmp/p4d363/regen-ui.sh`: the builder, with its vacuity guard, then jest.
+- `/tmp/p4d363/regen-zero.sh`: build → Rust write → v4 → Rust compare, `TZ=UTC`.
+- `chat-message-fts-ddl.json` is regenerated from the `chat-message-fts` NDJSON's first row. The command is in `the_ddl_equals_v4s_recording`'s doc.
+
+### Fixtures changed
+
+The JSON corpora (`chat-message-fts`, `chat-message-fts-reconcile`, `chats-search`, `ui-search`, the new reindex spec, `chat-message-fts-ddl`) and two builders. No committed `.db` pair was rebuilt.
+
+Invalidated for any other family: none. The grown corpora are read only by the families above; `chats-search.json` / `ui-search.json` re-mint their `/tmp` fixtures per regen.
+
+**Versions at close:** core 0.0.1431, host 0.0.225. web, cli, tauri, the SPA, sys and the harness are unchanged.

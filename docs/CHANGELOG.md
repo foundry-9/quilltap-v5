@@ -69,6 +69,12 @@ _Docs-only change._
 
 The order's Status records the `SCHEMA` sha and the C2 names as landed (the new `services/connection_profiles.rs`, the chain's append point, the oracle plant signature, and the measured `'0.0'` → true read rule).
 
+#### 2026-11-09 — feat(host): the FTS character-only reindex at boot, before the PHASE 3.65 reconcile; the mirror-boot and zero-rerun appends; the env-free DDL pin and the eligibility census (v4 902c6efe9)
+
+_Versions: core 0.0.1431, host 0.0.225._
+
+P4.D363 cut (c). `seed_built_ins` runs the reindex in ONE fenced block immediately before the FTS reconcile. It is fatal on failure, as v4's non-resumable migration is (L-1). So a pre-round instance logs v4's two INFO lines, stamps v4's row, and the reconcile after it stays silent (no "out of step" WARN), per R-6. New `host_boot_p4d363_fts_character_only_reindex` covers four bases: pre-round, second boot, v4-migrated, and not-needed. `host_boot_chat_message_fts` pins that a fresh instance stamps nothing. `restore_vintage_state` mirrors the ensure. In `zero_migrations_rerun` the reindex is spliced into v4's narrowed runner at its registration position (`PIN_624_FTS_REINDEX_MIGRATION`, kept out of `plant412Columns`), and the planted base carries a pre-round index (legacy trigger, one Staff row indexed). v4's build now runs 28 migrations. v5's stamp equals v4's build row, and `REINDEX_STAMP_IS_FIDELITY` is named on the twins. `harness/oracle/fixtures/chat-message-fts-ddl.json` is regenerated from the pin and is now read: an env-free `include_str!` pin. New census `chat_message_fts_eligibility_single_source_census`.
+
 #### 2026-11-09 — feat(db): `reindex-chat-message-fts-character-only-v1` as a stamped boot ensure with v4's runner semantics (v4 902c6efe9)
 
 _Versions: core 0.0.1430._

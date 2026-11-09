@@ -17,7 +17,11 @@
 //!  2. The damage v4's own module doc names — a table rebuild of
 //!     `chat_messages` silently dropping the triggers with the old table — is
 //!     put in by hand, and the NEXT boot restores it. Raised nothing, healed
-//!     silently: exactly the contract.
+//!     silently: exactly the contract. (P4.D363: the character-only reindex
+//!     that runs before the reconcile does NOT do this healing — the dropped
+//!     triggers are `missing`, so its `shouldRun` is true and it RUNS: it
+//!     recreates them, rebuilds and stamps. The beat asserts the end state,
+//!     which either path reaches.)
 
 use std::path::Path;
 
@@ -117,6 +121,34 @@ async fn a_fresh_provisioned_instance_gets_all_five_fts_objects_at_boot() {
         counts(&db),
         (0, 0),
         "a fresh instance has no messages, so the two counts agree at zero"
+    );
+    // P4.D363: the character-only reindex runs BEFORE this reconcile and finds
+    // no `chat_messages_fts_map` on a fresh instance — `DependencyPending`
+    // (v4's `dependsOn` gate on `create-chat-message-fts-v1`), so it stamps
+    // NOTHING. v4's own fresh boot runs `create-chat-message-fts-v1` first and
+    // then skips the reindex unstamped — the same end state.
+    let reindex_rows: i64 = db
+        .read_main(|conn| {
+            let exists = conn
+                .query_row(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='migrations_state'",
+                    [],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            if !exists {
+                return Ok(0);
+            }
+            Ok(conn.query_row(
+                "SELECT COUNT(*) FROM migrations_state WHERE id = ?1",
+                [quilltap_core::db::chat_message_fts_character_only_reindex::MIGRATION_ID],
+                |r| r.get(0),
+            )?)
+        })
+        .expect("ledger read");
+    assert_eq!(
+        reindex_rows, 0,
+        "a fresh instance must not stamp the reindex"
     );
     drop(db);
     drop(host);

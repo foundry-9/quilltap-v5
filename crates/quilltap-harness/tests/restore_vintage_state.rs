@@ -254,6 +254,18 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage instance (P4.D362)");
     // === end P4.D362 ===
+    // === P4.D363: mirror-boot ensure ===
+    // The FTS character-only reindex (v4 `902c6efe9`), as the host runs it —
+    // before the PHASE 3.65 reconcile. The list mirrors the host's boot.
+    db.write_blocking(|writers| {
+        quilltap_core::db::chat_message_fts_character_only_reindex::reindex_chat_message_fts_character_only(
+            writers.main().connection(),
+            &quilltap_core::clock::now_iso(),
+        )
+        .map(|_| ())
+    })
+    .expect("boot-align the vintage instance (P4.D363)");
+    // === end P4.D363 ===
     db
 }
 

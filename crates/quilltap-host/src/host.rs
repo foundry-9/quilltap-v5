@@ -1696,6 +1696,32 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
             )?;
             // === end P4.D249 ===
 
+            // === P4.D363 (v4 `902c6efe9`, migration
+            // `reindex-chat-message-fts-character-only-v1`) ===
+            // The Staff leave the message search index (v4 #121): the insert
+            // trigger now requires `systemSender IS NULL AND customAnnouncer
+            // IS NULL`, and this pass replaces a pre-round instance's stale
+            // trigger and rebuilds the index without the Staff rows it let in.
+            //
+            // It runs BEFORE the PHASE 3.65 reconcile below because v4's
+            // migrations (PHASE 1) run before it. Run after it, the reconcile
+            // would replace the trigger and rebuild first — with its "out of
+            // step" WARN — and this pass would then find nothing to do.
+            //
+            // STAMPED with v4's own ledger row when it runs (v4's runner
+            // semantics — a clean boot writes nothing; module doc), and FATAL
+            // on failure: v4's migration is not `resumable`, so a throw stops
+            // v4's boot ("Migrations failed - cannot start server") — the
+            // P4.D249 precedent. On a fresh v5 instance (no index yet) it is
+            // `DependencyPending` and silent; the reconcile builds the index.
+            //
+            // Note for the block below: the reconcile's ensure now ALSO
+            // replaces stale triggers on every boot, as v4's does through the
+            // same function.
+            quilltap_core::db::chat_message_fts_character_only_reindex::
+                reindex_chat_message_fts_character_only(main, &quilltap_core::clock::now_iso())?;
+            // === end P4.D363 ===
+
             // === P4.D204 (v4 `f45a517a9`, `lib/startup/reconcile-chat-
             // message-fts.ts` PHASE 3.65 + the migration
             // `create-chat-message-fts-v1`) ===

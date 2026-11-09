@@ -181,6 +181,26 @@ const PIN_624: [&str; 3] = [
 ];
 // === end P4.D362 ===
 
+// === P4.D363 (v4 902c6efe9 — the FTS character-only reindex) ===
+/// P4.D363: v4 registers the reindex between the strip and the established
+/// fact (`PIN_624_FTS_REINDEX_MIGRATION`). STAMPED when it runs.
+///
+/// **`REINDEX_STAMP_IS_FIDELITY`** — a NAMED exception to
+/// `STAMP_RULE_RED_FIRST`: after v5 ran it, v4's `shouldRun` is false on the
+/// `-unstamped` twin (nothing missing, nothing stale, counts equal), so v4
+/// does NOT re-run it even with its row deleted. The stamp exists because
+/// v4's runner writes it after a run — byte-compared against v4's build row on
+/// `planted` — not because v4 would re-run without it. The twin assertion
+/// names it (never dropped silently): the twin re-runs every OTHER stamped id
+/// and NOT this one.
+///
+/// On `fresh` / `fresh-used` v5's reindex finds no index yet
+/// (`DependencyPending`, the dependency gate) and stamps nothing; the
+/// reconcile after it builds the index under the current rule, so v4's
+/// `shouldRun` is false there too and neither app writes a row.
+const FTS_REINDEX: &str = quilltap_core::db::chat_message_fts_character_only_reindex::MIGRATION_ID;
+// === end P4.D363 ===
+
 /// The llm-logs sibling of a mode's file (`<x>.after-v5.db` →
 /// `<x>.llm-logs.after-v5.db`).
 fn logs_sibling(main: &Path) -> PathBuf {
@@ -234,6 +254,18 @@ fn run_chain(path: &Path) {
     )
     .expect("the 4.12 chain");
     // === end P4.D362 ===
+    // === P4.D363: the FTS reindex, then the PHASE 3.65 reconcile — the host
+    // runs the pair in that order (`seed_built_ins`); they touch only
+    // `chat_messages`' FTS objects and the ledger, so their place relative to
+    // the chains above is immaterial ===
+    quilltap_core::db::chat_message_fts_character_only_reindex::reindex_chat_message_fts_character_only(
+        w.connection(),
+        "2026-11-05T00:00:00.000Z",
+    )
+    .expect("the FTS character-only reindex");
+    let _ =
+        quilltap_core::db::chat_message_fts_reconcile::reconcile_chat_message_fts(w.connection());
+    // === end P4.D363 ===
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run),
@@ -312,6 +344,11 @@ fn write_after_v5() {
             .execute("DELETE FROM migrations_state WHERE id = ?1", [PIN_624[0]])
             .expect("unstamp the strip");
         // === end P4.D362 ===
+        // === P4.D363: the reindex's stamp taken too (`REINDEX_STAMP_IS_FIDELITY`) ===
+        w.connection()
+            .execute("DELETE FROM migrations_state WHERE id = ?1", [FTS_REINDEX])
+            .expect("unstamp the reindex");
+        // === end P4.D363 ===
         // P4.D315: the history twin — the HISTORY rows deleted instead.
         let twin = dir.join(format!("{mode}-history-unstamped.after-v5.db"));
         let _ = std::fs::remove_file(&twin);
@@ -364,8 +401,9 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        27,
-        "P4.D362: + the `624d0d25c` three; v4 ran the twelve + the three 4.11 chat_settings migrations (P4.D341's middle one) + \
+        // P4.D363: + the FTS reindex (28).
+        28,
+        "P4.D363: + the FTS reindex; P4.D362: + the `624d0d25c` three; v4 ran the twelve + the three 4.11 chat_settings migrations (P4.D341's middle one) + \
          the history table and seed (the column is `not needed` on a table born at its final \
          shape — P4.D315) + the Inventory's two columns (P4.D324) + the terminal geometry \
          (P4.D337) + the round's last four (P4.D341) on the planted base"
@@ -426,6 +464,18 @@ fn no_migration_reruns_after_the_v5_chain() {
         );
     }
     // === end P4.D362 ===
+    // === P4.D363: v4's build RAN and stamped the reindex on the planted
+    // (pre-round FTS) base ===
+    assert!(
+        build_ran.contains(&FTS_REINDEX),
+        "v4's build ran {FTS_REINDEX}: {build_ran:?}"
+    );
+    let v4_build_reindex = v4_ledger
+        .iter()
+        .find(|(i, _)| i == FTS_REINDEX)
+        .cloned()
+        .unwrap_or_else(|| panic!("v4's build stamped {FTS_REINDEX}"));
+    // === end P4.D363 ===
     let row_of = |mode: &str| -> &Value {
         v4.iter()
             .find(|r| r["mode"] == mode)
@@ -588,6 +638,22 @@ fn no_migration_reruns_after_the_v5_chain() {
             }
         }
         // === end P4.D362 ===
+        // === P4.D363: the reindex stamp — v4's build bytes on planted /
+        // v4-migrated, ABSENT on the two v5-native bases ===
+        let v5_reindex = ledger_by_id(&row["before"]["ledger"])
+            .into_iter()
+            .find(|(i, _)| i == FTS_REINDEX);
+        match (mode, &v5_reindex) {
+            ("planted" | "v4-migrated", Some((_, v5_row)))
+                if serde_json::to_string(v5_row).unwrap()
+                    == serde_json::to_string(&v4_build_reindex.1).unwrap() => {}
+            ("fresh" | "fresh-used", None) => {}
+            other => failures.push(format!(
+                "{mode}: the reindex stamp is wrong\n  v5 {other:?}\n  v4 build {:?}",
+                v4_build_reindex.1
+            )),
+        }
+        // === end P4.D363 ===
         match mode {
             "planted" => {
                 for (id, v5_row) in &v5_rows {
@@ -644,6 +710,14 @@ fn no_migration_reruns_after_the_v5_chain() {
         want.push(PIN_624[0].to_string());
         // === end P4.D362 ===
         let twin_ran = ran_of(twin);
+        // === P4.D363 `REINDEX_STAMP_IS_FIDELITY`: never in `want` (v4 does not
+        // re-run it on the twin), and asserted absent BY NAME ===
+        if twin_ran.iter().any(|id| id == FTS_REINDEX) {
+            failures.push(format!(
+                "REINDEX_STAMP_IS_FIDELITY {mode}: v4 re-ran the reindex on the twin"
+            ));
+        }
+        // === end P4.D363 ===
         if twin_ran != want {
             failures.push(format!(
                 "STAMP_RULE_RED_FIRST {mode}: v4 re-ran {twin_ran:?}, v5 stamped {want:?}"

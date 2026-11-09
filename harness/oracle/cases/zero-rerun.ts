@@ -83,6 +83,9 @@ import {
   // === P4.D362 ===
   PIN_624_MIGRATIONS,
   // === end P4.D362 ===
+  // === P4.D363 ===
+  PIN_624_FTS_REINDEX_MIGRATION,
+  // === end P4.D363 ===
 } from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
@@ -111,6 +114,9 @@ const TOUCHED = [
   // === P4.D362: the strip's rows + the cap column (chat_messages is above) ===
   'connection_profiles',
   // === end P4.D362 ===
+  // === P4.D363: the message search index's map (the reindex rebuilds it) ===
+  'chat_messages_fts_map',
+  // === end P4.D363 ===
 ];
 
 const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -223,7 +229,12 @@ async function runTwelve(path: string, logsPath?: string): Promise<string[]> {
     ...KEYSTONE_236_MIGRATIONS,
     // === end P4.D341 ===
     // === P4.D362: the `624d0d25c` three (strip, established fact, image cap), LAST ===
-    ...PIN_624_MIGRATIONS,
+    // === P4.D363: with the FTS reindex spliced in at v4's registration
+    // position — after the strip, before the established-fact column ===
+    PIN_624_MIGRATIONS[0],
+    PIN_624_FTS_REINDEX_MIGRATION,
+    ...PIN_624_MIGRATIONS.slice(1),
+    // === end P4.D363 ===
     // === end P4.D362 ===
   ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
@@ -429,6 +440,50 @@ function buildPlanted(path: string): void {
   // === end P4.D341 ===
 }
 
+// === P4.D363 (v4 902c6efe9) ===
+/**
+ * P4.D363 — the planted base's message search index, as a PRE-ROUND instance
+ * carries it: `create-chat-message-fts-v1`'s objects (it ran in 4.10) with the
+ * insert trigger as that migration first shipped it (v4's
+ * `LEGACY_INSERT_TRIGGER`), the index rebuilt over the existing rows, then a
+ * Staff row the legacy trigger INDEXES. Without it v4's narrowed runner throws
+ * on the reindex (`run()` counts the map before ensuring it; v4 never meets
+ * that because `dependsOn` runs `create-chat-message-fts-v1` first). Through
+ * v4's REAL module and codec, so the bytes are v4's.
+ */
+async function plantPreRoundFts(path: string): Promise<void> {
+  const v4Root = process.cwd();
+  const fts = await import(join(v4Root, 'lib/database/backends/sqlite/chat-message-fts.ts'));
+  const codec = await import(join(v4Root, 'lib/database/backends/sqlite/text-codec-function.ts'));
+  const db = new Database(path);
+  db.pragma(KEY_PRAGMA);
+  codec.registerTextCodecFunction(db);
+  const statements = fts.CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS as string[];
+  db.exec(statements[0]);
+  db.exec(statements[1]);
+  db.exec(`CREATE TRIGGER "chat_messages_fts_ai" AFTER INSERT ON "chat_messages"
+  WHEN new."type" = 'message' AND new."role" IN ('USER','ASSISTANT') AND new."content" IS NOT NULL
+BEGIN
+  INSERT INTO "chat_messages_fts_map"("messageId") VALUES (new."id");
+  INSERT INTO "chat_messages_fts"(rowid, content)
+    VALUES ((SELECT "ftsId" FROM "chat_messages_fts_map" WHERE "messageId" = new."id"),
+            qt_text(new."content"));
+END`);
+  db.exec(statements[3]);
+  db.exec(statements[4]);
+  fts.rebuildChatMessageFtsIndex(db);
+  db.prepare(
+    `INSERT INTO chat_messages (id, chatId, type, role, content, systemSender, createdAt) VALUES ('msg2', 'c1', 'message', 'ASSISTANT', 'a recall', 'commonplaceBook', ?)`,
+  ).run(T0);
+  const indexed = (db.prepare('SELECT COUNT(*) AS n FROM "chat_messages_fts_map"').get() as { n: number }).n;
+  if (Number(indexed) !== 2) throw new Error(`plantPreRoundFts: expected 2 indexed rows, found ${indexed}`);
+  if ((fts.staleChatMessageFtsTriggers(db) as string[]).join() !== 'chat_messages_fts_ai') {
+    throw new Error('plantPreRoundFts: the legacy trigger is not stale to v4');
+  }
+  db.close();
+}
+// === end P4.D363 ===
+
 async function main(): Promise<void> {
   const phase = process.env.QT_ZERO_RERUN_PHASE;
   const dir = process.env.QT_FIXTURE_ZERO_RERUN_DIR;
@@ -443,6 +498,9 @@ async function main(): Promise<void> {
     sweep(planted);
     sweep(migrated);
     buildPlanted(planted);
+    // === P4.D363 ===
+    await plantPreRoundFts(planted);
+    // === end P4.D363 ===
     copyFileSync(planted, migrated);
     // P4.D341 (R-8): the sibling migrates beside it.
     const migratedLogs = join(dir, 'v4-migrated-llm-logs.db');

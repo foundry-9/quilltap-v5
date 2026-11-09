@@ -558,3 +558,18 @@ export const ADD_CHAT_REFUSAL_LEDGER: V4MigrationRef = {
   file: 'migrations/scripts/add-chat-refusal-ledger.ts',
   exportName: 'addChatRefusalLedgerMigration',
 };
+
+// === P4.D363 (v4 902c6efe9 — the chat-message FTS character-only reindex) ===
+/**
+ * P4.D363 — the migration v4 registers BETWEEN {@link PIN_624_MIGRATIONS}' strip
+ * and its established-fact column (`migrations/scripts/index.ts:956`). A
+ * separate ref rather than an element of that array, because
+ * {@link plant412Columns} runs every non-strip element as a COLUMN plant — the
+ * reindex is not one. The zero-rerun runner list splices it in at v4's
+ * registration position.
+ */
+export const PIN_624_FTS_REINDEX_MIGRATION: V4MigrationRef = {
+  file: 'migrations/scripts/reindex-chat-message-fts-character-only.ts',
+  exportName: 'reindexChatMessageFtsCharacterOnlyMigration',
+};
+// === end P4.D363 ===
