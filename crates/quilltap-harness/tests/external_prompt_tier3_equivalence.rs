@@ -549,8 +549,12 @@ fn load_family() -> Option<(Corpus, BTreeMap<String, OracleRow>)> {
     Some((corpus, oracle))
 }
 
-/// One case on a fresh pair: `(diff or None, model calls, the kind lines)`.
-async fn run_and_compare(corpus: &Corpus, case: &Case, o: &OracleRow) -> (Option<String>, usize) {
+/// One case on a fresh pair: `(diff or None, model calls, every captured line)`.
+async fn run_and_compare(
+    corpus: &Corpus,
+    case: &Case,
+    o: &OracleRow,
+) -> (Option<String>, usize, Vec<String>) {
     use tracing::instrument::WithSubscriber;
     use tracing_subscriber::layer::SubscriberExt;
 
@@ -640,7 +644,8 @@ async fn run_and_compare(corpus: &Corpus, case: &Case, o: &OracleRow) -> (Option
     let calls = provider.calls.lock().unwrap().clone();
     let n_calls = calls.len();
     let counts = llm_log_counts(&db);
-    let log_lines = kind_log_lines(&logs.lock().unwrap());
+    let captured = logs.lock().unwrap().clone();
+    let log_lines = kind_log_lines(&captured);
     drop(driver);
     drop(db);
     drop(scratch);
@@ -654,7 +659,7 @@ async fn run_and_compare(corpus: &Corpus, case: &Case, o: &OracleRow) -> (Option
         "calls": o.calls, "llmLogCounts": o.llm_log_counts, "logLines": o.log_lines,
     }));
     let diff = (got != want).then(|| format!("{}:\n{}", case.name, first_diff(&got, &want)));
-    (diff, n_calls)
+    (diff, n_calls, captured)
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -672,8 +677,22 @@ async fn external_prompt_matches_oracle() {
         if case.name == "missing_character_404" {
             assert!(o.log_lines.is_empty(), "v4 logged the kind before its 404");
         }
-        let (diff, n) = run_and_compare(&corpus, case, o).await;
+        let (diff, n, captured) = run_and_compare(&corpus, case, o).await;
         calls_total += n;
+        if case.name == "missing_system_prompt" {
+            // v4 builds and logs the meta prompt BEFORE the system-prompt
+            // lookup (`:131-139`), so its DEBUG precedes the WARN.
+            let at = |needle: &str| {
+                captured
+                    .iter()
+                    .position(|l| l.contains(needle))
+                    .unwrap_or_else(|| panic!("missing_system_prompt never logged `{needle}`"))
+            };
+            assert!(
+                at(KIND_LINE) < at("System prompt not found"),
+                "the kind DEBUG must precede the `System prompt not found` WARN"
+            );
+        }
         if let Some(d) = diff {
             failed.push(d);
         }

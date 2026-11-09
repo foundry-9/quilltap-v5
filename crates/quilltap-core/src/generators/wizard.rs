@@ -1198,3 +1198,82 @@ pub(crate) async fn generate_field_for_caller<CMP: CompletionProvider>(
     generate_field(&call, context_prompt, field_prompt, max_tokens).await
 }
 // === end P4.82 ===
+
+/// P4.D371 — `resolve_wizard_character_kind`'s three lines, captured on this
+/// thread (the read runs on the caller's thread, never inside a write
+/// closure). The oracle compares the two DEBUGs on real rows
+/// (`character_wizard_tier3`); its WARN is unreachable there
+/// (`WARN_UNREACHABLE_IN_ORACLE`: a corrupt `properties.json` does not make
+/// v4's `findById` throw — its overlay falls back), so this pin carries the
+/// WARN with its bare message and the silence legs.
+#[cfg(test)]
+mod kind_line_tests {
+    use super::*;
+
+    const PEPPER: &str = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=";
+
+    fn request(character_id: Option<&str>) -> WizardRequest {
+        WizardRequest {
+            primary_profile_id: "p".into(),
+            vision_profile_id: None,
+            source_type: "skip".into(),
+            image_id: None,
+            document_id: None,
+            character_name: "Mira".into(),
+            existing_data: None,
+            background: String::new(),
+            fields_to_generate: vec![],
+            character_id: character_id.map(str::to_string),
+        }
+    }
+
+    fn kind_lines(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|l| l.contains(WIZARD_LOG_TARGET) && l.contains("kind"))
+            .collect()
+    }
+
+    #[test]
+    fn a_new_character_is_the_default_kind_with_no_read_and_no_warn() {
+        let dir = tempfile::tempdir().unwrap();
+        // No mount partition: any read would fail, so silence proves no read.
+        let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
+        for id in [None, Some("")] {
+            let (kind, lines) =
+                crate::test_support::captured_with(|| resolve_wizard_character_kind(&db, &request(id)));
+            assert_eq!(kind, CharacterKind::Roleplay);
+            let lines = kind_lines(&lines);
+            assert_eq!(lines.len(), 1, "{id:?}: {lines:?}");
+            assert!(lines[0].starts_with("DEBUG "), "{lines:?}");
+            assert!(
+                lines[0].contains("[CharacterWizard] New character; writing for the default kind")
+                    && lines[0].contains(r#"context={"kind":"roleplay"}"#),
+                "{lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unreadable_character_warns_with_the_bare_message_and_writes_for_the_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
+        let (kind, lines) = crate::test_support::captured_with(|| {
+            resolve_wizard_character_kind(&db, &request(Some("a2000002-0000-4000-8000-000000000001")))
+        });
+        assert_eq!(kind, CharacterKind::Roleplay);
+        let lines = kind_lines(&lines);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with("WARN "), "{lines:?}");
+        assert!(
+            lines[0].contains(
+                "[CharacterWizard] Could not read the character; writing for the default kind"
+            ) && lines[0].contains(
+                r#"context={"characterId":"a2000002-0000-4000-8000-000000000001","error":"Mount index database is in degraded mode"}"#
+            ),
+            "the WARN must carry v4's key order and the BARE message: {lines:?}"
+        );
+        // Silence leg: no DEBUG `Writing for the character's kind` on a failed read.
+        assert!(!lines[0].contains("Writing for the character's kind"));
+    }
+}

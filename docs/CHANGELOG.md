@@ -195,6 +195,12 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: pin the Wizard's kind WARN and External Prompt's log order
+
+_Versions: core 0.0.1434._
+
+The oracle cannot reach the Wizard's `[CharacterWizard] Could not read the character; writing for the default kind` WARN: a corrupt `properties.json` does not make v4's `findById` throw (its overlay falls back), measured at the pin. A unit capture in `generators::wizard` now pins it on a read with no mount partition: one WARN with v4's key order and the bare `Mount index database is in degraded mode` message, the default kind, and no DEBUG; a new or empty-id character logs only the `New character` DEBUG and reads nothing. `external_prompt_tier3` now also checks that `missing_system_prompt` logs the kind DEBUG before its `System prompt not found` WARN, as v4 does.
+
 #### 2026-11-09 — P4.D371: keep the field-semantics generator recipe out of the leaf family's sweep-driven header
 
 _No crate versions bumped._
