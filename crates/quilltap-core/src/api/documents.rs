@@ -1556,7 +1556,8 @@ fn accessible_stores_body(
 
 // === P4.D376 ===
 /// The default (chat-reach) accessible-store set: participant vaults, group
-/// stores, project stores, then Quilltap General — v4's walk over
+/// stores, then project stores (Quilltap General is held back as the "General
+/// library" button, never listed here) — v4's walk over
 /// `resolveCastPool`'s answer (`0c47f4539`), nearest tier first. The vaults are
 /// the pool's `castVaults` (a vault that is also a scoped-tier store is
 /// surfaced in that tier instead), each labelled with the owner's name from v4's
@@ -1646,22 +1647,9 @@ fn chat_reachable_stores(
     }
     // === end P4.D376 ===
 
-    // 4. Quilltap General — always accessible.
-    if let Some(general_id) = crate::db::instance_settings::get_general_mount_point_id(main)? {
-        if !seen.contains(&general_id) {
-            if let Some(mp) = mp_repo.find_full_json_by_id(&general_id)? {
-                if mp.get("enabled").and_then(Value::as_bool) == Some(true) {
-                    let name = mp
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string();
-                    stores.push(store_entry(&mp, &name, "document-store", None, false));
-                    seen.insert(general_id);
-                }
-            }
-        }
-    }
+    // No fourth step: v4's walk ends at the project's stores. Quilltap General
+    // is the left-column "General library" — its id is already in `seen`
+    // when enabled (`accessible_stores_body`), so a General step never fired.
 
     Ok(stores)
 }
@@ -2179,5 +2167,33 @@ pub async fn document_delete(
             None => ok(json!({ "success": true })),
         },
         Err(e) => internal(e),
+    }
+}
+
+#[cfg(test)]
+mod chat_reachable_stores_source_tests {
+    /// P4.D380 H1: v4's `handleAccessibleStores` default walk
+    /// (`chats/[id]/actions/documents.ts:241-310` at `624d0d25c`) has steps
+    /// 1–3 only — Quilltap General is held back as the left-column "General
+    /// library" (`accessible_stores_body` seeds `seen` with its id when it is
+    /// enabled), so a fourth "Quilltap General" step in `chat_reachable_stores`
+    /// could never fire. Pinned by source text: the walk reads no General
+    /// pointer of its own.
+    #[test]
+    fn the_default_walk_has_no_quilltap_general_step() {
+        let src = include_str!("documents.rs");
+        let start = src
+            .find("\nfn chat_reachable_stores(")
+            .expect("chat_reachable_stores is in documents.rs");
+        let body = &src[start..];
+        let body = &body[..body.find("\n}\n").expect("the fn closes")];
+        assert!(
+            !body.contains(concat!("get_general_", "mount_point_id")),
+            "chat_reachable_stores reads General's pointer again"
+        );
+        assert!(
+            !body.contains(concat!("4. Quilltap ", "General")),
+            "chat_reachable_stores grew a fourth step"
+        );
     }
 }
