@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — docs(porting): P4.D380 lane record — DOCCORE complete
+
+_Docs-only change._
+
+The lane record has been appended to `status-log.md`. The order's status header reads `LANE COMPLETE`, with the Tier 2 remainder named: item 18's unpinned operator lines, and item 19's folder-move measurement, whose issue is drafted and not filed.
+
 #### 2026-11-09 — test(documents): the core's unit fixture creates its store through the repository (P4.D380)
 
 _Versions: core 0.0.1439._

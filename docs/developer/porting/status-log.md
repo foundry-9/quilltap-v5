@@ -201085,3 +201085,239 @@ All seven are unmoved:
 - `?action=foo` lists `["interventions","presets"]`.
 
 Oracles are under `/tmp/p4d379/` for the unifier's read. The regen recipes are the four families' headers, run from the pin. The scripts are `/tmp/p4d379/regen-{discovery,pool,route}.sh`, plus the `tsx` line in `pascal_tool_presets_equivalence.rs`.
+
+## P4.D380 — DOCCORE: the document core, Document Mode, the doc tools, #133 / #134 / #137, moves follow every copy (lane record, 2026-11-09)
+
+**Branch** `claude/p4-d380-doccore-78cb91`, cut from `REACH` (`07b68e7c3`). The session started in an app-made worktree already sitting on `REACH`, so no move was needed. The lane's first act was to cherry-pick P4.D376's recorded test-only amendment `428e0d7e7` as `1c6732c43` (§R.14): the path resolver's roster unit test now reads the pool's DEBUG. This lane appends to `doc_edit/path_resolver.rs`, so the amendment applies to it directly. Pin `624d0d25c`.
+
+### The §2 probe (an observation, §R.2)
+
+- **At lane start (2026-11-09 08:08 CST):** v4 moved, with `main` at `d281c2332`, 35 commits past the pin. Among them is `88c9cc81d`, "folder moves match folder paths case-insensitively" (#147). That is past the pin, so it is **not absorbed**, and it is recorded for the next `/driftcheck`. `bugfix` was at `d67c70a51`. The tree was dirty with 188 entries, including `app/api/v1/characters/**`, `app/api/v1/chats/[id]/actions/scenario.ts` and test helpers.
+- **At close:** `main` at `f1386cebd` (41 commits past the pin), the tree clean.
+- **The pin is usable:** `git -C /tmp/qt-v4-pin-p4.d380-624d0d25c rev-parse HEAD` = `624d0d25c6cbb6…`, and `package.json` reads `4.13.0-dev.8`.
+- `npm ci --offline` succeeded first time (no `ENOTCACHED`), followed by `npm rebuild better-sqlite3`. The pin has `better-sqlite3` 13.0.3 and `zod` 4.6.7.
+- `.claude/pin-plugin-sdks.sh` printed the round's floors: openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3. The CLI driver is 13.0.3 on SQLite 3.53.4, cipher chacha20.
+
+### Commits (one unit each)
+
+| sha | unit |
+|---|---|
+| `1c6732c43` | cherry-pick of `428e0d7e7` (REACH follow-up, test-only) |
+| `1c190405e` | item 2: `stat_resolved_file` / `move_resolved_file` / `delete_resolved_file` + `io_error_code` (core 0.0.1430) |
+| `6975315ed` | item 3: `read_database_blob_as_document` / `_for_document` (0.0.1431) |
+| `216d087a4` | items 1, 4–8: `documents/core/{mod,read,write,moves,delete,view_target}.rs`, `DocError::ReadOnly`, `refresh_after_document_write`, the DB mtime guard moved into `write_file_with_mtime_check` (0.0.1432) |
+| `0041587ae` | item 9: `find_by_file_path` / `find_under_folder` (0.0.1433) |
+| `7e9073b8e` | item 10 (+ 20): the sweeps + `SameStoreMatcher` (0.0.1434) |
+| `0301d0d34` | item 11: `link_document_content` clears the extraction fields (0.0.1435) |
+| `cd4b01a87` | items 12, 13 (+ the routes' half of 5 and 10): Document Mode over the core, `generalLibrary`, the operator HTTP lines (0.0.1436) |
+| `349d41f58` | item 14: the project mount-points GET (0.0.1437) |
+| `2be5ef985` | items 15, 16, 17 (+ item 5's #133 row): the doc tools through the core, the oracle seams on the awaited chain (0.0.1438) |
+| `b6ded69c9` | census rows + the `documents_routes` recipe stages `documents-core.json` (harness only) |
+| `8122cf434` | the core's unit fixture creates its store through the repository (gate catch; 0.0.1439) |
+
+Versions at close: **core 0.0.1439**. `quilltap-web` was **not** bumped: the measurement found no `quilltap-web` source change, since the document routes reach the core through `dispatch` and the two open arms' scheduler threading is in core's `api/engine.rs`. Host, CLI, Tauri, SPA, sys and harness were not bumped.
+
+### Red-first (§R.7) → green, per family
+
+| family | NDJSON lines | red on `REACH` | green |
+|---|---|---|---|
+| `doc_resolved_file_equivalence` (NEW, tier 1) | 21 | the helpers did not exist (the family does not compile on `REACH`) | 21/21 |
+| `doc_blob_document_reads_equivalence` (NEW, tier 2) | 12 | the readers did not exist | 12/12, one recorded carve (below) |
+| `chat_documents_tier2_equivalence` | 1 (8 rows, 6 finds) | **measured**: `unknown variant findByFilePath` | ok |
+| `doc_mount_file_links_tier2_equivalence` (fenced rows) | 1 | **measured**: links row diverged with the four `extracted*`/`extraction*` assignments removed (red-first and mutation proof in one) | ok |
+| `documents_routes_equivalence` | 42 | **measured on `REACH` code in a scratch worktree**: 19 red. Four were pre-existing rows: `chat_accessible_stores_all` / `_default` (the case context lacked the session `user`, REACH's handoff), `standalone_stores` (`generalLibrary`) and `chat_delete_document` (`Could not resolve path:`). All 15 new `p4d380_` rows were red. | 42/42, incl. key order and six lines rows |
+| `mount_refresh_equivalence` | 2 | **measured on `REACH` code**: `p4d380_refresh_after_project_scope_write` panicked with "#133: the project-scope save never refreshed its store's stats" | 2/2 |
+| `projects_routes_equivalence` | 107 | `mount_points_iota` / `_kappa` lack `officialMountPointId` on `REACH` (structural; not run separately) | ok, the whole family (no P4.D374 red seen at this base) |
+| `doc_text` / `doc_fm` / `doc_fs` / `doc_ui` / `doc_enum` / `doc_blob` / `doc_opacity` / `project_roster_access` | 2 / 2 / 2 / 2 / 1 / 2 / 1 / 1 | every op record gained `afterWrite`, so `REACH` (no key) is red by construction. The new rows' `REACH` behaviour was **not run** separately; see the row notes below. | 8 × ok |
+
+`project_roster_access` was regenerated on top of P4.D376's regeneration (R-L4); no red is left. The verify-only families `documents_rename_target`, `upload_blob_text_backfill`, `doc_edit_path_resolver` and `doc_mount_blobs_tier2` are green. Every family's NDJSON was checked non-empty.
+
+The new doc-tool rows behave as follows on `REACH` (by the code at `07b68e7c3`):
+
+- `doc_text` `p4d380_write_stale_mtime`: `REACH` ignored `expected_mtime` and wrote.
+- `doc_blob` `p4d380_*`: `REACH`'s `doc_read_file` fell back to the blob's `extractedText`, which an unextracted `doc_write_blob` upload lacks, so it gave ENOENT. `doc_str_replace` gave "not found".
+- `doc_fs` `p4d380-general-*`: `REACH` answered `Source path is not a file:` / `Path is not a file:`.
+
+### R-4: the three sites converted
+
+- `documents/mod.rs:558-561`: the rename's `try_exists().unwrap_or(false)` is now `core::rename_document` → `stat_document` → `stat_resolved_file`.
+- `documents/mod.rs:627-631`: the delete's `Err(_) => NotFound` is now `core::delete_document`.
+- `tools/doc_edit/file_management.rs:1035`: `fs_stat_is_file` (`metadata().ok()`) is retired; the file sites go through `stat_document`.
+- `fs_path_exists` stays for `doc_move_folder`'s filesystem branch: v4 still uses `fs.access` there at the pin (the planner's correction holds).
+- The EACCES row's `code` is `EACCES` on both sides (`stat-eacces`, `stat-eacces-missing-child`, `move-out-of-locked`, `delete-in-locked`). Node's message shape (`EACCES: permission denied, stat '<abs>'`) comes through `core::node_fs_error_message`.
+
+### Item 5: the ONE chain
+
+`after_document_write` (`documents/core/write.rs`) has two cadences: `Refresh::Scheduled` for Document Mode (the `DbMountRefreshScheduler` seam, unchanged wiring) and `Refresh::Now` for the tools, where it runs in the closure (`TOOL_REFRESH_IN_CLOSURE`).
+
+- **Call sites:**
+  - `core::write_document`, reached from Document Mode's `write_document_file`, and from Document Mode's open through `ensure_document`;
+  - `doc_write_file`, `doc_str_replace`, `doc_insert_text`, `doc_update_frontmatter`, `doc_update_heading`, `doc_copy_file`;
+  - `doc_open_document`, through `ensure_document`;
+  - plus `core::rename_document`'s disk branch on `to`.
+- **The chain** is `services::mount_index::refresh::refresh_after_document_write(_logged)`: re-index, link-group siblings (new for Document Mode), embedding enqueue, stats. When both of the last two fail, the embed error is reported; which failure settles first in v4 cannot be measured from the corpus (recorded).
+- **Retired gates:** `documents/mod.rs`'s three `scope == DocEditScope::DocumentStore` gates (`:445`, `:545`, `:574`).
+- **Retired texts:** `run_refresh`'s `Some(rel)` arm no longer uses `refresh_now`'s `Background embedding enqueue failed after document save …` / `Background stats refresh failed after document save …` `eprintln!`s. `refresh_now` itself stays for `store_file.rs` / `file_storage.rs`, unchanged.
+- **The WARN** `Background re-index, embedding, or stats refresh failed after a document write` is unit-pinned: `a_failing_chain_logs_v4s_one_warn_and_never_fails_the_write` runs the chain over a table-less mount, so `refreshStats` fails. No oracle row reaches it.
+
+### Item 6
+
+`doc_write_file` never read `expected_mtime`, and v5's tool writer skipped the database guard. v4 has passed the argument since the baseline. Its tool error is the writer's message: `Document was modified by another process (mtime mismatch). Please reload and try again.` (the `doc_text` `p4d380_write_stale_mtime` row is green). The guard's one home is now `shared::write_file_with_mtime_check`; Document Mode's `write_database_checked` is gone.
+
+### Item 7: `move_database_document` re-chunks
+
+v5's `move_database_document` rewrites the link's `relativePath` in place. Chunks are keyed by `linkId`, so the moved link keeps its chunk rows, and v4's database branch runs no refresh either (`move.ts:69-71`). Nothing relied on the deleted `:545` scheduler call: it only enqueued embeddings and refreshed stats, both whole-mount and unchanged by a rename. **H5: none.**
+
+### Item 10: the sweep corpus
+
+- **Units** (`documents::core::tests::sweeps`, five tests): 7 + 4 + 2 + 1 + 4 planted rows.
+  - A store matched by name (case- and whitespace-insensitive), as `project` through the chat's project, and by its id.
+  - Not moved: another project's `project` row, a `general` row, an ambiguous name, a store row with no name.
+  - The case-sensitive folder prefix (R-6), and the update failure (a trigger).
+- **The route row** (`p4d380_rename_sweeps`): five planted rows. Both sides move the active row, the standalone literal row, and chat B's `'  quilltap GENERAL '` row (by name). Chat B's `general` row stays.
+- **Wired sites:**
+  - `doc_move_file`: one call after `rename_document`, which serves both branches;
+  - `doc_move_folder`: the database branch and the filesystem branch;
+  - the chat rename route, after the active-row update, with `logFields: {chatId}`;
+  - the standalone rename route, with no `logFields`.
+- **Order correction:** "six sites" is five calls, because v4's two `doc_move_file` branches are one `renameDocument` call. The "verified no-ops" paragraph of `file_management.rs`'s header is replaced.
+
+### Item 16
+
+The R-13 asymmetry comment (`document_ui.rs:301-304`) is retired with the behaviour. No harness test pinned R-13 by name (measured: `grep -rn R-13 crates/quilltap-harness` → none). The `placeholder_mtime` mask in `doc_ui_equivalence.rs` is narrowed to `isNew: true`. Lifted rows: `open_a`, `open_b` (an existing file's `mtime` is compared, and green).
+
+### Item 17: the seams
+
+All eight cases now use a recorder over the real `reindexSingleFile` (the barrel's import), with the chain drained before each op is recorded: three rounds of `allSettled` plus 25 macrotask turns. Lines are captured as follows:
+
+- Six cases splice the singleton logger's transports (`LOG_LEVEL=debug`).
+- `doc_opacity` keeps its resolver recorder, and the splice captures the root.
+- `project_roster_access` mocks `@/lib/logger` whole, so its recorder also collects the chokepoint line.
+
+On the v5 side:
+
+- Six families use `global_capture` + `test_support::after_write_of`.
+- `doc_opacity` / `project_roster_access` use their own thread-scoped layers, which also collect the line through `p4d380_record`.
+
+Example `afterWrite`: `doc_text` `write_new` → `[{"mountPointId":"<vault>","relativePath":"Notes/created.md"}]`.
+
+On the stats columns: none of the eight families dumps `doc_mount_points`, so the stats move unobserved there. `mount_refresh` dumps them and is green.
+
+### Item 19 (R-6): v4's case-sensitive folder sweep
+
+- **Measured half:** `findUnderFolder` is case-sensitive `startsWith` over `findAll()` in rowid order (`chat_documents_tier2`: `Notes` finds `Notes/a.md` and `Notes/sub/c.md`, never `notes/b.md` or `Notesy/d.md`).
+- **Not run:** the folder-move half, as a measurement. By code reading at the pin, `moveDatabaseFolder` rewrites the store's STORED prefix (`database-store.ts`, "the source's STORED path prefix, not necessarily the caller-typed one"). So `doc_move_folder` of `Notes` over a stored `notes/` folder moves `notes/a.md` to `Archive/a.md`, while the sweep's `startsWith('Notes/')` misses an open `chat_documents` row at `notes/a.md`, which then points at a path that no longer exists.
+- Ported verbatim (no fix).
+
+DRAFT issue for `foundry-9/quilltap-server`. **Not filed**; the human's go-ahead comes first (R-Z):
+
+> **Title:** Document Mode keeps a stale path after a case-differing folder move
+>
+> **What happened:** A document open in Document Mode at `notes/a.md` stays pointed at `notes/a.md` after a character runs `doc_move_folder` with `path: "Notes"`, `new_path: "Archive"`. The folder moves (the store matches folder paths case-insensitively and rewrites its stored `notes/` prefix), but `sweepChatDocumentsAfterFolderMove` finds the rows to update with `ChatDocumentsRepository.findUnderFolder("Notes")`, which is a case-sensitive `startsWith("Notes/")`. The open row is skipped, and its next read 404s.
+>
+> **Expected:** The sweep matches open rows under the folder the store actually moved, either by the stored prefix the move used or case-insensitively, as the store does.
+>
+> **Where:** `lib/database/repositories/chat-documents.repository.ts` `findUnderFolder`; `lib/documents/core/move.ts` `sweepChatDocumentsAfterFolderMove`.
+>
+> **Provenance:** Found by the v5 port (P4.D380, pin `624d0d25c`). `88c9cc81d` (#147, past the pin) makes folder moves case-insensitive, which widens the window.
+
+### Log lines ported / retired
+
+| v4 line | v5 home | pin (★ = `global_capture`) |
+|---|---|---|
+| DEBUG `Moving resolved file` / `Deleting resolved file` | `doc_edit/path_resolver.rs` | `resolved_file_tests::move_and_delete_log_v4s_debug_lines` + `doc_resolved_file` (byte) |
+| DEBUG `readDatabaseBlobAsDocument: …` | `db/database_store.rs` | `doc_blob_document_reads` (byte); `documents_routes` `p4d380_read_uploaded_md` lines |
+| WARN `Failed to find blob by path` | `db/database_store.rs` | reached by `documents_routes` `chat_read_document_missing`. **Not line-pinned** (OPEN, Tier 2). |
+| DEBUG `readDocument: no document at path; …` | `documents/core/read.rs` | ★ `read_document_falls_back_…`; `documents_routes` lines |
+| DEBUG `afterDocumentWrite: scheduling store refresh` | `documents/core/write.rs` | ★ core tests + every doc family's `afterWrite` |
+| DEBUG `writeDocument: mtime conflict` / `wrote document` | `documents/core/write.rs` | ★ `write_document_logs_…`, silence leg `a_write_without_a_mount_point_id_…` |
+| DEBUG `ensureDocument: created a blank document` | `documents/core/write.rs` | ★ `ensure_document_creates_once_…` |
+| WARN `Background re-index, embedding, or stats refresh failed after a document write` | `services/mount_index/refresh.rs` | ★ `a_failing_chain_logs_v4s_one_warn_…` |
+| DEBUG `renameDocument: moved database document` / `moved file` | `documents/core/moves.rs` | ★ `rename_document_refusals_…`, `rename_on_disk_refreshes_…` |
+| DEBUG `deleteDocument: deleted database document` / `deleted file` | `documents/core/delete.rs` | ★ `delete_document_outcomes` |
+| INFO / DEBUG / WARN `Swept chat_documents after a document move` / `No chat_documents rows to sweep …` / `Failed to sweep …` (+ folder twins) | `documents/core/moves.rs` | ★ `sweeps::*` (5 tests) |
+| DEBUG `openDocumentFile: opening read-only` / `file not readable` | `documents/mod.rs` (writer thread) | **not line-pinned** (OPEN, Tier 2); the arms' behaviour is green in `documents_routes` |
+| DEBUG `resolveGeneralLibrary: Quilltap General is missing or disabled` | `documents/mod.rs` | **not line-pinned** (OPEN, Tier 2; the corpus's General is enabled) |
+| WARN `Failed to resolve <subject> path for <verb>` | `api/documents.rs` | `documents_routes` `p4d380_read_resolve_400` (lines vs v4) |
+| WARN `Refused an editor write to a read-only <subject>` | `api/documents.rs` | `p4d380_write_readonly`, `p4d380_standalone_write_readonly` (lines vs v4) |
+| WARN `<Subject> save conflict detected`; ERROR `Failed to read / write / rename / delete / open <subject>`; ERROR `Failed to resolve stores for standalone document picker` | `api/documents.rs` | **ported, not line-pinned** (item 18, OPEN, Tier 2: needs planted store failures that fail both sides) |
+| DEBUG `Resolved accessible document stores for picker` | `api/documents.rs` | `p4d380_accessible_stores_lines` (lines vs v4) |
+| DEBUG `[Projects v1] Listed mount points for project` | `api/projects.rs` | `projects_routes` `mount_points_iota` + silence leg |
+| INFO `Moved document` / `Deleted document` | `tools/doc_edit/file_management.rs` | the families compare no tool INFO lines; **not line-pinned** (OPEN, Tier 2) |
+| DEBUG `doc_open_document: created a blank document` | `tools/doc_edit/document_ui.rs` | **not line-pinned** (OPEN, Tier 2) |
+| ERROR `Error finding entities by filter` / `Error finding all entities` (the finders' inner fallbacks) | `db/fallback.rs` homes | `chat_documents::finder_fallback_tests` |
+
+**Retired:**
+
+- DEBUG `doc_read_file: no document at path; reading the uploaded blob's text`, with `read_text_file_or_uploaded_blob` and its unit module;
+- `refresh_now`'s two `eprintln!` texts on the scheduler path;
+- the WARN `MountRefreshScheduler unwired …`, which moved into the core.
+
+v5 never had `Moved file` / `Deleted file` INFOs, so there was nothing to delete.
+
+**Mutation proofs:**
+
+- the item-11 SET assignments (red, then restored);
+- the chokepoint WARN: an exact-count assert, so deleting the line fails it;
+- the route lines: compared against v4's captured lines, so deleting one fails the compare.
+
+No further per-family mutation runs were made (the machine was carrying two sibling gates).
+
+### Order corrections (the hunk / measurement wins)
+
+- **Item 9:** `fallback_home_guard` is **+0**, not +2. v4's `findByFilePath` / `findUnderFolder` wrap `findByFilter` / `findAll`, both fallbacks themselves, so the outer `Error finding chat documents by …` lines are unreachable; v5 uses the existing homes.
+- **Item 10:** five call sites, not six (see above).
+- **Item 3:** v4's blob path lookup is a try/catch fallback (`Failed to find blob by path` + `null`). Without the twin, a store with no `doc_mount_blobs` table 500ed a missing-file read. That was found by the regenerated `documents_routes`; the P4.D354 text reader now reads through it too.
+- **`documents-routes.test.ts`:** the two P4.D376-era accessible-stores rows pass the session `user` (v4 `0c47f4539` reads it, REACH's handoff).
+
+### HANDOFFs
+
+| # | to | what | measurable |
+|---|---|---|---|
+| H1 | P4.D376 / unifier | `chat_reachable_stores` step 4 (General) is dead now that `seen` holds General first (`api/documents.rs`, the `// 4. Quilltap General` block, P4.D376's region, left in place) | the step's branch is never taken; `documents_routes` stays green with it present |
+| H2 | P4.D387 | C14 wire, as landed: `viewer` (`DocumentViewTarget` keys `mountPointId, relativePath, fileName, fileType, fileSizeBytes, originalMimeType, updatedAt`) on open (no `mtime`) and read (`{content: '', viewer}`); the 400 `<filePath> is shown read-only and cannot be written from the editor`; `generalLibrary` `{mountPointId, name, mountType}`, or `null`, on both accessible-stores wires; `{mountPoints, officialMountPointId}` | the SPA beats flip LIVE (§S.9) |
+| H3 | P4.D381 / unifier | the fenced `doc-mount-file-links-tier2` rows: two ops at the end of the spec (`"lane": "P4.D380"`), plus `p4d380/upload.md` and the 4th folder in the Rust shape asserts | both lanes' blocks green on the union |
+| H4 | P4.D382 | NO-PORT / records: `schedulePublish` (NO-COUNTERPART), the R-13 retirement, `TOOL_REFRESH_IN_CLOSURE` | the NO-PORT record |
+| H5 | — | none (`move_database_document` needs no re-chunk: chunks are keyed by `linkId`) | — |
+
+**Census note for the unifier:** `doc_mount_fallback_sites_census` is 96 converted here. P4.D381 / P4.D377 may move it too; re-measure on the union.
+
+### Recorded (items 21–25)
+
+- **21. NO-COUNTERPART** `c17033f04`'s watcher `schedulePublish`: v5 has no watcher (`db4a76e39`).
+- **22. Log gap, NOT ported** (the pin's handler files):
+  - `file-management-handlers.ts:302` `Copied document`, `:416` `Created database folder`, `:438` `Created folder`, `:483` `Deleted database folder`, `:537` `Deleted folder`, `:599` `Moved database folder`, `:671` `Moved folder`;
+  - `text-handlers.ts:257` `JSON validation failed on write`, `:266` `JSON serialization failed on write`;
+  - `document-ui-handlers.ts:206` `Opened document in Document Mode`, `:298` `Closed document in Document Mode`.
+  - Each is absent from v5 (measured by grep). They belong to the next smalls round.
+- **23.** `tools/edit_custom_tool.rs:436` still reads through `read_file_with_mtime`. v4's `edit_custom_tool` does not read through `readDocument` at the pin (only the core and the operator layer import it), so it does not move.
+- **24. `TOOL_REFRESH_IN_CLOSURE`** (R-L1): the tools run the chain in their write closure where v4 fires and forgets. The end state and the lines are the same, and a failure never fails the tool; only latency differs. Not a both-ways table, since no byte differs.
+- **25. `UNPARSEABLE_LAST_MODIFIED_READS_ZERO`**, measured: v4 emits `mtime: null` (`NaN`) for an unparseable `lastModified`, and v5's readers answer `0`. Asserted both ways in `doc_blob_document_reads`. The P4.D354 reader's `unwrap_or` shape is kept.
+
+C17: no About credit change.
+
+### Gate
+
+- **fmt, clippy (both feature sets) and the SPA dist build:** clean.
+- **`cargo test --workspace --no-fail-fast`** (env `/tmp/p4d380/gate-env.sh`, `QT_V4_CHECKOUT` = the pin): **902 binaries / 6,042 passed / 6 failed / 3 ignored, zero `SKIP:`**. Each failure is named and owned:
+  - `doc_mount_points_name_writers_census`: **this lane's**. The out-of-line `documents/core/tests.rs` inserted a store raw. It is fixed in `8122cf434` and green by name.
+  - `spelling_guard`: standing at the base (a survey doc; fixed on `main`).
+  - `provider_sdk_version_guard`: P4.D364 (the floors move, a BY-DESIGN flip).
+  - `builtin_prompt_templates_guard` (21 vs v4's 22): P4.D373's catalogue re-vendor.
+  - `qtap_schema_embed_guard`: P4.D362 owns the export-schema re-vendor (§R.10 (o)).
+  - `cli_differential` `[db help]`: P4.D365 (`db integrity`).
+- **Censuses:** `fallback_home_guard` green and unmoved (+0, item 9's correction). `realtime_publish_sites_guard` and `web_edge_body_parse_guard` are unmoved. `doc_mount_fallback_sites_census` is 96 converted (recorded above). `recipe_sweep.py --self-test` reports 0 failures.
+- **Tier R:** not moved. **SPA / Playwright:** none (no SPA file moved).
+- **The lane's families by name** (each run through the sweep driver from the pin, all `ok`, zero SKIP): `doc_resolved_file`, `doc_blob_document_reads`, `chat_documents_tier2`, `doc_mount_file_links_tier2`, `documents_routes`, `mount_refresh`, `projects_routes`, `doc_text`, `doc_fm`, `doc_fs`, `doc_ui`, `doc_enum`, `doc_blob`, `doc_opacity` and `project_roster_access`; and, verify-only, `documents_rename_target`, `upload_blob_text_backfill`, `doc_edit_path_resolver` and `doc_mount_blobs_tier2`.
+
+### Status
+
+LANE COMPLETE. The **OPEN remainder** (Tier 2):
+
+- **Item 18:** capture pins for the ported-but-unpinned operator ERROR / WARN arms, which need planted store failures that fail on both sides.
+- **The unpinned DEBUG lines** listed above: `openDocumentFile` ×2, `resolveGeneralLibrary`, `doc_open_document: created a blank document`, the tool INFOs `Moved document` / `Deleted document`, and WARN `Failed to find blob by path`.
+- **Item 19:** the folder-move half of the measurement was not run; the issue is drafted and not filed.
+
+### Cleanup
+
+The pin worktree `/tmp/qt-v4-pin-p4.d380-624d0d25c` and the scratch red-first worktree `.claude/worktrees/p4d380-redfirst` are removed, and `git worktree prune` is run. The lane's `target/` is deleted. `/tmp/p4d380/` is left for the unifier: the gate env (`gate-env.sh` plus copies under `gate/`), the sweep logs, the red-first logs, `oracle-documents-routes.ndjson` and the `doc_blob_document_reads` / `doc_resolved_file` oracles. Nothing is merged to `main`.
