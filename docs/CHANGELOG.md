@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — docs(porting): P4.D374 — record the CATALOG sha 91ccabb06
+
+_Docs-only change._
+
+Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
+
 #### 2026-11-08 — CATALOG: regenerate the tool catalog from v4 624d0d25c (80 entries: four Brahma lookups + three searchScriptorium strings)
 
 _Versions: core 0.0.1429._
