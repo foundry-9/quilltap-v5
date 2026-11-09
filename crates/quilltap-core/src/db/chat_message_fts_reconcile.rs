@@ -33,13 +33,22 @@
 //! Runs on the writer task (v5's sole DB writer), like the other boot repairs
 //! — v4 runs it in the parent for the same reason.
 //!
-//! ## The migration comes free
+//! ## One migration comes free; the other has a stamped twin
 //!
 //! v4's `create-chat-message-fts-v1` migration does exactly this work
 //! (`shouldRun` = objects missing OR counts differ; `run` = ensure + rebuild),
-//! so there is nothing else to port. Its operator-facing strings, which v5
-//! emits nowhere because v5 has no migration runner, are recorded beside the
-//! reconciler for the day one exists:
+//! so there is nothing else to port for it. v4's
+//! `reindex-chat-message-fts-character-only-v1` (`902c6efe9`, #121) is NOT
+//! free: it has a STAMPED twin,
+//! [`super::chat_message_fts_character_only_reindex`], which the boot runs
+//! immediately BEFORE this pass (v4's migrations run in PHASE 1, this in
+//! PHASE 3.65). Since `902c6efe9` the [`ensure_chat_message_fts_schema`] this
+//! pass calls also REPLACES any trigger whose stored text has drifted (its
+//! debug line, `Replacing outdated chat message FTS triggers`), on every boot
+//! — v4's reconcile does the same through the same function — after which the
+//! counts disagree and the rebuild below runs. `create-chat-message-fts-v1`'s
+//! operator-facing strings, which v5 emits nowhere because v5 has no migration
+//! runner, are recorded beside the reconciler for the day one exists:
 //!
 //! - label: `Cataloguing every line ever spoken, so the search bar can find it
 //!   in a blink…`

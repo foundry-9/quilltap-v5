@@ -1,0 +1,218 @@
+{
+  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"systemSender\" TEXT DEFAULT NULL,\n    \"customAnnouncer\" TEXT DEFAULT NULL,\n    \"createdAt\" TEXT NOT NULL\n  )",
+  "scenarios": [
+    {
+      "name": "already-completed",
+      "priorLedger": true,
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible recalled",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "id": "msg-03",
+          "role": "ASSISTANT",
+          "content": "a dirigible announced",
+          "systemSender": "host"
+        }
+      ]
+    },
+    {
+      "name": "not-applicable",
+      "noChatMessages": true,
+      "seed": []
+    },
+    {
+      "name": "not-needed",
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a reply"
+        }
+      ]
+    },
+    {
+      "name": "missing-all",
+      "noFts": true,
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible recalled",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "id": "msg-03",
+          "role": "ASSISTANT",
+          "content": "a dirigible announced",
+          "systemSender": "host"
+        }
+      ]
+    },
+    {
+      "name": "missing-one",
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ad\""
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        }
+      ]
+    },
+    {
+      "name": "stale-legacy-two-staff",
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible recalled",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "id": "msg-03",
+          "role": "ASSISTANT",
+          "content": "a dirigible announced",
+          "systemSender": "host"
+        }
+      ]
+    },
+    {
+      "name": "stale-legacy-one-staff",
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible announced by the Town Crier",
+          "customAnnouncer": "{\"kind\":\"custom\",\"displayName\":\"Town Crier\"}"
+        }
+      ]
+    },
+    {
+      "name": "counts-only",
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a reply"
+        }
+      ],
+      "afterSeed": [
+        "DELETE FROM \"chat_messages_fts_map\" WHERE \"messageId\" = 'msg-02'"
+      ]
+    },
+    {
+      "name": "two-stale-order",
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_au\"",
+        "CREATE TRIGGER \"chat_messages_fts_au\" AFTER UPDATE OF \"content\" ON \"chat_messages\"\n  WHEN qt_text(new.\"content\") IS NOT qt_text(old.\"content\")\n   AND EXISTS (SELECT 1 FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\")\nBEGIN\n  DELETE FROM  \"chat_messages_fts\"\n    WHERE rowid = (SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\"),\n            qt_text(new.\"content\"));\nEND",
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible recalled",
+          "systemSender": "lantern"
+        }
+      ]
+    },
+    {
+      "name": "empty-string-author",
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "an empty sender",
+          "systemSender": ""
+        },
+        {
+          "id": "msg-03",
+          "role": "ASSISTANT",
+          "content": "an empty announcer",
+          "customAnnouncer": ""
+        }
+      ]
+    },
+    {
+      "name": "fresh-create-then-reindex",
+      "noFts": true,
+      "createFirst": true,
+      "seed": [
+        {
+          "id": "msg-01",
+          "role": "USER",
+          "content": "a dirigible, said plainly"
+        },
+        {
+          "id": "msg-02",
+          "role": "ASSISTANT",
+          "content": "a dirigible recalled",
+          "systemSender": "commonplaceBook"
+        }
+      ]
+    }
+  ]
+}

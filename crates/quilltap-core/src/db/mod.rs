@@ -36,6 +36,7 @@ pub mod characters_read;
 pub mod chat_activity_recompute_heal;
 pub mod chat_documents;
 pub mod chat_message_fts;
+pub mod chat_message_fts_character_only_reindex;
 pub mod chat_message_fts_reconcile;
 
 // === P4.D205 ===

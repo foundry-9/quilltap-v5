@@ -69,6 +69,12 @@ _Docs-only change._
 
 The order's Status records the `SCHEMA` sha and the C2 names as landed (the new `services/connection_profiles.rs`, the chain's append point, the oracle plant signature, and the measured `'0.0'` → true read rule).
 
+#### 2026-11-09 — feat(db): `reindex-chat-message-fts-character-only-v1` as a stamped boot ensure with v4's runner semantics (v4 902c6efe9)
+
+_Versions: core 0.0.1430._
+
+P4.D363 cut (b). New `db::chat_message_fts_character_only_reindex`: the ledger first (`AlreadyCompleted`), no `chat_messages` (`NotApplicable`), no `chat_messages_fts_map` (`DependencyPending`), v4's three-arm `should_run` (`NotNeeded` writes nothing), then v4's `run` and v4's ledger row (`Removed N Staff message(s) from the search index` / `No Staff messages were in the search index`). It logs v4's two INFO lines (`context=migrations.reindex-chat-message-fts-character-only`, no `durationMs`). `DependencyPending` is the dependency gate on `create-chat-message-fts-v1`: on a base with no FTS objects, v4's literal `run()` throws `no such table: chat_messages_fts_map`, and the order's L-2 premise ("a fresh v5 instance runs and stamps") is false at the pin. A fresh v5 instance therefore stamps nothing, and the reconcile builds its index under the current rule, as v4's own fresh boot does. The reconcile's module doc is rewritten (the migration no longer "comes free"). New differential `chat_message_fts_character_only_reindex_ensure` (10 scenarios over v4's real migration, ledger and DDL module, with the runner's sequence) names `DEPENDENCY_PENDING` and `RUNNER_CREATES_LEDGER_TABLES`.
+
 #### 2026-11-09 — feat(search): the message FTS index without the Staff — the eligibility rule, the stale-trigger replace, the joined-row filter and `participantId` on every global hit (v4 902c6efe9 + c539c82e0)
 
 _Versions: core 0.0.1429._
