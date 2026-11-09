@@ -199951,3 +199951,221 @@ The env block is `/tmp/p4d372/env.sh`.
 - **e2e:** `apps/web/e2e/prompt-templates-flow.spec.ts` by FILE against the lane's freshly built release bins: **2 passed (52.3 s)**. Two earlier runs failed while other lanes held port 4319 (the spec's global-setup health check answered from a sibling's server, which listed `MODERN General`) or loaded the machine (the unlock heading timed out). Neither was a template defect: the one clean-port run already passed beat (b). Prune measurement step (3), from that run's server log (the chat-send copy carries no built-ins): 22 `Sample prompt template seeded` INFOs, 0 refreshed, 0 `Retired built-in` lines — inserted 22, removed 0, as planned.
 - **💸 for the dogfood pass (R-Z; the order's rows):** count Friday-copy built-ins outside the 22 names (expected none) and memories whose keywords carry `resolved` in any case or padding (each ranks ×0.6 from the first recall); the Import-from-Template modal lists `MODERN Roleplay` / `MODERN Assistant`, a v5-only instance with the old row loses it on first open (one INFO, DEBUG `removed: 1`), a character's imported copy survives; 💸 a consolidation run over a hurt + a later forgiveness (one digest leading with the resolution, the hurt's keywords gain `resolved`, `Resolved grievances marked`, the replay ranks it below the repair); 💸 an inform "You are very alarmed" is believed and a five-seat scene does not converge on one measured stance; 💸 a dress listed only under `top` occupies `top` + `bottom` on create, add and merge.
 - **Cleanup:** the pin worktree removed + `git worktree prune`; the lane's `target/` deleted; `/tmp/p4d373/` left for the unifier's read (then removable). Branch pushed; nothing merged to `main`.
+
+## P4.D374 — the Brahma lookups, the inline `@Brahma` profile, v4's Brahma Console settings schema whole, and `CATALOG` (lane `claude/p4-d374-catalog-7f22a5`, pin `624d0d25c`, 2026-11-08) — LANE RECORD
+
+**Start.** The app opened the session in its own worktree `.claude/worktrees/p4-d374-catalog-7f22a5` on branch `claude/p4-d374-catalog-7f22a5`, already at `SCHEMA` `4e3a1584e`. `SCHEMA` was confirmed against P4.D362's status header on `claude/p4-d362-schema-7ce895` ("**`SCHEMA` = `4e3a1584e`**"). The spaceless path `~/source/quilltap-v5/.claude/worktrees/p4-d374-catalog-7f22a5` was used throughout; no move was needed. The target was cloned from main (`cp -cR`, 104 s).
+
+**§2 probe (observation, §R.2).** At 2026-11-08 21:53 CST v4 had moved: `main` was `88c9cc81d` (11 commits past the pin, including the 4.12.2 merge), and the tree was clean. The pin was usable.
+
+**Pin.** `/tmp/qt-v4-pin-p4d374-624d0d25c` was detached at `624d0d25c`. `npm ci --offline` succeeded on the first try; `npm rebuild better-sqlite3` was rc 0. Verified: `better-sqlite3` 13.0.3, `zod` 4.6.7, `openai` 7.47.0. `.claude/pin-plugin-sdks.sh` floors: cli driver 13.0.3 / sqlite 3.53.4 / chacha20, openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3.
+
+**Work split.** Items 14–18 were delegated to one subagent in this worktree. It made no commits or bumps; I committed its work in four units.
+
+### Commits (core 0.0.1428 → 0.0.1437; no other crate moved)
+
+| sha | unit |
+|---|---|
+| `91ccabb06` | **`CATALOG`** (item 2) — `CATALOG: regenerate the tool catalog from v4 624d0d25c (80 entries: four Brahma lookups + three searchScriptorium strings)` |
+| `2a6abce54` | docs — the `CATALOG` sha in the order's status header |
+| `8a1187ccf` | items 12 + 20 — `fitToBudget` + the five `BrahmaSql` DEBUG lines |
+| `ea42b5ca8` | item 13 — the Brahma SQL prompt regen |
+| `9eea0e35f` | item 11 — the `sql_access` slate |
+| `734cb67bf` | items 3–10 — the four lookup tools, their Zod issues, the executor arms, the fallback reads |
+| `9bf4dc51a` | items 14–15 — `BrahmaConsoleSettings` whole |
+| `d695c75f1` | item 17 — the project vault key |
+| `68298d86a` | item 18 — the restore + `.qtap` carriers |
+| `ad568811c` | item 16 — the inline profile |
+
+### `CATALOG` (item 2)
+
+- 76 → 80 entries. The five moved entries are the four NEW lookups (after `runSql`, in v4's `ALL_TOOLS` order) and `searchScriptorium`'s description. `searchScriptoriumBrahma` and `searchScriptoriumScenario` did NOT move.
+- Both oracle cases (`tool-definitions.ts`, `tool-definitions-canonical.ts`) gain the four imports and keys at the pin snapshot test's position.
+- The four effect rows ride the same commit (L-1): 78 rows, made up of 3 none / 37 read / 29 write / 5 destroy / 4 computed.
+- Red-first: first `searchScriptorium`'s bytes were red. After the case edits, completeness was red (76 vs 80).
+- Green: `OK: tool-definitions byte-exact for 80 tools.` plus the canonical spot-check; `tool_effects_equivalence` green; `quilltap-core tools::` 168/0; core clippy clean.
+
+### `run_sql` (items 12 + 20)
+
+**`fit_to_budget`** is ported, and `RunSqlResult::Success` gains `note` (serialized last, only when present).
+
+**L-4, measured.** The order's `1e21` premise is false: `serde_json` writes `1e+21` exactly as V8 does. The two disagree at `1e20`: serde writes `1e20`, V8 writes `100000000000000000000` (17 units apart). So the `fit_1e20_boundary` rows are the mutation guard. The serde-length mutant flips `fit_1e20_boundary` alone; the `1e21` rows stay as boundary rows. The `json_stringify` twin was correct for every input class the corpus reaches, so no twin fix was needed.
+
+**NEW tier-1 family `run_sql_fit_to_budget_equivalence`** (18 rows):
+- Red-first against an identity stand-in (today's v5): 12/16 over-budget rows red, 4 under-budget rows green (the equivalent-mutant guard).
+- Green: 18/18.
+- `RUN_SQL_LONE_SURROGATE_CLIP` is a both-ways table of one row: `fit_astral_600`.
+
+**`state_sql_tools_equivalence`** grows 6 cases: five budget cases (generated in-query with `hex(zeroblob(n))`) and the run-time failure `SELECT json('not json')`. Every `run_sql` case now compares v4's `BrahmaSql` lines line by line. 9 cases log a line and the rest are silent. Red on `SCHEMA` at `sql_write_refusal` (no line); green after.
+
+**The lines ported**, all under `target quilltap::tools` with `context=BrahmaSql` first and emitted on the caller thread after the read closure:
+- `run_sql result shortened to fit the size budget` `{userId, database, clippedCells, droppedRows}`;
+- item 20's four pre-existing lines: `run_sql rejected by pre-scan` `{…, sqlPreview, reason}`, `run_sql prepare failed` `{…, error}`, `run_sql rejected: statement is not read-only` `{…, readonly}` and `run_sql execution failed` `{…, error}`.
+
+Each fails `state_sql_tools_equivalence` when removed.
+
+### Prompt (item 13)
+
+`BRAHMA_SQL_PROMPT` 8231 → 10615 UTF-16 units. `BRAHMA_BASE_BRIEF` did not move (863). `dqs_sql_literal_census`: OK, 1248 literals.
+
+### Slate (item 11)
+
+`tool_build_equivalence` was regenerated from the pin. Red-first: 2/51 (`brahma_no_workspace`, `sql_access_on`). Green after. P4.D370 meets this family with its `submit_final_response` rule; the union regenerates it once.
+
+### The lookups (items 3–10)
+
+**A finding that corrects the order (R-6 / survey §1.4.1).** Measured at the pin: EVERY repository read the four handlers make is a v4 FALLBACK read. A throwing-column plant on `characters.name`, `memories.characterId`, `chats.chatType` or `chat_messages.content` / `role` answers empty, zero or not-found, never a throw:
+- `findAllRaw` → `[]`;
+- `countByCharacterId` → 0 (`Error counting memories for character`);
+- `chats.findById` → `null`;
+- `findByCharacterId` → `[]` via `findByFilter`;
+- `chats.findAll` → `[]`;
+- `getMessages` → `[]`;
+- `searchMessagesGlobal` → `[]`;
+- `searchMemories` over a broken table → `[]`.
+
+So the per-tool catch (`<tool> failed` WARN + `<tool> failed: <bare message>`) is ported but unreachable through a database failure, exactly as in v4. In v5 it fires only for a pool or partition failure; its WARN is pinned only by inspection, with no corpus row (recorded). `loadChats`' DEBUG `Chat lookup failed while labelling results` is likewise unreachable in v4 (`findById` already swallows): ported, with no corpus row.
+
+v5 reads through the same fallback homes: `find_all_raw_or_empty`, `find_by_id_or_none`, `find_all_or_empty`, `find_by_filter_or_empty`, `chats_read::find_by_id_or_none`, `get_messages` (the fallback twin), and ONE NEW home, `fallback::memories_count_by_character_or_zero`. `fallback_home_guard` is green. `get_messages_caller_census` gains the row `tools/brahma_lookup.rs::read_messages_inner F` (totals 84/7, 51 files). The plant rows stay in the corpus as `*_fallback_*` / `*_throw_probe_*` rows, which pin the fallback class both ways.
+
+**NEW tier-2 family `brahma_lookup_tools_equivalence`** (100 rows, through v4's REAL handlers and `executeToolCallWithContext`). Its builder `fixtures/build-brahma-lookup-fixture.ts` works through v4's real repositories (`chats.transcriptVersion` added by ALTER, the build-chat-message-update-fts precedent) and builds the FTS through v4's own `ensureChatMessageFtsSchema` + `rebuildChatMessageFtsIndex`. It uses the seeded spec `fixtures/brahma-lookup-tools.json`; the DB files are minted per run.
+- Red-first on `SCHEMA`: no handler existed, and the executor answered `Unknown tool: lookup_character` (the loud fallback).
+- Green: **91 rows byte-exact**. Each compares the result bytes, the `BrahmaLookup` lines line by line (silence included) and the `memories` / `chats` / `chat_messages` dumps unchanged on both sides, which is the no-stamp proof.
+- **Union-red by name — H1, P4.D363's `participantId`** (9 rows):
+  - `lmsg_by_character`, `lmsg_all_chats`, `lmsg_window_string_compare`, `lmsg_window_dateonly`, `lmsg_phrase_quoted`, `lmsg_snippet_ellipses`, `lmsg_limit_1`. Here v5's speaker reads `"Character"` where v4's reads the seat's name (e.g. `"Annabel"`, `"Friday"`).
+  - `lmsg_speaker`, `lmsg_speaker_friday`: v5 has `count: 0` where v4 has `count: 1`, because the seat filter drops a seatless hit.
+- **H2 (P4.D375) — MEASURED EMPTY.** `lm_window_dateonly`, `lm_window_iso` and `lm_window_open_since` are GREEN on this lane (survey correction 3 stands: nothing in this corpus sits between the relaxed and the default floor).
+- **`BRAHMA_LOOKUP_LONE_SURROGATE_CLIP`** (L-3) is a both-ways table of 2 rows: `lm_clip_astral`, `rm_clip_astral`.
+
+**Mutation proofs (item 23):**
+
+| mutant | result |
+|---|---|
+| live-over-archived dropped | flips `lc_live_over_archived` |
+| `<` for `<=` in `first` | flips the six Friday rows that tie on `createdAt` |
+| `title ??` for `title \|\|` | flips 19 rows |
+| window string compare off | flips `lmsg_window_unseated_out` (two seatless rows were added because every other windowed `lookup_messages` row is H1-red) |
+| code-unit sort for `locale_compare` | stays GREEN — an EQUIVALENT mutant on every row v4 can hold: same-shape ISO `Z` timestamps order identically under ICU and code units, and v4's chat schema drops a non-ISO `updatedAt`, so a separating row cannot be planted |
+| trimmed substring arm | stays GREEN — EQUIVALENT (the needle is already trimmed; a trim changes no `includes`) |
+| serde length for the budget | flips `fit_1e20_boundary` (`run_sql` family) |
+| stamping access | not injected; every `lm_*` row asserts the unchanged dumps on both sides |
+
+**The lines ported**, all under `target quilltap::tools` with `service=BrahmaLookup module=service` first (measured on v4's capture):
+- `lookup_character resolved` `{userId, characterId, memoryCount, conversationCount}`;
+- `lookup_memories completed` `{userId, holders, aboutCharacterId?, windowed, hits, returned}` (`aboutCharacterId` omitted when unset);
+- `lookup_messages completed` `{userId, chatCount, rawHits, returned, postFiltered}`;
+- `read_messages completed` `{userId, chatId, totalLines, start, end}`;
+- the four `<tool> failed` WARNs and `Chat lookup failed while labelling results` (both unreachable, as above).
+
+The four DEBUGs fail the family when removed.
+
+**`tool_executor_ceiling_equivalence`** grows 6 rows: the lookups within `read` / `write` and refused under `none`. Red-first: the names were ABSENT from the corpus; green after.
+
+### Settings (items 14–15, delegated)
+
+`BrahmaConsoleSettings { max_agent_turns, inline_connection_profile_id: Option<Option<String>> }`, with `to_json()` in schema order. `parse_brahma_console_settings -> Result<_, Vec<ZodIssue>>`. `read_brahma_console_settings` uses the V8 `JSON.parse` twin and `zod_error_message` for the WARN's `error`. `write_brahma_console_settings` is the PUT's writer.
+
+**Decision (departs from the order's item-14 signature):** `set_brahma_console_settings(main, i64)` and `get_brahma_console_settings -> i64` keep their shapes (L-2), so no turn-budget or tier-3 caller moved.
+
+**Decoder (item 15):** `settings_update_request` takes a `&[&str]` key list. `brahma_console_update_request` keeps its name and signature, so `quilltap-web` is unchanged (`web_edge_body_parse_guard` unmoved).
+
+| arm | stored bytes / outcome |
+|---|---|
+| absent | `{"maxAgentTurns":N}` |
+| `null` | `{"maxAgentTurns":120,"inlineConnectionProfileId":null}` |
+| UUID | `{"maxAgentTurns":50,"inlineConnectionProfileId":"<id>"}` (schema order; upper-case accepted) |
+| invalid (`nope`, non-RFC, `5`) | PUT 400, nothing written; a STORED invalid id → GET `{maxAgentTurns:50}` + the WARN, and a PUT over it merges onto 50 |
+| unknown key | stripped, no WARN |
+
+Families:
+- **`settings_routes_equivalence`**: +16 `bc_inline_*` rows plus a stored-bytes check. Red-first: 13 red, 3 equivalent-arm green; the 12 old `bc_*` rows stayed green. Green: 313 cases.
+- **`instance_settings_json_warns_equivalence`**: +7 rows. Red-first: 6 red. Green: 64.
+- The settings-routes recipe header's jest timeout is raised to 1,800,000 (the whole corpus is ONE jest test, about 740 s).
+
+### Project key (item 17, delegated)
+
+The three states survive through a v4-written `properties.json` (UUID / `null` / absent) and an unrelated read-modify-write, byte for byte. The fresh column stays NULL.
+- **`projects_tier2_equivalence`**: +17 ops. Red-first: 3 refusal rows red. Green: 7 tables, 2 DBs, 19 refusal arms.
+- **`projects_routes_equivalence`**: +5 rows. Red-first: 5/5. Green. `mount_points_iota` / `mount_points_kappa` remain red, which is pre-existing and P4.D380's (§R.13).
+
+### Carriers (item 18, delegated)
+
+`backup_uuid_remap_equivalence` gains the case `brahma_inline_profile`. Red-first: red on logs / projects / instanceSettings / getMapping / getSize. Green: 67 cases.
+
+Rows covered:
+- a valid id and an unknown id (the DEBUG fires even when `to === from`);
+- invalid JSON (WARN `Unexpected end of JSON input`, value kept);
+- `null` / a numeric id / an array / a scalar / a missing key / a `null` id / an empty value (passed through silently);
+- number formatting (`50.0` → `50`, `1e21` → `1e+21`);
+- escapes, duplicate keys and integer-like keys;
+- the project field as a string / `null` / absent / unknown.
+
+Lines: `Remapped inline Brahma connection profile in instance settings` `{from, to}` and `brahmaConsole instance setting is not valid JSON; leaving it as is` `{error}` under `quilltap::backup::uuid_remap`.
+
+**GAP (recorded):** the `.qtap` reconcile arm (`services/quilltap_import/reconcile.rs`, between image and template) has NO differential. `qtap_import_equivalence` never reaches project reconcile, and `system_import_*`'s committed fixture fails every connection-profile import on both sides (the standing `multiCharacterPrefill` finding), so a row there would be an equivalent mutant. `system_restore_state` was not re-run: its corpus carries neither key.
+
+### Inline profile (item 16, delegated)
+
+**L-6, measured FALSE at the pin:** `connections.findById` / `findDefault` are fallback reads, so nothing propagates out of v4's resolver. The port uses `find_by_id_or_none` / `find_one_by_filter_or_none` and answers `Option<Value>`; a failed default read lands in the unchanged `no-profile` arm. The chat-read and settings-read WARNs are unreachable at the pin (both fallback reads): ported, with no corpus row. The project-read WARN is the one reachable WARN arm, and it is pinned.
+
+**NEW tier-2 family `brahma_inline_profile_equivalence`** (17 cases, v4's real `resolveInlineBrahmaConnectionProfile`). Red-first against the old resolver: 17/17. Green: 7 WARN + 17 DEBUG lines (`service=BrahmaInlineProfile module=service`; `profileId: null` when there is no default).
+
+The order's "carina / brahma_console NEW rows" for item 16 were not added. `carina_query_tier3` cannot reach the resolver (a canned `RunBrahmaConsole` seam), and `brahma_console_tier3`'s fixture has no chats table and no setting.
+
+### Tier-3 Brahma regen (item 19)
+
+- `carina_query_tier3_equivalence`: **green**.
+- `brahma_console_tier3_equivalence` and `brahma_orchestrator_tier3_equivalence`: **RED on this lane, union-owned by P4.D370.** The canned keys miss because v4's system prompt carries 4.12.1's rule 6 of the native tool rules ("If the search lists conversations from that period, read the likeliest one …"), and C8 assigns `native_tool_prompt.rs` to P4.D370. My prompt and slate are byte-identical inside v4's message up to that point (both constants found verbatim).
+- PROOF: with v4's rule-6 text applied LOCALLY to `native_tool_prompt.rs` (never committed; reverted, `git diff` empty), both families go GREEN (the console family whole; orchestrator 7/7 runs).
+
+### Tier 3 records
+
+- **Item 24 / L-5:** `[Settings v1] Brahma-console settings fetched` / `… updated (instance-wide)` are NOT ported (a pre-existing three-route class).
+- **Item 25:** the two lone-surrogate tables, as above.
+- **Item 26:** the `.qtap` instance-settings import does not remap `brahmaConsole.inlineConnectionProfileId`. This is v4-faithful.
+- Item 22's Deus-label rows: `rm_established_fact_hidden` (a `systemSender: 'host'` / `systemKind: 'established-fact'` line is not a spoken line) and `rm_around_not_spoken`. Both are green.
+
+### HANDOFFs
+
+| id | to | measurable |
+|---|---|---|
+| H1 | P4.D363 | the 9 `UNION_RED_H1_PARTICIPANT_ID` rows flip green; the unifier empties the table (a listed row going green fails the test) |
+| H2 | P4.D375 | nothing to flip (measured empty) |
+| H3 | P4.D372 | the widened `speaker_label` at `brahma_lookup.rs`'s two call sites (`lookup_messages` passes no sender/kind; `read_messages` passes the message's) — a compile obligation |
+| H4 | P4.D388 | C10 as landed: settings GET/PUT `{maxAgentTurns, inlineConnectionProfileId?}`; project GET/PUT `brahmaConnectionProfileId` (UUID or `null`, else 400) |
+| H5 | P4.D382 | the help pages / DDL / README from `c539c82e0` |
+| H6 | P4.D362 / unifier | `system_export_equivalence` with a key-bearing project (not measured here) |
+| H7 | P4.D375 | `CATALOG` = `91ccabb06` (sent) |
+| **H8 (NEW)** | **P4.D370** | `brahma_console_tier3_equivalence` and `brahma_orchestrator_tier3_equivalence` go green on the union once rule 6 lands; proven locally |
+
+### Censuses (item 21)
+
+`fallback_home_guard` green (the new home is in `db/fallback.rs`); `get_messages_caller_census` +1 (84/7, 51 files); `dqs_sql_literal_census` OK; `web_edge_body_parse_guard` unmoved; `recipe_sweep.py --self-test` 0 failures. The rest are in the gate below.
+
+### 💸 for the dogfood pass
+
+As the order lists them: the console lookups (`lookup_memories` leaves `lastAccessedAt` unchanged), a wide `run_sql` with its `note`, inline `@Brahma` across project / global / stale profiles, no-erasure PUTs, and the restore / `.qtap` remaps.
+
+### The gate (lane close, 2026-11-09)
+
+- `cargo fmt --all --check` 0.
+- `cargo clippy --workspace --all-targets -- -D warnings` 0, and the same with `--features quilltap-core/native-transport` 0 (after `npm ci` + `npm run build` in `apps/web`).
+- `cargo build --release -p quilltap-core` 0.
+- `cargo test --workspace --no-fail-fast` with the lane's env block (all paths under `/tmp/p4d374/`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **907 binaries / 6,058 passed / 8 failed / 3 ignored, zero SKIP.** It queued behind no sibling gate (0 running).
+
+Every family this lane authored or grew is green BY NAME in that run: `tool_definitions`, `tool_effects`, `run_sql_fit_to_budget`, `brahma_lookup_tools`, `state_sql_tools`, `settings_routes`, `instance_settings_json_warns`, `projects_tier2`, `backup_uuid_remap`, `brahma_inline_profile`, `tool_build`, `tool_executor_ceiling` and `carina_query_tier3`. The census set is also green: `get_messages_caller_census`, `fallback_home_guard`, `dispatch_wrong_type_census`, `web_edge_body_parse_guard`, `host_zone_sites_census`, `realtime_publish_sites_guard`, `dqs_sql_literal_census`, `zod_version_guard`, `common_helpers_selftest`, `tool_execution_tier2` and `brahma_console_routes`. `spelling_guard` is red, but not on this lane's files (below).
+
+The 8 reds, each classified:
+
+1. `quilltap-core --lib` `db::schema_4_12_repair::the_fresh_only_columns_are_named_by_no_v5_sql` — **this lane's**, a false positive in item 17's unit-test literal. FIXED in `43bc13b10` (the test builds the key from a variable; P4.D362's guard untouched); 15/15 green after.
+2. `brahma_console_tier3_equivalence` — H8, P4.D370's rule 6 (proven locally, above).
+3. `brahma_orchestrator_tier3_equivalence` — H8, the same.
+4. `projects_routes_equivalence` — only `mount_points_iota` / `mount_points_kappa`, pre-existing and P4.D380's (§R.13). Every `update_brahma_profile_*` row is green.
+5. `cli_differential` `[db help] stdout differs` (423 of 424 green) — P4.D365's `db_help.txt` (`db integrity`).
+6. `builtin_prompt_templates_guard` — §R.7's by-design red that reads the live checkout (P4.D373).
+7. `provider_sdk_version_guard` — §R.7's by-design red (P4.D364).
+8. `spelling_guard` — `docs/developer/porting/work-orders/surveys/2026-11-04-setupphase-vendor-norport.md:295` (the setupphase survey, already on the base). Not this lane's file; recorded for the unifier.
+
+**Versions at close:** core **0.0.1438**; host 0.0.224, web 0.0.256, cli 0.0.38, tauri 0.0.9, sys 0.1.0, harness 0.0.1110 (all unmoved by this lane).
+
+**Cleanup:** the pin worktree was removed and pruned, and the lane's `target/` was deleted. `/tmp/p4d374/` was left for the unifier's read (oracles, fixtures, the gate log, `gate-env.sh`). The branch is pushed and nothing is merged to `main`.

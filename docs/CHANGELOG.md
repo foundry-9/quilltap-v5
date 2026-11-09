@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-09 — docs(porting): P4.D374 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D374 lane record to `status-log.md` and marks the order `LANE COMPLETE` (`CATALOG` `91ccabb06`). The record covers the measured fallback-read class of v4's lookup and inline-profile reads, the union-red rows by name (H1 to P4.D363, the new H8 to P4.D370), the mutation proofs, and the gate's classified reds.
+
 #### 2026-11-08 — test(projects): keep the fresh-only column name out of a test literal the 4.12 schema guard reads as SQL (P4.D374)
 
 _Versions: core 0.0.1438._
