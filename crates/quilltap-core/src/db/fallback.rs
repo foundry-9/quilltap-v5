@@ -1609,6 +1609,31 @@ pub fn memories_content_search_or_empty<T>(
     })
 }
 
+// === P4.D375 ===
+/// v4 `findIdsInEventWindow` (`memories.repository.ts:1063-1102`, 4.12.1
+/// `6121f59b9`): ERROR `Error finding memories in event window {collection,
+/// characterId, from, to, error, strictFailures?}`, fallback `[]`.
+pub fn memory_ids_in_event_window_or_empty(
+    character_id: &str,
+    from: &str,
+    to: &str,
+    read: impl FnOnce() -> Result<Vec<String>, DbError>,
+) -> Result<Vec<String>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            from = %from,
+            to = %to,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding memories in event window"
+        );
+    })
+}
+// === end P4.D375 ===
+
 /// v4 `countWithoutEmbedding` (`:1482-1494`): ERROR `Error counting memories
 /// without embedding {collection, characterId?, error, strictFailures?}`,
 /// fallback `0` (`characterId` OMITTED when absent — v4's `undefined`).

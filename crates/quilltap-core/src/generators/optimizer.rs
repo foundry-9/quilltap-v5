@@ -1692,6 +1692,7 @@ async fn semantic_candidates<EMB: EmbeddingProvider>(
                     hot_only: true,
                     exclude: None,
                     limit: 500,
+                    include: None, // P4.D375
                 },
             ))
         })

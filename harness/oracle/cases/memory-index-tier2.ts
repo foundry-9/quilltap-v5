@@ -179,13 +179,22 @@ async function main(): Promise<void> {
     { limit: 10, hotOnly: true },
     { limit: 10, hotOnly: false, exclude: [mid(1)] },
     { limit: 1, hotOnly: true, exclude: [mid(1)] },
-  ]) {
+    // === P4.D375 === v4 `6121f59b9` `includeIds` (window-first-index.test.ts):
+    // alone, with hotOnly, with an exclude (an id in both → excluded), and an
+    // EMPTY include (still a filter — nothing scores).
+    { limit: 10, hotOnly: false, include: [mid(1), mid(3), mid(5)] },
+    { limit: 10, hotOnly: true, include: [mid(1), mid(3), mid(5)] },
+    { limit: 10, hotOnly: false, include: [mid(1), mid(3), mid(5)], exclude: [mid(1)] },
+    { limit: 10, hotOnly: false, include: [] as string[] },
+    // === end P4.D375 ===
+  ] as Array<{ limit: number; hotOnly: boolean; exclude?: string[]; include?: string[] }>) {
     await run('search', opts, async () =>
       hits(
         (await memoryIndex.search(CHAR, q, {
           limit: opts.limit,
           hotOnly: opts.hotOnly,
           exclude: opts.exclude ? new Set(opts.exclude) : undefined,
+          ...(opts.include ? { includeIds: new Set(opts.include) } : {}),
         })) as never,
       ),
     );

@@ -18,6 +18,10 @@ use serde_json::{Map, Value};
 pub enum HitSource {
     Vector,
     Probe,
+    /// P4.D375 (v4 4.12.1 `6121f59b9`): a row of the query's period, read by
+    /// event time in SQL and scored by the same index restricted to them (or,
+    /// on the text strategy, the period's newest rows at their text score).
+    Window,
     Anchor,
     Literal,
     Text,
@@ -247,4 +251,26 @@ impl RecallPool {
 /// value as an integer (`3`, never `3.0`), NaN / ±∞ as `null`.
 pub fn num(f: f64) -> Value {
     crate::db::js_number_to_json(f)
+}
+
+#[cfg(test)]
+mod hit_source_tests {
+    use super::HitSource;
+
+    /// P4.D375: v4 `HitSource = 'vector' | 'probe' | 'window' | 'anchor' |
+    /// 'literal' | 'text'` — the six serializations.
+    #[test]
+    fn six_serializations() {
+        let all = [
+            (HitSource::Vector, "\"vector\""),
+            (HitSource::Probe, "\"probe\""),
+            (HitSource::Window, "\"window\""),
+            (HitSource::Anchor, "\"anchor\""),
+            (HitSource::Literal, "\"literal\""),
+            (HitSource::Text, "\"text\""),
+        ];
+        for (src, want) in all {
+            assert_eq!(serde_json::to_string(&src).unwrap(), want);
+        }
+    }
 }

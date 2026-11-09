@@ -10,7 +10,10 @@
 //! hard when at least `limit` hits fall inside it, otherwise the bounded
 //! ×`occurredWithinWindow` boost on the whole pool — never fewer results than
 //! an unwindowed search. Without a recall context (the tool) it is a plain
-//! filter.
+//! filter, and a tool window at most [`TOOL_WINDOW_FLOOR_MAX_DAYS`] wide is
+//! its own relevance filter: an in-window row is eligible however loosely it
+//! matches (the caller named the period). The prompt paths keep the floor
+//! (R5, bug 202). (v4 4.12.1 `6121f59b9`, P4.D375.)
 
 use serde_json::{Map, Value};
 
@@ -69,6 +72,21 @@ pub struct Scored {
     pub window_mode: WindowMode,
 }
 
+// === P4.D375 ===
+/// An explicit tool window at most this wide is its own relevance filter (v4
+/// `TOOL_WINDOW_FLOOR_MAX_DAYS`).
+pub const TOOL_WINDOW_FLOOR_MAX_DAYS: f64 = 14.0;
+
+const DAY_MS: f64 = 24.0 * 60.0 * 60.0 * 1000.0;
+
+/// v4 `isNarrowToolWindow` — true when an explicit tool window (ISO bounds) is
+/// narrow enough to stand in for the relevance floor. The conversation search
+/// reads it too, so the two sources agree on what "narrow" means.
+pub fn is_narrow_tool_window(window: Option<&TimeWindow>) -> bool {
+    parse_window(window).is_some_and(|(from, to)| to - from <= TOOL_WINDOW_FLOOR_MAX_DAYS * DAY_MS)
+}
+// === end P4.D375 ===
+
 /// v4 `parseWindow` — both ends `Date.parse`-finite and `from <= to`.
 fn parse_window(window: Option<&TimeWindow>) -> Option<(f64, f64)> {
     let w = window?;
@@ -110,11 +128,28 @@ pub fn score(
     trace: &mut RecallTrace,
     label: Option<&str>,
 ) -> Scored {
+    // P4.D375: the window parsed once; `in_window_at` serves the floor's relaxed
+    // arm and the window staging alike.
+    let window = parse_window(opts.window.as_ref());
+    let in_window_at = |memory: &Value| match window {
+        Some((from, to)) => {
+            let t = event_time_ms(memory);
+            t.is_finite() && t >= from && t <= to
+        }
+        None => false,
+    };
+    let relax_floor = opts.recall_context.is_none()
+        && window.is_some_and(|(from, to)| to - from <= TOOL_WINDOW_FLOOR_MAX_DAYS * DAY_MS);
     let floored: Vec<&HydratedHit> = hydrated
         .iter()
-        .filter(|h| match gathered_strategy {
-            RecallStrategy::Text => h.score > 0.0,
-            RecallStrategy::Vector => h.score >= gathered_min_score,
+        .filter(|h| {
+            if relax_floor && in_window_at(&h.memory) {
+                return true;
+            }
+            match gathered_strategy {
+                RecallStrategy::Text => h.score > 0.0,
+                RecallStrategy::Vector => h.score >= gathered_min_score,
+            }
         })
         .collect();
     let pool: Vec<RankInput> = floored
@@ -146,11 +181,8 @@ pub fn score(
     let mut out_of_window: Vec<RankInput> = Vec::new();
     let mut window_mode = WindowMode::None;
     let mut rank_context = context.clone();
-    if let Some((from, to)) = parse_window(opts.window.as_ref()) {
-        let in_window = |c: &RankInput| {
-            let t = event_time_ms(&c.memory);
-            t.is_finite() && t >= from && t <= to
-        };
+    if window.is_some() {
+        let in_window = |c: &RankInput| in_window_at(&c.memory);
         let hits: Vec<RankInput> = pool.iter().filter(|c| in_window(c)).cloned().collect();
         match &context {
             None => {
@@ -190,6 +222,10 @@ pub fn score(
         "floored".into(),
         num((hydrated.len() - floored.len()) as f64),
     );
+    // P4.D375: only when relaxed.
+    if relax_floor {
+        detail.insert("floorRelaxed".into(), Value::Bool(true));
+    }
     detail.insert(
         "bestCosine".into(),
         num(crate::jsnum::math_round(best_cosine * 1000.0) / 1000.0),
@@ -228,4 +264,87 @@ pub fn score_gathered(
         trace,
         label,
     )
+}
+
+#[cfg(test)]
+mod narrow_window_tests {
+    //! P4.D375 item 7 (v4 `window-first-recall.test.ts`'s `isNarrowToolWindow`
+    //! row, plus the edges): the differential is
+    //! `window_first_recall_equivalence`.
+    use super::*;
+
+    fn w(from: &str, to: &str) -> TimeWindow {
+        TimeWindow {
+            from: from.into(),
+            to: to.into(),
+        }
+    }
+
+    #[test]
+    fn fourteen_days_exactly_is_narrow_and_one_ms_more_is_not() {
+        assert!(is_narrow_tool_window(Some(&w(
+            "2026-11-01T00:00:00.000Z",
+            "2026-11-15T00:00:00.000Z"
+        ))));
+        assert!(!is_narrow_tool_window(Some(&w(
+            "2026-11-01T00:00:00.000Z",
+            "2026-11-15T00:00:00.001Z"
+        ))));
+    }
+
+    #[test]
+    fn absent_unparseable_or_inverted_is_not_narrow() {
+        assert!(!is_narrow_tool_window(None));
+        assert!(!is_narrow_tool_window(Some(&w(
+            "soon",
+            "2026-11-15T00:00:00.000Z"
+        ))));
+        assert!(!is_narrow_tool_window(Some(&w(
+            "2026-11-15T00:00:00.000Z",
+            "2026-11-01T00:00:00.000Z"
+        ))));
+    }
+
+    #[test]
+    fn the_floor_relaxes_on_the_tool_path_only() {
+        let hit = |id: &str, at: &str| HydratedHit {
+            memory: serde_json::json!({ "id": id, "occurredAt": at, "createdAt": at, "reinforcedImportance": 0.5 }),
+            raw_score: 0.2,
+            score: 0.2,
+            used_embedding: true,
+        };
+        let hydrated = vec![
+            hit("in", "2026-11-03T22:00:00.000Z"),
+            hit("out", "2026-10-01T22:00:00.000Z"),
+        ];
+        let day = w("2026-11-03T06:00:00.000Z", "2026-11-04T05:59:59.999Z");
+        let run = |ctx: Option<RecallContextInput>, window: TimeWindow| {
+            let mut trace = Vec::new();
+            let scored = score(
+                &hydrated,
+                RecallStrategy::Vector,
+                0.3,
+                Some("OPENAI"),
+                &ScoreOptions {
+                    limit: 10,
+                    recall_context: ctx,
+                    window: Some(window),
+                    now_ms: 1_793_800_000_000.0,
+                },
+                &mut trace,
+                None,
+            );
+            let relaxed = trace[0].detail.get("floorRelaxed").cloned();
+            (scored.ranked.len(), relaxed)
+        };
+        assert_eq!(run(None, day.clone()), (1, Some(Value::Bool(true))));
+        assert_eq!(
+            run(
+                None,
+                w("2026-10-15T00:00:00.000Z", "2026-11-14T00:00:00.000Z")
+            ),
+            (0, None)
+        );
+        assert_eq!(run(Some(RecallContextInput::default()), day), (0, None));
+    }
 }

@@ -689,6 +689,68 @@ pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<Value>, DbEr
     })
 }
 
+// === P4.D375 ===
+/// v4 `findIdsInEventWindow(characterId, window, { hotOnly })`
+/// (`memories.repository.ts:1063-1102`, 4.12.1 `6121f59b9`): the ids of a
+/// character's memories whose event time falls inside `[window.from,
+/// window.to]` (inclusive). Event time is `COALESCE(occurredAt, createdAt)` —
+/// the same rule `score` applies in JS (`occurredAt ?? createdAt`); keep the
+/// two in step. "Timestamps are ISO-8601 `Z` strings, so the lexical
+/// comparison is the chronological one" — v4's own premise, TRUE only for
+/// `…Z` values: a date-only or offset `occurredAt` compares here as TEXT, not
+/// as `Date.parse` reads it (R-3: carried VERBATIM; the
+/// `LEXICAL_WINDOW_VS_DATE_PARSE` table in `window_first_recall_equivalence`
+/// documents the disagreement).
+///
+/// Recall's window-first gather and the search tool's window census read
+/// this, so a dated question finds its period's rows before anything is cut.
+/// No `ORDER BY` — every caller counts the ids or builds a set (the text
+/// arm's `findByIds` imposes its own order). A FALLBACK read: an error is the
+/// ERROR line and `[]`, rethrown only inside the strict scope; success logs
+/// v4's DEBUG `Found memories in event window` on the caller thread.
+pub fn find_ids_in_event_window(
+    conn: &Connection,
+    character_id: &str,
+    window: &crate::recall_tags::TimeWindow,
+    hot_only: bool,
+) -> Result<Vec<String>, DbError> {
+    super::fallback::memory_ids_in_event_window_or_empty(
+        character_id,
+        &window.from,
+        &window.to,
+        || {
+            let hot = if hot_only {
+                format!("\n              AND {HOT_TIER_SQL}")
+            } else {
+                String::new()
+            };
+            let sql = format!(
+                "SELECT id FROM memories\n            WHERE characterId = ?\n              \
+                 AND COALESCE(occurredAt, createdAt) >= ?\n              \
+                 AND COALESCE(occurredAt, createdAt) <= ?{hot}"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let ids = stmt
+                .query_map(
+                    rusqlite::params![character_id, window.from, window.to],
+                    |r| r.get::<_, String>(0),
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            tracing::debug!(
+                target: "quilltap::db",
+                characterId = %character_id,
+                from = %window.from,
+                to = %window.to,
+                hotOnly = hot_only,
+                count = ids.len(),
+                "Found memories in event window"
+            );
+            Ok(ids)
+        },
+    )
+}
+// === end P4.D375 ===
+
 /// Options for [`find_by_character_id_paginated`] (v4's `options` bag; `sort_by`
 /// / `sort_order` defaults — `createdAt` / `desc` — applied by the caller).
 pub struct PaginateOptions<'a> {
@@ -2804,3 +2866,169 @@ mod p4168_fallback_tests {
         );
     }
 }
+
+// === P4.D375 ===
+#[cfg(test)]
+mod p4d375_event_window_tests {
+    //! v4 `findIdsInEventWindow` (4.12.1 `6121f59b9`): the SQL's shapes, the
+    //! DEBUG, and the fallback's ERROR / strict arms. The differential is
+    //! `window_first_recall_equivalence`.
+    use super::*;
+    use crate::db::fallback::with_strict_repository_failures;
+    use crate::recall_tags::TimeWindow;
+
+    const C: &str = "c3750000-0000-4000-8000-000000000001";
+
+    fn conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE memories (id TEXT PRIMARY KEY, characterId TEXT, occurredAt TEXT, createdAt TEXT, tier TEXT);",
+        )
+        .unwrap();
+        for (id, occurred, created, tier) in [
+            (
+                "hot",
+                Some("2025-12-01T10:00:00.000Z"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+            (
+                "null-tier",
+                Some("2025-12-01T11:00:00.000Z"),
+                "2020-01-01T00:00:00.000Z",
+                None,
+            ),
+            (
+                "cold",
+                Some("2025-12-01T12:00:00.000Z"),
+                "2020-01-01T00:00:00.000Z",
+                Some("cold"),
+            ),
+            (
+                "created-fallback",
+                None,
+                "2025-12-01T13:00:00.000Z",
+                Some("hot"),
+            ),
+            (
+                "edge-from",
+                Some("2025-12-01T00:00:00.000Z"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+            (
+                "edge-to",
+                Some("2025-12-01T23:59:59.999Z"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+            // R-3: lexically BEFORE the `…T00:00:00.000Z` bound (a prefix).
+            (
+                "date-only",
+                Some("2025-12-01"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+            // R-3: lexically inside, though `Date.parse` puts it on Nov 30.
+            (
+                "offset",
+                Some("2025-12-01T01:00:00+05:00"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+            (
+                "outside",
+                Some("2025-11-30T23:59:59.999Z"),
+                "2020-01-01T00:00:00.000Z",
+                Some("hot"),
+            ),
+        ] {
+            conn.execute(
+                "INSERT INTO memories (id, characterId, occurredAt, createdAt, tier) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![id, C, occurred, created, tier],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    fn day() -> TimeWindow {
+        TimeWindow {
+            from: "2025-12-01T00:00:00.000Z".into(),
+            to: "2025-12-01T23:59:59.999Z".into(),
+        }
+    }
+
+    fn sorted(mut v: Vec<String>) -> Vec<String> {
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn hot_only_drops_cold_keeps_null_and_hot_bounds_inclusive_lexical() {
+        let conn = conn();
+        let all = sorted(find_ids_in_event_window(&conn, C, &day(), false).unwrap());
+        assert_eq!(
+            all,
+            [
+                "cold",
+                "created-fallback",
+                "edge-from",
+                "edge-to",
+                "hot",
+                "null-tier",
+                "offset"
+            ]
+        );
+        let hot = sorted(find_ids_in_event_window(&conn, C, &day(), true).unwrap());
+        assert_eq!(
+            hot,
+            [
+                "created-fallback",
+                "edge-from",
+                "edge-to",
+                "hot",
+                "null-tier",
+                "offset"
+            ]
+        );
+    }
+
+    #[test]
+    fn success_logs_the_debug_line() {
+        let conn = conn();
+        let lines = crate::test_support::captured(|| {
+            find_ids_in_event_window(&conn, C, &day(), true).unwrap();
+        });
+        assert_eq!(
+            lines,
+            [format!("DEBUG quilltap::db Found memories in event window characterId={C} from=2025-12-01T00:00:00.000Z to=2025-12-01T23:59:59.999Z hotOnly=true count=6")]
+        );
+    }
+
+    #[test]
+    fn a_failed_read_logs_v4s_line_and_answers_empty_strict_rethrows() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(find_ids_in_event_window(&conn, C, &day(), false))
+        });
+        assert_eq!(got.unwrap().unwrap(), Vec::<String>::new());
+        assert_eq!(
+            lines,
+            [format!("ERROR quilltap::db Error finding memories in event window collection=memories characterId={C} from=2025-12-01T00:00:00.000Z to=2025-12-01T23:59:59.999Z error=no such table: memories")]
+        );
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                find_ids_in_event_window(&conn, C, &day(), false)
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert!(
+            lines[0].ends_with("error=no such table: memories strictFailures=true"),
+            "{lines:?}"
+        );
+    }
+}
+// === end P4.D375 ===

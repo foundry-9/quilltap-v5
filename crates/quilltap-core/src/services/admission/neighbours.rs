@@ -332,6 +332,7 @@ fn search(
                 hot_only: false,
                 exclude: None,
                 limit,
+                include: None, // P4.D375
             },
         ))
     })?;

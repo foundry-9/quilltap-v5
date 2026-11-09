@@ -67,6 +67,13 @@ pub struct IndexSearchOptions<'a> {
     /// Ids left out of the scan (they never take a top-K slot).
     pub exclude: Option<&'a HashSet<String>>,
     pub limit: usize,
+    // === P4.D375 ===
+    /// "When present, only these ids are scored (a date window's rows, read by
+    /// event time in SQL). Composes with `hotOnly` and `exclude`." (v4
+    /// `includeIds`, 4.12.1 `6121f59b9`.) An EMPTY set still filters — it
+    /// scores nothing (unlike `exclude`, which is dropped when empty).
+    pub include: Option<&'a HashSet<String>>,
+    // === end P4.D375 ===
 }
 
 /// v4 `MemoryIndexShape` — what the index holds, measured against a query's
@@ -82,8 +89,8 @@ pub struct MemoryIndexShape {
 
 /// v4 `memoryIndex.search(characterId, vector, opts)` (`memory-index.ts:
 /// 135-147`): load the character's rows and search; the filter (when
-/// `hot_only` or a non-empty `exclude`) keeps an entry that is not excluded
-/// AND, when `hot_only`, hot.
+/// `hot_only`, a non-empty `exclude` or any `include`) keeps an entry that is
+/// included (when `include` is set), not excluded AND, when `hot_only`, hot.
 pub fn search(
     conn: &Connection,
     character_id: &str,
@@ -92,9 +99,12 @@ pub fn search(
 ) -> Vec<VectorSearchResult> {
     let store = CharacterVectorStore::load(conn, character_id);
     let exclude = opts.exclude.filter(|e| !e.is_empty());
-    if opts.hot_only || exclude.is_some() {
+    let include = opts.include;
+    if opts.hot_only || exclude.is_some() || include.is_some() {
         store.search_filtered(vector, opts.limit, |id, cold| {
-            exclude.is_none_or(|e| !e.contains(id)) && (!opts.hot_only || !cold)
+            include.is_none_or(|s| s.contains(id))
+                && exclude.is_none_or(|e| !e.contains(id))
+                && (!opts.hot_only || !cold)
         })
     } else {
         store.search(vector, opts.limit)

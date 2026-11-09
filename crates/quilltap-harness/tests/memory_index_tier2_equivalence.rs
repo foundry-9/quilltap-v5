@@ -161,10 +161,13 @@ async fn run_op(db: &Db, w: &Writer, op: &Value) -> Value {
         }
         "search" => {
             let exclude: HashSet<String> = ids_of(&input["exclude"]).into_iter().collect();
+            // P4.D375: v4 `includeIds` — present (even empty) → a filter.
+            let include: HashSet<String> = ids_of(&input["include"]).into_iter().collect();
             let opts = IndexSearchOptions {
                 hot_only: input["hotOnly"].as_bool().unwrap(),
                 exclude: (!input["exclude"].is_null()).then_some(&exclude),
                 limit: input["limit"].as_u64().unwrap() as usize,
+                include: (!input["include"].is_null()).then_some(&include),
             };
             let q = unit(&[1.0, 0.0, 0.0]);
             hits_json(

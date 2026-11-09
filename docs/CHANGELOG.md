@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — feat(recall): window-first dated recall — the SQL event-time window, the index include set, the window pass in both gather strategies, the narrow-tool-window floor relaxation (v4 6121f59b9)
+
+_Versions: core 0.0.1430._
+
+P4.D375 C1. Ports v4 4.12.1's window-first recall at the `624d0d25c` pin. `memories_read::find_ids_in_event_window` reads a character's memory ids whose `COALESCE(occurredAt, createdAt)` falls inside the window, compared as text exactly as v4 does (R-3), through a new `db::fallback` home (`Error finding memories in event window`, `[]`, rethrown under the strict scope) with v4's DEBUG `Found memories in event window`. `memory_index::IndexSearchOptions` gains `include` (an empty set still filters). `HitSource::Window` is added. `gather`'s vector strategy re-searches the index over the window's ids after the probe merge (new ids join as `window`, existing ids take a better score), logs `[Memory] Window-first gather`, and adds `window` / `windowAdded` to the trace; the text strategy adds the period's newest rows (v4's `Date.parse` comparator through `js_array_sort_by`, cut to `limit × 3`) and now scores a probe-less row 0, not `-Infinity`. `score` relaxes the relevance floor for in-window rows when the tool path's window is at most 14 days (`TOOL_WINDOW_FLOOR_MAX_DAYS`, `is_narrow_tool_window`, the trace's `floorRelaxed`). New differential `window_first_recall_equivalence` (tsx oracle over v4's real repository, index, `gather` and `searchRecall`; records the `LEXICAL_WINDOW_VS_DATE_PARSE` table); `memory_index_tier2_equivalence` grows four `include` rows; `recall_replay_equivalence` green again on the regenerated oracle.
+
 #### 2026-11-08 — CATALOG: regenerate the tool catalog from v4 624d0d25c (80 entries: four Brahma lookups + three searchScriptorium strings)
 
 _Versions: core 0.0.1429._

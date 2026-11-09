@@ -1,20 +1,27 @@
 //! Stage 2 — gather: the candidate pool, as raw hits (v4
-//! `lib/memory/recall/gather.ts`, `584d28164`).
+//! `lib/memory/recall/gather.ts`, `584d28164`; the window-first passes are v4
+//! 4.12.1 `6121f59b9`, P4.D375).
 //!
 //! Two strategies yield the same [`RawHit`] shape, so every later stage
 //! (floor, window, multipliers, expansion, reservation) applies to both:
 //!
 //! - **vector** — the index's top-K for the query, unioned with each
-//!   retrospective probe's top-K (a memory keeps its best cosine), then the
-//!   literal hits: the whole query on the tool path, the turn's entity anchors
-//!   on the prompt paths (R4 picks the names that narrow the search). Anchor
-//!   hits widen the pool only; they are scored at their raw cosine and face
-//!   the floor like any row (R5, bug 202).
+//!   retrospective probe's top-K (a memory keeps its best cosine), then — when
+//!   the query names a period — the top-K of that period's rows alone (read by
+//!   event time in SQL, so a dated question is not lost behind months of
+//!   better-matching rows from other times), then the literal hits: the whole
+//!   query on the tool path, the turn's entity anchors on the prompt paths (R4
+//!   picks the names that narrow the search). Anchor hits widen the pool only;
+//!   they are scored at their raw cosine and face the floor like any row (R5,
+//!   bug 202).
 //! - **text** — when there is no usable vector (no embedding, or the index
 //!   holds no vector of the query's length): phrase and word matches for the
-//!   query and each probe, plus the anchors, scored by text match (bug 214).
-//!   NO exclude / cold filter applies here — hydrate does it, for both
-//!   strategies.
+//!   query and each probe, plus the anchors, scored by text match (bug 214);
+//!   with a window, the period's newest rows join at their text score (which
+//!   may be 0). The phrase / word / anchor hits take NO exclude / cold filter
+//!   here — hydrate does it, for both strategies; the window's rows are read
+//!   with v4's own filters (the excluded ids and, unless the archive is
+//!   searched, the cold tier).
 //!
 //! Recall reads the index store through C1-3 ([`memory_index::search`] /
 //! [`memory_index::shape`]) and never touches the vector tables.
@@ -198,6 +205,17 @@ fn is_cold(memory: &Value) -> bool {
     memory.get("tier").and_then(Value::as_str) == Some("cold")
 }
 
+/// A row's event time: `Date.parse(memory.occurredAt ?? memory.createdAt)`
+/// (`??` — an absent or null `occurredAt` falls through; `""` does not). NaN
+/// when unparseable. The text arm's window sort reads it (P4.D375).
+fn event_time_ms(memory: &Value) -> f64 {
+    let iso = match memory.get("occurredAt").filter(|v| !v.is_null()) {
+        Some(v) => v.as_str(),
+        None => memory.get("createdAt").and_then(Value::as_str),
+    };
+    iso.map(crate::memory_scoring::date_ms).unwrap_or(f64::NAN)
+}
+
 async fn search_by_content(
     db: &Db,
     character_id: &str,
@@ -271,7 +289,7 @@ pub async fn gather(
     let include_cold = opts.include_cold;
     let search_limit = opts.limit.saturating_mul(3);
 
-    let index_search = |vector: Vec<f32>| {
+    let index_search_in = |vector: Vec<f32>, include: Option<HashSet<String>>| {
         let cid = character_id.to_string();
         let exclude = excluded.clone();
         db.read_main(move |conn| {
@@ -283,10 +301,12 @@ pub async fn gather(
                     hot_only: !include_cold,
                     exclude: Some(&exclude),
                     limit: search_limit,
+                    include: include.as_ref(),
                 },
             ))
         })
     };
+    let index_search = |vector: Vec<f32>| index_search_in(vector, None);
 
     let mut hits: Vec<RawHit> = index_search(embedding.embedding.clone())?
         .into_iter()
@@ -348,6 +368,76 @@ pub async fn gather(
             .filter_map(|id| by_id.remove(&id))
             .collect();
     }
+
+    // === P4.D375 ===
+    // Window-first: the period's rows, scored by the same index restricted to
+    // them, join the pool before anything is cut. Gated on a window, so an
+    // undated search is unchanged. `window_ids` is the UNFILTERED count (the
+    // text arm's is filtered — v4 keeps both shapes).
+    let mut window_ids: Option<usize> = None;
+    let mut window_added = 0usize;
+    if let Some(window) = &query.window {
+        let ids = {
+            let cid = character_id.to_string();
+            let w = window.clone();
+            db.read_main(move |conn| {
+                memories_read::find_ids_in_event_window(conn, &cid, &w, !include_cold)
+            })?
+        };
+        window_ids = Some(ids.len());
+        let in_window: HashSet<String> = ids
+            .iter()
+            .filter(|id| !excluded.contains(*id))
+            .cloned()
+            .collect();
+        if !in_window.is_empty() {
+            // JS `Map` semantics, as the probe merge: a new id is appended as
+            // `window`; an existing id keeps its `via` and takes a better score.
+            let mut order: Vec<String> = Vec::new();
+            let mut by_id: HashMap<String, RawHit> = HashMap::new();
+            for h in hits.drain(..) {
+                if !by_id.contains_key(&h.id) {
+                    order.push(h.id.clone());
+                }
+                by_id.insert(h.id.clone(), h);
+            }
+            for vr in index_search_in(embedding.embedding.clone(), Some(in_window))? {
+                match by_id.get_mut(&vr.id) {
+                    None => {
+                        window_added += 1;
+                        order.push(vr.id.clone());
+                        by_id.insert(
+                            vr.id.clone(),
+                            RawHit {
+                                id: vr.id,
+                                score: vr.score,
+                                via: HitSource::Window,
+                                memory: None,
+                            },
+                        );
+                    }
+                    Some(existing) => {
+                        if vr.score > existing.score {
+                            existing.score = vr.score;
+                        }
+                    }
+                }
+            }
+            hits = order
+                .into_iter()
+                .filter_map(|id| by_id.remove(&id))
+                .collect();
+        }
+        tracing::debug!(
+            target: MEMORY_LOG_TARGET,
+            characterId = %character_id,
+            windowJson = %super::query::window_json(Some(window)),
+            inWindow = ids.len(),
+            windowAdded = window_added,
+            "[Memory] Window-first gather"
+        );
+    }
+    // === end P4.D375 ===
 
     // Literal hits: the whole query (tool path) and the turn's entity anchors.
     let literal_phrase = if opts.literal_phrase {
@@ -493,6 +583,11 @@ pub async fn gather(
     detail.insert("vector".into(), num(vector_count as f64));
     detail.insert("probes".into(), num(usable_probes.len() as f64));
     detail.insert("probeAdded".into(), num(probe_added as f64));
+    // P4.D375: the window pair, only when a window is present.
+    if let Some(n) = window_ids {
+        detail.insert("window".into(), num(n as f64));
+        detail.insert("windowAdded".into(), num(window_added as f64));
+    }
     detail.insert(
         "anchors".into(),
         Value::Array(chosen_anchors.into_iter().map(Value::String).collect()),
@@ -550,27 +645,85 @@ async fn gather_text(
         add_all(found, &mut order);
     }
 
-    let hits: Vec<RawHit> = order
+    // `probes.length > 0 ? Math.max(...probes.map(...)) : 0` (v4 `6121f59b9`
+    // guards the empty spread; before it the fold read `-Infinity`).
+    let text_score = |memory: &Value| {
+        if probes.is_empty() {
+            0.0
+        } else {
+            probes
+                .iter()
+                .map(|probe| score_text_match(memory, probe))
+                .fold(f64::NEG_INFINITY, crate::jsnum::math_max)
+        }
+    };
+    // P4.D375: the pool's ids, kept before the drain (v4's `!pool.has(id)`).
+    let pool_ids: HashSet<String> = order.iter().cloned().collect();
+    let mut hits: Vec<RawHit> = order
         .into_iter()
         .filter_map(|id| pool.remove(&id))
-        .map(|memory| {
-            // `Math.max(...probes.map(...))` — `-Infinity` for no probes.
-            let score = probes
-                .iter()
-                .map(|probe| score_text_match(&memory, probe))
-                .fold(f64::NEG_INFINITY, crate::jsnum::math_max);
-            RawHit {
-                id: super::types::memory_id(&memory).to_string(),
-                score,
-                via: HitSource::Text,
-                memory: Some(memory),
-            }
+        .map(|memory| RawHit {
+            id: super::types::memory_id(&memory).to_string(),
+            score: text_score(&memory),
+            via: HitSource::Text,
+            memory: Some(memory),
         })
         .collect();
+
+    // === P4.D375 ===
+    // Window-first: the period's newest rows join at their text score (maybe
+    // 0). `window_ids` is the FILTERED count (the pool's and the excluded ids
+    // left out). No DEBUG in this arm (v4 has none).
+    let mut window_ids: Option<usize> = None;
+    let mut window_added = 0usize;
+    if let Some(window) = &query.window {
+        let ids: Vec<String> = {
+            let cid = character_id.to_string();
+            let w = window.clone();
+            let include_cold = opts.include_cold;
+            db.read_main(move |conn| {
+                memories_read::find_ids_in_event_window(conn, &cid, &w, !include_cold)
+            })?
+        }
+        .into_iter()
+        .filter(|id| {
+            !pool_ids.contains(id) && !opts.exclude_ids.as_ref().is_some_and(|e| e.contains(id))
+        })
+        .collect();
+        window_ids = Some(ids.len());
+        if !ids.is_empty() {
+            let mut rows: Vec<Value> =
+                db.read_main(move |conn| memories_read::find_by_ids(conn, &ids))?;
+            // `m.tier !== 'cold'` — the service semantic, not `HOT_TIER_SQL`.
+            rows.retain(|m| opts.include_cold || !is_cold(m));
+            // `Date.parse(b.occurredAt ?? b.createdAt) - Date.parse(a…)` — a NaN
+            // comparator when either side is unparseable; V8 maps it to +0.
+            crate::memory_scoring::js_sort::js_array_sort_by(&mut rows, |a, b| {
+                event_time_ms(b) - event_time_ms(a)
+            });
+            rows.truncate(opts.limit.saturating_mul(3));
+            for memory in rows {
+                hits.push(RawHit {
+                    id: super::types::memory_id(&memory).to_string(),
+                    score: text_score(&memory),
+                    via: HitSource::Window,
+                    memory: Some(memory),
+                });
+                window_added += 1;
+            }
+        }
+    }
+    // === end P4.D375 ===
+
     let mut detail = Map::new();
     detail.insert("strategy".into(), Value::from("text"));
     detail.insert("reason".into(), Value::from(reason));
     detail.insert("probes".into(), num(probes.len() as f64));
+    // P4.D375: the window pair, only when a window is present.
+    if let Some(n) = window_ids {
+        detail.insert("window".into(), num(n as f64));
+        detail.insert("windowAdded".into(), num(window_added as f64));
+    }
     detail.insert(
         "anchors".into(),
         Value::Array(anchors.into_iter().map(Value::String).collect()),
@@ -585,4 +738,51 @@ async fn gather_text(
         literal_phrase: None,
         literal_hit_ids: HashSet::new(),
     })
+}
+
+#[cfg(test)]
+mod window_sort_tests {
+    //! P4.D375 item 6: the text arm's window sort is v4's NaN-prone
+    //! `Date.parse(b…) - Date.parse(a…)` comparator, which V8 reads as +0 — a
+    //! plain `sort_by` with `partial_cmp().unwrap_or(Equal)` orders the same
+    //! rows differently.
+    use super::event_time_ms;
+    use serde_json::{json, Value};
+
+    fn ids(rows: &[Value]) -> Vec<&str> {
+        rows.iter().map(|r| r["id"].as_str().unwrap()).collect()
+    }
+
+    #[test]
+    fn nan_row_sorts_as_v8_does() {
+        let rows = vec![
+            json!({"id": "a", "occurredAt": "2026-11-03T10:00:00.000Z"}),
+            json!({"id": "c", "occurredAt": "2026-11-03T12:00:00.000Z"}),
+            json!({"id": "nan", "occurredAt": "soon"}),
+            json!({"id": "d", "createdAt": "2026-11-03T11:00:00.000Z"}),
+        ];
+        let mut v8 = rows.clone();
+        crate::memory_scoring::js_sort::js_array_sort_by(&mut v8, |a, b| {
+            event_time_ms(b) - event_time_ms(a)
+        });
+        let mut plain = rows.clone();
+        plain.sort_by(|a, b| {
+            (event_time_ms(b) - event_time_ms(a))
+                .partial_cmp(&0.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        // V8's binary insertion sort reads the NaN comparisons as "equal";
+        // Rust's stable sort, given the same "equal", lands elsewhere.
+        assert_eq!(ids(&v8), ["c", "d", "a", "nan"]);
+        assert_eq!(ids(&plain), ["c", "a", "nan", "d"]);
+    }
+
+    #[test]
+    fn event_time_reads_occurred_at_then_created_at() {
+        assert!(event_time_ms(&json!({"occurredAt": ""})).is_nan());
+        assert_eq!(
+            event_time_ms(&json!({"occurredAt": null, "createdAt": "2026-11-03T00:00:00.000Z"})),
+            crate::memory_scoring::date_ms("2026-11-03T00:00:00.000Z")
+        );
+    }
 }
