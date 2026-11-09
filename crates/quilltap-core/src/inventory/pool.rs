@@ -40,7 +40,8 @@ use super::types::{
 use crate::db::inventory_writes::read_mount_inventory;
 use crate::db::item_folder_ops::{VaultFolderMount, VaultFolderMountScope};
 use crate::db::projects::ProjectsRepository;
-use crate::db::tiered_mount_pool::resolve_group_mounts_for_character;
+use crate::db::reach::{group_mounts_for, group_origin_map};
+use crate::db::tiered_mount_pool::GroupMountsOptions;
 use crate::db::{characters_read, chats_read, instance_settings, DbError};
 use crate::tools::wardrobe_shared::resolve_project_mount_point_ids;
 
@@ -236,9 +237,14 @@ fn tag(
     r
 }
 
-/// Read a list of mounts weakest-first, tagging each record (v4 `readTier`).
-/// Fails soft per mount, noting each failure in `unread`; every mount is
-/// pushed to `consulted` first.
+/// Read one tier's mounts, tagging each record (v4 `readTier`). The mounts
+/// come strongest-first, in the settled within-tier order (`orderMounts`:
+/// membership order for groups, the official store first for the project), so
+/// an earlier mount's record wins a same-id collision; the pool shadows
+/// later-over-earlier, hence the reverse (`0c47f4539` — `consulted` is pushed
+/// in that REVERSED order too). Fails soft per mount, noting each failure in
+/// `unread` so a caller that must not guess can tell "this tier is empty" from
+/// "this tier was not read"; every mount is pushed to `consulted` first.
 fn read_tier(
     mount: &Connection,
     mount_point_ids: &[String],
@@ -247,7 +253,7 @@ fn read_tier(
     consulted: &mut Vec<String>,
 ) -> Vec<InventoryRecord> {
     let mut out = Vec::new();
-    for mount_point_id in mount_point_ids {
+    for mount_point_id in mount_point_ids.iter().rev() {
         consulted.push(mount_point_id.clone());
         let m = VaultFolderMount {
             mount_point_id: mount_point_id.clone(),
@@ -393,7 +399,7 @@ pub fn load_inventory_pool(
         })
         .filter(|s| !s.is_empty())
         .map(str::to_string);
-    let groups = resolve_group_mounts_for_character(main, mount, character_id);
+    let groups = group_mounts_for(main, mount, character_id, GroupMountsOptions::default());
     // === P4.D376 ===
     let project_mount_point_ids =
         resolve_project_mount_point_ids(main, mount, project_id.as_deref());
@@ -401,20 +407,9 @@ pub fn load_inventory_pool(
     let general_mount_point_id = instance_settings::get_general_mount_point_id(main)?;
     let project_name = project_name_of(main, mount, project_id.as_deref());
 
-    let mut group_origin_by_mount: Vec<(String, InventoryOrigin)> = Vec::new();
-    for g in &groups {
-        for mp in &g.mount_point_ids {
-            let origin = InventoryOrigin {
-                scope: InventoryScope::Group,
-                id: Some(g.group.id.clone()),
-                name: g.group.name.clone(),
-            };
-            match group_origin_by_mount.iter_mut().find(|(k, _)| k == mp) {
-                Some((_, slot)) => *slot = origin,
-                None => group_origin_by_mount.push((mp.clone(), origin)),
-            }
-        }
-    }
+    // v4 `groupOriginMap(groups)` — mount → the FIRST group it hangs in (the
+    // tier's order; a store shared by two groups is the first's).
+    let group_origin_by_mount = group_origin_map(&groups);
     let own_origin = InventoryOrigin {
         scope: InventoryScope::Character,
         id: Some(character_id.to_string()),
@@ -450,19 +445,19 @@ pub fn load_inventory_pool(
         ),
         (None, None) => Vec::new(),
     };
-    let group_mps: Vec<String> = group_origin_by_mount
-        .iter()
-        .map(|(k, _)| k.clone())
-        .collect();
+    let group_mps: Vec<String> = group_origin_by_mount.keys().cloned().collect();
     let group = read_tier(
         mount,
         &group_mps,
         |mp| {
-            group_origin_by_mount
-                .iter()
-                .find(|(k, _)| k == mp)
-                .map(|(_, o)| o.clone())
-                .expect("a group mount has an origin")
+            let g = group_origin_by_mount
+                .get(mp)
+                .expect("a group mount has an origin");
+            InventoryOrigin {
+                scope: InventoryScope::Group,
+                id: Some(g.id.clone()),
+                name: g.name.clone(),
+            }
         },
         &mut unread,
         &mut consulted,

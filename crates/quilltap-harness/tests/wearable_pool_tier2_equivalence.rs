@@ -410,6 +410,8 @@ fn wearable_pool_tier2_matches_oracle() {
         "beaCoat",
         "handedCloak",
         "noSuch",
+        "twinBrooch",
+        "twinGlove",
     ]
     .iter()
     .map(|k| item(k))
@@ -553,6 +555,26 @@ fn wearable_pool_tier2_matches_oracle() {
                         Some(&admit_ids),
                         LoadWearablePoolOptions::default(),
                     ),
+                    // P4.D378 (v4 `0c47f4539` (b)): inside a tier the EARLIER
+                    // mount wins — the Guild's twin over the Lodge's, the
+                    // official store's over the linked one.
+                    "two-groups-same-id" => load_wearable_pool(
+                        main,
+                        mount,
+                        ada,
+                        None,
+                        LoadWearablePoolOptions::default(),
+                    ),
+                    "project-official-vs-link-same-id" => load_wearable_pool(
+                        main,
+                        mount,
+                        ada,
+                        None,
+                        LoadWearablePoolOptions {
+                            chat_id: Some(&spec.admit_chat_id),
+                            ..Default::default()
+                        },
+                    ),
                     other => panic!("unknown pool op {other}"),
                 });
                 let summary = summarize(&got, &probe_ids, &ensemble);
@@ -611,13 +633,15 @@ fn wearable_pool_tier2_matches_oracle() {
                 }
                 assert_lines(name, &got_lines, &v4_lines(lines));
                 // One shared read for the cast: exactly ONE General line and
-                // ONE project line across both pools.
+                // ONE project line across both pools. (P4.D378: the project
+                // tier is ADMIT's official store + its linked annex — 3 items
+                // after the same-id shadow; General holds 4.)
                 let shared_reads = got_lines
                     .iter()
                     .filter(|(_, m, f)| {
                         m == "Read shared wardrobe tiers"
                             && f.iter()
-                                .any(|(k, v)| k == "itemCount" && (v == "4" || v == "2"))
+                                .any(|(k, v)| k == "itemCount" && (v == "4" || v == "3"))
                     })
                     .count();
                 assert!(shared_reads >= 2, "[{name}] the shared tiers were read");
@@ -696,7 +720,7 @@ fn wearable_pool_tier2_matches_oracle() {
     drop(main_w);
     drop(mount_w);
 
-    assert_eq!(pools, 10, "every pool op ran");
+    assert_eq!(pools, 12, "every pool op ran");
     assert_eq!(casts, 1, "the cast op ran");
     assert_eq!(tiers_ops, 12, "every resolveProjectTierForChat op ran");
     assert_eq!(shared_ops, 3, "every readSharedTiers op ran");

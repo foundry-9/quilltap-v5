@@ -300,6 +300,78 @@
       "kind": "read",
       "seed": {},
       "mount": "charA"
+    },
+    {
+      "name": "p4d378_group_tier_first_listed_wins_ab",
+      "kind": "resolve",
+      "seed": {
+        "sA": "from sA",
+        "sB": "from sB"
+      },
+      "character": null,
+      "groups": [
+        "sA",
+        "sB"
+      ],
+      "projects": []
+    },
+    {
+      "name": "p4d378_group_tier_first_listed_wins_ba",
+      "kind": "resolve",
+      "seed": {
+        "sA": "from sA",
+        "sB": "from sB"
+      },
+      "character": null,
+      "groups": [
+        "sB",
+        "sA"
+      ],
+      "projects": []
+    },
+    {
+      "name": "p4d378_project_tier_first_listed_wins_ab",
+      "kind": "resolve",
+      "seed": {
+        "sY": "from sY",
+        "sZ": "from sZ"
+      },
+      "character": null,
+      "groups": [],
+      "projects": [
+        "sY",
+        "sZ"
+      ]
+    },
+    {
+      "name": "p4d378_project_tier_first_listed_wins_ba",
+      "kind": "resolve",
+      "seed": {
+        "sY": "from sY",
+        "sZ": "from sZ"
+      },
+      "character": null,
+      "groups": [],
+      "projects": [
+        "sZ",
+        "sY"
+      ]
+    },
+    {
+      "name": "p4d378_cross_tier_dedup_group_then_project",
+      "kind": "resolve",
+      "seed": {
+        "sB": "from sB",
+        "sY": "from sY"
+      },
+      "character": null,
+      "groups": [
+        "sB"
+      ],
+      "projects": [
+        "sB",
+        "sY"
+      ]
     }
   ],
   "writeOps": [

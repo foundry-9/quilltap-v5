@@ -1,0 +1,131 @@
+{
+ "_comment": "P4.D378 item 7 + Tier 2 item 17 — inventory_pool_order_tier2_equivalence: the pair spec (build-inventory-pool-order-fixture.ts) and the rows (cases/inventory-pool-order.ts). The vectors are v4's __tests__/unit/lib/inventory/pool-order.test.ts at 624d0d25c over v4's REAL repositories.",
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "seedTimestamp": "2026-02-01T00:00:00.000Z",
+ "userId": "11111111-1111-4111-8111-111111111120",
+ "user": {
+  "username": "keeper",
+  "email": null,
+  "name": "Keeper",
+  "image": null
+ },
+ "character": {
+  "id": "c2000000-0000-4000-8000-000000000001",
+  "name": "Vivienne"
+ },
+ "groups": [
+  {
+   "id": "e5000000-0000-4000-8000-000000000001",
+   "name": "First",
+   "memberId": "e6000000-0000-4000-8000-000000000001",
+   "memberCreatedAt": "2026-02-01T00:00:00.000Z"
+  },
+  {
+   "id": "e5000000-0000-4000-8000-000000000002",
+   "name": "Second",
+   "memberId": "e6000000-0000-4000-8000-000000000002",
+   "memberCreatedAt": "2026-02-01T00:00:01.000Z"
+  }
+ ],
+ "project": {
+  "id": "d2000000-0000-4000-8000-000000000001",
+  "name": "The Expedition"
+ },
+ "linked": {
+  "id": "f2000000-0000-4000-8000-000000000071",
+  "name": "Expedition Annex",
+  "linkId": "f2000000-0000-4000-8000-000000000072"
+ },
+ "generalMountPointId": "f2000000-0000-4000-8000-000000000001",
+ "generalStoreName": "Quilltap General",
+ "dangling": {
+  "dangling1": "f9999999-0000-4000-8000-000000000091",
+  "dangling2": "f9999999-0000-4000-8000-000000000092"
+ },
+ "twins": [
+  {
+   "label": "compass",
+   "at": {
+    "scope": "group",
+    "owner": "e5000000-0000-4000-8000-000000000001"
+   },
+   "fromMount": "first",
+   "twinMount": "second",
+   "names": [
+    "compass",
+    "sextant"
+   ]
+  },
+  {
+   "label": "lantern",
+   "at": {
+    "scope": "project",
+    "owner": "d2000000-0000-4000-8000-000000000001"
+   },
+   "fromMount": "project",
+   "twinMount": "annex",
+   "names": [
+    "lantern",
+    "candle"
+   ]
+  }
+ ],
+ "rows": [
+  {
+   "name": "first_group_wins",
+   "project": false,
+   "steps": [],
+   "probes": [
+    "compass"
+   ]
+  },
+  {
+   "name": "project_official_wins",
+   "project": true,
+   "steps": [],
+   "probes": [
+    "lantern"
+   ]
+  },
+  {
+   "name": "consulted_reversed_within_tier",
+   "project": true,
+   "steps": [],
+   "probes": []
+  },
+  {
+   "name": "unread_order_reversed",
+   "project": false,
+   "steps": [
+    {
+     "do": "sql",
+     "db": "main",
+     "sql": "UPDATE groups SET officialMountPointId = '{{mp:dangling1}}' WHERE id = 'e5000000-0000-4000-8000-000000000002'"
+    }
+   ],
+   "probes": [
+    "compass"
+   ]
+  },
+  {
+   "name": "interleave_dangling_two_tiers",
+   "project": true,
+   "steps": [
+    {
+     "do": "sql",
+     "db": "main",
+     "sql": "UPDATE groups SET officialMountPointId = '{{mp:dangling1}}' WHERE id = 'e5000000-0000-4000-8000-000000000002'"
+    },
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "INSERT INTO project_doc_mount_links (id, projectId, mountPointId, createdAt, updatedAt) VALUES ('f2000000-0000-4000-8000-000000000073', 'd2000000-0000-4000-8000-000000000001', '{{mp:dangling2}}', '2026-02-01T00:00:02.000Z', '2026-02-01T00:00:02.000Z')"
+    }
+   ],
+   "probes": [
+    "compass",
+    "lantern"
+   ]
+  }
+ ]
+}

@@ -48,10 +48,18 @@ interface Spec {
   groupId: string;
   groupName: string;
   groupMemberId: string;
+  /** P4.D378: a second group Ada joins AFTER The Guild. */
+  lodgeGroupId: string;
+  lodgeGroupName: string;
+  lodgeMemberId: string;
   admitProjectId: string;
   admitProjectName: string;
   excludeProjectId: string;
   excludeProjectName: string;
+  /** P4.D378: a store LINKED to ADMIT (the project tier's second mount). */
+  admitLinkedStoreId: string;
+  admitLinkedStoreName: string;
+  admitLinkedLinkId: string;
   generalMountPointId: string;
   generalStoreName: string;
   admitChatId: string;
@@ -358,6 +366,53 @@ async function main(): Promise<void> {
   });
   // Bea: one coat.
   await seedOwn(spec.beaId, I.beaCoat, 'Bea coat', ['top']);
+
+  // 7. P4.D378 (v4 `0c47f4539` moves (a)/(b)): inside a tier the EARLIER mount
+  //    wins. Ada joins THE LODGE after The Guild — ONE id in both groups'
+  //    stores (the Guild's copy wins); ADMIT gains a LINKED store — ONE id in
+  //    the official store and the linked one (the official copy wins). Later
+  //    stamps so the memberships / links read back in this order.
+  const LATER = '2026-02-02T00:00:00.000Z';
+  await repos.groups.create(
+    { name: spec.lodgeGroupName } as never,
+    { id: spec.lodgeGroupId, createdAt: LATER, updatedAt: LATER } as never,
+  );
+  await repos.groupCharacterMembers.create(
+    { groupId: spec.lodgeGroupId, characterId: spec.adaId } as never,
+    { id: spec.lodgeMemberId, createdAt: LATER, updatedAt: LATER } as never,
+  );
+  const lodgeStore = ((await repos.groups.findByIdRaw(spec.lodgeGroupId)) as {
+    officialMountPointId?: string;
+  } | null)?.officialMountPointId;
+  if (!lodgeStore) throw new Error('lodge official store not minted');
+  await seedShared(groupStore, [full(I.twinBrooch, 'Guild brooch', ['accessories'])]);
+  await seedShared(lodgeStore, [full(I.twinBrooch, 'Lodge brooch', ['accessories'])]);
+  await repos.docMountPoints.create(
+    {
+      name: spec.admitLinkedStoreName,
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: spec.admitLinkedStoreId, createdAt: LATER, updatedAt: LATER },
+  );
+  await repos.projectDocMountLinks.create(
+    { projectId: spec.admitProjectId, mountPointId: spec.admitLinkedStoreId } as never,
+    { id: spec.admitLinkedLinkId, createdAt: LATER, updatedAt: LATER } as never,
+  );
+  await seedShared(admitStore, [full(I.twinGlove, 'Project glove', ['accessories'])]);
+  await seedShared(spec.admitLinkedStoreId, [full(I.twinGlove, 'Linked glove', ['accessories'])]);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

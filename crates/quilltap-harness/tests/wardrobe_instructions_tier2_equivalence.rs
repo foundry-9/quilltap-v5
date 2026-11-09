@@ -352,13 +352,45 @@ fn wardrobe_instructions_cascade_matches_oracle() {
                                 .iter()
                                 .map(|l| labels[l].clone())
                                 .collect();
-                            match resolve_wardrobe_instructions(
-                                main,
-                                mnt,
-                                character.as_deref(),
-                                &groups,
-                                &projects,
-                            ) {
+                            // P4.D378 (Tier 2 item 16): the DEBUG on v4's
+                            // camelCase keys — on every resolved row, and
+                            // silent on a null one.
+                            let (resolved, lines) =
+                                quilltap_core::test_support::captured_with(|| {
+                                    resolve_wardrobe_instructions(
+                                        main,
+                                        mnt,
+                                        character.as_deref(),
+                                        &groups,
+                                        &projects,
+                                    )
+                                });
+                            let debug: Vec<&String> = lines
+                                .iter()
+                                .filter(|l| {
+                                    l.contains(
+                                        "[WardrobeInstructions] Dressing instructions resolved",
+                                    )
+                                })
+                                .collect();
+                            match &resolved {
+                                Some(hit) => {
+                                    assert_eq!(debug.len(), 1, "{lines:?}");
+                                    assert!(debug[0].starts_with("DEBUG "), "{}", debug[0]);
+                                    assert!(
+                                        debug[0].ends_with(&format!(
+                                            "tier={} mountPointId={} contentLength={}",
+                                            hit.tier.as_str(),
+                                            hit.mount_point_id,
+                                            hit.content.encode_utf16().count()
+                                        )),
+                                        "{}",
+                                        debug[0]
+                                    );
+                                }
+                                None => assert!(debug.is_empty(), "{lines:?}"),
+                            }
+                            match resolved {
                                 Some(hit) => json!({
                                     "content": hit.content,
                                     "tier": hit.tier.as_str(),

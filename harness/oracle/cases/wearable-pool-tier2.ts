@@ -20,6 +20,8 @@
  *   chat-missing           … { chatId: missingChat }   → no row → `[]`
  *   own-items-handed       loadWearablePool(repos, ada, [admitStore], { ownItems: [handed] }) — the vault is NOT read
  *   bea-no-groups          loadWearablePool(repos, bea, [admitStore])
+ *   two-groups-same-id     loadWearablePool(repos, ada) — P4.D378: the Guild's twin over the Lodge's
+ *   project-official-vs-link-same-id  … { chatId: admitChat } — P4.D378: the official twin over the linked one
  *   cast-pools             loadCastPools(repos, admitProject, [ada, bea]) — one shared read
  *   resolve-project-tier   resolveProjectTierForChat × every chat × operator
  *   read-shared-tiers      repos.wardrobe.readSharedTiers([general, admitStore, BOGUS], archived?, originOf)
@@ -165,6 +167,9 @@ async function main(): Promise<void> {
     I.beaCoat,
     I.handedCloak,
     I.noSuch,
+    // P4.D378: the two same-id twins (the earlier mount's copy wins).
+    I.twinBrooch,
+    I.twinGlove,
   ];
 
   const summarize = (pool: Pool) => ({
@@ -235,6 +240,12 @@ async function main(): Promise<void> {
     loadWearablePool(repos, spec.adaId, [admitStore], { ownItems: [handed as never] }),
   );
   await poolOp('bea-no-groups', () => loadWearablePool(repos, spec.beaId, [admitStore]));
+  // P4.D378 (v4 `0c47f4539` (b)): the named rows — the Guild's brooch over the
+  // Lodge's (two groups, one id), the official glove over the linked one.
+  await poolOp('two-groups-same-id', () => loadWearablePool(repos, spec.adaId));
+  await poolOp('project-official-vs-link-same-id', () =>
+    loadWearablePool(repos, spec.adaId, undefined, { chatId: spec.admitChatId }),
+  );
 
   // The cast: one shared read for both.
   takeLines();

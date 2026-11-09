@@ -7,7 +7,9 @@
 //! Themselves"), where the winning file's content is handed to the cheap-LLM
 //! prompt. The cascade runs nearest-tier-first — character vault, then group,
 //! then project, then Quilltap General — and stops at the first tier whose file
-//! exists with non-blank content. It deliberately influences nothing else.
+//! exists with non-blank content; inside a tier the earlier mount wins
+//! (membership order for groups, the official store first for the project —
+//! never by mount id, `0c47f4539`). It deliberately influences nothing else.
 //!
 //! The file is never a garment: [`is_wardrobe_instructions_file_name`] gates the
 //! shared wardrobe reader's skip
@@ -23,6 +25,8 @@ use rusqlite::Connection;
 
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::instance_settings::get_general_mount_point_id;
+use crate::db::reach::order_mounts;
+use crate::db::tiered_mount_pool::{MountTier, TieredMountPool};
 use crate::db::DbError;
 use crate::jsstr::js_trim;
 use crate::services::canon_loaders::read_vault_text_file_conn;
@@ -73,21 +77,6 @@ pub struct WardrobeInstructionsResult {
     pub mount_point_id: String,
 }
 
-/// Deduped, lexicographically sorted copy — upstream resolvers return
-/// Set-insertion order (v4 `deterministicMounts`). The sort is JS
-/// `Array.prototype.sort()` on strings: UTF-16 code-unit order, which is v5's
-/// Decision-B `str::cmp` idiom (`vault_read_overlay.rs`).
-fn deterministic_mounts(ids: &[String]) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out: Vec<String> = ids
-        .iter()
-        .filter(|id| seen.insert((*id).clone()))
-        .cloned()
-        .collect();
-    out.sort();
-    out
-}
-
 /// Resolve the dressing instructions for a character about to choose their own
 /// outfit. First tier with a non-blank `Wardrobe/instructions.md` wins and the
 /// search stops there; a file that exists but trims to empty counts as absent,
@@ -101,6 +90,8 @@ fn deterministic_mounts(ids: &[String]) -> Vec<String> {
 /// read failure here means "no General tier", not "no cascade".
 ///
 /// The character tier is skipped on JS truthiness (`''` skipped like `null`).
+/// The probe order is the tier walk's [`order_mounts`] (`0c47f4539` retired
+/// v4's `deterministicMounts` dedup-and-sort).
 pub fn resolve_wardrobe_instructions(
     main: &Connection,
     mount: &Connection,
@@ -110,19 +101,32 @@ pub fn resolve_wardrobe_instructions(
 ) -> Option<WardrobeInstructionsResult> {
     let general_mount_point_id = get_general_mount_point_id(main).ok().flatten();
 
-    let mut probes: Vec<(WardrobeInstructionsTier, String)> = Vec::new();
-    if let Some(id) = character_mount_point_id.filter(|s| !s.is_empty()) {
-        probes.push((WardrobeInstructionsTier::Character, id.to_string()));
-    }
-    for id in deterministic_mounts(group_mount_point_ids) {
-        probes.push((WardrobeInstructionsTier::Group, id));
-    }
-    for id in deterministic_mounts(project_mount_point_ids) {
-        probes.push((WardrobeInstructionsTier::Project, id));
-    }
-    if let Some(id) = general_mount_point_id.filter(|s| !s.is_empty()) {
-        probes.push((WardrobeInstructionsTier::General, id));
-    }
+    // Probe in the settled order (`orderMounts`, `0c47f4539`): nearest tier
+    // first, and inside a tier the earlier mount wins — membership order for
+    // groups, the official store first for the project. Never by mount id.
+    // One dedup across the tiers; the character / General ids are taken on JS
+    // truthiness (`''` skipped like `null`), the lists as given.
+    let pool = TieredMountPool {
+        character_mount_point_id: character_mount_point_id.map(str::to_string),
+        participant_mount_point_ids: Vec::new(),
+        group_mount_point_ids: group_mount_point_ids.to_vec(),
+        project_mount_point_ids: project_mount_point_ids.to_vec(),
+        global_mount_point_id: general_mount_point_id,
+    };
+    let probes: Vec<(WardrobeInstructionsTier, String)> = order_mounts(&pool, false)
+        .into_iter()
+        .map(|m| {
+            let tier = match m.tier {
+                MountTier::Character => WardrobeInstructionsTier::Character,
+                MountTier::Group => WardrobeInstructionsTier::Group,
+                MountTier::Project => WardrobeInstructionsTier::Project,
+                // `tier === 'global' ? 'general' : tier`; participants are
+                // never asked for here.
+                MountTier::Global | MountTier::Participant => WardrobeInstructionsTier::General,
+            };
+            (tier, m.mount_point_id)
+        })
+        .collect();
 
     for (tier, mount_point_id) in probes {
         let raw = read_vault_text_file_conn(mount, &mount_point_id, WARDROBE_INSTRUCTIONS_PATH);
@@ -130,10 +134,12 @@ pub fn resolve_wardrobe_instructions(
         if content.is_empty() {
             continue;
         }
+        // v4's camelCase keys (`{ tier, mountPointId, contentLength }`); the
+        // length is JS `content.length` (UTF-16 code units).
         tracing::debug!(
             tier = tier.as_str(),
-            mount_point_id,
-            content_length = content.encode_utf16().count(),
+            mountPointId = %mount_point_id,
+            contentLength = content.encode_utf16().count(),
             "[WardrobeInstructions] Dressing instructions resolved"
         );
         return Some(WardrobeInstructionsResult {
@@ -216,19 +222,6 @@ mod tests {
         assert!(!is_wardrobe_instructions_file_name(
             "Wardrobe/instructions.md"
         ));
-    }
-
-    #[test]
-    fn deterministic_mounts_dedupes_then_sorts_by_code_unit() {
-        assert_eq!(
-            deterministic_mounts(&["m-b".into(), "m-a".into(), "m-b".into()]),
-            vec!["m-a".to_string(), "m-b".to_string()]
-        );
-        // Code-unit order, not ICU collation: uppercase sorts before lowercase.
-        assert_eq!(
-            deterministic_mounts(&["a".into(), "B".into()]),
-            vec!["B".to_string(), "a".to_string()]
-        );
     }
 
     #[test]

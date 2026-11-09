@@ -33,7 +33,8 @@ use crate::db::archetype_wardrobe::{
     general_wardrobe_origin, pool_project_origin, with_origin, WardrobeOrigin, WardrobeOriginScope,
 };
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::tiered_mount_pool::resolve_group_mounts_for_character;
+use crate::db::reach::{group_mounts_for, group_origin_map};
+use crate::db::tiered_mount_pool::GroupMountsOptions;
 use crate::db::wardrobe_read::{find_by_character_id, read_shared_tiers};
 use crate::db::{chats_read, instance_settings, DbError};
 use crate::project_roster_access::roster_gated_project_id;
@@ -228,12 +229,30 @@ pub fn load_shared_tiers(
     let general_mounts: Vec<String> = instance_settings::get_general_mount_point_id(main)?
         .into_iter()
         .collect();
-    let general = read_shared_tiers(docs, &general_mounts, true, &|_| general_wardrobe_origin());
+    let general = read_tier(docs, &general_mounts, &|_| general_wardrobe_origin());
     let project_origin = project_origin.cloned().unwrap_or_else(pool_project_origin);
-    let project = read_shared_tiers(docs, project_mount_point_ids, true, &|_| {
-        project_origin.clone()
-    });
+    let project = read_tier(docs, project_mount_point_ids, &|_| project_origin.clone());
     Ok(SharedTierItems { general, project })
+}
+
+/// v4 `readTier(repos, mountPointIds, originOf)` (`0c47f4539`) — read one
+/// tier's shared mounts, archived included, tagging each item via `origin_of`.
+/// The mounts come strongest-first, in the settled within-tier order
+/// (`orderMounts`: membership order for groups, the official store first for
+/// the project), so an earlier mount's item wins a same-id collision. The
+/// repository shadows later-over-earlier, hence the reverse. (It shadows IN
+/// PLACE, keeping the first position, so the reversal moves the tier's
+/// positional order too, not only the winner.) An empty list reads nothing.
+fn read_tier(
+    docs: &DocMountDocumentsRepository,
+    mount_point_ids: &[String],
+    origin_of: &dyn Fn(&str) -> WardrobeOrigin,
+) -> Vec<Value> {
+    if mount_point_ids.is_empty() {
+        return Vec::new();
+    }
+    let reversed: Vec<String> = mount_point_ids.iter().rev().cloned().collect();
+    read_shared_tiers(docs, &reversed, true, origin_of)
 }
 
 /// v4 `createSharedTierLoader(repos, projectMountPointIds)` — a memoised
@@ -385,7 +404,7 @@ pub fn load_wearable_pool(
         ),
     };
 
-    let groups = resolve_group_mounts_for_character(main, mount, character_id);
+    let groups = group_mounts_for(main, mount, character_id, GroupMountsOptions::default());
     let own_loader;
     let shared: SharedTierItems = match opts.shared_tiers {
         Some(loader) => loader.get(main, &docs).clone(),
@@ -410,23 +429,14 @@ pub fn load_wearable_pool(
         },
     };
 
-    let mut group_origin_by_mount: HashMap<String, WardrobeOrigin> = HashMap::new();
-    let mut group_mount_point_ids: Vec<String> = Vec::new();
-    for g in &groups {
-        for mp in &g.mount_point_ids {
-            if !group_origin_by_mount.contains_key(mp) {
-                group_mount_point_ids.push(mp.clone());
-            }
-            group_origin_by_mount.insert(
-                mp.clone(),
-                WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name),
-            );
-        }
-    }
-    let group = read_shared_tiers(&docs, &group_mount_point_ids, true, &|mp| {
+    // v4 `groupOriginMap(groups)` — mount → the FIRST group it hangs in, in
+    // the tier's order; the keys are the tier's mounts.
+    let group_origin_by_mount = group_origin_map(&groups);
+    let group_mount_point_ids: Vec<String> = group_origin_by_mount.keys().cloned().collect();
+    let group = read_tier(&docs, &group_mount_point_ids, &|mp| {
         group_origin_by_mount
             .get(mp)
-            .cloned()
+            .map(|g| WardrobeOrigin::new(WardrobeOriginScope::Group, &g.id, &g.name))
             .unwrap_or_else(pool_project_origin)
     });
 

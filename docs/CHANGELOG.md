@@ -700,6 +700,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(pools): inside a tier the earlier mount wins — wearable pool, Inventory pool, dressing instructions (v4 0c47f4539 (b)/(c)/(f); P4.D378)
+
+_Versions: core 0.0.1431._
+
+P4.D378 items 6–8 + Tier 2 items 16–17. The wearable pool reads every shared tier through ONE `read_tier` that reverses the strongest-first mounts before `read_shared_tiers` (the earlier group / the project's official store wins a same-id collision, and the tier's positional order moves with it); the group origins come from the tier walk's `group_origin_map` (first claim). The Inventory pool's `read_tier` walks each tier reversed, pushing `consulted` in that order. Dressing instructions probe in `order_mounts` order — `deterministic_mounts`' dedup-and-sort is gone — and the DEBUG `[WardrobeInstructions] Dressing instructions resolved` logs v4's camelCase `mountPointId` / `contentLength` (pinned on every resolved cascade row, silent on a null one). `wearable_pool_tier2` grows a second group and a linked project store (two named ops); `wardrobe_instructions_tier2` gains five appended cascade rows; NEW `inventory_pool_order_tier2_equivalence` (v4's REAL `loadInventoryPool` over a NEW builder) — its cross-tier `consulted` interleave (v4 `Promise.all` vs v5 serial reads) is `CONSULTED_CROSS_TIER_INTERLEAVE`, a RULED deliberate divergence (the human, 2026-11-09: v5's serial tier order is intended; v4's interleave is drafted as a v4 bug).
+
 #### 2026-11-09 — fix(wardrobe): the transfers GET removed, the transfer probe walks every store forward (v4 a0ed5ecad + 0c47f4539 (g); P4.D378)
 
 _Versions: core 0.0.1430, web 0.0.257._
