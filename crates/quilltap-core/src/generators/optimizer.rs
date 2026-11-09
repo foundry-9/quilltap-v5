@@ -39,11 +39,13 @@ use crate::db::memories_read::{
     find_by_character_about_character, search_by_content_about_character,
 };
 use crate::db::runtime::Db;
+use crate::characters::kind::{resolve_character_kind, CharacterKind};
 use crate::db::{characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError};
 use crate::generators::field_semantics::{
-    COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, CONVERSATIONAL_VOICE_DIRECTION,
-    EXAMPLE_DIALOGUE_COVERAGE, FIELD_SEMANTICS_PREAMBLE, FULL_FIELD_SEMANTICS,
-    PROPERTIES_SEMANTICS, TRUST_SAFEGUARDS_DIRECTION, WARDROBE_SEMANTICS,
+    generator_direction_for, kind_drift_signal_for, COMMITTEE_DRIFT_GUARDRAIL,
+    COMPANION_TRUST_DISPOSITION, CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE,
+    FIELD_SEMANTICS_PREAMBLE, FULL_FIELD_SEMANTICS, PROPERTIES_SEMANTICS,
+    TRUST_SAFEGUARDS_DIRECTION, WARDROBE_SEMANTICS,
 };
 use crate::generators::generated_items::sanitize_generated_wardrobe_items;
 use crate::generators::llm_json::{
@@ -415,12 +417,26 @@ pub fn build_memory_context(memories: &[Value]) -> String {
     parts.join("\n")
 }
 
-/// v4 `getAnalysisPrompt` (byte-exact). Since v4 `ca363178d` the "Look for" list
-/// ends with the committee-drift bullet, then a blank line and the bare
-/// [`COMMITTEE_DRIFT_GUARDRAIL`] (P4.D241). The bullet's `{{user}}` sits INSIDE
-/// this `format!` template, so it is written `{{{{user}}}}` (the constant's own
-/// `{{user}}` arrives as a captured argument and needs no escaping).
-pub fn get_analysis_prompt() -> String {
+/// v4 `getAnalysisPrompt(kind)` (byte-exact). Since v4 `ca363178d` the "Look
+/// for" list ends with the committee-drift bullet, then a blank line and the
+/// bare [`COMMITTEE_DRIFT_GUARDRAIL`] (P4.D241). Since v4 `3ae4cf582` (P4.D371)
+/// a roleplay character's analysis also looks for flattening: the bullet
+/// `\n- Flattening — …` closes the list and `\n\n` + the drift signal follows
+/// the guardrail, both ONLY when [`kind_drift_signal_for`] answers one (an
+/// assistant's prompt is the bytes without them). The bullet's `{{user}}` sits
+/// INSIDE this `format!` template, so it is written `{{{{user}}}}` (the
+/// constant's own `{{user}}` arrives as a captured argument and needs no
+/// escaping).
+pub fn get_analysis_prompt(kind: CharacterKind) -> String {
+    let drift_signal = kind_drift_signal_for(kind);
+    let flattening_look_for = if drift_signal.is_some() {
+        "\n- Flattening — the character meeting danger, threat, loss, or outrage with the same even calm as small talk. Surface it as a pattern to CORRECT, labelled as such, never as a trait."
+    } else {
+        ""
+    };
+    let flattening_guardrail = drift_signal
+        .map(|d| format!("\n\n{d}"))
+        .unwrap_or_default();
     format!(
         r#"{FULL_FIELD_SEMANTICS}
 
@@ -439,9 +455,9 @@ Look for:
 - Concrete physical/appearance details the memories establish — scars, hair, height (these inform the physical description, not behaviour)
 - Habitual garments, outfits, or accessories the memories establish — a signature coat, a locket always worn (these inform the WARDROBE, never the physical description)
 - Nicknames or alternate names other characters repeatedly use for this character (these inform the ALIASES property)
-- Committee drift — the character governing {{{{user}}}}'s persona (sign-offs, votes, conditions), contradicting narrated events, or treating silence as consent. Surface it as a pattern to CORRECT, labelled as such, never as a trait.
+- Committee drift — the character governing {{{{user}}}}'s persona (sign-offs, votes, conditions), contradicting narrated events, or treating silence as consent. Surface it as a pattern to CORRECT, labelled as such, never as a trait.{flattening_look_for}
 
-{COMMITTEE_DRIFT_GUARDRAIL}
+{COMMITTEE_DRIFT_GUARDRAIL}{flattening_guardrail}
 
 Respond with JSON:
 {{
@@ -529,9 +545,22 @@ Respond with a JSON array of at most one suggestion."#,
 /// [`TRUST_SAFEGUARDS_DIRECTION`], `- ` + [`COMMITTEE_DRIFT_GUARDRAIL`], and the
 /// pass's OWN framing gate before the BARE [`COMPANION_TRUST_DISPOSITION`] (not
 /// v4's `GATED_…` export — P4.D241). The gate's `{{user}}` is written
-/// `{{{{user}}}}` inside this `format!` template.
-pub fn get_system_prompt_suggestion_prompt(analysis: &Value, prompt: &Value) -> String {
+/// `{{{{user}}}}` inside this `format!` template. Since v4 `3ae4cf582`
+/// (P4.D371) the committee bullet is followed by "Make sure the prompt carries
+/// this direction…", the kind's [`generator_direction_for`] text and, for a
+/// roleplay character only, `\n- ` + the flattening drift signal. Only the
+/// guardrail's FIRST line is bulleted (its probation line sits unbulleted —
+/// v4's own `- ${COMMITTEE_DRIFT_GUARDRAIL}`).
+pub fn get_system_prompt_suggestion_prompt(
+    analysis: &Value,
+    prompt: &Value,
+    kind: CharacterKind,
+) -> String {
     let id = js_interp(prompt.get("id"));
+    let direction = generator_direction_for(kind);
+    let drift_tail = kind_drift_signal_for(kind)
+        .map(|d| format!("\n- {d}"))
+        .unwrap_or_default();
     format!(
         r#"Focus solely on the following system prompt. Decide whether its text should be refined to better reflect the demonstrated behavior below, while preserving the interaction style the prompt is clearly trying to achieve.
 
@@ -559,6 +588,8 @@ Additional rules specific to system-prompt refinement:
 - Never remove or weaken the prompt's trust safeguards (narration is fact, the conversation outranks notes, no invented setting facts, consent only in plain words, disagreement without procedure); add them in the prompt's own voice where they are missing:
 {TRUST_SAFEGUARDS_DIRECTION}
 - {COMMITTEE_DRIFT_GUARDRAIL}
+- Make sure the prompt carries this direction, in its own voice, adding it where it is missing:
+{direction}{drift_tail}
 - If the prompt under review frames the character as {{{{user}}}}'s companion, partner, family, or crew, preserve or add the companion trust disposition; otherwise do not add it.
 {COMPANION_TRUST_DISPOSITION}
 
@@ -740,8 +771,11 @@ Respond with a JSON array of suggestion objects (may be empty)."#,
 /// its rules end with `- ` + [`TRUST_SAFEGUARDS_DIRECTION`] and the pass's OWN
 /// framing gate before the BARE [`COMPANION_TRUST_DISPOSITION`] — and NO
 /// [`COMMITTEE_DRIFT_GUARDRAIL`] (P4.D241). The gate's `{{user}}` is written
-/// `{{{{user}}}}` inside this `format!` template.
-pub fn get_new_system_prompts_suggestion_prompt(analysis: &Value) -> String {
+/// `{{{{user}}}}` inside this `format!` template. Since v4 `3ae4cf582`
+/// (P4.D371) `- ` + the kind's [`generator_direction_for`] text follows the
+/// trust bullet; still no committee guardrail.
+pub fn get_new_system_prompts_suggestion_prompt(analysis: &Value, kind: CharacterKind) -> String {
+    let direction = generator_direction_for(kind);
     format!(
         r#"Review the character's existing system prompts (shown in the character context). Propose any NEW system prompts that are warranted by the behavioral patterns below but aren't already covered by the existing set. Do NOT propose edits to existing prompts here — this pass handles additions only. Do NOT propose new scenarios. If no new system prompt is warranted, respond with an empty JSON array.
 
@@ -755,6 +789,7 @@ Additional rules specific to this pass:
 - Be conservative: only propose a new prompt if there is a clear interaction style the existing set does not cover.
 - {CONVERSATIONAL_VOICE_DIRECTION}
 - {TRUST_SAFEGUARDS_DIRECTION}
+- {direction}
 - If the existing prompts frame the character as {{{{user}}}}'s companion, partner, family, or crew, the new prompt carries the companion trust disposition; otherwise do not add it.
 {COMPANION_TRUST_DISPOSITION}
 
@@ -1779,6 +1814,16 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         })
         .ok_or_else(|| "Character not found".to_string())?;
 
+    // v4 `3ae4cf582`: the system-prompt passes follow the character's kind —
+    // stakes and flattening for a roleplay character, the work for an
+    // assistant. Logged BEFORE the memory pipeline (v4 `:737-738`).
+    let character_kind = resolve_character_kind(Some(&character));
+    tracing::debug!(
+        target: OPTIMIZER_LOG_TARGET,
+        context = %ctx(json!({"characterId": character_id, "kind": character_kind.as_str()})),
+        "[CharacterOptimizer] Optimizing for the character's kind"
+    );
+
     // Memory retrieval pipeline: search → date filter → rank → reinforcement
     // filter → limit.
     //
@@ -1956,7 +2001,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
 
     // Call LLM for analysis
     let (analysis_raw, analysis_duration_ms) =
-        call_optimizer_llm(&call_ctx, &get_analysis_prompt(), 0.5, 8000).await?;
+        call_optimizer_llm(&call_ctx, &get_analysis_prompt(character_kind), 0.5, 8000).await?;
 
     let analysis: Value = match parse_llm_json(&analysis_raw) {
         Ok(v) => v,
@@ -2029,7 +2074,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
         sub_steps.push((
             "systemPrompt",
             format!("System prompt: {}", js_interp(prompt.get("name"))),
-            get_system_prompt_suggestion_prompt(&analysis, prompt),
+            get_system_prompt_suggestion_prompt(&analysis, prompt, character_kind),
         ));
     }
     sub_steps.push((
@@ -2056,7 +2101,7 @@ async fn run_optimizer_inner<CMP: CompletionProvider, EMB: EmbeddingProvider>(
     sub_steps.push((
         "newSystemPrompts",
         "Proposed new system prompts".to_string(),
-        get_new_system_prompts_suggestion_prompt(&analysis),
+        get_new_system_prompts_suggestion_prompt(&analysis, character_kind),
     ));
 
     let mut state = SubStepState {

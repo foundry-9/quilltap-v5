@@ -23,6 +23,7 @@
 //! (`recipe_sweep.py --run character_optimizer_prompts_equivalence --v4 <pin>`),
 //! never a path baked into this header.
 
+use quilltap_core::characters::kind::CharacterKind;
 use quilltap_core::generators::optimizer::{
     build_character_context, build_memory_context, coerce_suggestion_array, get_analysis_prompt,
     get_general_fields_suggestions_prompt, get_new_system_prompts_suggestion_prompt,
@@ -55,8 +56,13 @@ enum Row {
         entries: Vec<Value>,
         out: String,
     },
-    #[serde(rename = "analysis_prompt")]
-    AnalysisPrompt { id: String, out: String },
+    /// P4.D371: one row per kind (`characterKind`), v4 `getAnalysisPrompt(kind)`.
+    #[serde(rename = "analysis_prompt", rename_all = "camelCase")]
+    AnalysisPrompt {
+        id: String,
+        character_kind: CharacterKind,
+        out: String,
+    },
     /// P4.D241 — v4 `SUGGESTION_SCHEMA_PREAMBLE` (exported since `ca363178d`).
     #[serde(rename = "schema_preamble")]
     SchemaPreamble { id: String, out: String },
@@ -66,9 +72,10 @@ enum Row {
         analysis: Value,
         out: String,
     },
-    #[serde(rename = "new_prompts_prompt")]
+    #[serde(rename = "new_prompts_prompt", rename_all = "camelCase")]
     NewPromptsPrompt {
         id: String,
+        character_kind: CharacterKind,
         analysis: Value,
         out: String,
     },
@@ -79,9 +86,10 @@ enum Row {
         scenario: Value,
         out: String,
     },
-    #[serde(rename = "system_prompt_prompt")]
+    #[serde(rename = "system_prompt_prompt", rename_all = "camelCase")]
     SystemPromptPrompt {
         id: String,
+        character_kind: CharacterKind,
         analysis: Value,
         prompt: Value,
         out: String,
@@ -117,6 +125,8 @@ enum Row {
         system_prompts: Vec<String>,
         physicals: Vec<String>,
         wardrobes: Vec<String>,
+        /// P4.D371 — the kinds every system-prompt pass is driven with.
+        character_kinds: Vec<CharacterKind>,
     },
 }
 
@@ -164,10 +174,12 @@ fn character_optimizer_prompts_match_oracle() {
 
     let (mut s_coerce, mut s_ctx, mut s_mem, mut s_analyses) =
         (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    let (mut s_scen, mut s_sp, mut s_phys, mut s_ward) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    let (mut s_scen, mut s_phys, mut s_ward) = (Vec::new(), Vec::new(), Vec::new());
     let mut s_props: Vec<String> = Vec::new();
-    let mut saw_analysis_prompt = false;
+    // P4.D371: the three system-prompt passes are driven once per kind.
+    let mut analysis_kinds: Vec<CharacterKind> = Vec::new();
+    let mut new_prompt_rows: Vec<(String, CharacterKind)> = Vec::new();
+    let mut s_sp_kinds: Vec<(String, CharacterKind)> = Vec::new();
     let mut saw_schema_preamble = false;
     let mut coverage: Option<Row> = None;
 
@@ -204,13 +216,17 @@ fn character_optimizer_prompts_match_oracle() {
                 );
                 s_mem.push(id);
             }
-            Row::AnalysisPrompt { id, out } => {
+            Row::AnalysisPrompt {
+                id,
+                character_kind,
+                out,
+            } => {
                 eq(
-                    &format!("getAnalysisPrompt '{id}'"),
-                    get_analysis_prompt(),
+                    &format!("getAnalysisPrompt '{id}' ({})", character_kind.as_str()),
+                    get_analysis_prompt(character_kind),
                     &out,
                 );
-                saw_analysis_prompt = true;
+                analysis_kinds.push(character_kind);
             }
             Row::SchemaPreamble { id, out } => {
                 eq(
@@ -228,12 +244,21 @@ fn character_optimizer_prompts_match_oracle() {
                 );
                 s_analyses.push(id);
             }
-            Row::NewPromptsPrompt { id, analysis, out } => {
+            Row::NewPromptsPrompt {
+                id,
+                character_kind,
+                analysis,
+                out,
+            } => {
                 eq(
-                    &format!("getNewSystemPromptsSuggestionPrompt '{id}'"),
-                    get_new_system_prompts_suggestion_prompt(&analysis),
+                    &format!(
+                        "getNewSystemPromptsSuggestionPrompt '{id}' ({})",
+                        character_kind.as_str()
+                    ),
+                    get_new_system_prompts_suggestion_prompt(&analysis, character_kind),
                     &out,
                 );
+                new_prompt_rows.push((id, character_kind));
             }
             Row::ScenarioPrompt {
                 id,
@@ -250,16 +275,20 @@ fn character_optimizer_prompts_match_oracle() {
             }
             Row::SystemPromptPrompt {
                 id,
+                character_kind,
                 analysis,
                 prompt,
                 out,
             } => {
                 eq(
-                    &format!("getSystemPromptSuggestionPrompt '{id}'"),
-                    get_system_prompt_suggestion_prompt(&analysis, &prompt),
+                    &format!(
+                        "getSystemPromptSuggestionPrompt '{id}' ({})",
+                        character_kind.as_str()
+                    ),
+                    get_system_prompt_suggestion_prompt(&analysis, &prompt, character_kind),
                     &out,
                 );
-                s_sp.push(id);
+                s_sp_kinds.push((id, character_kind));
             }
             Row::PhysicalPrompt {
                 id,
@@ -313,12 +342,26 @@ fn character_optimizer_prompts_match_oracle() {
         system_prompts,
         physicals,
         wardrobes,
+        character_kinds,
     }) = coverage
     else {
         panic!("the oracle emitted no coverage row");
     };
 
-    assert!(saw_analysis_prompt, "getAnalysisPrompt was never driven");
+    // P4.D371: every pass driven for EVERY kind, both ways.
+    assert_eq!(
+        character_kinds,
+        vec![CharacterKind::Roleplay, CharacterKind::Assistant],
+        "the oracle's kind list"
+    );
+    assert_eq!(analysis_kinds, character_kinds, "getAnalysisPrompt kind coverage");
+    let by_kind = |ids: &[String]| -> Vec<(String, CharacterKind)> {
+        ids.iter()
+            .flat_map(|id| character_kinds.iter().map(move |k| (id.clone(), *k)))
+            .collect()
+    };
+    assert_eq!(new_prompt_rows, by_kind(&analyses), "new-prompts kind coverage");
+    assert_eq!(s_sp_kinds, by_kind(&system_prompts), "system-prompt kind coverage");
     assert!(
         saw_schema_preamble,
         "SUGGESTION_SCHEMA_PREAMBLE was never recorded"
@@ -328,7 +371,6 @@ fn character_optimizer_prompts_match_oracle() {
     assert_eq!(s_mem, memories, "memory coverage");
     assert_eq!(s_analyses, analyses, "analysis coverage");
     assert_eq!(s_scen, scenarios, "scenario coverage");
-    assert_eq!(s_sp, system_prompts, "system-prompt coverage");
     assert_eq!(s_phys, physicals, "physical coverage");
     assert_eq!(s_ward, wardrobes, "wardrobe coverage");
     // The properties prompt is driven once per CONTEXT case (it takes a whole

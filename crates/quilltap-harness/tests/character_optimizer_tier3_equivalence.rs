@@ -86,6 +86,9 @@ use tokio::sync::broadcast;
 // P4.85 item 10: `materialize_llm_logs` — an llm-logs partition beside the
 // fixture pair, so the runners' `logLLMCall` twin has somewhere to write.
 mod common;
+// P4.D371: the in-case vault plant for the assistant-kind row.
+#[path = "common/kind_plant.rs"]
+mod kind_plant;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,6 +125,18 @@ struct Case {
     /// P4.D268: SQL planted on the case's fresh pair (one statement each).
     #[serde(default)]
     plant_sql: Vec<String>,
+    /// P4.D371: an in-case vault plant (absent = the committed pair as-is).
+    #[serde(default)]
+    plant: Option<Plant>,
+}
+
+/// P4.D371 — the bytes written to the character's vault `properties.json`
+/// before the run, on both sides, through the real document writer.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Plant {
+    character_id: String,
+    properties: String,
 }
 
 #[derive(Deserialize)]
@@ -411,6 +426,10 @@ impl GeneratorsDetailDriver for TestDriver {
 }
 
 fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+    fresh_pair_planted(spec, tag, None)
+}
+
+fn fresh_pair_planted(spec: &Spec, tag: &str, plant: Option<&Plant>) -> (Db, tempfile::TempDir) {
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-opt-{tag}-"))
         .tempdir()
@@ -419,6 +438,15 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
+    if let Some(plant) = plant {
+        kind_plant::plant_vault_properties(
+            &main,
+            &mount,
+            &spec.test_pepper_base64,
+            &plant.character_id,
+            &plant.properties,
+        );
+    }
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.
@@ -640,7 +668,7 @@ fn first_diff(got: &str, want: &str) -> String {
 /// broadcast, the log lines captured on this thread (a current-thread runtime
 /// so the thread-scoped rig sees every line).
 fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
-    let (db, scratch) = fresh_pair(spec, &c.name);
+    let (db, scratch) = fresh_pair_planted(spec, &c.name, c.plant.as_ref());
     // P4.D268: the case's plants, before anything reads.
     if !c.plant_sql.is_empty() {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -759,11 +787,11 @@ fn run_case(spec: &Spec, corpus: &Corpus, c: &Case) -> Value {
     })
 }
 
-#[test]
-fn character_optimizer_matches_oracle() {
+/// The spec, the corpus and the oracle, with the case sets asserted equal.
+fn load_family() -> Option<(Spec, Corpus, HashMap<String, OracleRow>)> {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_CHARACTER_OPTIMIZER") else {
         eprintln!("SKIP: set QT_ORACLE_CHARACTER_OPTIMIZER (see the test header).");
-        return;
+        return None;
     };
     let text = std::fs::read_to_string(&oracle_path).unwrap();
     assert!(
@@ -793,6 +821,64 @@ fn character_optimizer_matches_oracle() {
         corpus_names, oracle_names,
         "the corpus and the oracle disagree on the case set"
     );
+    Some((spec, corpus, oracle))
+}
+
+/// The oracle row as the comparand `run_case` answers.
+fn want_of(want_row: &OracleRow) -> Value {
+    json!({
+        "name": want_row.name,
+        "status": want_row.status,
+        "body": want_row.body,
+        "events": want_row.events,
+        "calls": want_row.calls,
+        "suggestionsFiles": want_row.suggestions_files,
+        "logLines": want_row.log_lines,
+        "llmLogCounts": want_row.llm_log_counts,
+    })
+}
+
+/// P4.D371 U1 / H1 — the planted assistant-kind row, apart from the main test
+/// so it stays green on the lane branch. RED here BY DESIGN until P4.D369's
+/// read overlay carries `kind` (v5 resolves `roleplay`: the kind DEBUG line
+/// reads `roleplay`, and the analysis call carries the flattening look-for v4
+/// left out); green on the union.
+#[test]
+fn character_optimizer_assistant_kind_rows() {
+    let Some((spec, corpus, oracle)) = load_family() else {
+        return;
+    };
+    let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
+    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind row");
+    let mut failed: Vec<String> = Vec::new();
+    for c in planted {
+        let want_row = &oracle[&c.name];
+        assert!(
+            want_row.log_lines.iter().any(|l| l["message"]
+                == json!("[CharacterOptimizer] Optimizing for the character's kind")
+                && l["context"]["kind"] == json!("assistant")),
+            "{}: v4 never resolved the planted assistant kind — the plant missed",
+            c.name
+        );
+        let got = run_case(&spec, &corpus, c);
+        let (g, w) = (normalize(got), normalize(want_of(want_row)));
+        if g != w {
+            failed.push(format!("{}:\n{}", c.name, first_diff(&g, &w)));
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "{} assistant-kind case(s) DIFFER:\n{}",
+        failed.len(),
+        failed.join("\n")
+    );
+}
+
+#[test]
+fn character_optimizer_matches_oracle() {
+    let Some((spec, corpus, oracle)) = load_family() else {
+        return;
+    };
 
     let mut failed: Vec<String> = Vec::new();
     let mut model_calls = 0usize;
@@ -800,9 +886,16 @@ fn character_optimizer_matches_oracle() {
     let mut files = 0usize;
     let mut log_rows = 0usize;
     let mut sub_ids_checked = 0usize;
-    for c in &corpus.cases {
+    // P4.D371: the kind DEBUG must still be ASKED.
+    let mut kind_lines = 0usize;
+    for c in corpus.cases.iter().filter(|c| c.plant.is_none()) {
         let want_row = &oracle[&c.name];
         assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
+        kind_lines += want_row
+            .log_lines
+            .iter()
+            .filter(|l| l["message"] == json!("[CharacterOptimizer] Optimizing for the character's kind"))
+            .count();
         let got = run_case(&spec, &corpus, c);
         // P4.157 R-B: every `subId` a canned answer names must be an id v4
         // SHOWED the model in that same call (the prompt lists each sub-item's
@@ -836,17 +929,7 @@ fn character_optimizer_matches_oracle() {
         frames += want_row.events.len();
         files += want_row.suggestions_files.len();
         log_rows += want_row.log_lines.len();
-        let want = json!({
-            "name": want_row.name,
-            "status": want_row.status,
-            "body": want_row.body,
-            "events": want_row.events,
-            "calls": want_row.calls,
-            "suggestionsFiles": want_row.suggestions_files,
-            "logLines": want_row.log_lines,
-            "llmLogCounts": want_row.llm_log_counts,
-        });
-        let (g, w) = (normalize(got), normalize(want));
+        let (g, w) = (normalize(got), normalize(want_of(want_row)));
         if g != w {
             failed.push(format!("{}:\n{}", c.name, first_diff(&g, &w)));
         }
@@ -867,6 +950,10 @@ fn character_optimizer_matches_oracle() {
     assert!(
         log_rows >= 50,
         "the oracle recorded only {log_rows} log lines"
+    );
+    assert!(
+        kind_lines >= 20,
+        "the oracle recorded only {kind_lines} kind lines"
     );
     assert!(
         sub_ids_checked >= 3,

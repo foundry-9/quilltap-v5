@@ -81,6 +81,13 @@ interface CaseSpec {
   calls: CallSpec[];
   embeddings?: Record<string, number[]>;
   embeddingThrows?: boolean;
+  /**
+   * P4.D371: an in-case vault plant — `properties` written to the character's
+   * `properties.json` through the REAL `writeDatabaseDocument` (v5 writes the
+   * same bytes through `write_database_document`), self-checked: `findById`
+   * must then resolve the planted `kind`.
+   */
+  plant?: { characterId: string; kind: string; properties: string };
 }
 
 interface Corpus {
@@ -325,6 +332,24 @@ async function runCase(
   {
     const { rawQuery } = await import('@/lib/database/manager');
     for (const sql of ((c as { plantSql?: string[] }).plantSql ?? [])) await rawQuery(sql);
+  }
+  // P4.D371: the kind plant, through the real document writer.
+  if (c.plant) {
+    const { rawQuery } = await import('@/lib/database/manager');
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    const { resolveCharacterKind } = await import('@/lib/characters/kind');
+    const fk = (await rawQuery(
+      'SELECT characterDocumentMountPointId AS mp FROM characters WHERE id = ?',
+      [c.plant.characterId],
+    )) as Array<{ mp: string | null }>;
+    const mountPointId = fk[0]?.mp;
+    if (!mountPointId) throw new Error(`kind plant: no vault FK for ${c.plant.characterId}`);
+    await writeDatabaseDocument(mountPointId, 'properties.json', c.plant.properties);
+    const planted = await repos.characters.findById(c.plant.characterId);
+    const kind = resolveCharacterKind(planted as never);
+    if (kind !== c.plant.kind) {
+      throw new Error(`kind plant missed: v4 resolved '${kind}', planted '${c.plant.kind}'`);
+    }
   }
   {
     const who = corpus.placeholderCharacterId;

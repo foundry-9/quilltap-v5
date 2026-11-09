@@ -17,7 +17,12 @@ use quilltap_core::generators::field_semantics::{
     EXAMPLE_DIALOGUE_COVERAGE, FLATTENING_DRIFT_SIGNAL, GATED_COMPANION_TRUST_DISPOSITION,
     STAKES_AND_REACTION_DIRECTION, TRUST_SAFEGUARDS_DIRECTION,
 };
+use quilltap_core::generators::optimizer::{
+    get_analysis_prompt, get_new_system_prompts_suggestion_prompt,
+    get_system_prompt_suggestion_prompt,
+};
 use quilltap_core::generators::wizard::wizard_field_max_tokens;
+use serde_json::{json, Value};
 use quilltap_core::generators::wizard_prompts::{
     build_system_prompt_field_prompt, field_prompt, wizard_field_prompt,
 };
@@ -185,4 +190,59 @@ fn external_prompt_follows_the_character_kind_stakes_for_roleplay_the_work_for_a
     let assistant = build_meta_system_prompt(CharacterKind::Assistant);
     assert!(assistant.contains(ASSISTANT_TASK_DIRECTION));
     assert!(!assistant.contains(STAKES_AND_REACTION_DIRECTION));
+}
+
+// ---- character-optimizer-helpers.test.ts, "the character kind in the
+// Optimizer" (v4 3ae4cf582) ------------------------------------------------
+
+fn optimizer_fixture() -> (Value, Value) {
+    let analysis = json!({ "behavioralPatterns": [], "summary": "steady" });
+    let prompt = json!({
+        "id": "sp-k",
+        "name": "Default",
+        "content": "You are calm.",
+        "isDefault": true,
+        "createdAt": "2026-01-01T00:00:00Z",
+        "updatedAt": "2026-01-01T00:00:00Z",
+    });
+    (analysis, prompt)
+}
+
+#[test]
+fn analysis_looks_for_flattening_in_a_roleplay_character_not_in_an_assistant() {
+    let roleplay = get_analysis_prompt(CharacterKind::Roleplay);
+    assert!(roleplay.contains("- Flattening — "));
+    assert!(roleplay.contains(FLATTENING_DRIFT_SIGNAL));
+    assert!(!get_analysis_prompt(CharacterKind::Assistant).contains("Flattening"));
+}
+
+#[test]
+fn refining_a_roleplay_prompt_carries_the_stakes_direction_and_the_flattening_signal() {
+    let (analysis, prompt) = optimizer_fixture();
+    let p = get_system_prompt_suggestion_prompt(&analysis, &prompt, CharacterKind::Roleplay);
+    assert!(p.contains(STAKES_AND_REACTION_DIRECTION));
+    assert!(p.contains(FLATTENING_DRIFT_SIGNAL));
+    assert!(!p.contains(ASSISTANT_TASK_DIRECTION));
+}
+
+#[test]
+fn refining_an_assistant_prompt_carries_the_task_direction_and_no_flattening_signal() {
+    let (analysis, prompt) = optimizer_fixture();
+    let p = get_system_prompt_suggestion_prompt(&analysis, &prompt, CharacterKind::Assistant);
+    assert!(p.contains(ASSISTANT_TASK_DIRECTION));
+    assert!(!p.contains(FLATTENING_DRIFT_SIGNAL));
+    assert!(!p.contains(STAKES_AND_REACTION_DIRECTION));
+}
+
+#[test]
+fn a_new_prompt_follows_the_kind() {
+    let (analysis, _) = optimizer_fixture();
+    assert!(
+        get_new_system_prompts_suggestion_prompt(&analysis, CharacterKind::Roleplay)
+            .contains(STAKES_AND_REACTION_DIRECTION)
+    );
+    assert!(
+        get_new_system_prompts_suggestion_prompt(&analysis, CharacterKind::Assistant)
+            .contains(ASSISTANT_TASK_DIRECTION)
+    );
 }

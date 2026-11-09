@@ -195,6 +195,14 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: the Character Optimizer's system-prompt passes follow the character's kind (v4 3ae4cf582)
+
+_Versions: core 0.0.1432._
+
+`get_analysis_prompt(kind)`, `get_system_prompt_suggestion_prompt(analysis, prompt, kind)` and `get_new_system_prompts_suggestion_prompt(analysis, kind)` port v4's kind-aware passes byte for byte: for a roleplay character the analysis adds the `- Flattening —` look-for and `FLATTENING_DRIFT_SIGNAL` after the committee guardrail; the refine pass adds "Make sure the prompt carries this direction…", the kind's direction and (roleplay only) `- ` plus the drift signal; the new-prompts pass adds `- ` plus the kind's direction (still no committee guardrail). The runner resolves the kind after the `Character not found` check and before the memory pipeline, logs v4's DEBUG `[CharacterOptimizer] Optimizing for the character's kind`, and passes it to all three call sites.
+
+`character-optimizer-prompts.ts` now drives the three passes once per kind; `character_optimizer_prompts` checks both kinds with coverage both ways. `character_optimizer_tier3` compares the new DEBUG on every row (28 rows carry it; silent on the 404 and Zod rows) and gains `assistant_kind_no_flattening` (Mira planted `kind: assistant`) in its own test, `character_optimizer_assistant_kind_rows`, red until P4.D369's read overlay carries `kind` (v5 still sends the flattening look-for and signal). `kind_directions_order` gains v4's four Optimizer kind titles.
+
 #### 2026-11-09 — P4.D371: External Prompt follows the character's kind (v4 3ae4cf582)
 
 _Versions: core 0.0.1431._

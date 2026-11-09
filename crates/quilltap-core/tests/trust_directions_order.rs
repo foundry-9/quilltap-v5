@@ -78,13 +78,14 @@ fn optimizer_preamble_rule_keeps_the_literal_placeholder() {
     let analysis = json!({ "behavioralPatterns": [], "summary": "s" });
     assert!(get_general_fields_suggestions_prompt(&analysis).contains(SUGGESTION_SCHEMA_PREAMBLE));
     assert!(
-        get_new_system_prompts_suggestion_prompt(&analysis).contains(SUGGESTION_SCHEMA_PREAMBLE)
+        get_new_system_prompts_suggestion_prompt(&analysis, CharacterKind::Roleplay)
+            .contains(SUGGESTION_SCHEMA_PREAMBLE)
     );
 }
 
 #[test]
 fn optimizer_analysis_flags_committee_drift() {
-    let p = get_analysis_prompt();
+    let p = get_analysis_prompt(CharacterKind::Roleplay);
     assert!(p.contains("Committee drift — the character governing {{user}}'s persona"));
     assert!(p.contains(COMMITTEE_DRIFT_GUARDRAIL));
 }
@@ -93,7 +94,7 @@ fn optimizer_analysis_flags_committee_drift() {
 fn optimizer_refine_pass_keeps_every_never_weaken_rule_and_its_own_gate() {
     let analysis = json!({ "behavioralPatterns": [], "summary": "s" });
     let prompt = json!({ "id": "p1", "name": "Main", "isDefault": true, "content": "c" });
-    let p = get_system_prompt_suggestion_prompt(&analysis, &prompt);
+    let p = get_system_prompt_suggestion_prompt(&analysis, &prompt, CharacterKind::Roleplay);
     assert!(p.contains("Do NOT change the prompt's evident interaction style"));
     assert!(p.contains("Never remove or weaken the prompt's direction about listening"));
     assert!(p.contains("Do NOT codify repetition"));
@@ -111,7 +112,7 @@ fn optimizer_refine_pass_keeps_every_never_weaken_rule_and_its_own_gate() {
 #[test]
 fn optimizer_new_prompts_pass_has_trust_and_its_own_gate_but_no_committee() {
     let analysis = json!({ "behavioralPatterns": [], "summary": "s" });
-    let p = get_new_system_prompts_suggestion_prompt(&analysis);
+    let p = get_new_system_prompts_suggestion_prompt(&analysis, CharacterKind::Roleplay);
     assert!(p.contains(&format!("- {TRUST_SAFEGUARDS_DIRECTION}")));
     gate_before_disposition(
         &p,

@@ -593,6 +593,14 @@
         "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000501', 'a2000002-0000-4000-8000-000000000001', 'a2000002-0000-4000-8000-000000000001', 'Mira once swore off the lantern and the brass ring forever.', 'An archived lantern-and-ring vow.', '[]', '[]', 0.99, 'AUTO', 9, '[]', 0.99, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000502', '[]', '2026-02-12T00:00:00.000Z', '2026-02-12T00:00:00.000Z')",
         "UPDATE memories SET embedding = X'00000000000000000000803F00000000' WHERE id = 'd2680000-0000-4000-8000-000000000501'"
       ]
+    },
+    {
+      "name": "assistant_kind_no_flattening",
+      "$comment": "P4.D371 U1 — Mira's vault planted kind=assistant: the TASK direction in the refine and new-prompts calls, no flattening look-for or signal in the analysis call. Red on the P4.D371 branch by design (H1).",
+      "characterId": "a2000002-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000002-0000-4000-8000-000000000001" },
+      "calls": ["analysis", "general", "harbor", "market", "default", "terse", "physical", "wardrobe", "properties", "newPrompts"],
+      "plant": { "characterId": "a2000002-0000-4000-8000-000000000001", "kind": "assistant", "properties": "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Mimi\",\n    \"Lantern-girl\"\n  ],\n  \"title\": \"Keeper of the Lanterns\",\n  \"firstMessage\": \"*Mira sets down the oil can and squints at you.* You're not from the boats. What brings you up the lantern stairs?\",\n  \"talkativeness\": 0.6,\n  \"canChooseOutfit\": false,\n  \"kind\": \"assistant\"\n}" }
     }
   ]
 }

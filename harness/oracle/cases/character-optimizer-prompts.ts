@@ -89,8 +89,20 @@ for (const c of corpus.memories) {
   out({ kind: 'memory', id: c.id, entries: c.entries, out: buildMemoryContext(c.entries as never) });
 }
 
-// ---- getAnalysisPrompt (no inputs) -----------------------------------------
-out({ kind: 'analysis_prompt', id: 'analysis-prompt', out: getAnalysisPrompt() });
+// P4.D371 (v4 3ae4cf582): the three system-prompt passes follow the
+// character's kind, so each is driven once per kind with the kind explicit
+// (an argless call would only record the default's bytes).
+const characterKinds = ['roleplay', 'assistant'] as const;
+
+// ---- getAnalysisPrompt (one row per kind) ----------------------------------
+for (const characterKind of characterKinds) {
+  out({
+    kind: 'analysis_prompt',
+    id: 'analysis-prompt',
+    characterKind,
+    out: getAnalysisPrompt(characterKind),
+  });
+}
 
 // ---- SUGGESTION_SCHEMA_PREAMBLE (exported since v4 `ca363178d` — P4.D241) ---
 out({ kind: 'schema_preamble', id: 'preamble', out: SUGGESTION_SCHEMA_PREAMBLE });
@@ -103,12 +115,15 @@ for (const a of corpus.analyses) {
     analysis: a.analysis,
     out: getGeneralFieldsSuggestionsPrompt(a.analysis as never),
   });
-  out({
-    kind: 'new_prompts_prompt',
-    id: a.id,
-    analysis: a.analysis,
-    out: getNewSystemPromptsSuggestionPrompt(a.analysis as never),
-  });
+  for (const characterKind of characterKinds) {
+    out({
+      kind: 'new_prompts_prompt',
+      id: a.id,
+      characterKind,
+      analysis: a.analysis,
+      out: getNewSystemPromptsSuggestionPrompt(a.analysis as never, characterKind),
+    });
+  }
 }
 
 // ---- the per-item prompts --------------------------------------------------
@@ -122,13 +137,16 @@ for (const c of corpus.scenarios) {
   });
 }
 for (const c of corpus.systemPrompts) {
-  out({
-    kind: 'system_prompt_prompt',
-    id: c.id,
-    analysis: primaryAnalysis,
-    prompt: c.prompt,
-    out: getSystemPromptSuggestionPrompt(primaryAnalysis as never, c.prompt as never),
-  });
+  for (const characterKind of characterKinds) {
+    out({
+      kind: 'system_prompt_prompt',
+      id: c.id,
+      characterKind,
+      analysis: primaryAnalysis,
+      prompt: c.prompt,
+      out: getSystemPromptSuggestionPrompt(primaryAnalysis as never, c.prompt as never, characterKind),
+    });
+  }
 }
 for (const c of corpus.physicals) {
   out({
@@ -169,4 +187,5 @@ out({
   systemPrompts: corpus.systemPrompts.map((c) => c.id),
   physicals: corpus.physicals.map((c) => c.id),
   wardrobes: corpus.wardrobes.map((c) => c.id),
+  characterKinds,
 });
