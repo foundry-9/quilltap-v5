@@ -4414,18 +4414,21 @@ impl CoreEngine {
                 Ok(db) => super::documents::chat_accessible_stores(&db, &chat_id, all),
                 Err(r) => r,
             },
-            Request::ChatDocumentOpen { chat_id, body } => match self.ready_db() {
-                Ok(db) => {
+            // === P4.D380 === a blank create refreshes its store (#137 / #133).
+            Request::ChatDocumentOpen { chat_id, body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => {
                     super::documents::chat_document_open(
                         &db,
                         &chat_id,
                         body,
+                        refresh,
                         Some(self.inner.config.base_dir.join("files")),
                     )
                     .await
                 }
                 Err(r) => r,
             },
+            // === end P4.D380 ===
             Request::ChatDocumentClose {
                 chat_id,
                 chat_document_id,
@@ -4502,17 +4505,20 @@ impl CoreEngine {
                 Ok(db) => super::documents::documents_recent(&db),
                 Err(r) => r,
             },
-            Request::DocumentOpen { body } => match self.ready_db() {
-                Ok(db) => {
+            // === P4.D380 === a blank create refreshes its store (#137 / #133).
+            Request::DocumentOpen { body } => match self.ready_db_and_refresh() {
+                Ok((db, refresh)) => {
                     super::documents::document_open(
                         &db,
                         body,
+                        refresh,
                         Some(self.inner.config.base_dir.join("files")),
                     )
                     .await
                 }
                 Err(r) => r,
             },
+            // === end P4.D380 ===
             Request::DocumentRead { body } => match self.ready_db() {
                 Ok(db) => super::documents::document_read(
                     &db,

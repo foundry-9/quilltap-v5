@@ -790,6 +790,27 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(documents): Document Mode over the document core — the viewer, the read-only refusal, uploads read and saved, moves follow, generalLibrary (P4.D380, v4 a3d53eae1 / 30a3b4cb7 / 5efe53ea7 / c17033f04)
+
+_Versions: core 0.0.1436._
+
+Ports v4's operator layer (`operator-doc-actions.ts`, `operator-doc-http.ts` at `624d0d25c`) onto the document core, for both the chat-scoped and standalone routes.
+
+- **Open** reads through `read_document`, so an uploaded `.md` opens (#134). A non-text store file opens read-only, with a `viewer` (`DocumentViewTarget`), `content: ''` and no `mtime`, and logs v4's DEBUG (C14). Any failure is a 404 `File not found:`, after v4's DEBUG `openDocumentFile: file not readable`. A blank document is created through `ensure_document` (a database store gets its document row and its refresh). Any other failure is now 500 `Failed to open document:` (it was `Failed to create blank document:`). The open routes take the refresh scheduler (fenced dispatch hunks in `api/engine.rs`).
+- **Read** answers `{content: '', viewer}` for a viewed file and reads uploads.
+- **Write** refuses a viewed file with v4's 400 (`<filePath> is shown read-only and cannot be written from the editor`). Every write refreshes its store through the one chokepoint, whatever the scope (#133). The `scope == document_store` gates are retired.
+- **Rename / delete** resolve the old path first (verb `rename` / `delete`), then call `rename_document` / `delete_document`. A missing source is now a 404 and a folder a 400 (both 409 / 500 before). Rename sweeps every `chat_documents` row that reaches the same store, with `logFields: {chatId}` on the chat route. `ChatDocumentsRepository::rename_file_path_in_store` / `rename_folder_path_in_store` are deleted.
+- **Lines:** v4's HTTP lines, under subject `document` + `chatId` or `standalone document`, on the caller's thread:
+  - `Failed to resolve <subject> path for <verb>` (400 `Could not resolve <filePath>: …` everywhere, where rename / delete said `Could not resolve path:`);
+  - `Refused an editor write to a read-only <subject>`;
+  - `<Subject> save conflict detected`;
+  - `Failed to read / write / rename / delete / open <subject>`.
+- **Stores:** both accessible-stores wires answer `generalLibrary` (`resolve_general_library`, with v4's DEBUG when General is missing or disabled), and General is held out of the accordions. The chat wire logs v4's `Resolved accessible document stores for picker`, which was never ported before. The standalone wire logs `Failed to resolve stores for standalone document picker`.
+- `resolve-document` probes with `document_exists`.
+- `database_store`'s blob path lookup is v4's fallback: WARN `Failed to find blob by path` + none. A store without `doc_mount_blobs` now 404s a missing file instead of 500ing.
+
+`documents_routes`: the two accessible-stores oracle rows now pass the session `user` (v4 `0c47f4539` reads it). Fifteen fenced `p4d380_` rows over new in-case plants (`documents-core.json`) are compared by sorted body, by key order, and, for six rows, by v4's caller-thread lines: the viewer on open and read, the read-only refusal, the upload read and saved (the link becomes a document, its extraction cleared, its blob collected), the resolve 400, the rename 404 / 400, the delete 400, and the rename sweep across two chats. 42 rows, all green.
+
 #### 2026-11-09 — fix(mount-index): a document written over an upload clears the link's extraction fields (P4.D380, v4 30a3b4cb7)
 
 _Versions: core 0.0.1435._

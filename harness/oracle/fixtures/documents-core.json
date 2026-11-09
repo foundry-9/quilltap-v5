@@ -1,0 +1,54 @@
+{
+ "$comment": [
+  "P4.D380 (v4 a3d53eae1 / 30a3b4cb7 / 5efe53ea7 / c17033f04, pin 624d0d25c): the Document Mode rows of documents_routes (fenced; `p4d380_` ids).",
+  "Both sides apply `plants` to the per-case COPY before the database opens (the P4.D376 idiom). Mount: v4's `doc_mount_blobs` table (the committed pair predates it), an uploaded `.md` (`uploads/up.md`, a converted blob — #134) and an uploaded `.png` (`uploads/pic.png` — the read-only viewer, C14) in Quilltap General.",
+  "Main: three chat_documents rows on chat A (a missing file, a FOLDER as an open document) and two on chat B that address `notes/alpha.md` — by the store's name in another spelling (swept by v4 `30a3b4cb7`) and as `general` (never swept)."
+ ],
+ "chatB": "c1000000-0000-4000-8000-00000000000b",
+ "plants": [
+  {
+   "db": "mount",
+   "sql": "CREATE TABLE IF NOT EXISTS \"doc_mount_blobs\" (\"id\" TEXT PRIMARY KEY, \"fileId\" TEXT NOT NULL, \"sha256\" TEXT NOT NULL, \"sizeBytes\" INTEGER NOT NULL, \"storedMimeType\" TEXT NOT NULL, \"data\" BLOB NOT NULL, \"createdAt\" TEXT NOT NULL, \"updatedAt\" TEXT NOT NULL, FOREIGN KEY (\"fileId\") REFERENCES \"doc_mount_files\" (\"id\") ON DELETE CASCADE)"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000f1', '37df4ae5dd92c15f64f6de1aa97a73c7f3e3af1774b2840883c0e14cd0d49554', 21, 'blob', 'database', '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000b1', 'd3800000-0000-4000-8000-0000000000f1', '37df4ae5dd92c15f64f6de1aa97a73c7f3e3af1774b2840883c0e14cd0d49554', 21, 'text/markdown', X'232055700A0A75706C6F6164656420776F7264730A', '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, folderId, originalFileName, originalMimeType, description, descriptionUpdatedAt, conversionStatus, conversionError, plainTextLength, extractedText, extractedTextSha256, extractionStatus, extractionError, chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, lastModified, createdAt, updatedAt, linkGroupId) VALUES ('d3800000-0000-4000-8000-0000000000a1', 'd3800000-0000-4000-8000-0000000000f1', 'd0000000-0000-4000-8000-00000000000e', 'uploads/up.md', 'up.md', NULL, 'up.md', 'text/markdown', '', NULL, 'converted', NULL, NULL, '# Up\n\nuploaded words\n', '37df4ae5dd92c15f64f6de1aa97a73c7f3e3af1774b2840883c0e14cd0d49554', 'converted', NULL, 0, 1, 1, 1, '2026-03-04T05:06:07.890Z', '2026-03-02T00:00:00.000Z', '2026-03-05T06:07:08.901Z', NULL)"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000f2', '4353a1de7e0dcc4e87350e22d5c9ee9f3e70e8ce9c31533ec991bee8870c4814', 12, 'blob', 'database', '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_blobs (id, fileId, sha256, sizeBytes, storedMimeType, data, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000b2', 'd3800000-0000-4000-8000-0000000000f2', '4353a1de7e0dcc4e87350e22d5c9ee9f3e70e8ce9c31533ec991bee8870c4814', 12, 'image/png', X'89504E470D0A1A0A01020304', '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "mount",
+   "sql": "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, folderId, originalFileName, originalMimeType, description, descriptionUpdatedAt, conversionStatus, conversionError, plainTextLength, extractedText, extractedTextSha256, extractionStatus, extractionError, chunkCount, allowEmbed, allowCharacterRead, allowCharacterWrite, lastModified, createdAt, updatedAt, linkGroupId) VALUES ('d3800000-0000-4000-8000-0000000000a2', 'd3800000-0000-4000-8000-0000000000f2', 'd0000000-0000-4000-8000-00000000000e', 'uploads/pic.png', 'pic.png', NULL, 'pic.png', 'image/png', '', NULL, 'converted', NULL, NULL, NULL, NULL, 'none', NULL, 0, 1, 1, 1, '2026-03-04T05:06:07.890Z', '2026-03-02T00:00:00.000Z', '2026-03-05T06:07:08.901Z', NULL)"
+  },
+  {
+   "db": "main",
+   "sql": "INSERT INTO chat_documents (id, chatId, filePath, scope, mountPoint, displayTitle, isActive, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000c1', 'c1000000-0000-4000-8000-00000000000a', 'notes/ghost.md', 'document_store', 'Quilltap General', 'ghost.md', 0, '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "main",
+   "sql": "INSERT INTO chat_documents (id, chatId, filePath, scope, mountPoint, displayTitle, isActive, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000c2', 'c1000000-0000-4000-8000-00000000000a', 'notes', 'document_store', 'Quilltap General', 'notes', 0, '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "main",
+   "sql": "INSERT INTO chat_documents (id, chatId, filePath, scope, mountPoint, displayTitle, isActive, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000c3', 'c1000000-0000-4000-8000-00000000000b', 'notes/alpha.md', 'document_store', '  quilltap GENERAL ', 'alpha.md', 1, '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  },
+  {
+   "db": "main",
+   "sql": "INSERT INTO chat_documents (id, chatId, filePath, scope, mountPoint, displayTitle, isActive, createdAt, updatedAt) VALUES ('d3800000-0000-4000-8000-0000000000c4', 'c1000000-0000-4000-8000-00000000000b', 'notes/alpha.md', 'general', NULL, 'alpha.md', 1, '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z')"
+  }
+ ]
+}

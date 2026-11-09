@@ -23,11 +23,11 @@
 
 pub mod core;
 
-use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde::Serialize;
 
-use crate::db::database_store::{self, DbStoreErrorCode, ReadDoc, StoreError};
+#[cfg(test)]
+use crate::db::database_store::StoreError;
 use crate::db::doc_mount_blobs::DocMountBlobsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
 use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -35,10 +35,7 @@ use crate::db::DbError;
 use crate::doc_edit::path_resolver::ResolveError;
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, PathResolutionContext, ResolvedPath};
 use crate::doc_edit::DocEditScope;
-use crate::tools::doc_edit::shared::{
-    fs_io_error, is_text_file, read_fs_file_with_mtime, write_fs_file_with_mtime_check,
-    FS_MTIME_MISMATCH_MESSAGE,
-};
+use crate::tools::doc_edit::shared::is_text_file;
 
 // ===========================================================================
 // Constants (v4 `lib/chat-documents/constants.ts`)
@@ -152,20 +149,6 @@ fn resolve_err(e: ResolveError) -> DocError {
     }
 }
 
-/// Flatten a database-store error into a [`DocError`] preserving the code arm.
-fn store_err(e: StoreError) -> DocError {
-    match e {
-        StoreError::Store(s) => match s.code {
-            DbStoreErrorCode::Unsupported => DocError::Unsupported(s.message),
-            DbStoreErrorCode::Conflict => DocError::Conflict(s.message),
-            _ => DocError::Store(s.message),
-        },
-        StoreError::Db(d) => DocError::Store(d.to_string()),
-        StoreError::TitleLint(r) => DocError::Store(r.message),
-        StoreError::FileOp(e) => DocError::Store(e.message), // P4.D377
-    }
-}
-
 // ===========================================================================
 // Resolution + existence + classification
 // ===========================================================================
@@ -204,34 +187,6 @@ pub fn resolve_operator_doc_path(
         &context,
         ctx.files_dir.as_deref(),
     )
-}
-
-/// v4 `resolvedPathExists` — does a resolved database target currently have a
-/// file? `readDatabaseDocument` NOT_FOUND → `false`; **any other error bubbles**,
-/// so a permission/DB failure is never mistaken for "absent" (which would
-/// overwrite). A non-database resolved path is the host-fs seam (unreachable on
-/// the corpus — the resolver errors first).
-pub fn resolved_path_exists(mount: &Connection, resolved: &ResolvedPath) -> Result<bool, DocError> {
-    if resolved.mount_type.as_deref() != Some("database") {
-        // Filesystem-backed (v4 `fs.access`): ENOENT → false, any other error
-        // bubbles (never silently treat a permission failure as "absent").
-        return match std::path::Path::new(&resolved.absolute_path).try_exists() {
-            Ok(exists) => Ok(exists),
-            Err(e) => Err(DocError::Store(fs_io_error(
-                &resolved.absolute_path,
-                "access",
-                &e,
-            ))),
-        };
-    }
-    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
-        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
-    })?;
-    match database_store::read_database_document(mount, mp, &resolved.relative_path) {
-        Ok(_) => Ok(true),
-        Err(StoreError::Store(s)) if s.code == DbStoreErrorCode::NotFound => Ok(false),
-        Err(e) => Err(store_err(e)),
-    }
 }
 
 /// The qtap-link gate classification (v4 `classifyResolvedTarget`): a resolved
@@ -321,7 +276,9 @@ pub fn pick_untitled_document_path(
         let resolved =
             resolve_operator_doc_path(main, mount, ctx, scope, &file_path, mount_point, None)
                 .map_err(resolve_err)?;
-        if !resolved_path_exists(mount, &resolved)? {
+        // v4 `documentExists` (R-4: only absence reads as free; a permission
+        // or database failure propagates rather than being written over).
+        if !self::core::document_exists(mount, &resolved)? {
             return Ok((file_path, resolved));
         }
     }
@@ -359,11 +316,14 @@ pub struct OpenedDocumentFile {
     pub file_path: String,
     pub display_title: String,
     pub content: String,
-    /// Present for every read/write (a database mint or the on-disk `fs.stat`
-    /// mtime); `Option` only because v4's type declares it optional.
+    /// The read's (or the blank create's) mtime; `None` for a file shown
+    /// read-only (v4 leaves the key out).
     pub mtime: Option<i64>,
     /// True when a new blank document was created (no `file_path` was given).
     pub is_new: bool,
+    /// Set for a file shown read-only (not text); `content` is then empty
+    /// (contract C14).
+    pub viewer: Option<self::core::DocumentViewTarget>,
 }
 
 /// Parameters for [`open_document_file`] (v4 `OpenDocumentFileParams`).
@@ -376,19 +336,24 @@ pub struct OpenDocumentFileParams<'a> {
     pub target_folder: Option<&'a str>,
 }
 
-/// v4 `openDocumentFile` — read an existing file, or pick an unused
-/// "Untitled Document.md" and create it blank. The create branch WRITES, so this
-/// runs inside a write closure. Throws [`DocError::Missing`] when a named file
-/// can't be read (v4's catch-all → `DocumentMissingError`).
+/// v4 `openDocumentFile` (`operator-doc-actions.ts:196-244`) — the file half
+/// of opening a document: read an existing file (or, for a file Document Mode
+/// only views, its view target), or pick an unused "Untitled Document.md" name
+/// and create it blank through the core's [`self::core::ensure_document`] (a
+/// database store gets a document row and every store its refresh). Throws
+/// [`DocError::Missing`] when a named file can't be read — v4's catch-all, so a
+/// resolution failure is a 404 here too. The create branch WRITES, so this runs
+/// inside a write closure.
 pub fn open_document_file(
     main: &Connection,
     mount: &Connection,
     ctx: &DocumentAccessContext,
     params: &OpenDocumentFileParams,
+    refresh: self::core::Refresh<'_>,
 ) -> Result<OpenedDocumentFile, DocError> {
-    if let Some(file_path) = params.file_path {
-        // v4 wraps the whole resolve+read in one try/catch → DocumentMissingError.
-        let read: Result<ReadDoc, DocError> = (|| {
+    if let Some(file_path) = params.file_path.filter(|p| !p.is_empty()) {
+        let display_title = display_title_for(params.title, file_path);
+        let attempt: Result<OpenedDocumentFile, DocError> = (|| {
             let resolved = resolve_operator_doc_path(
                 main,
                 mount,
@@ -399,15 +364,42 @@ pub fn open_document_file(
                 None,
             )
             .map_err(resolve_err)?;
-            read_database(mount, &resolved)
+            if let Some(viewer) = self::core::view_target_for(mount, &resolved)? {
+                tracing::debug!(
+                    target: "quilltap::documents",
+                    filePath = %file_path,
+                    mountPointId = %viewer.mount_point_id,
+                    "openDocumentFile: opening read-only"
+                );
+                return Ok(OpenedDocumentFile {
+                    file_path: file_path.to_string(),
+                    display_title: display_title.clone(),
+                    content: String::new(),
+                    mtime: None,
+                    is_new: false,
+                    viewer: Some(viewer),
+                });
+            }
+            let read = self::core::read_document(mount, &resolved)?;
+            Ok(OpenedDocumentFile {
+                file_path: file_path.to_string(),
+                display_title: display_title.clone(),
+                content: read.content,
+                mtime: Some(read.mtime_ms),
+                is_new: false,
+                viewer: None,
+            })
         })();
-        let doc = read.map_err(|_| DocError::Missing(format!("File not found: {file_path}")))?;
-        return Ok(OpenedDocumentFile {
-            file_path: file_path.to_string(),
-            display_title: display_title_for(params.title, file_path),
-            content: doc.content,
-            mtime: Some(doc.mtime_ms),
-            is_new: false,
+        return attempt.map_err(|e| {
+            tracing::debug!(
+                target: "quilltap::documents",
+                filePath = %file_path,
+                scope = params.scope.as_str(),
+                mountPoint = params.mount_point,
+                error = %e.message(),
+                "openDocumentFile: file not readable"
+            );
+            DocError::Missing(format!("File not found: {file_path}"))
         });
     }
 
@@ -419,7 +411,15 @@ pub fn open_document_file(
         params.mount_point,
         params.target_folder,
     )?;
-    let mtime = write_database(main, mount, &resolved, "")?;
+    let mtime = match self::core::ensure_document(main, mount, &resolved, refresh)? {
+        self::core::Ensured::Created(mtime) => mtime,
+        // "The name was free a moment ago; something else took it."
+        self::core::Ensured::Existing => {
+            return Err(DocError::Conflict(
+                "A file already exists at that name.".to_string(),
+            ))
+        }
+    };
     let display_title = display_title_for(params.title, &file_path);
     Ok(OpenedDocumentFile {
         file_path,
@@ -427,12 +427,16 @@ pub fn open_document_file(
         content: String::new(),
         mtime: Some(mtime),
         is_new: true,
+        viewer: None,
     })
 }
 
-/// v4 `writeDocumentFile` — mtime-checked write, scheduling the store refresh for
-/// `document_store` scope. Propagates the mtime-mismatch as
-/// [`DocError::MtimeMismatch`] for the 409 mapping.
+/// v4 `writeDocumentFile` (`operator-doc-actions.ts:252-273`) — resolve with
+/// the operator override, refuse a file Document Mode only views
+/// ([`DocError::ReadOnly`]), then the core's [`self::core::write_document`]
+/// (mtime-checked, refreshed through the ONE chokepoint whatever the scope —
+/// #133). A stale mtime is [`DocError::MtimeMismatch`] for the 409; a
+/// resolution failure is [`DocError::Resolve`] (v4's catch-all 500 arm).
 #[allow(clippy::too_many_arguments)]
 pub fn write_document_file(
     main: &Connection,
@@ -443,143 +447,68 @@ pub fn write_document_file(
     mount_point: Option<&str>,
     content: &str,
     expected_mtime: Option<i64>,
-    scheduler: Option<&dyn MountRefreshScheduler>,
+    refresh: self::core::Refresh<'_>,
 ) -> Result<i64, DocError> {
     let resolved = resolve_operator_doc_path(main, mount, ctx, scope, file_path, mount_point, None)
         .map_err(resolve_err)?;
-    let mtime = write_database_checked(main, mount, &resolved, content, expected_mtime)?;
-
-    if scope == DocEditScope::DocumentStore {
-        if let Some(mp) = resolved.mount_point_id.as_deref() {
-            schedule_refresh(scheduler, mp, Some(&resolved.relative_path), file_path);
-        }
+    if self::core::view_target_for(mount, &resolved)?.is_some() {
+        return Err(DocError::ReadOnly(format!(
+            "{file_path} is shown read-only and cannot be written from the editor"
+        )));
     }
-    Ok(mtime)
+    self::core::write_document(main, mount, &resolved, content, expected_mtime, refresh)
+}
+
+/// A store the picker reaches from a left-column button (v4 `LibraryTarget`:
+/// the Project library, the General library).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryTarget {
+    pub mount_point_id: String,
+    /// Canonical mount name — what `document_store` opens resolve against.
+    pub name: String,
+    pub mount_type: String,
+}
+
+/// v4 `resolveGeneralLibrary` (`operator-doc-actions.ts:319-328`, `c17033f04`)
+/// — Quilltap General, the instance-wide store behind the picker's "General
+/// library" button. `None` when it is not provisioned or is disabled (the
+/// latter with v4's DEBUG).
+pub fn resolve_general_library(
+    main: &Connection,
+    mount: &Connection,
+) -> Result<Option<LibraryTarget>, DbError> {
+    let Some(general_id) = crate::db::instance_settings::get_general_mount_point_id(main)? else {
+        return Ok(None);
+    };
+    let mp = DocMountPointsRepository::new(mount).find_full_json_by_id(&general_id)?;
+    let enabled = mp
+        .as_ref()
+        .and_then(|m| m.get("enabled"))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true);
+    let Some(mp) = mp.filter(|_| enabled) else {
+        tracing::debug!(
+            target: "quilltap::documents",
+            generalId = %general_id,
+            "resolveGeneralLibrary: Quilltap General is missing or disabled"
+        );
+        return Ok(None);
+    };
+    let field = |k: &str| {
+        mp.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    Ok(Some(LibraryTarget {
+        mount_point_id: field("id"),
+        name: field("name"),
+        mount_type: field("mountType"),
+    }))
 }
 
 pub use self::core::{compute_rename_target, DeleteOutcome, RenameTarget};
-
-/// v4 `renameDocumentFile` — move a document's underlying file to its rename
-/// target. Database stores route through `moveDatabaseDocument` (CONFLICT →
-/// [`DocError::Conflict`], UNSUPPORTED bubbles); the fs branch is the host-fs
-/// seam. Schedules the store refresh for `document_store` scope.
-#[allow(clippy::too_many_arguments)]
-pub fn rename_document_file(
-    main: &Connection,
-    mount: &Connection,
-    ctx: &DocumentAccessContext,
-    scope: DocEditScope,
-    mount_point: Option<&str>,
-    old_file_path: &str,
-    new_file_path: &str,
-    scheduler: Option<&dyn MountRefreshScheduler>,
-) -> Result<(), DocError> {
-    let resolved_old =
-        resolve_operator_doc_path(main, mount, ctx, scope, old_file_path, mount_point, None)
-            .map_err(resolve_err)?;
-    let resolved_new =
-        resolve_operator_doc_path(main, mount, ctx, scope, new_file_path, mount_point, None)
-            .map_err(resolve_err)?;
-
-    if resolved_old.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved_old.mount_point_id.as_deref() {
-            database_store::move_database_document(
-                mount,
-                mp,
-                &resolved_old.relative_path,
-                &resolved_new.relative_path,
-                TitleLintScope::Unlinted { main },
-            )
-            .map_err(|e| match e {
-                StoreError::Store(s) if s.code == DbStoreErrorCode::Conflict => {
-                    DocError::Conflict("A file already exists at that name.".to_string())
-                }
-                other => store_err(other),
-            })?;
-
-            if scope == DocEditScope::DocumentStore {
-                schedule_refresh(
-                    scheduler,
-                    mp,
-                    Some(&resolved_new.relative_path),
-                    new_file_path,
-                );
-            }
-            return Ok(());
-        }
-    }
-
-    // Filesystem mount (v4 `operator-doc-actions.ts:393-411`): refuse an existing
-    // dest, `mkdir -p` the parent, `fs.rename`, then schedule the store refresh for
-    // a document_store fs mount.
-    if std::path::Path::new(&resolved_new.absolute_path)
-        .try_exists()
-        .unwrap_or(false)
-    {
-        return Err(DocError::Conflict(
-            "A file already exists at that name.".to_string(),
-        ));
-    }
-    if let Some(parent) = std::path::Path::new(&resolved_new.absolute_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| DocError::Store(fs_io_error(&resolved_new.absolute_path, "mkdir", &e)))?;
-    }
-    std::fs::rename(&resolved_old.absolute_path, &resolved_new.absolute_path)
-        .map_err(|e| DocError::Store(fs_io_error(&resolved_new.absolute_path, "rename", &e)))?;
-    if scope == DocEditScope::DocumentStore {
-        if let Some(mp) = resolved_old.mount_point_id.as_deref() {
-            schedule_refresh(
-                scheduler,
-                mp,
-                Some(&resolved_new.relative_path),
-                new_file_path,
-            );
-        }
-    }
-    Ok(())
-}
-
-/// v4 `deleteDocumentFile` — delete a document's underlying file. Database stores
-/// route through `deleteDatabaseDocument` (false → NotFound); the fs branch is
-/// the host-fs seam.
-pub fn delete_document_file(
-    main: &Connection,
-    mount: &Connection,
-    ctx: &DocumentAccessContext,
-    scope: DocEditScope,
-    mount_point: Option<&str>,
-    file_path: &str,
-) -> Result<DeleteOutcome, DocError> {
-    let resolved = resolve_operator_doc_path(main, mount, ctx, scope, file_path, mount_point, None)
-        .map_err(resolve_err)?;
-
-    if resolved.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved.mount_point_id.as_deref() {
-            let deleted = database_store::delete_database_document(
-                mount,
-                mp,
-                &resolved.relative_path,
-                TitleLintScope::Unlinted { main },
-            )
-            .map_err(store_err)?;
-            return Ok(if deleted {
-                DeleteOutcome::Deleted
-            } else {
-                DeleteOutcome::NotFound
-            });
-        }
-    }
-    // Filesystem mount (v4 `operator-doc-actions.ts:438-447`): stat (miss →
-    // not-found, non-file → not-a-file), then `fs.unlink`.
-    match std::fs::metadata(&resolved.absolute_path) {
-        Ok(meta) if meta.is_file() => {}
-        Ok(_) => return Ok(DeleteOutcome::NotAFile),
-        Err(_) => return Ok(DeleteOutcome::NotFound),
-    }
-    std::fs::remove_file(&resolved.absolute_path)
-        .map_err(|e| DocError::Store(fs_io_error(&resolved.absolute_path, "unlink", &e)))?;
-    Ok(DeleteOutcome::Deleted)
-}
 
 // ===========================================================================
 // Store listing (the picker's "look everywhere")
@@ -695,151 +624,11 @@ pub fn list_all_enabled_stores(
 // Internal helpers
 // ===========================================================================
 
-/// Read a resolved target for a route handler (the `read-document` surface):
-/// `(content, mtime_ms)`, mapping the database NOT_FOUND to
-/// [`DocError::Missing`] (v4's `ENOENT` → 404) and any other store error to
-/// [`DocError::Store`] (→ 500). A non-database resolved path is the host-fs seam.
-pub fn read_route_document(
-    mount: &Connection,
-    resolved: &ResolvedPath,
-) -> Result<(String, i64), DocError> {
-    if resolved.mount_type.as_deref() != Some("database") {
-        // Filesystem-backed (v4 `readFileWithMtime`): ENOENT → 404 (Missing).
-        return match read_fs_file_with_mtime(&resolved.absolute_path) {
-            Ok(doc) => Ok((doc.content, doc.mtime_ms)),
-            Err(e) if e.starts_with("ENOENT") => Err(DocError::Missing(e)),
-            Err(e) => Err(DocError::Store(e)),
-        };
-    }
-    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
-        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
-    })?;
-    match database_store::read_database_document(mount, mp, &resolved.relative_path) {
-        Ok(doc) => Ok((doc.content, doc.mtime_ms)),
-        Err(StoreError::Store(s)) if s.code == DbStoreErrorCode::NotFound => {
-            Err(DocError::Missing(s.message))
-        }
-        Err(e) => Err(store_err(e)),
-    }
-}
-
-/// Read a resolved path's content + mtime (v4 `readFileWithMtime`): a database
-/// store via the store primitive, a filesystem-backed path off the host disk.
-fn read_database(mount: &Connection, resolved: &ResolvedPath) -> Result<ReadDoc, DocError> {
-    if resolved.mount_type.as_deref() != Some("database") {
-        return read_fs_file_with_mtime(&resolved.absolute_path).map_err(DocError::Store);
-    }
-    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
-        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
-    })?;
-    database_store::read_database_document(mount, mp, &resolved.relative_path).map_err(store_err)
-}
-
-/// Write a resolved path's content, returning the fresh mtime (v4
-/// `writeFileWithMtimeCheck` with no `expectedMtime`): a database store via the
-/// store primitive, a filesystem-backed path to host disk.
-fn write_database(
-    main: &Connection,
-    mount: &Connection,
-    resolved: &ResolvedPath,
-    content: &str,
-) -> Result<i64, DocError> {
-    if resolved.mount_type.as_deref() != Some("database") {
-        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, None)
-            .map_err(DocError::Store);
-    }
-    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
-        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
-    })?;
-    database_store::write_database_document(
-        mount,
-        mp,
-        &resolved.relative_path,
-        content,
-        TitleLintScope::Unlinted { main },
-    )
-    .map_err(store_err)
-}
-
-/// Write with the v4 `writeDatabaseDocument` `expectedMtime` guard: when an
-/// existing document's `lastModified` disagrees with `expected`, refuse with a
-/// CONFLICT-shaped [`DocError::MtimeMismatch`] (v5's `database_store` write does
-/// not itself port the guard — it is reproduced here so the 409 arm is faithful,
-/// without touching lane A's `database_store.rs`).
-fn write_database_checked(
-    main: &Connection,
-    mount: &Connection,
-    resolved: &ResolvedPath,
-    content: &str,
-    expected_mtime: Option<i64>,
-) -> Result<i64, DocError> {
-    if resolved.mount_type.as_deref() != Some("database") {
-        // Filesystem-backed: v4's `writeFileWithMtimeCheck` runs the `expectedMtime`
-        // stat-guard on disk; a mismatch carries "mtime mismatch" → the 409 arm.
-        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, expected_mtime)
-            .map_err(|e| {
-                if e == FS_MTIME_MISMATCH_MESSAGE {
-                    DocError::MtimeMismatch(e)
-                } else {
-                    DocError::Store(e)
-                }
-            });
-    }
-    let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
-        DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
-    })?;
-    if let Some(expected) = expected_mtime {
-        match database_store::read_database_document(mount, mp, &resolved.relative_path) {
-            Ok(existing) => {
-                if existing.mtime_ms != expected {
-                    return Err(DocError::MtimeMismatch(
-                        "Document was modified by another process (mtime mismatch). Please reload and try again."
-                            .to_string(),
-                    ));
-                }
-            }
-            // NOT_FOUND → no existing document → this is a create; proceed.
-            Err(StoreError::Store(s)) if s.code == DbStoreErrorCode::NotFound => {}
-            Err(e) => return Err(store_err(e)),
-        }
-    }
-    database_store::write_database_document(
-        mount,
-        mp,
-        &resolved.relative_path,
-        content,
-        TitleLintScope::Unlinted { main },
-    )
-    .map_err(store_err)
-}
-
 /// v4 `params.title || path.basename(filePath)`.
 fn display_title_for(title: Option<&str>, file_path: &str) -> String {
     match title {
         Some(t) if !t.is_empty() => t.to_string(),
         _ => node_basename(file_path).to_string(),
-    }
-}
-
-/// Fire the refresh seam, or log a loud skip when unwired (never silent).
-fn schedule_refresh(
-    scheduler: Option<&dyn MountRefreshScheduler>,
-    mount_point_id: &str,
-    path: Option<&str>,
-    file_path: &str,
-) {
-    match scheduler {
-        Some(s) => s.schedule_refresh(mount_point_id, path),
-        None => {
-            // The seam is unwired (defaults to None until unification wires lane
-            // A's reindex/embed services). Loudly note the skip (never silent).
-            tracing::warn!(
-                target: "quilltap::documents",
-                file_path = %file_path,
-                mount_point_id = %mount_point_id,
-                "MountRefreshScheduler unwired — skipping document-store refresh",
-            );
-        }
     }
 }
 
@@ -877,9 +666,12 @@ mod tests {
 
     /// P4.D340 R-8 (c): Document Mode answers v4's `Failed to write document:
     /// <message>` 500 — a refusal is a plain store error here, carrying its
-    /// message.
+    /// message. (P4.D380: the write reaches it through the core's one writer,
+    /// `write_file_with_mtime_check` → `store_error_message` → `DocError::Store`.)
     #[test]
     fn a_title_lint_refusal_is_a_store_error_with_its_message() {
+        let store_err =
+            |e: StoreError| DocError::Store(crate::tools::doc_edit::shared::store_error_message(e));
         let r = crate::inventory::errors::InventoryRefusal::title_shadow(
             "Lantern",
             &[

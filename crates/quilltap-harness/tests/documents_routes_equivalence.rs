@@ -405,6 +405,7 @@ fn documents_routes_match_oracle() {
             CHAT_A,
             json!({ "filePath": "notes/beta.md", "scope": "document_store", "mountPoint": GEN, "mode": "split" }),
             None,
+            None,
         ));
         let t = dump_chat_docs(&db, CHAT_A);
         check("chat_open_document_reactivate", &r, Some(t), &mut failed);
@@ -415,6 +416,7 @@ fn documents_routes_match_oracle() {
             &db,
             CHAT_A,
             json!({ "scope": "document_store", "mountPoint": GEN, "targetFolder": "notes", "mode": "split" }),
+            None,
             None,
         ));
         let t = dump_chat_docs(&db, CHAT_A);
@@ -517,6 +519,7 @@ fn documents_routes_match_oracle() {
             &db,
             json!({ "filePath": "notes/alpha.md", "scope": "document_store", "mountPoint": GEN }),
             None,
+            None,
         ));
         check("standalone_open_existing", &r, None, &mut failed);
     }
@@ -558,6 +561,345 @@ fn documents_routes_match_oracle() {
         ));
         check("standalone_delete", &r, None, &mut failed);
     }
+
+    // === P4.D380 === (v4 `a3d53eae1` / `30a3b4cb7` / `5efe53ea7` /
+    // `c17033f04`): the document core under Document Mode, over the
+    // `documents-core.json` plants (the P4.D376 idiom). Each row is compared as
+    // the family compares (status + body / error, sorted keys, minted fields
+    // blanked) AND byte-for-byte in key order (contract C14's `viewer` sits
+    // after `content` / `mtime`; route families need byte compares), and the
+    // capturing rows compare v4's caller-thread lines (the HTTP layer, the
+    // read's blob DEBUGs, the picker DEBUG) with v5's — the core's own lines
+    // inside the write closures run on the writer thread and are unit-pinned
+    // (`documents::core::tests`).
+    {
+        #[derive(Deserialize)]
+        struct CorePlant {
+            db: String,
+            sql: String,
+        }
+        #[derive(Deserialize)]
+        struct CoreSpec {
+            plants: Vec<CorePlant>,
+        }
+        let core: CoreSpec = serde_json::from_str(
+            &std::fs::read_to_string(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../harness/oracle/fixtures/documents-core.json"),
+            )
+            .unwrap(),
+        )
+        .expect("documents-core.json");
+        let planted = |tag: &str| -> ScratchDb {
+            let scratch_dir = tempfile::Builder::new()
+                .prefix(&format!("qt-doc-routes-{tag}-"))
+                .tempdir()
+                .expect("tempdir");
+            let main = scratch_dir.path().join("main.db");
+            let mount = scratch_dir.path().join("mount.db");
+            std::fs::copy(fixtures_dir().join("documents-main.db"), &main).unwrap();
+            std::fs::copy(fixtures_dir().join("documents-mount.db"), &mount).unwrap();
+            for (db, path) in [("main", &main), ("mount", &mount)] {
+                let w = quilltap_core::db::Writer::open_writable(path, &spec.test_pepper_base64)
+                    .expect("open plant copy");
+                for p in core.plants.iter().filter(|p| p.db == db) {
+                    w.connection()
+                        .execute_batch(&p.sql)
+                        .unwrap_or_else(|e| panic!("plant `{}`: {e}", p.sql));
+                }
+            }
+            let db = Db::open(
+                DbPaths {
+                    main,
+                    mount_index: Some(mount),
+                    llm_logs: None,
+                },
+                &spec.test_pepper_base64,
+            )
+            .expect("open db");
+            ScratchDb {
+                db,
+                _dir: scratch_dir,
+            }
+        };
+        fn sql_rows(conn: &rusqlite::Connection, sql: &str, args: &[&str]) -> Vec<Value> {
+            let mut stmt = conn.prepare(sql).unwrap();
+            let names: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
+            let params = rusqlite::params_from_iter(args.iter());
+            stmt.query_map(params, |r| {
+                let mut o = serde_json::Map::new();
+                for (i, n) in names.iter().enumerate() {
+                    let v = match r.get_ref(i)? {
+                        rusqlite::types::ValueRef::Null => Value::Null,
+                        rusqlite::types::ValueRef::Integer(x) => json!(x),
+                        rusqlite::types::ValueRef::Real(x) => json!(x),
+                        rusqlite::types::ValueRef::Text(t) => json!(String::from_utf8_lossy(t)),
+                        rusqlite::types::ValueRef::Blob(b) => json!(b.len()),
+                    };
+                    o.insert(n.clone(), v);
+                }
+                Ok(Value::Object(o))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+        }
+        let dump_all_chat_docs = |db: &Db| -> Value {
+            db.read_main(|main| {
+                Ok(json!(sql_rows(
+                    main,
+                    "SELECT chatId, filePath, scope, mountPoint, displayTitle, isActive FROM chat_documents ORDER BY chatId, scope, filePath, mountPoint",
+                    &[],
+                )))
+            })
+            .unwrap()
+        };
+        let dump_upload = |db: &Db, rel: &str| -> Value {
+            let rel = rel.to_string();
+            db.read_mount_index(move |mount| {
+                Ok(json!({
+                    "link": sql_rows(
+                        mount,
+                        "SELECT l.relativePath, f.fileType, l.conversionStatus, l.extractedText, l.extractedTextSha256, \
+                                l.extractionStatus, l.extractionError, l.plainTextLength, d.content \
+                           FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId \
+                           LEFT JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                          WHERE l.relativePath = ?1",
+                        &[&rel],
+                    ),
+                    "blobs": sql_rows(mount, "SELECT storedMimeType, sizeBytes FROM doc_mount_blobs ORDER BY storedMimeType", &[]),
+                }))
+            })
+            .unwrap()
+        };
+        // The lines a capturing row compares — the ones v5 emits on the
+        // CALLER's thread (rendered as the capture rig renders v5's).
+        const COMPARED: &[&str] = &[
+            "Refused an editor write to a read-only document",
+            "Refused an editor write to a read-only standalone document",
+            "Failed to resolve document path for read",
+            "readDatabaseBlobAsDocument: reading an uploaded text blob as a document",
+            "readDocument: no document at path; reading the uploaded blob",
+            "Resolved accessible document stores for picker",
+        ];
+        let render_v4 = |l: &Value| -> String {
+            let level = l["level"].as_str().unwrap().to_uppercase();
+            let mut out = format!(
+                "{level} quilltap::documents {}",
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                match v {
+                    Value::String(x) => out.push_str(&format!(" {k}={x}")),
+                    other => out.push_str(&format!(" {k}={other}")),
+                }
+            }
+            out
+        };
+        let byte = |v: &Value| -> String {
+            let mut v = v.clone();
+            canon_numbers(&mut v);
+            blank_minted(&mut v);
+            serde_json::to_string(&v).unwrap()
+        };
+        let mut core_failed: Vec<String> = Vec::new();
+        type RowRun<'a> = &'a dyn Fn(&Db) -> (Response, Option<Value>, Vec<String>);
+        let mut row = |name: &str, run: RowRun| {
+            let db = planted(name);
+            let (r, tables, lines) = run(&db);
+            let mut f = Vec::new();
+            check(name, &r, tables, &mut f);
+            core_failed.extend(f);
+            let rec = &oracle[name];
+            if rec["status"] == json!(200) && byte(&response_data(&r)) != byte(&rec["body"]) {
+                eprintln!(
+                    "[{name}] KEY ORDER:\n  v5 {}\n  v4 {}",
+                    byte(&response_data(&r)),
+                    byte(&rec["body"])
+                );
+                core_failed.push(format!("{name} (key order)"));
+            }
+            if let Some(v4_lines) = rec.get("lines").and_then(Value::as_array) {
+                let want: Vec<String> = v4_lines
+                    .iter()
+                    .filter(|l| COMPARED.contains(&l["message"].as_str().unwrap_or("")))
+                    .map(render_v4)
+                    .collect();
+                let got: Vec<String> = lines
+                    .into_iter()
+                    .filter(|l| {
+                        COMPARED
+                            .iter()
+                            .any(|m| l.contains(&format!("quilltap::documents {m}")))
+                    })
+                    .collect();
+                if got != want {
+                    eprintln!("[{name}] LINES:\n  v5 {got:#?}\n  v4 {want:#?}");
+                    core_failed.push(format!("{name} (lines)"));
+                }
+                // The silence leg: a viewed file's read logs none of them (both
+                // sides); every other capturing row must compare a real line.
+                let silent = name == "p4d380_read_viewer";
+                assert_eq!(
+                    want.is_empty(),
+                    silent,
+                    "{name}: compared v4 lines {want:?}"
+                );
+            }
+        };
+        let rt2 = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let up =
+            json!({ "filePath": "uploads/up.md", "scope": "document_store", "mountPoint": GEN });
+        let pic =
+            json!({ "filePath": "uploads/pic.png", "scope": "document_store", "mountPoint": GEN });
+        let with = |base: &Value, extra: Value| -> Value {
+            let mut b = base.clone();
+            for (k, v) in extra.as_object().unwrap() {
+                b[k] = v.clone();
+            }
+            b
+        };
+        let cap = |f: &dyn Fn() -> Response| -> (Response, Vec<String>) {
+            quilltap_core::test_support::captured_with(f)
+        };
+        row("p4d380_open_uploaded_md", &|db| {
+            let r = rt2.block_on(documents::chat_document_open(
+                db,
+                CHAT_A,
+                with(&up, json!({"mode": "split"})),
+                None,
+                None,
+            ));
+            (r, None, vec![])
+        });
+        row("p4d380_open_viewer", &|db| {
+            let r = rt2.block_on(documents::chat_document_open(
+                db,
+                CHAT_A,
+                with(&pic, json!({"mode": "split"})),
+                None,
+                None,
+            ));
+            (r, None, vec![])
+        });
+        row("p4d380_read_viewer", &|db| {
+            let (r, l) = cap(&|| documents::chat_document_read(db, CHAT_A, pic.clone(), None));
+            (r, None, l)
+        });
+        row("p4d380_read_uploaded_md", &|db| {
+            let (r, l) = cap(&|| documents::chat_document_read(db, CHAT_A, up.clone(), None));
+            (r, None, l)
+        });
+        row("p4d380_write_readonly", &|db| {
+            let (r, l) = cap(&|| {
+                rt2.block_on(documents::chat_document_write(
+                    db,
+                    CHAT_A,
+                    with(&pic, json!({"content": "x"})),
+                    None,
+                    None,
+                ))
+            });
+            (r, None, l)
+        });
+        row("p4d380_save_uploaded_md", &|db| {
+            let r = rt2.block_on(documents::chat_document_write(
+                db,
+                CHAT_A,
+                with(&up, json!({"content": "# Up\n\nedited words\n"})),
+                None,
+                None,
+            ));
+            (r, Some(dump_upload(db, "uploads/up.md")), vec![])
+        });
+        row("p4d380_read_resolve_400", &|db| {
+            let (r, l) = cap(&|| {
+                documents::chat_document_read(
+                    db,
+                    CHAT_A,
+                    json!({ "filePath": "../escape.md", "scope": "document_store", "mountPoint": GEN }),
+                    None,
+                )
+            });
+            (r, None, l)
+        });
+        row("p4d380_rename_source_missing", &|db| {
+            let r = rt2.block_on(documents::chat_document_rename(
+                db,
+                CHAT_A,
+                json!({ "newTitle": "phantom", "chatDocumentId": "d3800000-0000-4000-8000-0000000000c1" }),
+                None,
+                None,
+            ));
+            (r, None, vec![])
+        });
+        row("p4d380_rename_folder", &|db| {
+            let r = rt2.block_on(documents::chat_document_rename(
+                db,
+                CHAT_A,
+                json!({ "newTitle": "renamed", "chatDocumentId": "d3800000-0000-4000-8000-0000000000c2" }),
+                None,
+                None,
+            ));
+            (r, None, vec![])
+        });
+        row("p4d380_delete_folder", &|db| {
+            let r = rt2.block_on(documents::chat_document_delete(
+                db,
+                CHAT_A,
+                Some("d3800000-0000-4000-8000-0000000000c2".to_string()),
+                None,
+            ));
+            (r, None, vec![])
+        });
+        row("p4d380_rename_sweeps", &|db| {
+            let r = rt2.block_on(documents::chat_document_rename(
+                db,
+                CHAT_A,
+                json!({ "newTitle": "omega", "chatDocumentId": R1 }),
+                None,
+                None,
+            ));
+            (r, Some(dump_all_chat_docs(db)), vec![])
+        });
+        row("p4d380_standalone_read_viewer", &|db| {
+            (
+                documents::document_read(db, pic.clone(), None),
+                None,
+                vec![],
+            )
+        });
+        row("p4d380_standalone_write_readonly", &|db| {
+            let (r, l) = cap(&|| {
+                rt2.block_on(documents::document_write(
+                    db,
+                    with(&pic, json!({"content": "x"})),
+                    None,
+                    None,
+                ))
+            });
+            (r, None, l)
+        });
+        row("p4d380_standalone_open_uploaded_md", &|db| {
+            (
+                rt2.block_on(documents::document_open(db, up.clone(), None, None)),
+                None,
+                vec![],
+            )
+        });
+        row("p4d380_accessible_stores_lines", &|db| {
+            let (r, l) = cap(&|| documents::chat_accessible_stores(db, CHAT_A, false));
+            (r, None, l)
+        });
+        assert!(
+            core_failed.is_empty(),
+            "P4.D380 document-core rows differ: {core_failed:?}"
+        );
+    }
+    // === end P4.D380 ===
 
     // === P4.D376 === (v4 `0c47f4539`): the accessible stores on the cast pool
     // and the persona group stores on `cast_group_mounts`, over the

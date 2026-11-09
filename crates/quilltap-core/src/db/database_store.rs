@@ -308,9 +308,9 @@ pub fn read_database_blob_text(
     relative_path: &str,
 ) -> Result<Option<DatabaseBlobText>, StoreError> {
     let rel = normalise_relative_path(relative_path)?;
-    let Some(blob) = super::doc_mount_blobs::DocMountBlobsRepository::new(conn)
-        .find_by_mount_point_and_path(mount_point_id, &rel)?
-    else {
+    // P4.D380: v4's `findByMountPointAndPath` is a fallback (see
+    // `find_blob_by_path_or_none`) — reached here by the core's blob read.
+    let Some(blob) = find_blob_by_path_or_none(conn, mount_point_id, &rel) else {
         return Ok(None);
     };
     let text = match blob.extracted_text {
@@ -362,7 +362,7 @@ pub fn read_database_blob_as_document(
         return Ok(None);
     }
     let blobs = super::doc_mount_blobs::DocMountBlobsRepository::new(conn);
-    let Some(blob) = blobs.find_by_mount_point_and_path(mount_point_id, &rel)? else {
+    let Some(blob) = find_blob_by_path_or_none(conn, mount_point_id, &rel) else {
         return Ok(None);
     };
     // v4 `readData` is a fallback (`Failed to read blob data` + `null`).
@@ -381,6 +381,33 @@ pub fn read_database_blob_as_document(
         mtime_ms: crate::episodic::js_date_parse_ms(&blob.last_modified).unwrap_or(0),
         size: data.len() as i64,
     }))
+}
+
+/// v4 `docMountBlobs.findByMountPointAndPath` as its callers see it
+/// (`doc-mount-blobs.repository.ts:393-420`): a try/catch FALLBACK — a failed
+/// read (a store whose `doc_mount_blobs` table was never created, say) logs
+/// WARN `Failed to find blob by path` `{mountPointId, relativePath, error}` and
+/// answers `null`, so a document read 404s rather than 500s.
+fn find_blob_by_path_or_none(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Option<super::doc_mount_blobs::BlobWithLink> {
+    match super::doc_mount_blobs::DocMountBlobsRepository::new(conn)
+        .find_by_mount_point_and_path(mount_point_id, relative_path)
+    {
+        Ok(found) => found,
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::db",
+                mountPointId = %mount_point_id,
+                relativePath = %relative_path,
+                error = %super::fallback::error_text(&e),
+                "Failed to find blob by path"
+            );
+            None
+        }
+    }
 }
 
 /// Which blob read answered [`read_database_blob_for_document`] (v4's

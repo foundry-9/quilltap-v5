@@ -111,7 +111,42 @@ interface CaseSpec {
   // === P4.D376 === SQL applied to the per-case COPY before the database opens.
   plants?: Array<{ db: 'main' | 'mount'; sql: string }>;
   // === end P4.D376 ===
+  // === P4.D380 === capture v4's logger lines (DEBUG included) for this case.
+  captureLines?: boolean;
+  // === end P4.D380 ===
 }
+
+// === P4.D380 === dumps for the document-core rows.
+/** Every chat_documents row (any chat), id-free, in a stable order. */
+async function dumpAllChatDocs(): Promise<unknown> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const db = getRawDatabase() as unknown as { prepare: (s: string) => { all: () => unknown[] } };
+  return db
+    .prepare(
+      'SELECT chatId, filePath, scope, mountPoint, displayTitle, isActive FROM chat_documents ORDER BY chatId, scope, filePath, mountPoint',
+    )
+    .all();
+}
+/** The saved upload's link + what it now points at (#134 / item 11). */
+async function dumpUpload(rel: string): Promise<unknown> {
+  const { getRawMountIndexDatabase } = await import('@/lib/database/backends/sqlite/mount-index-client');
+  const db = getRawMountIndexDatabase() as unknown as {
+    prepare: (s: string) => { all: (...a: unknown[]) => unknown[]; get: (...a: unknown[]) => unknown };
+  };
+  return {
+    link: db
+      .prepare(
+        `SELECT l.relativePath, f.fileType, l.conversionStatus, l.extractedText, l.extractedTextSha256,
+                l.extractionStatus, l.extractionError, l.plainTextLength, d.content
+           FROM doc_mount_file_links l JOIN doc_mount_files f ON f.id = l.fileId
+           LEFT JOIN doc_mount_documents d ON d.fileId = l.fileId
+          WHERE l.relativePath = ?`,
+      )
+      .all(rel),
+    blobs: db.prepare('SELECT storedMimeType, sizeBytes FROM doc_mount_blobs ORDER BY storedMimeType').all(),
+  };
+}
+// === end P4.D380 ===
 
 interface RunCtx {
   chatActions: Record<string, (...a: unknown[]) => Promise<unknown>>;
@@ -157,6 +192,10 @@ async function runCase(
   scratch: string,
   fixtures: { main: string; mount: string },
 ): Promise<Record<string, unknown>> {
+  // === P4.D380 === the logger reads LOG_LEVEL when it loads (per case, after
+  // resetModules), so a capturing case sets it first.
+  process.env.LOG_LEVEL = c.captureLines ? 'debug' : 'error';
+  // === end P4.D380 ===
   jest.resetModules();
   applyMocks(spec);
 
@@ -197,12 +236,28 @@ async function runCase(
       (...a: unknown[]) => Promise<unknown>
     >;
     const context = { repos: getRepositories() };
+    // === P4.D380 === splice the singleton logger's transports (children share
+    // the array) to record every line this case logs.
+    const lines: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+    if (c.captureLines) {
+      const { logger } = await import('@/lib/logger');
+      const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+      internal.transports.splice(0, internal.transports.length, {
+        write: (d: unknown) => {
+          const data = d as { level: string; message: string; context?: Record<string, unknown> };
+          const { service: _s, environment: _e, module: _m, ...fields } = data.context ?? {};
+          lines.push({ level: data.level, message: data.message, fields });
+        },
+      });
+    }
+    // === end P4.D380 ===
     const out = await c.run({ chatActions, standalone, context });
     return {
       name: c.name,
       status: out.status,
       body: out.body,
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
+      ...(c.captureLines ? { lines } : {}),
     };
   } finally {
     await new Promise((r) => setTimeout(r, 250));
@@ -263,12 +318,14 @@ async function main(): Promise<void> {
     {
       name: 'chat_accessible_stores_all',
       run: async ({ chatActions, context }) =>
-        respond(await chatActions.handleAccessibleStores(CHAT_A, context, { all: true })),
+        // P4.D380: v4 `0c47f4539` reads the session `user` (the cast pool) —
+        // the context carries it, as the P4.D376 rows' do.
+        respond(await chatActions.handleAccessibleStores(CHAT_A, { ...context, user: { id: spec.userId } }, { all: true })),
     },
     {
       name: 'chat_accessible_stores_default',
       run: async ({ chatActions, context }) =>
-        respond(await chatActions.handleAccessibleStores(CHAT_A, context, {})),
+        respond(await chatActions.handleAccessibleStores(CHAT_A, { ...context, user: { id: spec.userId } }, {})),
     },
     {
       name: 'chat_read_document_existing',
@@ -466,6 +523,93 @@ async function main(): Promise<void> {
         return { ...r, tables: await dumpChatDocs(CHAT_A) };
       },
     },
+    // === P4.D380 === (v4 `a3d53eae1` / `30a3b4cb7` / `5efe53ea7` /
+    // `c17033f04`): the document core under Document Mode — the uploaded `.md`
+    // read and saved as a document (#134), the read-only viewer and its write
+    // refusal (C14), the resolve 400, the rename 404 / 400 and the delete 400,
+    // and a rename's sweep over every row that reaches the same store. Plants:
+    // `documents-core.json` (applied to the per-case COPY, as P4.D376's).
+    ...((): CaseSpec[] => {
+      const core = JSON.parse(
+        fs.readFileSync(join(here, '..', 'fixtures', 'documents-core.json'), 'utf8'),
+      ) as { plants: Array<{ db: 'main' | 'mount'; sql: string }> };
+      const P = core.plants;
+      const UP = { filePath: 'uploads/up.md', scope: 'document_store', mountPoint: GEN };
+      const PIC = { filePath: 'uploads/pic.png', scope: 'document_store', mountPoint: GEN };
+      const chatPost = (fn: string, body: unknown) => async ({ chatActions, context }: RunCtx) =>
+        respond(await chatActions[fn](mockRequest(SB, body), CHAT_A, context));
+      return [
+        { name: 'p4d380_open_uploaded_md', plants: P, run: chatPost('handleOpenDocument', { ...UP, mode: 'split' }) },
+        { name: 'p4d380_open_viewer', plants: P, run: chatPost('handleOpenDocument', { ...PIC, mode: 'split' }) },
+        { name: 'p4d380_read_viewer', plants: P, captureLines: true, run: chatPost('handleReadDocument', PIC) },
+        { name: 'p4d380_read_uploaded_md', plants: P, captureLines: true, run: chatPost('handleReadDocument', UP) },
+        { name: 'p4d380_write_readonly', plants: P, captureLines: true, run: chatPost('handleWriteDocument', { ...PIC, content: 'x' }) },
+        {
+          name: 'p4d380_save_uploaded_md',
+          plants: P,
+          run: async (ctx) => {
+            const r = await chatPost('handleWriteDocument', { ...UP, content: '# Up\n\nedited words\n' })(ctx);
+            return { ...r, tables: await dumpUpload('uploads/up.md') };
+          },
+        },
+        {
+          name: 'p4d380_read_resolve_400',
+          plants: P,
+          captureLines: true,
+          run: chatPost('handleReadDocument', { filePath: '../escape.md', scope: 'document_store', mountPoint: GEN }),
+        },
+        {
+          name: 'p4d380_rename_source_missing',
+          plants: P,
+          run: chatPost('handleRenameDocument', { newTitle: 'phantom', chatDocumentId: 'd3800000-0000-4000-8000-0000000000c1' }),
+        },
+        {
+          name: 'p4d380_rename_folder',
+          plants: P,
+          run: chatPost('handleRenameDocument', { newTitle: 'renamed', chatDocumentId: 'd3800000-0000-4000-8000-0000000000c2' }),
+        },
+        {
+          name: 'p4d380_delete_folder',
+          plants: P,
+          run: chatPost('handleDeleteDocument', { chatDocumentId: 'd3800000-0000-4000-8000-0000000000c2' }),
+        },
+        {
+          name: 'p4d380_rename_sweeps',
+          plants: P,
+          run: async (ctx) => {
+            const r = await chatPost('handleRenameDocument', { newTitle: 'omega', chatDocumentId: R1 })(ctx);
+            return { ...r, tables: await dumpAllChatDocs() };
+          },
+        },
+        {
+          name: 'p4d380_standalone_read_viewer',
+          plants: P,
+          run: async ({ standalone }) =>
+            respond(await standalone.POST(mockRequest(`${SB}?action=read-document`, PIC))),
+        },
+        {
+          name: 'p4d380_standalone_write_readonly',
+          plants: P,
+          captureLines: true,
+          run: async ({ standalone }) =>
+            respond(await standalone.POST(mockRequest(`${SB}?action=write-document`, { ...PIC, content: 'x' }))),
+        },
+        {
+          name: 'p4d380_standalone_open_uploaded_md',
+          plants: P,
+          run: async ({ standalone }) =>
+            respond(await standalone.POST(mockRequest(`${SB}?action=open-document`, UP))),
+        },
+        {
+          name: 'p4d380_accessible_stores_lines',
+          plants: P,
+          captureLines: true,
+          run: async ({ chatActions, context }) =>
+            respond(await chatActions.handleAccessibleStores(CHAT_A, { ...context, user: { id: spec.userId } }, {})),
+        },
+      ];
+    })(),
+    // === end P4.D380 ===
     // === P4.D376 === (v4 `0c47f4539`): the accessible stores on the cast pool
     // and the persona group stores on `castGroupMounts`, over the
     // `documents-reach.json` plants. The comparand (Rust side) is `stores`

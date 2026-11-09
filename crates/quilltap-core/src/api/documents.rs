@@ -24,11 +24,13 @@ use crate::db::chat_documents::{ChatDocumentFull, ChatDocumentsRepository, OpenD
 use crate::db::chats::{ChatUpdate, ChatsRepository};
 use crate::db::runtime::Db;
 use crate::db::{chats_read, DbError};
+use crate::doc_edit::path_resolver::ResolvedPath;
 use crate::doc_edit::DocEditScope;
+use crate::documents::core::{self as doc_core, Refresh, RenameOutcome, SweepStore};
 use crate::documents::{
     self, compute_rename_target, DeleteOutcome, DocError, DocumentAccessContext,
-    MountRefreshScheduler, OpenDocumentFileParams, RenameTarget, MAX_RECENT_DOCUMENTS,
-    STANDALONE_CHAT_ID,
+    MountRefreshScheduler, OpenDocumentFileParams, OpenedDocumentFile, RenameTarget,
+    MAX_RECENT_DOCUMENTS, STANDALONE_CHAT_ID,
 };
 use crate::services::librarian_notifications::{
     content_hidden_from_characters, document_hidden_from_characters,
@@ -278,6 +280,281 @@ fn recent_dto(doc: &ChatDocumentFull, chat_id: &str) -> Value {
 }
 
 // ===========================================================================
+// === P4.D380 === The operator HTTP layer (v4 `lib/documents/operator-doc-http.ts`)
+// ===========================================================================
+//
+// v4's helpers map the document core's outcomes onto the statuses both routes
+// share — a resolution failure is a 400, a missing file a 404, a stale mtime or
+// a taken rename target a 409, a read-only write a 400, anything else a 500 —
+// and log each failure under the route's SUBJECT (`document` + `{chatId}` on the
+// chat route, `standalone document` alone). Every line here is emitted on the
+// CALLER's thread, after the read / write closure hands its outcome back (the
+// core's own lines run inside the closure, on the writer thread).
+
+/// v4 `DocumentHttpLog` — how a route's lines name the file and what they carry.
+#[derive(Clone)]
+struct DocLog {
+    subject: &'static str,
+    chat_id: Option<String>,
+}
+
+impl DocLog {
+    fn chat(chat_id: &str) -> Self {
+        DocLog {
+            subject: "document",
+            chat_id: Some(chat_id.to_string()),
+        }
+    }
+    fn standalone() -> Self {
+        DocLog {
+            subject: "standalone document",
+            chat_id: None,
+        }
+    }
+    /// v4 `capitalize(subject)`.
+    fn capitalized(&self) -> String {
+        let mut c = self.subject.chars();
+        match c.next() {
+            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            None => String::new(),
+        }
+    }
+}
+
+/// The message a resolution failure carries (the resolver's, or the host-fs
+/// seam's sentence).
+fn resolve_failure_message(e: crate::doc_edit::path_resolver::ResolveError) -> String {
+    documents_resolve_message(e)
+}
+
+/// v4 `resolveDocumentForRoute`'s failure arm: WARN `Failed to resolve
+/// <subject> path for <verb>` `{...fields, filePath, scope, mountPoint,
+/// error}` → 400 `Could not resolve <filePath>: <message>`.
+fn resolve_failed(
+    log: &DocLog,
+    verb: &str,
+    file_path: &str,
+    scope: &str,
+    mount_point: Option<&str>,
+    message: &str,
+) -> Response {
+    tracing::warn!(
+        target: "quilltap::documents",
+        chatId = log.chat_id.as_deref(),
+        filePath = file_path,
+        scope = scope,
+        mountPoint = mount_point,
+        error = message,
+        "Failed to resolve {} path for {}",
+        log.subject,
+        verb
+    );
+    bad_request(format!("Could not resolve {file_path}: {message}"))
+}
+
+/// Resolve a route's document with the operator override (a read closure).
+fn resolve_for_route(
+    db: &Db,
+    ctx: &DocumentAccessContext,
+    scope: DocEditScope,
+    file_path: &str,
+    mount_point: Option<&str>,
+) -> Result<Result<ResolvedPath, String>, DbError> {
+    let ctx = ctx.clone();
+    let fp = file_path.to_string();
+    let mp = mount_point.map(str::to_string);
+    db.read_main(move |main| {
+        db.read_mount_index(move |mount| {
+            Ok(documents::resolve_operator_doc_path(
+                main,
+                mount,
+                &ctx,
+                scope,
+                &fp,
+                mp.as_deref(),
+                None,
+            )
+            .map_err(resolve_failure_message))
+        })
+    })
+}
+
+/// The Node `error.code` a v5 message carries as its `E<CODE>:` prefix (v4's
+/// read 500 logs `code`); `None` is v4's `undefined` (left out).
+fn node_code_of(message: &str) -> Option<&str> {
+    let (head, _) = message.split_once(':')?;
+    (head.len() > 1 && head.starts_with('E') && head.chars().all(|c| c.is_ascii_uppercase()))
+        .then_some(head)
+}
+
+/// v4 `openDocumentResponse`'s failure arm: a [`DocError::Missing`] is a 404
+/// with its message; anything else logs ERROR `Failed to open <subject>`
+/// `{...fields, filePath, scope, mountPoint, error}` → 500 `Failed to open
+/// document: <message>`.
+fn open_failed(
+    log: &DocLog,
+    file_path: Option<&str>,
+    scope: DocEditScope,
+    mount_point: Option<&str>,
+    e: DocError,
+) -> Response {
+    if let DocError::Missing(m) = e {
+        return not_found_msg(m);
+    }
+    let message = e.message();
+    tracing::error!(
+        target: "quilltap::documents",
+        chatId = log.chat_id.as_deref(),
+        filePath = file_path,
+        scope = scope.as_str(),
+        mountPoint = mount_point,
+        error = %message,
+        "Failed to open {}",
+        log.subject
+    );
+    server_error(format!("Failed to open document: {message}"))
+}
+
+/// v4 `openedDocumentPayload` — `{document, content, mtime?, viewer?}` (the
+/// `viewer` key only when present; `mtime` left out for a viewed file).
+fn opened_document_payload(opened: &OpenedDocumentFile, document: Value) -> Map<String, Value> {
+    let mut o = Map::new();
+    o.insert("document".into(), document);
+    o.insert("content".into(), json!(opened.content));
+    if let Some(m) = opened.mtime {
+        o.insert("mtime".into(), json!(m));
+    }
+    if let Some(v) = &opened.viewer {
+        o.insert(
+            "viewer".into(),
+            serde_json::to_value(v).unwrap_or(Value::Null),
+        );
+    }
+    o
+}
+
+/// v4 `writeDocumentResponse`'s failure arms.
+fn write_failed(log: &DocLog, file_path: &str, scope: DocEditScope, e: DocError) -> Response {
+    match e {
+        DocError::ReadOnly(message) => {
+            tracing::warn!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                filePath = file_path,
+                "Refused an editor write to a read-only {}",
+                log.subject
+            );
+            bad_request(message)
+        }
+        DocError::MtimeMismatch(message) => {
+            tracing::warn!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                filePath = file_path,
+                error = %message,
+                "{} save conflict detected",
+                log.capitalized()
+            );
+            conflict("Document changed elsewhere. Reload it and try again.")
+        }
+        other => {
+            let message = other.message();
+            tracing::error!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                filePath = file_path,
+                scope = scope.as_str(),
+                error = %message,
+                "Failed to write {}",
+                log.subject
+            );
+            server_error(format!("Failed to write document: {message}"))
+        }
+    }
+}
+
+/// v4 `renameDocumentResponse`'s outcome / failure arms.
+fn rename_failed(
+    log: &DocLog,
+    scope: DocEditScope,
+    old_file_path: &str,
+    new_file_path: &str,
+    outcome: Result<RenameOutcome, DocError>,
+) -> Option<Response> {
+    match outcome {
+        Ok(RenameOutcome::Moved) => None,
+        Ok(RenameOutcome::DestinationTaken) => {
+            Some(conflict("A file already exists at that name."))
+        }
+        Ok(RenameOutcome::SourceMissing) => {
+            Some(not_found_msg(format!("File not found: {old_file_path}")))
+        }
+        Ok(RenameOutcome::SourceNotAFile) => {
+            Some(bad_request(format!("Path is not a file: {old_file_path}")))
+        }
+        Err(DocError::Unsupported(m)) => Some(bad_request(m)),
+        Err(e) => {
+            let message = e.message();
+            tracing::error!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                from = old_file_path,
+                to = new_file_path,
+                scope = scope.as_str(),
+                error = %message,
+                "Failed to rename {}",
+                log.subject
+            );
+            Some(server_error(format!(
+                "Failed to rename document: {message}"
+            )))
+        }
+    }
+}
+
+/// v4 `deleteDocumentResponse`'s outcome / failure arms.
+fn delete_failed(
+    log: &DocLog,
+    file_path: &str,
+    scope: DocEditScope,
+    outcome: Result<DeleteOutcome, DocError>,
+) -> Option<Response> {
+    match outcome {
+        Ok(DeleteOutcome::Deleted) => None,
+        // v4 `notFound('File')` → "File not found".
+        Ok(DeleteOutcome::NotFound) => Some(not_found("File")),
+        Ok(DeleteOutcome::NotAFile) => {
+            Some(bad_request(format!("Path is not a file: {file_path}")))
+        }
+        Err(e) => {
+            let message = e.message();
+            tracing::error!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                filePath = file_path,
+                scope = scope.as_str(),
+                error = %message,
+                "Failed to delete {}",
+                log.subject
+            );
+            Some(server_error(format!(
+                "Failed to delete document: {message}"
+            )))
+        }
+    }
+}
+
+/// The scheduler as the core's [`Refresh`] cadence.
+fn refresh_of(scheduler: &Option<Arc<dyn MountRefreshScheduler>>) -> Refresh<'_> {
+    Refresh::Scheduled(
+        scheduler
+            .as_ref()
+            .map(|a| &**a as &dyn MountRefreshScheduler),
+    )
+}
+// === end P4.D380 ===
+
+// ===========================================================================
 // Chat-scoped writes (open / close / write / rename / delete)
 // ===========================================================================
 
@@ -312,22 +589,17 @@ fn default_split_mode() -> String {
 /// scope/filePath/mountPoint/displayTitle are exactly what we opened with).
 struct OpenOk {
     doc_id: String,
-    content: String,
-    mtime: Option<i64>,
-    is_new: bool,
-    effective_scope: DocEditScope,
-    display_title: String,
-    mount_point: Option<String>,
-    file_path: String,
+    opened: OpenedDocumentFile,
 }
 
-/// v4 `handleOpenDocument`. (Open never schedules a store refresh — v4's
-/// `openDocumentFile` create branch writes a blank without the refresh — so no
-/// `MountRefreshScheduler` is threaded here.)
+/// v4 `handleOpenDocument`. A blank create writes through the core's
+/// `ensureDocument`, so it is followed by the store refresh (P4.D380, #137 /
+/// #133): the scheduler is threaded here.
 pub async fn chat_document_open(
     db: &Db,
     chat_id: &str,
     bag: Value,
+    scheduler: Option<Arc<dyn MountRefreshScheduler>>,
     files_dir: Option<std::path::PathBuf>,
 ) -> Response {
     let bag: ChatOpenBag = match serde_json::from_value(bag) {
@@ -340,7 +612,7 @@ pub async fn chat_document_open(
         Err(e) => return internal(e),
     };
     let requested_scope = scope_from_str(&bag.scope);
-    let effective_scope = if bag.file_path.is_none()
+    let effective_scope = if bag.file_path.as_deref().unwrap_or("").is_empty()
         && requested_scope == DocEditScope::Project
         && ctx.project_id.is_none()
     {
@@ -366,7 +638,13 @@ pub async fn chat_document_open(
                 mount_point: mount_in.as_deref(),
                 target_folder: folder_in.as_deref(),
             };
-            let opened = match documents::open_document_file(main, mount, &ctx, &params) {
+            let opened = match documents::open_document_file(
+                main,
+                mount,
+                &ctx,
+                &params,
+                refresh_of(&scheduler),
+            ) {
                 Ok(o) => o,
                 Err(e) => return Ok(Err(e)),
             };
@@ -387,58 +665,57 @@ pub async fn chat_document_open(
                     ..Default::default()
                 },
             )?;
-            Ok(Ok(OpenOk {
-                doc_id,
-                content: opened.content,
-                mtime: opened.mtime,
-                is_new: opened.is_new,
-                effective_scope,
-                display_title: opened.display_title,
-                mount_point: mount_in.clone(),
-                file_path: opened.file_path,
-            }))
+            Ok(Ok(OpenOk { doc_id, opened }))
         })
         .await;
 
-    let open = match outcome {
+    let OpenOk { doc_id, opened } = match outcome {
         Ok(Ok(o)) => o,
-        Ok(Err(DocError::Missing(m))) => return not_found_msg(m),
         Ok(Err(e)) => {
-            return server_error(format!("Failed to create blank document: {}", e.message()))
+            return open_failed(
+                &DocLog::chat(chat_id),
+                bag.file_path.as_deref(),
+                effective_scope,
+                bag.mount_point.as_deref(),
+                e,
+            )
         }
         Err(e) => return internal(e),
     };
 
     // Post the open announcement (origin: opened-by-user; suppressed for a
     // character_read:false document).
-    let hidden = content_hidden_from_characters(&open.content);
+    let hidden = content_hidden_from_characters(&opened.content);
     let librarian_message = post_librarian_open_announcement(
         db,
         &LibrarianOpenAnnouncement {
             chat_id: chat_id.to_string(),
-            display_title: open.display_title.clone(),
-            file_path: open.file_path.clone(),
-            scope: librarian_scope(open.effective_scope),
-            mount_point: open.mount_point.clone(),
-            is_new: open.is_new,
+            display_title: opened.display_title.clone(),
+            file_path: opened.file_path.clone(),
+            scope: librarian_scope(effective_scope),
+            mount_point: bag.mount_point.clone(),
+            is_new: opened.is_new,
             origin: LibrarianOpenKind::ByUser,
             hidden_from_characters: hidden,
         },
     )
     .await;
 
-    ok(json!({
-        "document": document_object(
-            Some(&open.doc_id),
-            &open.file_path,
-            open.effective_scope.as_str(),
-            open.mount_point.as_deref(),
-            Some(&open.display_title),
+    let mut body = opened_document_payload(
+        &opened,
+        document_object(
+            Some(&doc_id),
+            &opened.file_path,
+            effective_scope.as_str(),
+            bag.mount_point.as_deref(),
+            Some(&opened.display_title),
         ),
-        "content": open.content,
-        "mtime": open.mtime,
-        "librarianMessage": librarian_message.unwrap_or(Value::Null),
-    }))
+    );
+    body.insert(
+        "librarianMessage".into(),
+        librarian_message.unwrap_or(Value::Null),
+    );
+    ok(Value::Object(body))
 }
 
 /// v4 `handleCloseDocument` — close one open doc (by id, or the earliest-opened
@@ -537,17 +814,24 @@ pub fn chat_document_read(
         scope_from_str(&bag.scope),
         &bag.file_path,
         bag.mount_point.as_deref(),
+        DocLog::chat(chat_id),
     )
 }
 
-/// The shared read body (chat + standalone). Resolve failure → 400; ENOENT →
-/// 404; other → 500.
+/// The shared read body (chat + standalone) — v4 `readDocumentResponse`
+/// (`operator-doc-http.ts`): resolve (verb `read`, a failure → WARN + 400); a
+/// file Document Mode only views answers `{content: '', viewer}` (its bytes
+/// are never read as text — C14); else the core's read with the one blob
+/// fallback (#134) → `{content, mtime}`; `ENOENT` → 404 `File not found:
+/// <filePath>`; anything else → ERROR `Failed to read <subject>` `{...fields,
+/// filePath, scope, code, error}` → 500.
 fn read_document(
     db: &Db,
     ctx: &DocumentAccessContext,
     scope: DocEditScope,
     file_path: &str,
     mount_point: Option<&str>,
+    log: DocLog,
 ) -> Response {
     let ctx = ctx.clone();
     let fp = file_path.to_string();
@@ -564,35 +848,51 @@ fn read_document(
                 None,
             ) {
                 Ok(r) => r,
-                Err(e) => {
-                    return Ok(Err(ReadFail::Resolve(
-                        documents_resolve_message(e),
-                        fp.clone(),
-                    )))
-                }
+                Err(e) => return Ok(Err(ReadFail::Resolve(resolve_failure_message(e)))),
             };
-            match documents::read_route_document(mount, &resolved) {
-                Ok((content, mtime)) => Ok(Ok(json!({ "content": content, "mtime": mtime }))),
-                // NOT_FOUND (Missing) → v4's ENOENT branch (404).
-                Err(DocError::Missing(_)) => Ok(Err(ReadFail::NotFound(fp.clone()))),
+            match doc_core::view_target_for(mount, &resolved) {
+                Ok(Some(viewer)) => {
+                    return Ok(Ok(json!({
+                        "content": "",
+                        "viewer": serde_json::to_value(viewer).unwrap_or(Value::Null),
+                    })))
+                }
+                Ok(None) => {}
+                Err(e) => return Ok(Err(ReadFail::Server(e.message()))),
+            }
+            match doc_core::read_document(mount, &resolved) {
+                Ok(r) => Ok(Ok(json!({ "content": r.content, "mtime": r.mtime_ms }))),
+                Err(e) if e.is_enoent() => Ok(Err(ReadFail::NotFound)),
                 Err(e) => Ok(Err(ReadFail::Server(e.message()))),
             }
         })
     });
     match result {
         Ok(Ok(body)) => ok(body),
-        Ok(Err(ReadFail::Resolve(msg, fp))) => {
-            bad_request(format!("Could not resolve {fp}: {msg}"))
+        Ok(Err(ReadFail::Resolve(msg))) => {
+            resolve_failed(&log, "read", file_path, scope.as_str(), mount_point, &msg)
         }
-        Ok(Err(ReadFail::NotFound(fp))) => not_found_msg(format!("File not found: {fp}")),
-        Ok(Err(ReadFail::Server(msg))) => server_error(format!("Failed to read document: {msg}")),
+        Ok(Err(ReadFail::NotFound)) => not_found_msg(format!("File not found: {file_path}")),
+        Ok(Err(ReadFail::Server(msg))) => {
+            tracing::error!(
+                target: "quilltap::documents",
+                chatId = log.chat_id.as_deref(),
+                filePath = file_path,
+                scope = scope.as_str(),
+                code = node_code_of(&msg),
+                error = %msg,
+                "Failed to read {}",
+                log.subject
+            );
+            server_error(format!("Failed to read document: {msg}"))
+        }
         Err(e) => internal(e),
     }
 }
 
 enum ReadFail {
-    Resolve(String, String),
-    NotFound(String),
+    Resolve(String),
+    NotFound,
     Server(String),
 }
 
@@ -649,7 +949,9 @@ pub fn chat_document_resolve(
                 Ok(r) => r,
                 Err(_) => return Ok(json!({ "exists": false, "kind": "other" })),
             };
-            let exists = documents::resolved_path_exists(mount, &resolved).unwrap_or(false);
+            // v4 `documentExists` (P4.D380 — R-4's absent class; any failure is
+            // the route's catch, `{exists:false, kind:'other'}`).
+            let exists = doc_core::document_exists(mount, &resolved).unwrap_or(false);
             let kind = if exists {
                 documents::classify_resolved_target(mount, &resolved).unwrap_or("other")
             } else {
@@ -711,10 +1013,7 @@ pub async fn chat_document_write(
     .await;
     let mtime = match write {
         Ok(m) => m,
-        Err(DocError::MtimeMismatch(_)) => {
-            return conflict("Document changed elsewhere. Reload it and try again.")
-        }
-        Err(e) => return server_error(format!("Failed to write document: {}", e.message())),
+        Err(e) => return write_failed(&DocLog::chat(chat_id), &bag.file_path, scope, e),
     };
 
     let librarian_message = match &bag.diff_content {
@@ -761,9 +1060,6 @@ async fn write_document(
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let sched = scheduler
-                .as_ref()
-                .map(|a| &**a as &dyn MountRefreshScheduler);
             Ok(documents::write_document_file(
                 main,
                 mount,
@@ -773,7 +1069,7 @@ async fn write_document(
                 mp.as_deref(),
                 &content,
                 expected_mtime,
-                sched,
+                refresh_of(&scheduler),
             ))
         })
         .await;
@@ -837,39 +1133,40 @@ pub async fn chat_document_rename(
         Err(e) => return internal(e),
     };
     let doc_scope = scope_from_str(&doc.scope);
+    let log = DocLog::chat(chat_id);
 
-    // Capture read-policy BEFORE the rename moves the link (resolve old → hidden).
-    let hidden = {
-        let ctx2 = ctx.clone();
-        let fp = doc.file_path.clone();
-        let mp = doc.mount_point.clone();
-        let resolved_old: Result<Result<(Option<String>, String), String>, DbError> =
-            db.read_main(move |main| {
-                db.read_mount_index(move |mount| {
-                    match documents::resolve_operator_doc_path(
-                        main,
-                        mount,
-                        &ctx2,
-                        doc_scope,
-                        &fp,
-                        mp.as_deref(),
-                        None,
-                    ) {
-                        Ok(r) => Ok(Ok((r.mount_point_id.clone(), r.relative_path.clone()))),
-                        Err(e) => Ok(Err(documents_resolve_message(e))),
-                    }
-                })
-            });
-        match resolved_old {
-            Ok(Ok((mp_id, rel))) => {
-                document_hidden_from_characters(db, mp_id.as_deref(), Some(&rel)).await
-            }
-            Ok(Err(msg)) => return bad_request(format!("Could not resolve path: {msg}")),
-            Err(e) => return internal(e),
+    // v4 resolves the OLD path first (verb `rename`) and passes it on, so it is
+    // not resolved twice.
+    let resolved_old = match resolve_for_route(
+        db,
+        &ctx,
+        doc_scope,
+        &doc.file_path,
+        doc.mount_point.as_deref(),
+    ) {
+        Ok(Ok(r)) => r,
+        Ok(Err(msg)) => {
+            return resolve_failed(
+                &log,
+                "rename",
+                &doc.file_path,
+                doc_scope.as_str(),
+                doc.mount_point.as_deref(),
+                &msg,
+            )
         }
+        Err(e) => return internal(e),
     };
+    // Capture the read-policy BEFORE the rename moves the link off the old path.
+    let hidden = document_hidden_from_characters(
+        db,
+        resolved_old.mount_point_id.as_deref(),
+        Some(&resolved_old.relative_path),
+    )
+    .await;
 
-    // The rename + row update + recents sweep, in one write closure.
+    // Resolve the target, move, update the active row, then sweep every other
+    // row still at the old path — in one write closure.
     let ctx_move = ctx.clone();
     let old_fp = doc.file_path.clone();
     let new_fp = new_file_path.clone();
@@ -877,27 +1174,34 @@ pub async fn chat_document_rename(
     let mp2 = doc.mount_point.clone();
     let scope_str = doc.scope.clone();
     let doc_id = doc.id.clone();
-    let move_outcome: Result<Result<(), DocError>, DbError> = db
+    let cid = chat_id.to_string();
+    let move_outcome: Result<Result<Result<RenameOutcome, DocError>, String>, DbError> = db
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let sched = scheduler
-                .as_ref()
-                .map(|a| &**a as &dyn MountRefreshScheduler);
-            if let Err(e) = documents::rename_document_file(
+            let resolved_new = match documents::resolve_operator_doc_path(
                 main,
                 mount,
                 &ctx_move,
                 doc_scope,
-                mp2.as_deref(),
-                &old_fp,
                 &new_fp,
-                sched,
+                mp2.as_deref(),
+                None,
             ) {
-                return Ok(Err(e));
+                Ok(r) => r,
+                Err(e) => return Ok(Err(resolve_failure_message(e))),
+            };
+            let moved = doc_core::rename_document(
+                main,
+                mount,
+                &resolved_old,
+                &resolved_new,
+                refresh_of(&scheduler),
+            );
+            if !matches!(moved, Ok(RenameOutcome::Moved)) {
+                return Ok(Ok(moved));
             }
-            let repo = ChatDocumentsRepository::new(main);
-            repo.update(
+            ChatDocumentsRepository::new(main).update(
                 &doc_id,
                 &crate::db::chat_documents::CdUpdate {
                     file_path: Some(new_fp.clone()),
@@ -906,22 +1210,42 @@ pub async fn chat_document_rename(
                     ..Default::default()
                 },
             )?;
-            // Best-effort recents sweep (the rename already succeeded on disk).
-            let _ = repo.rename_file_path_in_store(
-                &scope_str,
-                mp2.as_deref(),
+            // v4 `30a3b4cb7`: every other chat's (and the standalone sentinel's)
+            // row still at the old path follows, matched by the store it
+            // reaches. The row above is already at the new path.
+            doc_core::sweep_chat_documents_after_move(
+                main,
+                mount,
+                SweepStore {
+                    scope: &scope_str,
+                    mount_point: mp2.as_deref().map(Some),
+                    mount_point_id: resolved_old.mount_point_id.as_deref(),
+                },
                 &old_fp,
                 &new_fp,
-                &new_title2,
+                Some(&new_title2),
+                Some(&cid),
             );
-            Ok(Ok(()))
+            Ok(Ok(moved))
         })
         .await;
     match move_outcome {
-        Ok(Ok(())) => {}
-        Ok(Err(DocError::Conflict(_))) => return conflict("A file already exists at that name."),
-        Ok(Err(DocError::Unsupported(m))) => return bad_request(m),
-        Ok(Err(e)) => return server_error(format!("Failed to rename document: {}", e.message())),
+        Ok(Ok(outcome)) => {
+            if let Some(r) = rename_failed(&log, doc_scope, &doc.file_path, &new_file_path, outcome)
+            {
+                return r;
+            }
+        }
+        Ok(Err(msg)) => {
+            return resolve_failed(
+                &log,
+                "rename",
+                &new_file_path,
+                doc_scope.as_str(),
+                doc.mount_point.as_deref(),
+                &msg,
+            )
+        }
         Err(e) => return internal(e),
     }
 
@@ -995,55 +1319,44 @@ pub async fn chat_document_delete(
         Err(e) => return internal(e),
     };
     let doc_scope = scope_from_str(&doc.scope);
+    let log = DocLog::chat(chat_id);
 
-    // Resolve to capture the read-policy BEFORE the delete removes the link.
-    let (mp_id, rel) = {
-        let ctx2 = ctx.clone();
-        let fp = doc.file_path.clone();
-        let mp = doc.mount_point.clone();
-        let resolved: Result<Result<(Option<String>, String), String>, DbError> =
-            db.read_main(move |main| {
-                db.read_mount_index(move |mount| {
-                    match documents::resolve_operator_doc_path(
-                        main,
-                        mount,
-                        &ctx2,
-                        doc_scope,
-                        &fp,
-                        mp.as_deref(),
-                        None,
-                    ) {
-                        Ok(r) => Ok(Ok((r.mount_point_id.clone(), r.relative_path.clone()))),
-                        Err(e) => Ok(Err(documents_resolve_message(e))),
-                    }
-                })
-            });
-        match resolved {
-            Ok(Ok(pair)) => pair,
-            Ok(Err(msg)) => return bad_request(format!("Could not resolve path: {msg}")),
-            Err(e) => return internal(e),
+    let resolved = match resolve_for_route(
+        db,
+        &ctx,
+        doc_scope,
+        &doc.file_path,
+        doc.mount_point.as_deref(),
+    ) {
+        Ok(Ok(r)) => r,
+        Ok(Err(msg)) => {
+            return resolve_failed(
+                &log,
+                "delete",
+                &doc.file_path,
+                doc_scope.as_str(),
+                doc.mount_point.as_deref(),
+                &msg,
+            )
         }
+        Err(e) => return internal(e),
     };
-    let hidden = document_hidden_from_characters(db, mp_id.as_deref(), Some(&rel)).await;
+    // Capture the read-policy BEFORE the delete removes the link row.
+    let hidden = document_hidden_from_characters(
+        db,
+        resolved.mount_point_id.as_deref(),
+        Some(&resolved.relative_path),
+    )
+    .await;
 
     // Delete the underlying file, deactivate the row, recompute documentMode.
-    let ctx_del = ctx.clone();
-    let fp = doc.file_path.clone();
-    let mp = doc.mount_point.clone();
     let doc_id = doc.id.clone();
     let cid = chat_id.to_string();
     let del_outcome: Result<Result<DeleteOutcome, DocError>, DbError> = db
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let outcome = match documents::delete_document_file(
-                main,
-                mount,
-                &ctx_del,
-                doc_scope,
-                mp.as_deref(),
-                &fp,
-            ) {
+            let outcome = match doc_core::delete_document(main, mount, &resolved) {
                 Ok(o) => o,
                 Err(e) => return Ok(Err(e)),
             };
@@ -1056,14 +1369,11 @@ pub async fn chat_document_delete(
         })
         .await;
     match del_outcome {
-        Ok(Ok(DeleteOutcome::Deleted)) => {}
-        // v4 `0506517d3` correction (c): `notFound('File')` renders "File not
-        // found". The pre-fix `notFound('File not found')` doubled the suffix.
-        Ok(Ok(DeleteOutcome::NotFound)) => return not_found("File"),
-        Ok(Ok(DeleteOutcome::NotAFile)) => {
-            return bad_request(format!("Path is not a file: {}", doc.file_path))
+        Ok(outcome) => {
+            if let Some(r) = delete_failed(&log, &doc.file_path, doc_scope, outcome) {
+                return r;
+            }
         }
-        Ok(Err(e)) => return server_error(format!("Failed to delete document: {}", e.message())),
         Err(e) => return internal(e),
     }
 
@@ -1128,8 +1438,16 @@ fn accessible_stores_body(
     use crate::db::doc_mount_points::DocMountPointsRepository;
     let mp_repo = DocMountPointsRepository::new(mount);
 
-    // The project-official mount is surfaced separately (left-column button).
+    // === P4.D380 === (v4 `c17033f04`): the project's official mount and
+    // Quilltap General are the left-column "Project library" and "General
+    // library" buttons, so they are kept out of the accordions — General's id
+    // goes into `seen` FIRST, then the project official.
     let mut seen: HashSet<String> = HashSet::new();
+    let general_library = documents::resolve_general_library(main, mount)?;
+    if let Some(g) = &general_library {
+        seen.insert(g.mount_point_id.clone());
+    }
+    // === end P4.D380 ===
     let mut project_library: Value = Value::Null;
     if let Some(project_id) = chat.get("projectId").and_then(Value::as_str) {
         if let Some(official_id) =
@@ -1204,7 +1522,36 @@ fn accessible_stores_body(
         // === end P4.D376 ===
     };
 
-    Ok(json!({ "stores": stores, "projectLibrary": project_library }))
+    // === P4.D380 === v4's DEBUG (never ported before), its counts over the
+    // final `stores`, then `{stores, projectLibrary, generalLibrary}`.
+    let chat_id_field = chat.get("id").and_then(serde_json::Value::as_str);
+    let count = |f: &dyn Fn(&Value) -> bool| stores.iter().filter(|s| f(s)).count() as u64;
+    let store_type = |s: &Value| {
+        s.get("storeType")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let is_group = |s: &Value| s.get("isGroupStore").and_then(Value::as_bool) == Some(true);
+    let is_db = |s: &Value| s.get("mountType").and_then(Value::as_str) == Some("database");
+    tracing::debug!(
+        target: "quilltap::documents",
+        chatId = chat_id_field,
+        mode = if all { "all" } else { "chat" },
+        total = stores.len() as u64,
+        hasProjectLibrary = !project_library.is_null(),
+        hasGeneralLibrary = general_library.is_some(),
+        characterVaults = count(&|s| store_type(s).as_deref() == Some("character")),
+        groupStores = count(&|s| is_group(s)),
+        databaseStores = count(&|s| store_type(s).as_deref() == Some("documents") && is_db(s) && !is_group(s)),
+        filesystemStores = count(&|s| store_type(s).as_deref() == Some("documents") && !is_db(s) && !is_group(s)),
+        "Resolved accessible document stores for picker"
+    );
+    Ok(json!({
+        "stores": stores,
+        "projectLibrary": project_library,
+        "generalLibrary": general_library.map(|g| serde_json::to_value(g).unwrap_or(Value::Null)),
+    }))
+    // === end P4.D380 ===
 }
 
 // === P4.D376 ===
@@ -1362,22 +1709,40 @@ fn store_entry(
 /// v4 standalone `handleAccessibleStores` — always look-everywhere, no
 /// projectLibrary.
 pub fn document_stores(db: &Db) -> Response {
-    let result: Result<Vec<Value>, DbError> = db.read_main(|main| {
+    // === P4.D380 === (v4 `c17033f04`): Quilltap General is `generalLibrary`,
+    // the "General library" button, and is held back from the accordions.
+    let result: Result<Value, DbError> = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let mut seen = HashSet::new();
+            let general_library = documents::resolve_general_library(main, mount)?;
+            let mut exclude: HashSet<String> = general_library
+                .iter()
+                .map(|g| g.mount_point_id.clone())
+                .collect();
             let empty = HashSet::new();
-            Ok(
-                documents::list_all_enabled_stores(main, mount, &mut seen, &empty)?
+            let stores: Vec<Value> =
+                documents::list_all_enabled_stores(main, mount, &mut exclude, &empty)?
                     .into_iter()
                     .map(|s| serde_json::to_value(s).unwrap_or(Value::Null))
-                    .collect(),
-            )
+                    .collect();
+            Ok(json!({
+                "stores": stores,
+                "projectLibrary": Value::Null,
+                "generalLibrary": general_library.map(|g| serde_json::to_value(g).unwrap_or(Value::Null)),
+            }))
         })
     });
     match result {
-        Ok(stores) => ok(json!({ "stores": stores, "projectLibrary": Value::Null })),
-        Err(_e) => server_error("Failed to resolve accessible document stores"),
+        Ok(body) => ok(body),
+        Err(e) => {
+            tracing::error!(
+                target: "quilltap::documents",
+                error = %crate::db::fallback::error_text(&e),
+                "Failed to resolve stores for standalone document picker"
+            );
+            server_error("Failed to resolve accessible document stores")
+        }
     }
+    // === end P4.D380 ===
 }
 
 /// v4 standalone `handleRecentDocuments` — cross-chat recents, project-scope rows
@@ -1455,18 +1820,14 @@ fn standalone_scope(s: &str) -> Result<DocEditScope, ()> {
     }
 }
 
-/// The standalone open payload the write closure yields.
-struct StandaloneOpenOk {
-    file_path: String,
-    display_title: String,
-    content: String,
-    mtime: Option<i64>,
-    is_new: bool,
-}
-
 /// v4 standalone `handleOpenDocument` — records the open under STANDALONE_CHAT_ID
-/// (best-effort), no Librarian.
-pub async fn document_open(db: &Db, bag: Value, files_dir: Option<std::path::PathBuf>) -> Response {
+/// (best-effort), no Librarian. A blank create refreshes its store (P4.D380).
+pub async fn document_open(
+    db: &Db,
+    bag: Value,
+    scheduler: Option<Arc<dyn MountRefreshScheduler>>,
+    files_dir: Option<std::path::PathBuf>,
+) -> Response {
     let bag: StandaloneOpenBag = match serde_json::from_value(bag) {
         Ok(b) => b,
         Err(e) => return bad_request(format!("Invalid open-document body: {e}")),
@@ -1480,7 +1841,7 @@ pub async fn document_open(db: &Db, bag: Value, files_dir: Option<std::path::Pat
     let mount_in = bag.mount_point.clone();
     let folder_in = bag.target_folder.clone();
     let scope_str = scope.as_str().to_string();
-    let outcome: Result<Result<StandaloneOpenOk, DocError>, DbError> = db
+    let outcome: Result<Result<OpenedDocumentFile, DocError>, DbError> = db
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
@@ -1492,7 +1853,13 @@ pub async fn document_open(db: &Db, bag: Value, files_dir: Option<std::path::Pat
                 mount_point: mount_in.as_deref(),
                 target_folder: folder_in.as_deref(),
             };
-            let opened = match documents::open_document_file(main, mount, &ctx, &params) {
+            let opened = match documents::open_document_file(
+                main,
+                mount,
+                &ctx,
+                &params,
+                refresh_of(&scheduler),
+            ) {
                 Ok(o) => o,
                 Err(e) => return Ok(Err(e)),
             };
@@ -1506,39 +1873,34 @@ pub async fn document_open(db: &Db, bag: Value, files_dir: Option<std::path::Pat
                     display_title: Some(opened.display_title.clone()),
                 },
             );
-            Ok(Ok(StandaloneOpenOk {
-                file_path: opened.file_path,
-                display_title: opened.display_title,
-                content: opened.content,
-                mtime: opened.mtime,
-                is_new: opened.is_new,
-            }))
+            Ok(Ok(opened))
         })
         .await;
 
-    let StandaloneOpenOk {
-        file_path,
-        display_title,
-        content,
-        mtime,
-        is_new,
-    } = match outcome {
+    let opened = match outcome {
         Ok(Ok(v)) => v,
-        Ok(Err(DocError::Missing(m))) => return not_found_msg(m),
-        Ok(Err(e)) => return server_error(format!("Failed to open document: {}", e.message())),
+        Ok(Err(e)) => {
+            return open_failed(
+                &DocLog::standalone(),
+                bag.file_path.as_deref(),
+                scope,
+                bag.mount_point.as_deref(),
+                e,
+            )
+        }
         Err(e) => return internal(e),
     };
-    ok(json!({
-        "document": {
-            "filePath": file_path,
+    let mut body = opened_document_payload(
+        &opened,
+        json!({
+            "filePath": opened.file_path,
             "scope": scope.as_str(),
             "mountPoint": bag.mount_point,
-            "displayTitle": display_title,
-        },
-        "content": content,
-        "mtime": mtime,
-        "isNew": is_new,
-    }))
+            "displayTitle": opened.display_title,
+        }),
+    );
+    body.insert("isNew".into(), json!(opened.is_new));
+    ok(Value::Object(body))
 }
 
 /// v4 standalone `readDocumentSchema`/`writeDocumentSchema`/etc.
@@ -1567,6 +1929,7 @@ pub fn document_read(db: &Db, bag: Value, files_dir: Option<std::path::PathBuf>)
         scope,
         &bag.file_path,
         bag.mount_point.as_deref(),
+        DocLog::standalone(),
     )
 }
 
@@ -1611,10 +1974,7 @@ pub async fn document_write(
     .await;
     match write {
         Ok(mtime) => ok(json!({ "success": true, "mtime": mtime })),
-        Err(DocError::MtimeMismatch(_)) => {
-            conflict("Document changed elsewhere. Reload it and try again.")
-        }
-        Err(e) => server_error(format!("Failed to write document: {}", e.message())),
+        Err(e) => write_failed(&DocLog::standalone(), &bag.file_path, scope, e),
     }
 }
 
@@ -1668,47 +2028,88 @@ pub async fn document_rename(
         }));
     }
 
+    let log = DocLog::standalone();
+    let ctx = DocumentAccessContext::standalone(files_dir);
+    let resolved_old =
+        match resolve_for_route(db, &ctx, scope, &bag.file_path, bag.mount_point.as_deref()) {
+            Ok(Ok(r)) => r,
+            Ok(Err(msg)) => {
+                return resolve_failed(
+                    &log,
+                    "rename",
+                    &bag.file_path,
+                    scope.as_str(),
+                    bag.mount_point.as_deref(),
+                    &msg,
+                )
+            }
+            Err(e) => return internal(e),
+        };
+
     let old_fp = bag.file_path.clone();
     let new_fp = new_file_path.clone();
     let new_title2 = new_display_title.clone();
     let mp = bag.mount_point.clone();
     let scope_str = bag.scope.clone();
-    let move_outcome: Result<Result<(), DocError>, DbError> = db
+    let move_outcome: Result<Result<Result<RenameOutcome, DocError>, String>, DbError> = db
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let ctx = DocumentAccessContext::standalone(files_dir);
-            let sched = scheduler
-                .as_ref()
-                .map(|a| &**a as &dyn MountRefreshScheduler);
-            if let Err(e) = documents::rename_document_file(
+            let resolved_new = match documents::resolve_operator_doc_path(
                 main,
                 mount,
                 &ctx,
                 scope,
-                mp.as_deref(),
-                &old_fp,
                 &new_fp,
-                sched,
+                mp.as_deref(),
+                None,
             ) {
-                return Ok(Err(e));
-            }
-            // Best-effort recents sweep.
-            let _ = ChatDocumentsRepository::new(main).rename_file_path_in_store(
-                &scope_str,
-                mp.as_deref(),
-                &old_fp,
-                &new_fp,
-                &new_title2,
+                Ok(r) => r,
+                Err(e) => return Ok(Err(resolve_failure_message(e))),
+            };
+            let moved = doc_core::rename_document(
+                main,
+                mount,
+                &resolved_old,
+                &resolved_new,
+                refresh_of(&scheduler),
             );
-            Ok(Ok(()))
+            if matches!(moved, Ok(RenameOutcome::Moved)) {
+                // Keep the recent-documents history pointing at the new name
+                // (v4 `30a3b4cb7` — no `logFields` on this route).
+                doc_core::sweep_chat_documents_after_move(
+                    main,
+                    mount,
+                    SweepStore {
+                        scope: &scope_str,
+                        mount_point: mp.as_deref().map(Some),
+                        mount_point_id: resolved_old.mount_point_id.as_deref(),
+                    },
+                    &old_fp,
+                    &new_fp,
+                    Some(&new_title2),
+                    None,
+                );
+            }
+            Ok(Ok(moved))
         })
         .await;
     match move_outcome {
-        Ok(Ok(())) => {}
-        Ok(Err(DocError::Conflict(_))) => return conflict("A file already exists at that name."),
-        Ok(Err(DocError::Unsupported(m))) => return bad_request(m),
-        Ok(Err(e)) => return server_error(format!("Failed to rename document: {}", e.message())),
+        Ok(Ok(outcome)) => {
+            if let Some(r) = rename_failed(&log, scope, &bag.file_path, &new_file_path, outcome) {
+                return r;
+            }
+        }
+        Ok(Err(msg)) => {
+            return resolve_failed(
+                &log,
+                "rename",
+                &new_file_path,
+                scope.as_str(),
+                bag.mount_point.as_deref(),
+                &msg,
+            )
+        }
         Err(e) => return internal(e),
     }
 
@@ -1748,30 +2149,35 @@ pub async fn document_delete(
             "Invalid delete-document body: scope must be document_store or general",
         );
     };
-    let fp = bag.file_path.clone();
-    let mp = bag.mount_point.clone();
+    let log = DocLog::standalone();
+    let ctx = DocumentAccessContext::standalone(files_dir);
+    let resolved =
+        match resolve_for_route(db, &ctx, scope, &bag.file_path, bag.mount_point.as_deref()) {
+            Ok(Ok(r)) => r,
+            Ok(Err(msg)) => {
+                return resolve_failed(
+                    &log,
+                    "delete",
+                    &bag.file_path,
+                    scope.as_str(),
+                    bag.mount_point.as_deref(),
+                    &msg,
+                )
+            }
+            Err(e) => return internal(e),
+        };
     let outcome: Result<Result<DeleteOutcome, DocError>, DbError> = db
         .write(move |w| {
             let mount = require_mount(w)?;
             let main = w.main().connection();
-            let ctx = DocumentAccessContext::standalone(files_dir);
-            Ok(documents::delete_document_file(
-                main,
-                mount,
-                &ctx,
-                scope,
-                mp.as_deref(),
-                &fp,
-            ))
+            Ok(doc_core::delete_document(main, mount, &resolved))
         })
         .await;
     match outcome {
-        Ok(Ok(DeleteOutcome::Deleted)) => ok(json!({ "success": true })),
-        Ok(Ok(DeleteOutcome::NotFound)) => not_found("File"),
-        Ok(Ok(DeleteOutcome::NotAFile)) => {
-            bad_request(format!("Path is not a file: {}", bag.file_path))
-        }
-        Ok(Err(e)) => server_error(format!("Failed to delete document: {}", e.message())),
+        Ok(outcome) => match delete_failed(&log, &bag.file_path, scope, outcome) {
+            Some(r) => r,
+            None => ok(json!({ "success": true })),
+        },
         Err(e) => internal(e),
     }
 }
