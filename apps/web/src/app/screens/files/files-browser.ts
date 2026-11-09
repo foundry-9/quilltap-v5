@@ -77,27 +77,32 @@ interface DeleteConfirmation {
             type="button"
             class="qt-button qt-button-secondary p-2"
             title="New Folder"
+            aria-label="New folder"
             (click)="showCreateFolder.set(true)"
           >
-            {{ folderIcon }}+
+            <span aria-hidden="true">{{ folderIcon }}+</span>
           </button>
           <button
             type="button"
             class="qt-button qt-button-secondary p-2"
             [title]="viewMode() === 'list' ? 'Grid view' : 'List view'"
+            [attr.aria-label]="
+              viewMode() === 'list' ? 'Switch to grid view' : 'Switch to list view'
+            "
             (click)="toggleView()"
           >
-            {{ viewMode() === 'list' ? '▦' : '☰' }}
+            <span aria-hidden="true">{{ viewMode() === 'list' ? '▦' : '☰' }}</span>
           </button>
           @if (orphanedCount() > 0) {
             <button
               type="button"
               class="qt-button qt-button-secondary p-2 flex items-center gap-1"
               [title]="cleanupTitle()"
+              [attr.aria-label]="cleanupLabel()"
               [disabled]="isCleaningUp() || query.isPending()"
               (click)="onCleanupClick()"
             >
-              {{ isCleaningUp() ? '⏳' : broomIcon }}
+              <span aria-hidden="true">{{ isCleaningUp() ? '⏳' : broomIcon }}</span>
               <span class="text-xs qt-text-warning">{{ orphanedCount() }}</span>
             </button>
           }
@@ -105,19 +110,21 @@ interface DeleteConfirmation {
             type="button"
             class="qt-button qt-button-secondary p-2"
             title="Sync filesystem — scan disk for new or removed files"
+            aria-label="Sync filesystem"
             [disabled]="isSyncing() || query.isPending()"
             (click)="onSync()"
           >
-            {{ isSyncing() ? '⏳' : refreshIcon }}
+            <span aria-hidden="true">{{ isSyncing() ? '⏳' : refreshIcon }}</span>
           </button>
           <button
             type="button"
             class="qt-button qt-button-secondary p-2"
             title="Refresh"
+            aria-label="Refresh file list"
             [disabled]="query.isPending()"
             (click)="query.refetch()"
           >
-            ↻
+            <span aria-hidden="true">↻</span>
           </button>
         </div>
       </div>
@@ -297,6 +304,11 @@ export class FilesBrowser {
   protected readonly cleanupTitle = computed(() => {
     const n = this.orphanedCount();
     return `${n} untracked file${n !== 1 ? 's' : ''} — click to clean up`;
+  });
+  /** v4 `94f041764` — the cleanup button's accessible name. */
+  protected readonly cleanupLabel = computed(() => {
+    const n = this.orphanedCount();
+    return `Clean up ${n} untracked file${n !== 1 ? 's' : ''}`;
   });
 
   constructor() {

@@ -11,6 +11,8 @@ import {
   signal,
 } from '@angular/core';
 
+import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
+
 import type { FileEntry } from '../../core/core-contract';
 import { fileUrl } from '../../images/image-urls';
 import { formatBytes } from '../../ui/format-bytes';
@@ -38,7 +40,12 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
  * C's dependency territory and the render pipeline is round-wide HANDS OFF):
  *  - TEXT renders as plain `<pre>` with a copy button. v4's ReactMarkdown +
  *    react-syntax-highlighter + wikilink navigation are deferred.
- *  - PDF renders a download prompt (v4 uses `pdfjs-dist`, not a v5 dependency).
+ *  - PDF renders in the platform's own viewer through a native
+ *    `<object type="application/pdf">`, with the download prompt as its
+ *    fallback content — `NATIVE_PDF_VIEWER` (SPA ruling R10, P4.D387 item 21;
+ *    the same arm as the store viewer, `document-browser/document-viewer.ts`).
+ *    v4 renders PDFs with `pdfjs-dist` (`FilePreviewPdf.tsx`), which v5 does
+ *    not add as a dependency.
  */
 @Component({
   selector: 'qt-file-preview-modal',
@@ -175,18 +182,27 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
               </div>
             }
             @case ('pdf') {
-              <div
-                class="flex flex-col items-center justify-center w-full h-full min-h-[400px] text-center qt-text-secondary"
+              <!-- NATIVE_PDF_VIEWER (SPA ruling R10): the platform viewer, the
+                   download prompt as the object's fallback content. -->
+              <object
+                type="application/pdf"
+                [data]="pdfUrl()"
+                class="w-full h-[70vh]"
+                [attr.aria-label]="name()"
               >
-                <div class="text-4xl mb-2">{{ pageIcon }}</div>
-                <p>PDF preview isn't available yet — download to read it.</p>
-                <a
-                  [href]="url()"
-                  [download]="name()"
-                  class="qt-button qt-button-primary mt-4 inline-block"
-                  >Download PDF</a
+                <div
+                  class="flex flex-col items-center justify-center w-full h-full min-h-[400px] text-center qt-text-secondary"
                 >
-              </div>
+                  <div class="text-4xl mb-2">{{ pageIcon }}</div>
+                  <p>PDF preview isn't available yet — download to read it.</p>
+                  <a
+                    [href]="url()"
+                    [download]="name()"
+                    class="qt-button qt-button-primary mt-4 inline-block"
+                    >Download PDF</a
+                  >
+                </div>
+              </object>
             }
             @default {
               <div
@@ -240,6 +256,7 @@ export class FilePreviewModal {
   protected readonly titleId = mintDialogId();
 
   private readonly destroyRef = inject(DestroyRef);
+  private readonly sanitizer = inject(DomSanitizer);
   private readonly toasts = inject(ToastService);
 
   readonly file = input.required<FileEntry>();
@@ -268,6 +285,10 @@ export class FilePreviewModal {
     getPreviewType(this.file().mimeType, this.file().isPlainText),
   );
   protected readonly url = computed(() => fileUrl(this.file().id));
+  /** The `<object data>` is a resource URL; the file route is this instance's own, same-origin. */
+  protected readonly pdfUrl = computed<SafeResourceUrl>(() =>
+    this.sanitizer.bypassSecurityTrustResourceUrl(this.url()),
+  );
   protected readonly name = computed(() => fileDisplayName(this.file()));
   protected readonly icon = computed(() => getFileIcon(this.file().mimeType));
   protected readonly typeLabel = computed(() => getFileTypeLabel(this.file().mimeType));

@@ -55,3 +55,28 @@ describe('FilePreviewModal download toast', () => {
     expect(toasts()).toEqual([{ type: 'success', message: 'Download started' }]);
   });
 });
+
+/**
+ * P4.D387 item 21 — `NATIVE_PDF_VIEWER` (SPA ruling R10): a PDF renders in the
+ * platform viewer through a native `<object type="application/pdf">` on the
+ * file route, the old download prompt as its fallback content. v4 renders
+ * PDFs with `pdfjs-dist` (`FilePreviewPdf.tsx` — `Loading PDF...`, `Failed to
+ * load PDF. Try downloading instead.`), which v5 does not add.
+ */
+describe('FilePreviewModal PDF (NATIVE_PDF_VIEWER)', () => {
+  it('embeds the PDF in an <object>, the download prompt inside it', async () => {
+    const fixture = await render(
+      file({
+        id: 'f9',
+        mimeType: 'application/pdf',
+        originalFilename: 'scan.pdf',
+        filename: 'scan.pdf',
+      }),
+    );
+    const object = fixture.nativeElement.querySelector('object') as HTMLObjectElement;
+    expect(object.getAttribute('type')).toBe('application/pdf');
+    expect(object.getAttribute('data')).toContain('f9');
+    expect(object.querySelector('a')!.textContent!.trim()).toBe('Download PDF');
+    expect(fixture.nativeElement.querySelector('[role="dialog"]')).not.toBeNull();
+  });
+});

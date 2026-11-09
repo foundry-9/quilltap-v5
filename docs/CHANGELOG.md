@@ -1293,6 +1293,17 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): General Files header names (v4 94f041764 aria-labels) and the file preview's PDF in a native object (NATIVE_PDF_VIEWER) (P4.D387)
+
+_Versions: SPA 0.5.982._
+
+P4.D387 commit 9 (items 20–21).
+
+- **General Files (`screens/files/files-browser.ts`).** v4 `94f041764`'s five `aria-label`s byte-exact: `New folder`; `Switch to grid view` / `Switch to list view`, which follows the mode; `Clean up N untracked file(s)`; `Sync filesystem`; `Refresh file list`. Each glyph is wrapped in `<span aria-hidden="true">`. The `title=`s are unchanged. `c17033f04`'s general-only reduction was already converged by design (v5's page never had a mount mode or an upload button).
+- **The file preview modal's PDF (`screens/files/file-preview-modal.ts`).** The download prompt is now the fallback content of a native `<object type="application/pdf">` on the file route (`NATIVE_PDF_VIEWER`, SPA ruling R10, the same arm as the store viewer). The class comment records it, and the dialog role / name and the `onKeydown` handler name are kept for their censuses.
+
+New spec rows in `files-browser.spec.ts` and `file-preview-modal.spec.ts`.
+
 #### 2026-11-08 — feat(spa): Document Mode — the picker on the document-store browser with the General library, and the read-only viewer pane for a store file (P4.D387; v4 5efe53ea7)
 
 _Versions: SPA 0.5.981._

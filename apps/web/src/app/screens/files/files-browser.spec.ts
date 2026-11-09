@@ -91,6 +91,37 @@ describe('FilesBrowser', () => {
     expect(fixture.nativeElement.querySelector('button[title="Upload Files"]')).toBeNull();
   });
 
+  it('names every header button with v4 94f041764 aria-labels, glyphs aria-hidden', async () => {
+    const fixture = await render(
+      stubClient(
+        { requests: [] },
+        [
+          file({ id: 'a', fileStatus: 'orphaned' } as never),
+          file({ id: 'b', fileStatus: 'orphaned' } as never),
+        ],
+        {
+          type: 'ack',
+          data: {},
+        },
+      ),
+    );
+    const labels = [
+      ...fixture.nativeElement.querySelectorAll('.qt-page-container > div:first-child button'),
+    ].map((b) => (b as HTMLElement).getAttribute('aria-label'));
+    expect(labels).toEqual([
+      'New folder',
+      'Switch to list view',
+      'Clean up 2 untracked files',
+      'Sync filesystem',
+      'Refresh file list',
+    ]);
+    for (const b of fixture.nativeElement.querySelectorAll(
+      '.qt-page-container > div:first-child button',
+    )) {
+      expect((b as HTMLElement).querySelector('span[aria-hidden="true"]')).not.toBeNull();
+    }
+  });
+
   it('shows the file count footer', async () => {
     const fixture = await render(
       stubClient({ requests: [] }, [file({ id: 'a' }), file({ id: 'b' })], {
