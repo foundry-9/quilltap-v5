@@ -2,11 +2,16 @@
 # Pin-only plugin + CLI dependency install for a v4 oracle pin worktree
 # (human rulings, 2026-11-02; generalized past the `236c04e35` round 2026-11-04).
 #
-# Replaces symlink classes (2) and (3) of the order pin recipes. Live v4
-# `9f761e157` re-installed the live plugins/dist/*/node_modules past the
-# `236c04e35` pin (openai 7.45.1, @anthropic-ai/sdk 1.3.0, @google/genai 2.32.0,
-# @openrouter/sdk 1.5.21, ...), so symlinking them into a pin ran every
-# plugin-dir oracle on post-pin SDKs. The live packages/quilltap/node_modules had
+# Replaces symlink classes (2) and (3) of the order pin recipes. History: live
+# v4 `9f761e157` re-installed the live plugins/dist/*/node_modules past what was
+# then the `236c04e35` pin (openai 7.45.1, @anthropic-ai/sdk 1.3.0,
+# @google/genai 2.32.0, @openrouter/sdk 1.5.21, ...), so symlinking them into a
+# pin ran every plugin-dir oracle on post-pin SDKs.
+#
+# At the `624d0d25c` pin the declared floors are openai 7.47.0,
+# @anthropic-ai/sdk 1.4.0, @google/genai 2.32.0, @openrouter/sdk 1.5.34 and
+# @quilltap/plugin-utils 2.7.3 — equal to `provider_sdk_version_guard`'s
+# constants since P4.D364, which re-recorded every provider corpus at them. The live packages/quilltap/node_modules had
 # the same problem (the v13 driver, SQLite3MC 2.4.0).
 #
 # The pin's plugin dirs ship package.json but NO lockfile, and a plain offline

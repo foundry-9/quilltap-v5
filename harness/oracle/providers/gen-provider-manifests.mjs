@@ -43,6 +43,11 @@
  * table in the same commit** — the augmentation fields are exactly the ones no
  * v4 getter can re-derive, so nothing else will catch the drift.
  *
+ * P4.D364 (the `624d0d25c` round) taught the table anthropic's `2026-10-21`
+ * version and `Authorization: Bearer` auth, and the capabilities block the
+ * plugin-declared `samplingParameters` key that P4.D362 hand-added (its
+ * HANDOFF H1) — so the regen reproduces it instead of deleting it.
+ *
  * Regen recipe (after a v4 provider-metadata drift):
  *   cd ~/source/quilltap-server
  *   node ~/source/quilltap-v5/harness/oracle/providers/gen-provider-manifests.mjs \
@@ -87,7 +92,17 @@ const PROVIDERS = [
     aug: {
       baseUrl: 'https://api.anthropic.com/v1',
       endpoints: { chat: '/messages', models: '/models' },
-      auth: { kind: 'header', header: 'x-api-key', extra: { 'anthropic-version': '2023-06-01' } },
+      // P4.D364 (v4 `544c7ab1e` + the human's 2026-11-09 X2 ruling). v4's
+      // plugin sets no `anthropic-version` since `544c7ab1e`; the value is
+      // `@anthropic-ai/sdk` 1.4.0's default (the pin's tracked bundle,
+      // `qtap-plugin-anthropic/index.js:28917`), moving only with
+      // `RECORDED_ANTHROPIC_SDK`; `request_builder_equivalence`'s header subset
+      // check is its tripwire. The key rides `Authorization: Bearer` — SDK 1.x's
+      // `apiKeyAuth` (`index.js:28480-28484`; 0.115 sent `X-Api-Key`), and
+      // Anthropic's API overview lists `Authorization: Bearer` as the primary
+      // header with `x-api-key` a "legacy fallback for `Authorization`, still
+      // supported".
+      auth: { kind: 'bearer', extra: { 'anthropic-version': '2026-10-21' } },
       streamDecoder: 'anthropic-sse',
       requestTransform: 'anthropic',
     },
@@ -420,6 +435,12 @@ function buildManifest(provider) {
       embeddings: !!plugin.capabilities.embeddings,
       webSearch: !!plugin.capabilities.webSearch,
       toolUse: !!plugin.capabilities.toolUse,
+      // P4.D364 (v4 `544c7ab1e`; P4.D362's HANDOFF H1): emitted only where the
+      // plugin declares it (anthropic, `samplingParameters: false`), LAST as in
+      // v4's object, so the other manifests stay byte-identical.
+      ...(plugin.capabilities.samplingParameters !== undefined
+        ? { samplingParameters: !!plugin.capabilities.samplingParameters }
+        : {}),
     },
     optionsSchema: resolveOptionsSchema(plugin, provider.dir),
     // v4 bug 85: the plugin's declared thinking-turn rule (which `parameters`

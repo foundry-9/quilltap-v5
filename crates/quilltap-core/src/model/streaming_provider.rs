@@ -1086,7 +1086,9 @@ mod tests {
             .iter()
             .any(|(k, v)| k == "User-Agent" && v == "Quilltap/test"));
 
-        // Named header (anthropic x-api-key).
+        // === P4.D364 === Anthropic rides `Authorization: Bearer` since
+        // `@anthropic-ai/sdk` 1.x (the human's 2026-11-09 X2 ruling); it was
+        // the named `x-api-key` header until then.
         let t = FakeStreamTransport::new(vec![]);
         let p = WireStreamingProvider::new(
             t,
@@ -1103,7 +1105,9 @@ mod tests {
         assert!(seen
             .headers
             .iter()
-            .any(|(k, v)| k == "x-api-key" && v == "synthetic-anthropic"));
+            .any(|(k, v)| k == "Authorization" && v == "Bearer synthetic-anthropic"));
+        assert!(!seen.headers.iter().any(|(k, _)| k == "x-api-key"));
+        // === /P4.D364 ===
 
         // Header (google `x-goog-api-key`). This arm asserted the `?key=` query
         // param until P4.47 (B) proved v4's genai SDK sends a header and leaves

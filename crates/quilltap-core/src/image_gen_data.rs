@@ -2,7 +2,7 @@
 //! per-provider data v4's plugin registry exposes via `getImageGenerationModels`
 //! (per-model `orientationSupport`) and `getImageProviderConstraints`
 //! (provider-level `orientationSupport`), transcribed as a compiled-constant
-//! module (the tool-catalog / `SAMPLING_PARAMS_REJECTED_MODELS` precedent — NOT a
+//! module (the tool-catalog / `BUDGET_THINKING_REJECTED_MODELS` precedent — NOT a
 //! W4.7a manifest-schema bump).
 //!
 //! Consumed by [`crate::image_gen::resolve_orientation`] via

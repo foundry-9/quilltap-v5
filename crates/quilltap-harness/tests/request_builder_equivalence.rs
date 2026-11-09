@@ -27,6 +27,19 @@
 //! grok). Google's genai-SDK wire framing is deferred to the transport; its request
 //! LOGIC is verified in `request_builder_google_equivalence`.
 //!
+//! **Anthropic API version `2026-10-21` (P4.D364, v4 `544c7ab1e`).** No sampling
+//! key on any model: `sampling-rejected` now only proves the thinking-free
+//! new-gen row converges with `plain`, and `sampling-absent` / `top-p-only` pin
+//! that the old `temperature: 1.0` default and `top_p` arm are gone. The
+//! empty-message skip: `attachment-unsupported-empty-content` /
+//! `attachment-no-data-empty-content` drop a user message whose every attachment
+//! failed and whose text is empty, and `attachment-failed-empty-last-user-
+//! caching` drops it as the LAST user message, so no message carries the
+//! last-user breakpoint. The `anthropic-version: 2026-10-21` header and the
+//! `Authorization: Bearer` key ride the header subset check below. The three
+//! `assistant-*` rows are `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`, a named
+//! divergence.
+//!
 //! **The leading-system fold (P4.D93, v4 bug 82).** `three-leading-system` rows
 //! for ollama and openai-compatible (both modes) show the three-block turn head
 //! folded into one system message; `three-leading-system-unfolded` for deepseek —
@@ -97,6 +110,10 @@ fn message_from_json(m: &Value) -> StreamMessage {
         .to_string();
     match m.get("role").and_then(Value::as_str).unwrap_or_default() {
         "system" => StreamMessage::system(content),
+        // P4.D364: the carrier has no assistant `attachments` slot, so a row's
+        // assistant attachments are dropped here — only the named rows of
+        // `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE` carry any, and they skip the
+        // byte compare by name.
         "assistant" => StreamMessage::Assistant {
             content,
             tool_calls: m
@@ -327,6 +344,78 @@ const CACHE_KEY_IGNORED: &[(&str, &str)] = &[
 /// that wrote the WRONG key would otherwise pass the absence leg.
 const CACHE_KEY_SPELLINGS: [&str; 3] = ["prompt_cache_key", "user", "user_id"];
 
+/// P4.D364 R-P1 — `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`, a NAMED divergence.
+/// v4 `544c7ab1e` (API version `2026-10-21` refuses a `document` block directly
+/// in an assistant message) moves an assistant turn's documents into a NEW
+/// user message just before it, keeps the assistant's text / image blocks, and
+/// drops an assistant left with nothing. v5's carrier
+/// ([`StreamMessage::Assistant`]) holds no attachments, and v4's production
+/// never hands the plugin an assistant message carrying one (the context
+/// builder stamps attachments on the user-turn anchor only — P4.D364 item
+/// 1(e)), so these rows cannot be reproduced. Both ways: (a) every ANTHROPIC row
+/// whose input has an assistant message with attachments is listed, and every
+/// listed row is present in both modes; (b) v4's RECORDED body proves the
+/// relocation; (c) the byte compare is skipped for exactly these rows, each with
+/// a printed `UNREPRESENTABLE:` line. **Retiring condition:** an order widens
+/// the carrier with assistant attachments (every builder's assistant arm then
+/// needs its own v4 measurement); these rows then flip to byte equality and
+/// v4's DEBUG `Moving assistant-message documents into a preceding user turn`
+/// lands with a capture pin.
+const ASSISTANT_ATTACHMENTS_UNREPRESENTABLE: &[&str] = &[
+    "assistant-document-relocation",
+    "assistant-document-only",
+    "assistant-image-and-document",
+];
+
+/// (b) of [`ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`]: v4's recorded body moved
+/// every document out of the assistant turn into a documents-only user message
+/// placed just before it, and kept (or, with nothing left, dropped) the turn.
+fn assert_v4_relocated(case: &str, mode: &str, body: &str) {
+    let body: Value = serde_json::from_str(body).unwrap();
+    let msgs = body["messages"].as_array().unwrap();
+    let block_types = |m: &Value| -> Vec<String> {
+        m["content"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|b| b["type"].as_str().unwrap_or_default().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let docs_at = msgs
+        .iter()
+        .position(|m| {
+            let t = block_types(m);
+            m["role"] == "user" && !t.is_empty() && t.iter().all(|x| x == "document")
+        })
+        .unwrap_or_else(|| panic!("{case}[{mode}]: v4 recorded no documents-only user turn"));
+    let assistants: Vec<&Value> = msgs.iter().filter(|m| m["role"] == "assistant").collect();
+    if case == "assistant-document-only" {
+        assert!(
+            assistants.is_empty(),
+            "{case}[{mode}]: v4 kept an assistant turn that had only documents"
+        );
+        return;
+    }
+    let next = &msgs[docs_at + 1];
+    assert_eq!(
+        next["role"], "assistant",
+        "{case}[{mode}]: documents not just before the assistant"
+    );
+    let kept = block_types(next);
+    assert!(
+        !kept.is_empty() && kept.iter().all(|t| t == "text" || t == "image"),
+        "{case}[{mode}]: the assistant kept {kept:?}"
+    );
+    if case == "assistant-image-and-document" {
+        assert!(
+            kept.iter().any(|t| t == "image"),
+            "{case}[{mode}]: the image did not stay"
+        );
+    }
+}
+
 #[test]
 fn request_builder_matches_v4() {
     let text = std::fs::read_to_string(corpus_path()).expect("committed request-envelope NDJSON");
@@ -340,6 +429,9 @@ fn request_builder_matches_v4() {
         (0usize, 0usize, 0usize);
     let mut refusals = 0usize;
     let mut pairs = std::collections::HashSet::new();
+    // P4.D364: every ASSISTANT_ATTACHMENTS_UNREPRESENTABLE row, by (case, mode).
+    let mut unrepresentable_seen: std::collections::HashSet<(String, String)> =
+        std::collections::HashSet::new();
     // P4.21 attachment-coverage shape (the pre-P4.21 corpus had ZERO attachment
     // vectors — the blind spot that hid dogfood #37; assert the SHAPE, not a
     // hand count, per the corpus-shape-constants-rot rule).
@@ -655,6 +747,31 @@ fn request_builder_matches_v4() {
             continue;
         }
 
+        // P4.D364 R-P1 — the named, both-ways ASSISTANT_ATTACHMENTS_UNREPRESENTABLE
+        // carve (see the table's doc).
+        if provider == "ANTHROPIC" {
+            let assistant_atts = row["input"]["messages"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|m| {
+                    m["role"] == "assistant"
+                        && m["attachments"].as_array().is_some_and(|a| !a.is_empty())
+                });
+            assert_eq!(
+                assistant_atts,
+                ASSISTANT_ATTACHMENTS_UNREPRESENTABLE.contains(&case),
+                "{provider}/{case}[{mode}]: ASSISTANT_ATTACHMENTS_UNREPRESENTABLE out of step \
+                 with the corpus"
+            );
+            if assistant_atts {
+                assert_v4_relocated(case, mode, row["body"].as_str().unwrap());
+                println!("UNREPRESENTABLE: {case} {mode}");
+                unrepresentable_seen.insert((case.to_string(), mode.to_string()));
+                continue;
+            }
+        }
+
         let built =
             built.unwrap_or_else(|e| panic!("{provider}/{case}[{mode}]: build failed: {e}"));
 
@@ -901,6 +1018,14 @@ fn request_builder_matches_v4() {
             assert!(
                 att_pairs.contains(&(p.to_string(), mode.to_string())),
                 "corpus has no attachment vector for provider {p} in mode {mode}"
+            );
+        }
+    }
+    for case in ASSISTANT_ATTACHMENTS_UNREPRESENTABLE {
+        for mode in ["stream", "send"] {
+            assert!(
+                unrepresentable_seen.contains(&(case.to_string(), mode.to_string())),
+                "ASSISTANT_ATTACHMENTS_UNREPRESENTABLE names {case}[{mode}] but the corpus has no such row"
             );
         }
     }

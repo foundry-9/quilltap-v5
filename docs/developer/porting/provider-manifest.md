@@ -105,7 +105,7 @@ default for plain OpenAI-compatible endpoints. New providers usually pick `none`
   "schemaVersion": 1,
   "id": "anthropic",
   "displayName": "Anthropic",
-  "auth": { "kind": "header", "header": "x-api-key", "extra": { "anthropic-version": "2023-06-01" } },
+  "auth": { "kind": "bearer", "extra": { "anthropic-version": "2026-10-21" } },
   "baseUrl": "https://api.anthropic.com/v1",
   "endpoints": { "chat": "/messages", "models": "/models" },
   "streamDecoder": "anthropic-sse",       // <- enum into the five

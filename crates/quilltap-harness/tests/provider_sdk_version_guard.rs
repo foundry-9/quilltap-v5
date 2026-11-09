@@ -96,6 +96,39 @@
 //! corpus was recorded under ≥ 2.7.1 — every OAC final chunk carrying a usage
 //! frame carries `rawProviderUsage`.
 //!
+//! Re-measured 2026-11-09 by P4.D364 (`624d0d25c`, the human's R-F ruling —
+//! a FULL re-record of every committed provider corpus at the pin's floors,
+//! measured BEFORE any constant moved). The pin's plugin dirs take a FLOOR
+//! install (`.claude/pin-plugin-sdks.sh`, never live symlinks — the 2026-11-02
+//! rulings), printing `openai 7.47.0 | anthropic 1.4.0 | genai 2.32.0 |
+//! openrouter 1.5.34 | plugin-utils 2.7.3`; the pin's own root `npm ci
+//! --offline` carries `openai` 7.47.0 and `@openrouter/sdk` 1.5.34, so the
+//! root and recorded constants now agree. Resolution: `openai` is installed in
+//! exactly the six dirs that declare it (deepseek, grok, nanogpt,
+//! openai-compatible, openai, z-ai — all 7.47.0); `@quilltap/plugin-utils`'s
+//! `openai` PEER dependency left no copy in any of the nine non-declaring dirs,
+//! so the guard needed no narrowing (R-P5). Corpus stamps after the
+//! re-record: `request-envelopes.recorded.ndjson` (428 rows) 7.47.0 ×252
+//! (deepseek 32, grok 23, nanogpt 80, openai 33, openai-compatible 46, z-ai
+//! 38) + 1.4.0 ×63 (anthropic — 47 rows plus the 16 P4.D364 added) + the
+//! OpenRouter UA ×15 (`1.5.34 2.950.13 1.0.0`); `image-dialects.recorded.
+//! ndjson` (191 rows) 7.47.0 ×8 + the UA ×9 (three rows plus P4.D364's six
+//! error-arm rows); `google-wire.recorded.ndjson` (24 rows)
+//! `google-genai-sdk/2.32.0` ×24. Node `v24.13.1` ×347 (315 + 8
+//! `x-stainless-runtime-version`, 24 `gl-node/`). Classification of every
+//! moved byte: stamps (s) on every SDK; v4 `544c7ab1e`'s own effect on the
+//! anthropic rows (the `2026-10-21` header, 33 bodies losing `temperature`);
+//! and THREE framing moves (x) the R-F STOP reported and the human ruled
+//! PORT (2026-11-09): genai 2.32.0 copies `inlineData` whole (`{mimeType,
+//! data}`, 6 rows), `@anthropic-ai/sdk` 1.x sends the key as
+//! `Authorization: Bearer` (47 rows), and `@openrouter/sdk` 1.5.34's typed
+//! models-list errors (`No auth credentials found`). Two stale recorder
+//! premises were also fixed (not SDK moves): the nanogpt image rows' bug-269
+//! catalog GET, and 1.5.34's required `Model.endpoints`. Every other corpus
+//! (google-request, all ten stream corpora, response-bodies,
+//! text-http-errors, tool-wire, moderation-wire, web-search-wire)
+//! re-recorded BYTE-IDENTICAL.
+//!
 //! Locator: the shared `common::v4_root` (`QT_V4_CHECKOUT`, then the
 //! `QT_V4_ROOT` alias, then `$HOME/source/quilltap-server`). An
 //! absent checkout prints a loud `SKIP:`; a moved version is a FAIL.
@@ -113,13 +146,17 @@ mod common;
 
 /// `openai` — the Stainless `x-stainless-package-version` on every
 /// non-anthropic OpenAI-shaped request.
-const RECORDED_OPENAI_SDK: &str = "7.23.0";
+/// 7.47.0 since P4.D364 (the `624d0d25c` floors, re-recorded).
+const RECORDED_OPENAI_SDK: &str = "7.47.0";
 /// `@anthropic-ai/sdk` — the Stainless stamp on `api.anthropic.com` requests.
-const RECORDED_ANTHROPIC_SDK: &str = "0.115.0";
+/// 1.4.0 since P4.D364 (`624d0d25c`; 1.x is API version `2026-10-21`).
+const RECORDED_ANTHROPIC_SDK: &str = "1.4.0";
 /// `@google/genai` — the `x-goog-api-client` `google-genai-sdk/<ver>` token.
-const RECORDED_GOOGLE_GENAI_SDK: &str = "1.52.0";
+/// 2.32.0 since P4.D364 (`624d0d25c`).
+const RECORDED_GOOGLE_GENAI_SDK: &str = "2.32.0";
 /// `@openrouter/sdk` — the speakeasy user-agent's first version token.
-const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
+/// 1.5.34 since P4.D364 (`624d0d25c`).
+const RECORDED_OPENROUTER_SDK: &str = "1.5.34";
 /// The ROOT `node_modules`' `openai` — the root lockfile's version since v4
 /// `a9c99a4a0` (P4.D260 R-F). No recorder resolves it for a recorded request
 /// (every OpenAI-SDK provider plugin ships its own `RECORDED_OPENAI_SDK`), so
@@ -128,12 +165,13 @@ const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
 /// 7.45.0 / 1.5.9 at v4 `236c04e35` (`026222176`, P4.D360): the root move
 /// MEASURED — no recorder resolves the root (every provider corpus this round
 /// is appended from a plugin dir declaring `openai` ^7.23.0 /
-/// `@openrouter/sdk` ^1.3.28), so no re-record.
-const INSTALLED_ROOT_OPENAI_SDK: &str = "7.45.0";
+/// `@openrouter/sdk` ^1.3.28), so no re-record. 7.47.0 / 1.5.34 at the
+/// `624d0d25c` pin (P4.D364) — equal to the recorded constants again.
+const INSTALLED_ROOT_OPENAI_SDK: &str = "7.47.0";
 /// The ROOT `node_modules`' `@openrouter/sdk` (the root lockfile's, since
 /// `a9c99a4a0`); the openrouter plugin records through its own
 /// `RECORDED_OPENROUTER_SDK`.
-const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.5.9";
+const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.5.34";
 /// The Node runtime every provider corpus is recorded under: the Stainless
 /// `x-stainless-runtime-version` and the genai `gl-node/<v>` token (P4.D232).
 /// The recipes pin `~/.nvm/versions/node/v24.13.1/bin`; the PATH also carries
@@ -144,8 +182,9 @@ const RECORDED_NODE: &str = "v24.13.1";
 /// `@quilltap/plugin-utils` — the shared base class (`OpenAICompatibleProvider`,
 /// `createPluginLogger`) every recorder's plugin imports from its OWN
 /// `node_modules`. 2.7.1 since v4 `a8b2d2861` (`normalizeUsage`); a move is a
-/// re-record of every provider corpus (P4.D311).
-const RECORDED_PLUGIN_UTILS: &str = "2.7.1";
+/// re-record of every provider corpus (P4.D311). 2.7.3 since P4.D364 (the
+/// `624d0d25c` floors; `packages/plugin-utils/src` moved only its version stamp).
+const RECORDED_PLUGIN_UTILS: &str = "2.7.3";
 /// The plugin dirs that declare no `@quilltap/plugin-utils` dependency, so
 /// carry no install of it (measured at the `25b8fab6a` pin).
 const PLUGIN_UTILS_EXEMPT_DIRS: [&str; 1] = ["qtap-plugin-builtin-embeddings"];

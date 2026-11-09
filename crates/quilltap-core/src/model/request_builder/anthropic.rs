@@ -1,25 +1,50 @@
 //! The Anthropic request builder + transform (W4.7c part 2). Ported from the
 //! anthropic plugin's `streamMessage` + `formatMessagesWithAttachments` +
 //! `applyMidHistoryBreakpoint`. The transform is the cache-breakpoint hierarchy
-//! (tools → system → messages), the consecutive-tool-result batching, and the
-//! adaptive-thinking / sampling-param-rejection rules for Sonnet 5 / Opus 5 /
+//! (tools → system → messages), the consecutive-tool-result batching, the
+//! empty-message skip, and the adaptive-thinking rule for Sonnet 5 / Opus 5 /
 //! Opus 4.7+ / Fable / Mythos.
 //!
-//! ## The sampling-param-rejected model list
+//! ## API version `2026-10-21` (P4.D364, v4 `544c7ab1e`)
 //!
-//! Ported as a **compiled constant** ([`SAMPLING_PARAMS_REJECTED_MODELS`]), NOT
+//! v4's plugin dropped its `2023-06-01` pin and takes `@anthropic-ai/sdk` 1.x's
+//! default, `2026-10-21`. That version refuses `temperature`, `top_p` and
+//! `top_k` on EVERY model and refuses a `document` block placed directly in an
+//! assistant message. So:
+//!
+//! - **No sampling key is ever sent** — on any model, thinking on or off (the
+//!   old `temperature` / `top_p` / `temperature: 1.0` block is gone).
+//! - **The header** is the manifest's `auth.extra` (`anthropic-version:
+//!   2026-10-21`), not this builder's; it must land with this builder (a v5 that
+//!   sent the new version WITH sampling keys would 400 every turn).
+//! - **The empty-message skip** — on the attachment path, a message of ANY role
+//!   whose every attachment failed and whose text is empty is DROPPED (v4
+//!   `provider.ts:373-377` at `624d0d25c`); the failures stay recorded.
+//! - **The assistant-document relocation is a NAMED divergence,
+//!   `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`** (P4.D364 R-P1). v4 moves an
+//!   assistant turn's `document` blocks into a NEW `{role:'user', content:
+//!   documents}` message just before it (DEBUG `Moving assistant-message
+//!   documents into a preceding user turn` `{context:
+//!   'AnthropicProvider.formatMessagesWithAttachments', documentCount}`), the
+//!   assistant keeping its text / image blocks, and drops an assistant left with
+//!   nothing. v5's carrier ([`StreamMessage::Assistant`]) holds no attachments
+//!   and v4's production never hands the plugin one (the context builder stamps
+//!   attachments on the user-turn anchor only), so there is nothing to move;
+//!   `request_builder_equivalence` records the three corpus rows by name.
+//!
+//! ## The budget-thinking-rejected model list
+//!
+//! Ported as a **compiled constant** ([`BUDGET_THINKING_REJECTED_MODELS`]), NOT
 //! lifted into the manifest. The rules are *prefix regexes* over stable model
 //! aliases (matching future dated snapshots), i.e. compiled matching behavior
 //! rather than per-model data; the W4.7a manifest carries only an exact
 //! `fallbackModels: Vec<String>`, so a clean lift would need a NEW manifest field
-//! (e.g. `samplingRejectedModelPrefixes`) — a manifest-schema extension deferred
-//! as a follow-up. Keeping the list in this hook matches v4's structure (the rules
-//! live in the anthropic plugin's `requestTransform`). Ported from CURRENT v4
-//! (`48f4b42ec`): Sonnet 5, **Opus 5**, Opus 4.7 / 4.8, Fable 5, Mythos 5 /
-//! preview. Opus 5 arrived a generation after the 4.7/4.8 pair and joined the
-//! list late (v4 `48f4b42ec`, 2026-09-04) — the plugin lists models live through
-//! `client.models.list()`, so it was selectable in a connection profile and every
-//! send 400'd on "`temperature` is deprecated for this model" until it was added.
+//! — a manifest-schema extension deferred as a follow-up. Keeping the list in
+//! this hook matches v4's structure. Until `544c7ab1e` it was
+//! named for sampling params and gated the sampling keys too; it now
+//! gates ONLY the thinking shape (adaptive vs a fixed budget). Opus 5 joined it
+//! late (v4 `48f4b42ec`, 2026-09-04) — the plugin lists models live through
+//! `client.models.list()`, so it was selectable before the list knew it.
 
 use serde_json::{json, Value};
 use std::sync::LazyLock;
@@ -30,14 +55,13 @@ use super::{
     att_fail, att_id, att_str, num, Body, RequestInput, StreamAttachmentResults, StreamMessage,
 };
 
-/// v4 `SAMPLING_PARAMS_REJECTED_MODELS` (current source): Claude Sonnet 5,
-/// Claude Opus 5, the Opus 4.7/4.8 family, and Fable/Mythos models remove
-/// `temperature`/`top_p`/`top_k` entirely — sending either returns
-/// "`temperature` is deprecated for this model" (400), independent of whether
-/// extended thinking is enabled — and they 400 on fixed-budget thinking too.
-/// Matched by prefix since these are stable aliases (no dated snapshots).
-/// Order mirrors v4's array.
-static SAMPLING_PARAMS_REJECTED_MODELS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+/// v4 `BUDGET_THINKING_REJECTED_MODELS` (`624d0d25c`): "Models that reject
+/// fixed-budget thinking (`thinking.type: "enabled"` with `budget_tokens`
+/// returns 400) and take adaptive thinking instead: Claude Sonnet 5, Claude
+/// Opus 5, the Opus 4.7/4.8 family, Fable and Mythos. Matched by prefix since
+/// these are stable aliases (no dated snapshots). Older models (Haiku 4.5,
+/// Sonnet 4.5, ...) still need `budget_tokens`." Order mirrors v4's array.
+static BUDGET_THINKING_REJECTED_MODELS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         r"^claude-sonnet-5(-|$)",
         r"^claude-opus-5(-|$)",
@@ -52,8 +76,8 @@ static SAMPLING_PARAMS_REJECTED_MODELS: LazyLock<Vec<Regex>> = LazyLock::new(|| 
     .collect()
 });
 
-fn model_rejects_sampling_params(model: &str) -> bool {
-    SAMPLING_PARAMS_REJECTED_MODELS
+fn model_rejects_budget_thinking(model: &str) -> bool {
+    BUDGET_THINKING_REJECTED_MODELS
         .iter()
         .any(|re| re.is_match(model))
 }
@@ -273,9 +297,18 @@ fn format_messages(
                 o.insert("cache_control".to_string(), cache_control(ttl));
             }
         }
+        // v4 (`544c7ab1e`): "An assistant turn that carried only documents has
+        // nothing left to say once they move; an empty assistant message would
+        // be refused." The guard is ROLE-INDEPENDENT — a user message whose
+        // every attachment failed and whose text is empty is dropped too (the
+        // failures above stay recorded). It runs after the cache-control step,
+        // as v4's does, so a dropped last user message carries no breakpoint.
+        if blocks.is_empty() && msg.content().is_empty() {
+            i += 1;
+            continue;
+        }
         // v4: `content: content.length > 0 ? content : msg.content` — every
-        // attachment failing on an empty-content message falls back to the
-        // plain (empty) string.
+        // attachment failing on a message WITH text falls back to its string.
         if blocks.is_empty() {
             out.push(json!({ "role": role, "content": msg.content() }));
         } else {
@@ -366,11 +399,9 @@ pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -
         }
     };
     let thinking_enabled = thinking_budget > 0;
-    // v4: "Sonnet 5 / Opus 5 / Opus 4.7+ / Fable / Mythos reject both fixed-budget
-    // thinking and sampling params (temperature/top_p/top_k) — computed once and
-    // used for both decisions below." v4 carries that comment twice (`sendMessage`
-    // and `streamMessage`); this builder serves both modes, so it lands once.
-    let sampling_rejected = model_rejects_sampling_params(&input.model);
+    // Computed once per call, as v4's `budgetThinkingRejected` is (in both
+    // `sendMessage` and `streamMessage`); it picks the thinking shape only.
+    let budget_thinking_rejected = model_rejects_budget_thinking(&input.model);
 
     let cache_opts = if caching_enabled {
         Some(CacheOpts {
@@ -406,7 +437,7 @@ pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -
     if thinking_enabled {
         b.set(
             "thinking",
-            if sampling_rejected {
+            if budget_thinking_rejected {
                 json!({ "type": "adaptive", "display": "summarized" })
             } else {
                 json!({ "type": "enabled", "budget_tokens": thinking_budget })
@@ -442,16 +473,11 @@ pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -
         }
     }
 
-    // Sampling params: only when thinking off AND not a rejected model.
-    if !thinking_enabled && !sampling_rejected {
-        if let Some(t) = input.temperature {
-            b.set("temperature", num(t));
-        } else if let Some(p) = input.top_p {
-            b.set("top_p", num(p));
-        } else {
-            b.set("temperature", num(1.0));
-        }
-    }
+    // No sampling parameters (v4 `544c7ab1e`): API version 2026-10-21 refuses
+    // `temperature`, `top_p` and `top_k` on every model, so the plugin sends
+    // none — `input.temperature` / `input.top_p` are ignored here, thinking on
+    // or off. (The old block sent `temperature`, else `top_p`, else a
+    // `temperature: 1.0` default.)
 
     // Tools (cache_control on the last tool when caching).
     if let Some(tools) = &input.tools {
@@ -480,4 +506,141 @@ pub fn build_body(input: &RequestInput, results: &mut StreamAttachmentResults) -
     }
 
     b.into_value()
+}
+
+/// P4.D364 — the shape of v4's own `anthropic-model-family-params.test.ts` (at
+/// `624d0d25c`): sampling params are never sent, thinking shape by generation,
+/// and the empty-message skip.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input(model: &str) -> RequestInput {
+        RequestInput {
+            model: model.to_string(),
+            messages: vec![
+                StreamMessage::system("You are a helpful assistant."),
+                StreamMessage::user("Hello there."),
+            ],
+            max_tokens: Some(1000),
+            stream: true,
+            ..Default::default()
+        }
+    }
+
+    fn body(i: &RequestInput) -> Value {
+        build_body(i, &mut StreamAttachmentResults::default())
+    }
+
+    fn assistant(content: &str) -> StreamMessage {
+        StreamMessage::Assistant {
+            content: content.to_string(),
+            tool_calls: Vec::new(),
+            reasoning_content: None,
+            thought_signature: None,
+            cache_control: None,
+            name: None,
+        }
+    }
+
+    fn user_with(content: &str, attachment: Value) -> StreamMessage {
+        StreamMessage::User {
+            content: content.to_string(),
+            cache_control: None,
+            attachments: vec![attachment],
+            name: None,
+        }
+    }
+
+    fn tiff() -> Value {
+        json!({ "id": "att-tiff-1", "filename": "scan.tiff", "mimeType": "image/tiff", "size": 9, "data": "AAAA" })
+    }
+
+    #[test]
+    fn sampling_params_are_never_sent() {
+        for model in ["claude-opus-4-6", "claude-sonnet-5", "claude-haiku-4-5"] {
+            for stream in [true, false] {
+                for (t, p) in [(Some(0.5), Some(0.9)), (None, Some(0.9)), (None, None)] {
+                    let mut i = input(model);
+                    i.stream = stream;
+                    i.temperature = t;
+                    i.top_p = p;
+                    let b = body(&i);
+                    for key in ["temperature", "top_p", "top_k"] {
+                        assert!(
+                            b.get(key).is_none(),
+                            "{model} stream={stream} sent {key}: {b}"
+                        );
+                    }
+                }
+                // Thinking on too.
+                let mut i = input(model);
+                i.stream = stream;
+                i.temperature = Some(0.5);
+                i.profile_parameters = Some(json!({ "thinkingBudget": 2048 }));
+                let b = body(&i);
+                assert!(b.get("temperature").is_none() && b.get("top_p").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn thinking_shape_by_generation() {
+        let thinking = |model: &str| {
+            let mut i = input(model);
+            i.profile_parameters = Some(json!({ "thinkingBudget": 2048 }));
+            body(&i)["thinking"].clone()
+        };
+        let adaptive = json!({ "type": "adaptive", "display": "summarized" });
+        assert_eq!(thinking("claude-sonnet-5"), adaptive);
+        assert_eq!(
+            thinking("claude-opus-4-8-20260215"),
+            adaptive,
+            "a dated snapshot is new-gen"
+        );
+        assert_eq!(
+            thinking("claude-opus-4-6"),
+            json!({ "type": "enabled", "budget_tokens": 2048 }),
+            "opus-4-6 is NOT new-gen"
+        );
+    }
+
+    #[test]
+    fn an_empty_message_whose_attachments_all_failed_is_dropped() {
+        let mut i = input("claude-opus-4-6");
+        i.messages = vec![
+            StreamMessage::system("sys"),
+            StreamMessage::user("Hello there."),
+            assistant("Hi there."),
+            user_with("", tiff()),
+            StreamMessage::user("Again."),
+        ];
+        let mut results = StreamAttachmentResults::default();
+        let b = build_body(&i, &mut results);
+        let msgs = b["messages"].as_array().unwrap();
+        assert_eq!(msgs.len(), 3, "the empty failing message is absent: {b}");
+        assert_eq!(msgs[2]["content"], json!("Again."));
+        assert!(results.sent.is_empty());
+        assert_eq!(results.failed.len(), 1);
+        assert_eq!(results.failed[0].id, "att-tiff-1");
+    }
+
+    /// v4 pushes the text block BEFORE the attachment loop, so a message with
+    /// text whose attachment fails is still sent — as its one text block (the
+    /// corpus `unsupported-attachment` row, byte-pinned).
+    #[test]
+    fn a_message_with_text_and_a_failing_attachment_is_still_sent() {
+        let mut i = input("claude-opus-4-6");
+        i.messages = vec![
+            StreamMessage::system("sys"),
+            user_with("What is this?", tiff()),
+        ];
+        let mut results = StreamAttachmentResults::default();
+        let b = build_body(&i, &mut results);
+        assert_eq!(
+            b["messages"],
+            json!([{ "role": "user", "content": [{ "type": "text", "text": "What is this?" }] }])
+        );
+        assert_eq!(results.failed.len(), 1);
+    }
 }

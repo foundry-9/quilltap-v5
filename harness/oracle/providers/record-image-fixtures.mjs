@@ -580,6 +580,11 @@ function orModel(id, extra = {}) {
     links: { details: `https://openrouter.ai/${id}` },
     pricing: { prompt: '0', completion: '0' },
     top_provider: { is_moderated: false },
+    // P4.D364: `@openrouter/sdk` 1.5.34's `Model$inboundSchema` REQUIRES
+    // `endpoints` (an array). Without it the page fails "Response validation
+    // failed" and `models_live_every_signal` would measure the validator, not
+    // v4's discovery.
+    endpoints: [],
     architecture: { input_modalities: ['text'], modality: 'text->text', output_modalities: ['text'] },
     ...extra,
   };
@@ -739,6 +744,17 @@ function modelCasesFor(provider) {
     add('models_http_error', true, [
       j(401, { error: { message: 'No auth credentials found', code: 401 } }),
     ]);
+    // P4.D364 (the human's ruling of 2026-11-09, X3): `@openrouter/sdk` 1.5.34
+    // matches the typed statuses (400/401/403/404/408/409/429/500/503) against a
+    // JSON `{error:{code:int,message:string}}` schema and throws `error.message`;
+    // every other 4xx/5xx is the `OpenRouterDefaultError` shape. One row per arm
+    // (no 5xx / 408 / 429 — the SDK retries those, a timing artifact).
+    add('models_http_error_schema_miss', true, [j(403, { error: { message: 'Forbidden' } })]);
+    add('models_http_error_float_code', true, [j(400, { error: { code: 400.5, message: 'Half a code.' } })]);
+    add('models_http_error_empty_message', true, [j(404, { error: { code: 404, message: '' }, user_id: 'u-1' })]);
+    add('models_http_error_untyped_status', true, [j(402, { error: { code: 402, message: 'Insufficient credits' } })]);
+    add('models_http_error_untyped_long_body', true, [j(402, { error: { code: 402, message: 'Insufficient credits — this account needs more credits before it can list anything at all, sadly.' } })]);
+    add('models_http_error_non_json', true, [{ status: 400, body: 'bad request' }]);
   }
   return c;
 }
@@ -804,6 +820,16 @@ async function main() {
       let body = (init && init.body) || (url && url.body) || null;
       if (body && typeof body !== 'string') {
         try { body = new TextDecoder().decode(body); } catch { body = String(body); }
+      }
+      // P4.D364: v4 bug 269 (`4b0d1cb04`) made NanoGPT's generateImage first
+      // refresh a cold `/image-models?detailed=true` catalog to fit the size. This
+      // dialect corpus pins the GENERATE request, so the catalog GET is answered
+      // with an EMPTY listing and not recorded: no entry → the size posts as asked,
+      // the pre-269 shape (the catalog fitting has its own differential). Before
+      // this the GET was captured AS the generate call and every later row threw
+      // `Connection error.` from the unscripted real POST.
+      if (provider === 'nanogpt' && /\/image-models\?detailed=true$/.test(u)) {
+        return makeResponse(200, JSON.stringify({ data: [] }));
       }
       if (!captured) {
         captured = { method, url: u, body };

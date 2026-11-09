@@ -750,6 +750,8 @@ mod tests {
     /// was unreachable and the catch-branch fallback above answered every time.
     /// Both halves are asserted: the header goes out ONCE, and a 200 body is
     /// actually parsed (a green fallback list is what the bug looked like).
+    /// P4.D364: the version is `@anthropic-ai/sdk` 1.x's default, `2026-10-21`
+    /// (v4 `544c7ab1e` dropped the plugin's `2023-06-01` pin).
     #[test]
     fn anthropic_models_fetch_carries_the_version_header() {
         let wire = ScriptedWire::new(vec![Ok(WireResponse::new(
@@ -774,13 +776,19 @@ mod tests {
             .filter(|(k, _)| k == "anthropic-version")
             .map(|(_, v)| v)
             .collect();
-        assert_eq!(versions, vec!["2023-06-01"], "sent once, with v4's value");
+        assert_eq!(versions, vec!["2026-10-21"], "sent once, with v4's value");
+        // P4.D364 X2: `@anthropic-ai/sdk` 1.x sends the key as
+        // `Authorization: Bearer`, and no `x-api-key` rides with it.
         assert!(
             seen[0]
                 .3
                 .iter()
-                .any(|(k, v)| k == "x-api-key" && v == "sk-ant"),
+                .any(|(k, v)| k == "Authorization" && v == "Bearer sk-ant"),
             "the key header still rides alongside the extras"
+        );
+        assert!(
+            !seen[0].3.iter().any(|(k, _)| k == "x-api-key"),
+            "the legacy key header is gone"
         );
     }
 

@@ -5,9 +5,15 @@
 //! drift).
 //!
 //! v4 injects the key per plugin construction (`Authorization: Bearer` on the
-//! OpenAI-family SDKs, `x-api-key` on Anthropic's, `x-goog-api-key` on Google's
-//! genai SDK, nothing on Ollama); the manifest `auth` block declares the same
-//! scheme, so one injector serves every provider.
+//! OpenAI-family SDKs AND — since `@anthropic-ai/sdk` 1.x, P4.D364 — on
+//! Anthropic's, `x-goog-api-key` on Google's genai SDK, nothing on Ollama); the
+//! manifest `auth` block declares the same scheme, so one injector serves every
+//! provider. Anthropic's SDK 0.115 sent `x-api-key`; 1.x's `apiKeyAuth` sends
+//! `Authorization: Bearer` (the pin's tracked bundle,
+//! `qtap-plugin-anthropic/index.js:28480-28484`), and Anthropic's API overview
+//! lists `Authorization: Bearer` as the primary header, `x-api-key` a "legacy
+//! fallback for `Authorization`, still supported" (the human's ruling of
+//! 2026-11-09, P4.D364 X2).
 //!
 //! **Google was `query` here until P4.47 (B), and it was wrong.** The comment
 //! this replaces said "the `?key=` query param on Google's raw fetch" — but v4
@@ -24,9 +30,10 @@ use crate::provider_manifest::{Manifest, Registry};
 
 /// The manifest's fixed `auth.extra` headers — the constants a provider requires
 /// on EVERY request alongside the key itself. Today anthropic's
-/// `anthropic-version: 2023-06-01` is the only one; v4 never has to think about
+/// `anthropic-version: 2026-10-21` is the only one; v4 never has to think about
 /// it because its plugins go through the vendor SDKs, which set it on every call
-/// the client makes.
+/// the client makes. It was `2023-06-01` until P4.D364: v4 `544c7ab1e` dropped
+/// the plugin's own pin, so `@anthropic-ai/sdk` 1.x's default applies.
 ///
 /// Kept apart from [`apply_auth`] rather than folded into it: `apply_auth` runs
 /// on headers a request builder has usually already produced, and
@@ -63,8 +70,7 @@ pub(crate) fn declared_auth_extras_for(
 /// Inject the api key per the manifest `auth` scheme onto (headers, url).
 ///
 /// - `bearer` → `Authorization: Bearer <key>` header
-/// - `header` → the manifest-named header (anthropic `x-api-key`, google
-///   `x-goog-api-key`)
+/// - `header` → the manifest-named header (google `x-goog-api-key`)
 /// - `query` → the manifest-named query param appended to the url (no shipped
 ///   manifest uses it; kept because the schema declares it)
 /// - `none` (ollama) and unknown schemes inject nothing

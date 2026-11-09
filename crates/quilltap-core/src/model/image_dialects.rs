@@ -1765,12 +1765,7 @@ pub fn parse_models_page(provider: &str, resp: &WireResponse) -> Result<ModelsPa
         }
         "OPENROUTER" => {
             if !resp.ok() {
-                // The speakeasy-generated SDK's error message shape, measured at
-                // the pin: `API error occurred: Status {n}. Body: {raw}`.
-                return Err(ImageGenError::new(format!(
-                    "API error occurred: Status {}. Body: {}",
-                    resp.status, resp.body
-                )));
+                return Err(ImageGenError::new(openrouter_models_error_message(resp)));
             }
             let v: Value = serde_json::from_str(&resp.body).unwrap_or(Value::Null);
             let mut ids = Vec::new();
@@ -1871,8 +1866,115 @@ fn openai_like_ids(body: &str, pred: impl Fn(&str) -> bool) -> Vec<String> {
 /// remap_openrouter_sdk_models` reproduces the rename for the pricing path but
 /// deliberately PRESERVES unknown keys (nothing downstream reads them there);
 /// here the stripping is exactly what decides the answer, so it is reproduced.
+/// The message `@openrouter/sdk` 1.5.34's `models.list()` throws on a non-2xx
+/// (the human's ruling of 2026-11-09, P4.D364 X3 — measured at the `624d0d25c`
+/// pin's floor; 1.3.28 rendered every status as the default shape). The SDK's
+/// `M.match` (`lib/matchers.js`) tries, in order:
+///
+/// 1. the TYPED statuses (400/401/403/404/408/409/429/500/503, JSON content
+///    type — the OpenRouter API's own): `JSON.parse` the body (a V8
+///    `SyntaxError` escapes as-is), then zod-parse `{error: {code: z.int(),
+///    message: z.string(), metadata?: record|null}, openrouter_metadata?:
+///    record|null, user_id?: string|null}`. A miss is `ResponseValidationError`
+///    "Response validation failed"; a hit throws `err.error?.message ||
+///    \`API error occurred: ${JSON.stringify(err)}\`` — `err` the remapped
+///    output (`openrouterMetadata` / `userId`, unknown keys stripped) followed by
+///    the `request$` / `response$` (each `{}`) and `body$` fields;
+/// 2. every other 4xx / 5xx: `OpenRouterDefaultError("API error occurred")` —
+///    `API error occurred: Status {n}`, then `"\n"` when the body is over 100
+///    chars else `". "`, then `Body: {body}` (cut at 10,000 chars), trimmed.
+///
+/// v5's wire carries no content type; the API answers JSON, so the
+/// `Content-Type` suffix of the default shape is never rendered (as before).
+fn openrouter_models_error_message(resp: &WireResponse) -> String {
+    const TYPED: [u16; 9] = [400, 401, 403, 404, 408, 409, 429, 500, 503];
+    if !TYPED.contains(&resp.status) {
+        let body = if resp.body.is_empty() {
+            "\"\"".to_string()
+        } else {
+            resp.body.clone()
+        };
+        let units: Vec<u16> = body.encode_utf16().collect();
+        let sep = if units.len() > 100 { "\n" } else { ". " };
+        let shown = if units.len() > 10_000 {
+            format!(
+                "{}...and {} more chars",
+                String::from_utf16_lossy(&units[..10_000]),
+                units.len() - 10_000
+            )
+        } else {
+            body
+        };
+        return format!(
+            "API error occurred: Status {}{sep}Body: {shown}",
+            resp.status
+        )
+        .trim()
+        .to_string();
+    }
+    let raw: Value = match serde_json::from_str(&resp.body) {
+        Ok(v) => v,
+        Err(e) => return jsstr::v8_json_parse_message(&resp.body).unwrap_or_else(|| e.to_string()),
+    };
+    const VALIDATION: &str = "Response validation failed";
+    let empty = Map::new();
+    let obj = raw.as_object().unwrap_or(&empty);
+    let is_record_or_null = |v: Option<&Value>| match v {
+        None | Some(Value::Null) | Some(Value::Object(_)) => true,
+        Some(_) => false,
+    };
+    let Some(error) = obj.get("error").and_then(Value::as_object) else {
+        return VALIDATION.to_string();
+    };
+    let code_ok = error
+        .get("code")
+        .and_then(Value::as_f64)
+        .is_some_and(|c| c.fract() == 0.0 && c.abs() <= 9_007_199_254_740_991.0);
+    let Some(message) = error.get("message").and_then(Value::as_str) else {
+        return VALIDATION.to_string();
+    };
+    if !code_ok
+        || !is_record_or_null(error.get("metadata"))
+        || !is_record_or_null(obj.get("openrouter_metadata"))
+        || !matches!(
+            obj.get("user_id"),
+            None | Some(Value::Null) | Some(Value::String(_))
+        )
+    {
+        return VALIDATION.to_string();
+    }
+    if !message.is_empty() {
+        return message.to_string();
+    }
+    // The empty-message arm: JSON.stringify of the parsed, remapped error.
+    let mut data = Map::new();
+    for key in ["code", "message", "metadata"] {
+        if let Some(v) = error.get(key) {
+            data.insert(key.into(), v.clone());
+        }
+    }
+    let mut err = Map::new();
+    err.insert("error".into(), Value::Object(data));
+    if let Some(v) = obj.get("openrouter_metadata") {
+        err.insert("openrouterMetadata".into(), v.clone());
+    }
+    if let Some(v) = obj.get("user_id") {
+        err.insert("userId".into(), v.clone());
+    }
+    err.insert("request$".into(), Value::Object(Map::new()));
+    err.insert("response$".into(), Value::Object(Map::new()));
+    err.insert("body$".into(), Value::String(resp.body.clone()));
+    format!(
+        "API error occurred: {}",
+        crate::pascal::js_value::json_stringify(&Value::Object(err))
+    )
+}
+
 fn openrouter_sdk_project(model: &Value) -> Value {
-    /// The declared keys of `Model$inboundSchema` (everything else is stripped).
+    /// The declared keys of `Model$inboundSchema` (everything else is stripped),
+    /// re-measured at `@openrouter/sdk` 1.5.34 (P4.D364): 1.5.34 adds the
+    /// REQUIRED `endpoints` array, which discovery never reads (its nested
+    /// entries are left raw here).
     const MODEL_KEYS: &[(&str, &str)] = &[
         ("alias_target", "aliasTarget"),
         ("architecture", "architecture"),
@@ -1882,6 +1984,7 @@ fn openrouter_sdk_project(model: &Value) -> Value {
         ("created", "created"),
         ("default_parameters", "defaultParameters"),
         ("description", "description"),
+        ("endpoints", "endpoints"),
         ("expiration_date", "expirationDate"),
         ("hugging_face_id", "huggingFaceId"),
         ("id", "id"),

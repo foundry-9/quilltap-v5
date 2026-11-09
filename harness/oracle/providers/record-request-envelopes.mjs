@@ -297,10 +297,11 @@ function casesFor(provider) {
     add('boundary-first-new-gen-4-7', { ...base, model: 'claude-opus-4-7', messages: [SYS, USER] });
     add('boundary-dated-new-gen-4-8', { ...base, model: 'claude-opus-4-8-20260215', messages: [SYS, USER] });
     add('boundary-new-gen-thinking', { ...base, model: 'claude-opus-4-8', profileParameters: { thinkingBudget: 2048 } });
-    // P4.D158 (v4 `48f4b42ec`): Opus 5 joined SAMPLING_PARAMS_REJECTED_MODELS.
-    // The one flag gates BOTH decisions, so the pair is the whole contract: the
-    // plain row proves temperature/top_p/top_k are dropped, the thinking row
-    // proves a requested fixed budget becomes the adaptive shape rather than
+    // P4.D158 (v4 `48f4b42ec`): Opus 5 joined the rejected-model list (named BUDGET_THINKING_REJECTED_MODELS since `544c7ab1e`).
+    // Until `544c7ab1e` the one flag gated BOTH decisions; since then no model
+    // gets a sampling key (API version 2026-10-21), so the plain row only
+    // converges with `plain`, and the thinking row is the contract: a requested
+    // fixed budget becomes the adaptive shape rather than
     // `{type:'enabled',budget_tokens:N}`. Recorded against v4's POST-fix plugin.
     add('boundary-opus-5', { ...base, model: 'claude-opus-5', messages: [SYS, USER] });
     add('boundary-opus-5-thinking', { ...base, model: 'claude-opus-5', profileParameters: { thinkingBudget: 2048 } });
@@ -327,6 +328,26 @@ function casesFor(provider) {
     // Anthropic IGNORES the key (provider.ts:76 says so in a comment): the body
     // must be byte-identical to `plain`'s.
     add('cache-key', { ...base, model: 'claude-opus-4-6', cacheKey: 'char-9' });
+    // P4.D364 (v4 `544c7ab1e`, API version 2026-10-21): no sampling key is ever
+    // sent. `sampling-absent` proves the old `temperature: 1.0` default is gone;
+    // `top-p-only` proves the old `top_p` arm is gone.
+    const { temperature: _t, topP: _p, ...noSampling } = base;
+    add('sampling-absent', { ...noSampling, model: 'claude-opus-4-6' });
+    add('top-p-only', { ...noSampling, model: 'claude-opus-4-6', topP: 0.9 });
+    // P4.D364: v4's role-independent empty-message skip — a message whose every
+    // attachment failed and whose text is '' is DROPPED (mid-history, so
+    // `messages` never empties). The caching row puts the empty failing message
+    // LAST, so it is dropped AND no message carries the last-user breakpoint.
+    const ASSISTANT_HI = { role: 'assistant', content: 'Hi there.' };
+    add('attachment-unsupported-empty-content', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, ASSISTANT_HI, { role: 'user', content: '', attachments: [TIFF_ATT] }, USER] });
+    add('attachment-no-data-empty-content', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, ASSISTANT_HI, { role: 'user', content: '', attachments: [IMG_NO_DATA] }, USER] });
+    add('attachment-failed-empty-last-user-caching', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, ASSISTANT_HI, { role: 'user', content: '', attachments: [TIFF_ATT] }], profileParameters: { enableCacheBreakpoints: true, cacheStrategy: 'system_and_long_context' } });
+    // P4.D364 R-P1 — ASSISTANT_ATTACHMENTS_UNREPRESENTABLE: v4 moves an assistant
+    // turn's documents into a preceding user turn. v5's carrier cannot hold an
+    // assistant attachment, so the differential records these rows by name.
+    add('assistant-document-relocation', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, { role: 'assistant', content: 'Here is the file.', attachments: [PDF_ATT] }, USER] });
+    add('assistant-document-only', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, { role: 'assistant', content: '', attachments: [TXT_ATT_RAW] }, USER] });
+    add('assistant-image-and-document', { ...base, model: 'claude-opus-4-6', messages: [SYS, USER, { role: 'assistant', content: 'Here is the file.', attachments: [IMG_ATT, PDF_ATT] }, USER] });
   } else if (provider === 'deepseek') {
     add('plain', { ...base, model: 'deepseek-chat' });
     add('tools', { ...base, model: 'deepseek-chat', tools: [TOOL], toolChoice: 'auto' });
