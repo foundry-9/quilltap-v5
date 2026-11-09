@@ -58,7 +58,7 @@ use crate::services::recall::query::{EmbeddingMemo, EmbeddingMemoMap};
 use crate::services::recall::search::{
     search_memories, RecallSearchOptions, SearchMemoriesOptions,
 };
-use crate::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerNames};
+use crate::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerNames, SpeakerRow};
 use crate::tools::llm_number::llm_number;
 use crate::tools::search::memory_archived_label;
 
@@ -1133,8 +1133,11 @@ fn lookup_messages_inner(
         r.insert(
             "speaker".into(),
             Value::String(speaker_label(
-                str_of(hit, "participantId"),
-                str_of(hit, "role").unwrap_or(""),
+                &SpeakerRow {
+                    participant_id: str_of(hit, "participantId"),
+                    role: str_of(hit, "role").unwrap_or(""),
+                    ..SpeakerRow::default()
+                },
                 names,
             )),
         );
@@ -1284,11 +1287,10 @@ fn read_messages_inner(
                 put_present(&mut r, "messageId", m.get("id"));
                 r.insert(
                     "speaker".into(),
-                    Value::String(speaker_label(
-                        str_of(m, "participantId"),
-                        str_of(m, "role").unwrap_or(""),
-                        &names,
-                    )),
+                    // v4 `brahma-lookup-handler.ts:538` passes the WHOLE message
+                    // (`speakerLabel(m, names)`), so an established fact there is
+                    // labelled `Established fact` (P4.D372's R2 widening).
+                    Value::String(speaker_label(&SpeakerRow::from_value(m), &names)),
                 );
                 put_present(&mut r, "writtenAt", m.get("createdAt"));
                 r.insert(
