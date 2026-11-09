@@ -1923,6 +1923,7 @@ mod tests {
                 // holds no web-search provider): a consult-bearing tool takes
                 // the no-invoker fail-soft here — recorded, not silent.
                 consult: None,
+                tool_embedding: None,
                 turn_control: None,
             };
             let now_ms = crate::enclave::announce::system_now_ms;

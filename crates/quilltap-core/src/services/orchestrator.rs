@@ -192,7 +192,9 @@ fn host_self_inventory_env() -> SelfInventoryEnv {
 /// the Carina engine (`ask_carina` dispatch), the P4.42 web-search provider
 /// (`None` keeps the not-configured refusal), and the P4.D108 vision-describe
 /// driver (`None` keeps the auto-describe module's `describe-failed` answer —
-/// v4's own shape when no vision profile resolves). Extracted so the wiring is
+/// v4's own shape when no vision profile resolves), the photo bytes store, the
+/// consult runner, and the tool embedding provider (`None` keeps the
+/// always-failing default). Extracted so the wiring is
 /// unit-pinned: `process_message`'s call site passes the deps' seams straight
 /// through, and a dropped thread here goes red in the test below rather than
 /// vanishing unseen (the P4.49 lesson).
@@ -203,6 +205,7 @@ fn build_turn_tool_runner(
     image_describe: Option<std::sync::Arc<dyn crate::api::chat_media::ImageDescribeDriver>>,
     photo_bytes: Option<std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>>,
     consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
     display_zone: crate::host_zone::TimeZone,
 ) -> BuiltInToolRunner {
     // P4.127: the tools' dates (letter dates, transcript renders, web-search
@@ -231,6 +234,14 @@ fn build_turn_tool_runner(
     // real (v4 `run-service.ts:133`), through the host's consult runner.
     if let Some(consult) = &consult {
         tool_runner = tool_runner.with_consult(std::sync::Arc::clone(consult));
+    }
+    // …and the in-chat `search` tool's vector passes (memories, the
+    // window-first pass, conversations, knowledge) and `lookup_memories` embed
+    // for real, as v4's `searchMemories` / `generateEmbeddingForUser` do over
+    // the user's default embedding profile (the `624d0d25c` §3 review's catch —
+    // unwired, every lookup fell to the text strategy). ⚠ LIVE spend.
+    if let Some(embedding) = embedding {
+        tool_runner = tool_runner.with_embedding_provider(embedding);
     }
     tool_runner
 }
@@ -616,6 +627,18 @@ pub struct OrchestratorDeps<
     /// `llm` tool never consulted in a chat. ⚠ LIVE when wired: one consult
     /// completion per run of a tool that declares `llm`.
     pub consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    /// The embedding provider the per-turn TOOL runner embeds through (the
+    /// `search` tool's memory / conversation / knowledge vector passes, the
+    /// window-first vector pass, `lookup_memories` — v4's `searchMemories` /
+    /// `generateEmbeddingForUser` over the user's default embedding profile).
+    /// A separate, owned (`'static`) handle beside [`Self::embedding`] because
+    /// the runner outlives no borrow. The spine wires the same real provider
+    /// `embedding` points at; `None` (the enclave, canned differentials) keeps
+    /// the always-failing default — the `search` branches degrade and
+    /// `lookup_memories` takes the text strategy. The `624d0d25c` unification's
+    /// §3 review catch: the per-turn runner wired none. ⚠ LIVE when wired: one
+    /// embedding call per in-chat `search` / lookup that reaches a vector pass.
+    pub tool_embedding: Option<crate::model::embedding::ErasedEmbeddingProvider>,
     /// The operator's turn-control handle for this Salon send (P4.D335 — v4's
     /// `runWithTurnControl` ambient store, threaded explicitly; see
     /// [`crate::services::turn_control`]). The spine registers the send and
@@ -3296,10 +3319,11 @@ where
     // stand-in must be cleared for it.
     let is_dangerous_routed = content_was_flagged_dangerous || did_reroute;
     // The describer-bearing deps an uncensored reroute's attachment re-decide
-    // needs (v4 `a1d88aa3a`, bug 106 — v4 hands `adaptMessagesForProfile` the
-    // repos it already has in scope; v5's file subsystem takes the same four
-    // seams the turn's own attachment pass took). Shared by the hard-error
-    // failover and the empty-response recovery below.
+    // needs (v4 `a1d88aa3a`, bug 106 — v4 hands `applyImageTransportBudget`
+    // (`image-transport-budget.ts`, which replaced `adaptMessagesForProfile`
+    // in `29c1e2690`) the repos it already has in scope; v5's file subsystem
+    // takes the same four seams the turn's own attachment pass took). Shared
+    // by the hard-error failover and the empty-response recovery below.
     let adapter_deps = crate::services::file_fallback::FallbackDeps {
         db,
         completion: deps.completion,
@@ -3307,7 +3331,8 @@ where
         user_id: &user_id,
         now_ms: input.clock.now_ms,
         // v4 `3b463d6b1`: the reroute's attachment re-decide describes FOR
-        // this chat (`adaptMessagesForProfile(…, { chatId })`).
+        // this chat (`applyImageTransportBudget(…, { describeOptions:
+        // { chatId } })`, `provider-failover.service.ts:509`).
         chat_id: Some(&chat_id),
         // The round's id inside a storyteller round (v4
         // `llm-logging.service.ts:227`); untagged elsewhere, as before.
@@ -3498,11 +3523,12 @@ where
     // (W4.4 cascade) sets the loop's iteration cap + `submit_final_response`
     // acceptance. The text tool passes (W4.1f) follow here.
     //
-    // The runner's `self_inventory` host env + the `search`/`help_search`
-    // embedding provider are host seams (the corpus's native-call cases call
-    // handlers needing neither — wardrobe/read_conversation/doc reads); production
-    // wires the real host env + embedding provider into the runner (a tracked
-    // deferral, the standing SelfInventoryEnv seam).
+    // The runner's `self_inventory` host env + the `search`/`help_search` /
+    // `lookup_memories` embedding provider are host seams (the corpus's
+    // native-call cases call handlers needing neither — wardrobe /
+    // read_conversation / doc reads). The embedding provider arrives through
+    // `deps.tool_embedding` (the spine wires its real one); the host env stays
+    // the standing SelfInventoryEnv seam (a tracked deferral).
     let mut tool_messages: Vec<ToolMessage> = Vec::new();
     let mut generated_image_paths: Vec<GeneratedImage> = Vec::new();
 
@@ -3516,6 +3542,7 @@ where
         deps.image_describe.clone(),
         deps.photo_bytes.clone(),
         deps.consult.clone(),
+        deps.tool_embedding.clone(),
         // P4.140 (Option V): the host's display zone VALUE, threaded — never
         // re-derived from the `server_tz` NAME (a POSIX `TZ` has none).
         input.display_zone.clone(),
@@ -6008,6 +6035,10 @@ mod tests {
                 crate::photos::save_image_to_album::NotConfiguredBytes,
             )),
             Some(std::sync::Arc::new(NeverConsult)),
+            // Never invoked — the probe reads the wiring, not a vector.
+            Some(crate::model::embedding::ErasedEmbeddingProvider::new(
+                CannedEmbeddingProvider::new(),
+            )),
             crate::host_zone::TimeZone::get("America/Chicago").unwrap(),
         );
         assert_eq!(
@@ -6020,9 +6051,17 @@ mod tests {
         assert!(wired.image_describe_wired(), "the driver must be threaded");
         assert!(wired.file_bytes_wired(), "the bytes store must be threaded");
         assert!(wired.consult_wired(), "the consult runner must be threaded");
+        // The `624d0d25c` §3 review's catch: the in-chat `search` tool's vector
+        // passes and `lookup_memories` embed through this provider (v4's
+        // `searchMemories` / `generateEmbeddingForUser`).
+        assert!(
+            wired.embedding_wired(),
+            "the embedding provider must be threaded"
+        );
         let bare = build_turn_tool_runner(
             db,
             ErasedAskCarina::not_available(),
+            None,
             None,
             None,
             None,
@@ -6032,6 +6071,10 @@ mod tests {
         assert!(!bare.image_describe_wired(), "None stays the loud default");
         assert!(!bare.file_bytes_wired(), "None stays the loud default");
         assert!(!bare.consult_wired(), "None stays the fail-soft default");
+        assert!(
+            !bare.embedding_wired(),
+            "None stays the always-failing default"
+        );
     }
 
     #[tokio::test]
@@ -6118,6 +6161,7 @@ mod tests {
                 image_describe: None,
                 photo_bytes: None,
                 consult: None,
+                tool_embedding: None,
                 turn_control: None,
             };
             let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));

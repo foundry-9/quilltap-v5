@@ -443,7 +443,7 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'case', family: 'fb', label: c.label, result }));
   }
 
-  // ---- (E) adaptMessagesForProfile / collectAttachmentMimeTypes -------------
+  // ---- (E) applyImageTransportBudget / collectAttachmentMimeTypes ----------
   //
   // v4 `lib/chat/image-transport-budget.ts` `applyImageTransportBudget` (the
   // adapter module `message-attachment-adapter.ts`, `a1d88aa3a` bug 106, was

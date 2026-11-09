@@ -1217,6 +1217,16 @@ where
         }
     }
 
+    /// The spine's embedding provider as the owned, type-erased handle a tool
+    /// runner carries — the SAME provider the turn's recall embeds with (in
+    /// production the API-path provider resolved per call against the user's
+    /// default embedding profile, as v4's `generateEmbeddingForUser` does).
+    pub(crate) fn tool_embedding(
+        &self,
+    ) -> quilltap_core::model::embedding::ErasedEmbeddingProvider {
+        quilltap_core::model::embedding::ErasedEmbeddingProvider::new(Arc::clone(&self.embedding))
+    }
+
     /// A tool runner for the carina / ask_carina / Brahma engines (each engine
     /// owns its own — the type-level cycle note from W4.11a).
     pub(crate) fn tool_runner(&self) -> BuiltInToolRunner {
@@ -1241,6 +1251,12 @@ where
             runner = runner.with_image_describe(Arc::clone(image_describe));
         }
         runner = runner.with_file_bytes(Arc::clone(&self.file_bytes) as _);
+        // The `624d0d25c` §3 review's catch: Brahma's `lookup_memories` and the
+        // `search` tool embed through the spine's real provider here (v4's
+        // `searchMemories` / `generateEmbeddingForUser` over the user's default
+        // embedding profile) — unwired, every lookup took the text strategy.
+        // ⚠ LIVE spend: one embedding call per lookup / search vector pass.
+        runner = runner.with_embedding_provider(self.tool_embedding());
         // P4.127 / P4.140: the tools' dates (and Carina's progressions section,
         // through `ToolRunner::display_zone`) render in the host's display zone
         // VALUE the spine was built with — never re-derived from the `tz` NAME.
@@ -1674,6 +1690,10 @@ where
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
+            // The `624d0d25c` §3 review's catch: the in-chat `search` tool's
+            // vector passes + `lookup_memories` embed through the spine's real
+            // provider (v4's `generateEmbeddingForUser`). ⚠ LIVE spend.
+            tool_embedding: Some(self.tool_embedding()),
             turn_control: Some(turn_handle.clone()),
         };
 
@@ -2272,6 +2292,8 @@ where
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
+            // The `624d0d25c` §3 review's catch (as the Salon turn above).
+            tool_embedding: Some(self.tool_embedding()),
             // P4.D335: the enclave's autonomous turn is never registered (v4: the
             // job child) — a composer stop never reaches it.
             turn_control: None,
@@ -4747,6 +4769,86 @@ mod profile_timeout_tests {
         assert!(
             result.is_err(),
             "a silent endpoint must surface as an error, got {result:?}"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tool_runner_wiring_tests {
+    use super::*;
+    use quilltap_core::model::completion::CannedCompletionProvider;
+    use quilltap_core::model::embedding::CannedEmbeddingProvider;
+    use quilltap_core::model::stream::CannedStreamingProvider;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A never-called pricing fetch (the probe builds runners, runs no turn).
+    struct NoPricingFetch;
+    impl PricingFetch for NoPricingFetch {
+        fn openrouter_public_models(&self) -> Option<Value> {
+            None
+        }
+        fn openrouter_sdk_models(&self, _api_key: &str) -> Option<Value> {
+            None
+        }
+        fn ollama_tags(&self, _base_url: &str) -> Option<Value> {
+            None
+        }
+    }
+
+    /// The `624d0d25c` unification's §3 review catch, pinned (the P4.49
+    /// lesson): the runner the Brahma console / Carina / ask_carina / Run Tool
+    /// engines share must carry the spine's embedding provider — v4's
+    /// `lookup_memories` embeds through `searchMemories` and the `search`
+    /// tool through `generateEmbeddingForUser`. Dropping the
+    /// `with_embedding_provider` line in [`ChatSpine::tool_runner`] flips the
+    /// probe false. No provider is invoked (no network, no spend).
+    #[test]
+    fn the_engine_tool_runner_carries_the_spines_embedding_provider() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("main.db");
+        {
+            let w = quilltap_core::db::Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch("CREATE TABLE stand_in (id TEXT);")
+                .unwrap();
+        }
+        let db = Db::open_main(&path, PEPPER).unwrap();
+        let (events, _rx) = tokio::sync::broadcast::channel::<Event>(8);
+        let spine = ChatSpine {
+            db: db.clone(),
+            events,
+            embedding: Arc::new(CannedEmbeddingProvider::new()),
+            completion: Arc::new(CannedCompletionProvider::new()),
+            streaming: Arc::new(CannedStreamingProvider::new()),
+            pricing: Arc::new(PricingFetcher::new(NoPricingFetch)),
+            tz: "UTC".to_string(),
+            display_zone: TimeZone::UTC,
+            env: SelfInventoryEnv {
+                version: String::new(),
+                runtime_mode: "local-dev".to_string(),
+                client_shell: quilltap_core::tools::self_inventory::ClientShell::Unknown,
+                mount_index_degraded: false,
+                release_notes: None,
+                changelog: None,
+                model_info: Vec::new(),
+                fallback_pricing: Vec::new(),
+                registry_default_context: 8192,
+            },
+            file_bytes: Arc::new(ProductionFileBytes {
+                db: db.clone(),
+                backend: Arc::new(LocalStorageBackend::new(dir.path().join("files"))),
+                codec: Arc::new(HostImageCodec),
+            }),
+            image_transcoder: Arc::new(HostImageCodec),
+            scrollback: None,
+            consult: None,
+            web_search: None,
+            image_describe: None,
+        };
+        assert!(
+            spine.tool_runner().embedding_wired(),
+            "the engines' tool runner must carry the spine's embedding provider"
         );
     }
 }

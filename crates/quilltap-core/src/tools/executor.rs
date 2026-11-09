@@ -429,6 +429,11 @@ pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     /// with no provider the search branches degrade gracefully (v4's "no embedding
     /// profile" behavior) and `help_search` falls back to keyword search.
     embedding_provider: ErasedEmbeddingProvider,
+    /// Whether a real provider replaced the [`ErasedEmbeddingProvider::none`]
+    /// default (the wiring probe's backing flag — the `624d0d25c` §3 review's
+    /// catch: no production runner carried one, so `lookup_memories` and the
+    /// `search` tool's vector passes never ran live).
+    embedding_wired: bool,
     /// The web-search boundary the `search_web` tool uses (v4's
     /// `searchProviderRegistry` + API-key lookup + Serper fallback). Defaults to
     /// [`web_search::NotConfiguredWebSearch`] (a no-search-plugin instance returns
@@ -502,6 +507,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
             self_inventory_env,
             terminal_read: Arc::new(EmptyTerminalRead),
             embedding_provider: ErasedEmbeddingProvider::none(),
+            embedding_wired: false,
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             file_bytes: Arc::new(NotConfiguredBytes),
             file_bytes_wired: false,
@@ -526,6 +532,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             self_inventory_env: self.self_inventory_env,
             terminal_read: self.terminal_read,
             embedding_provider: self.embedding_provider,
+            embedding_wired: self.embedding_wired,
             web_search_provider: self.web_search_provider,
             file_bytes: self.file_bytes,
             file_bytes_wired: self.file_bytes_wired,
@@ -606,6 +613,16 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         self.consult.is_some()
     }
 
+    /// Wiring probe for the embedding provider (same rationale): `false` means
+    /// the runner still holds the always-failing
+    /// [`ErasedEmbeddingProvider::none`], so `lookup_memories` always takes the
+    /// text strategy and the `search` tool's vector passes never run — where
+    /// v4 embeds through the user's default embedding profile
+    /// (`searchMemories` / `generateEmbeddingForUser`).
+    pub fn embedding_wired(&self) -> bool {
+        self.embedding_wired
+    }
+
     /// Inject the recorded photo save side-effects (mount invalidation + embedding
     /// enqueue). Production wires the host cache/scheduler.
     pub fn with_photo_side_effects(
@@ -620,6 +637,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
     /// (production wires the real one; the core default never succeeds).
     pub fn with_embedding_provider(mut self, provider: ErasedEmbeddingProvider) -> Self {
         self.embedding_provider = provider;
+        self.embedding_wired = true;
         self
     }
 

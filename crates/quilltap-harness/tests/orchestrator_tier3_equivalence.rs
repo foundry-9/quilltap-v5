@@ -2296,6 +2296,7 @@ fn orchestrator_tier3_matches_oracle() {
             image_describe: None,
             photo_bytes: None,
             consult: None,
+            tool_embedding: None,
             // P4.D335: every call runs under a registered turn, as v4's
             // `handleSendMessage` always does (`runWithTurnControl`).
             turn_control: Some(turn_registration.handle()),

@@ -334,6 +334,8 @@ where
             image_describe: image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
+            // The `624d0d25c` §3 review's catch (as the Salon spine's turn).
+            tool_embedding: Some(self.tool_embedding()),
             turn_control: turn_handle.clone(),
         };
 
