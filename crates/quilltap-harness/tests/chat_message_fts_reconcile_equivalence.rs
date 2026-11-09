@@ -90,6 +90,12 @@ struct Step {
     row_type: Option<String>,
     #[serde(default, deserialize_with = "double_option")]
     role: Option<Option<String>>,
+    /// P4.D363: absent = NULL.
+    #[serde(default, rename = "systemSender")]
+    system_sender: Option<String>,
+    /// P4.D363: absent = NULL.
+    #[serde(default, rename = "customAnnouncer")]
+    custom_announcer: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,9 +132,19 @@ struct OracleResult {
 
 #[derive(Debug, Deserialize)]
 struct OracleLog {
+    /// P4.D363: `service` (the pass's own logger, `quilltap::boot` /
+    /// `startup.chat-message-fts-reconcile`) or `module` (the DDL module's
+    /// bare logger, `quilltap::db` / `db.chat-message-fts` — the stale replace
+    /// and the rebuild's three debug lines).
+    #[serde(default = "service_source")]
+    source: String,
     level: String,
     message: String,
     context: Value,
+}
+
+fn service_source() -> String {
+    "service".to_string()
 }
 
 fn corpus_path() -> PathBuf {
@@ -164,13 +180,15 @@ fn seed(conn: &Connection, step: &Step, long: &str) {
         Content::Null => Box::new(Option::<String>::None),
     };
     conn.execute(
-        r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","createdAt") VALUES (?,?,?,?,?,?)"#,
+        r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","systemSender","customAnnouncer","createdAt") VALUES (?,?,?,?,?,?,?,?)"#,
         rusqlite::params![
             step.id,
             "chat-1",
             step.row_type.as_deref().unwrap_or("message"),
             role,
             content.as_ref(),
+            step.system_sender,
+            step.custom_announcer,
             created_at
         ],
     )
@@ -239,9 +257,17 @@ fn after_state(conn: &Connection, corpus: &Corpus) -> Map<String, Value> {
 /// every context value. `durationMs` is excluded (a clock).
 fn assert_line_matches(line: &str, oracle: &OracleLog, scenario: &str, i: usize) {
     let want_level = oracle.level.to_uppercase();
+    let (target, context) = if oracle.source == "module" {
+        ("quilltap::db", "context=db.chat-message-fts")
+    } else {
+        (
+            "quilltap::boot",
+            "context=startup.chat-message-fts-reconcile",
+        )
+    };
     assert!(
-        line.starts_with(&format!("{want_level} quilltap::boot")),
-        "{scenario}: log {i} level/target\n  want: {want_level} quilltap::boot…\n  got:  {line}"
+        line.starts_with(&format!("{want_level} {target}")),
+        "{scenario}: log {i} level/target\n  want: {want_level} {target}…\n  got:  {line}"
     );
     // The capture layer renders the format-args message through its `Debug`,
     // which for `format_args!` is the formatted text WITHOUT quotes — so the
@@ -252,8 +278,8 @@ fn assert_line_matches(line: &str, oracle: &OracleLog, scenario: &str, i: usize)
         oracle.message
     );
     assert!(
-        line.contains("context=startup.chat-message-fts-reconcile"),
-        "{scenario}: log {i} is missing the service context\n  got: {line}"
+        line.contains(context),
+        "{scenario}: log {i} is missing the {context}\n  got: {line}"
     );
     if let Value::Object(ctx) = &oracle.context {
         for (key, value) in ctx {
@@ -372,7 +398,10 @@ fn chat_message_fts_reconcile_matches_oracle() {
         // for the four lines this scenario must not produce).
         let ours: Vec<&String> = lines
             .iter()
-            .filter(|l| l.contains("context=startup.chat-message-fts-reconcile"))
+            .filter(|l| {
+                l.contains("context=startup.chat-message-fts-reconcile")
+                    || l.contains("context=db.chat-message-fts")
+            })
             .collect();
         assert_eq!(
             ours.len(),

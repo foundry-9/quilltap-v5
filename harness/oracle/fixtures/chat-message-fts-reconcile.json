@@ -1,5 +1,5 @@
 {
-  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"createdAt\" TEXT NOT NULL\n  )",
+  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"systemSender\" TEXT DEFAULT NULL,\n    \"customAnnouncer\" TEXT DEFAULT NULL,\n    \"createdAt\" TEXT NOT NULL\n  )",
   "long": {
     "unit": "The djinn walked to the café in Istanbul, and said so at length. ",
     "times": 20
@@ -9,7 +9,8 @@
     "\"estate\"*",
     "\"istanbul\"*",
     "\"event\"*",
-    "\"aside\"*"
+    "\"aside\"*",
+    "\"dirigible\"*"
   ],
   "scenarios": [
     {
@@ -238,11 +239,78 @@
           "content": {
             "kind": "longBlob"
           }
+        },
+        {
+          "op": "insert",
+          "id": "msg-06",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible recalled"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "op": "insert",
+          "id": "msg-07",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible announced"
+          },
+          "role": "ASSISTANT",
+          "customAnnouncer": "{\"kind\":\"custom\",\"displayName\":\"Town Crier\"}"
         }
       ],
       "damage": [
         "DELETE FROM \"chat_messages_fts\"",
         "DELETE FROM \"chat_messages_fts_map\""
+      ]
+    },
+    {
+      "name": "legacy trigger, Staff rows indexed - replaced and rebuilt",
+      "seed": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "interchange number 1 concerning the estate"
+          }
+        }
+      ],
+      "damage": [
+        "DROP TRIGGER \"chat_messages_fts_ai\"",
+        "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+      ],
+      "afterDamage": [
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible recalled"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible announced by the Host"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "host"
+        },
+        {
+          "op": "insert",
+          "id": "msg-04",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible, said plainly"
+          }
+        }
       ]
     }
   ]

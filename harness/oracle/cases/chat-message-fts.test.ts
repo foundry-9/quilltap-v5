@@ -43,6 +43,20 @@
  *   - `rebuild` / `progress` — the `ChatMessageFtsRebuildResult` (minus the
  *                      nondeterministic `durationMs`) and the per-batch
  *                      callback arguments.
+ *   - `stale`        — (P4.D363, v4 `902c6efe9`) the `stale` step op's
+ *                      `staleChatMessageFtsTriggers` answer, in v4's
+ *                      `sqlite_master` order (its SQL has no ORDER BY).
+ *   - `master`       — (P4.D363) the `master` step op's re-dump of the five
+ *                      objects' `sqlite_master` rows, so the text a STALE
+ *                      REPLACE leaves on disk is a comparand (the per-scenario
+ *                      dump is taken before the steps).
+ *   - `logs`         — (P4.D363) every line the step sent to the bare
+ *                      `@/lib/logger` (which this module logs through):
+ *                      level, message, context. The comparand for
+ *                      `Replacing outdated chat message FTS triggers` and the
+ *                      rebuild's three debug lines. Captured with a spy, not
+ *                      the transports, because v4's logger filters `debug`
+ *                      below its INFO default before any transport sees it.
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores
  * .claude/ paths):
@@ -58,7 +72,7 @@
  *       --roots "$PWD" --roots "$TMPO/cases" -- "chat-message-fts\.test\.ts$"
  */
 
-import { describe, it } from '@jest/globals';
+import { describe, it, jest } from '@jest/globals';
 import * as fs from 'fs';
 import path from 'path';
 
@@ -70,8 +84,10 @@ import {
   ensureChatMessageFtsSchema,
   missingChatMessageFtsObjects,
   rebuildChatMessageFtsIndex,
+  staleChatMessageFtsTriggers,
   CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS,
 } from '@/lib/database/backends/sqlite/chat-message-fts';
+import { logger } from '@/lib/logger';
 import { registerTextCodecFunction } from '@/lib/database/backends/sqlite/text-codec-function';
 import { textToBlob } from '@/lib/database/text-compression';
 
@@ -87,13 +103,17 @@ type Content =
   | { kind: 'null' };
 
 interface Step {
-  op: 'ensure' | 'exec' | 'insert' | 'update' | 'delete' | 'rebuild';
+  op: 'ensure' | 'exec' | 'insert' | 'update' | 'delete' | 'rebuild' | 'stale' | 'master';
   sql?: string;
   id?: string;
   content?: Content;
   type?: string;
   /** Absent = 'USER'; explicit null = a NULL role. */
   role?: string | null;
+  /** P4.D363: absent = NULL. */
+  systemSender?: string;
+  /** P4.D363: absent = NULL. */
+  customAnnouncer?: string;
 }
 
 interface Scenario {
@@ -213,6 +233,32 @@ function observe(db: any, scenario: Scenario, extra: Record<string, unknown>) {
   };
 }
 
+/** The five objects' `sqlite_master` rows, in the shape both dumps use. */
+function masterRows(db: any) {
+  return db
+    .prepare(
+      `SELECT name, type, sql FROM sqlite_master
+        WHERE name IN (${chatMessageFtsObjectNames()
+          .map(() => '?')
+          .join(',')})
+        ORDER BY name`,
+    )
+    .all(...chatMessageFtsObjectNames());
+}
+
+interface LogLine {
+  level: string;
+  message: string;
+  context: unknown;
+}
+const logLines: LogLine[] = [];
+for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (jest.spyOn(logger as any, level) as any).mockImplementation((message: string, context?: unknown) => {
+    logLines.push({ level, message, context: context ?? null });
+  });
+}
+
 describe('P4.D204 chat message FTS oracle', () => {
   it('records v4 driving the corpus script', () => {
     const out = process.env.QT_ORACLE_OUT;
@@ -248,15 +294,7 @@ describe('P4.D204 chat message FTS oracle', () => {
           JSON.stringify({
             row: 'sqliteMaster',
             scenario: scenario.name,
-            objects: db
-              .prepare(
-                `SELECT name, type, sql FROM sqlite_master
-                  WHERE name IN (${chatMessageFtsObjectNames()
-                    .map(() => '?')
-                    .join(',')})
-                  ORDER BY name`,
-              )
-              .all(...chatMessageFtsObjectNames()),
+            objects: masterRows(db),
           }),
         );
 
@@ -264,6 +302,9 @@ describe('P4.D204 chat message FTS oracle', () => {
           let error: string | null = null;
           let rebuild: Record<string, number> | null = null;
           let progress: Array<[number, number]> | null = null;
+          let stale: string[] | null = null;
+          let master: unknown = null;
+          logLines.length = 0;
 
           const [, err] = attempt(() => {
             switch (step.op) {
@@ -274,14 +315,19 @@ describe('P4.D204 chat message FTS oracle', () => {
                 db.exec(step.sql as string);
                 return;
               case 'insert':
+                // P4.D363: eight columns — the two author columns bound NULL
+                // when the step omits them, so a pre-round six-column row is
+                // the same row it always was.
                 db.prepare(
-                  'INSERT INTO "chat_messages" ("id","chatId","type","role","content","createdAt") VALUES (?,?,?,?,?,?)',
+                  'INSERT INTO "chat_messages" ("id","chatId","type","role","content","systemSender","customAnnouncer","createdAt") VALUES (?,?,?,?,?,?,?,?)',
                 ).run(
                   step.id,
                   'chat-1',
                   step.type ?? 'message',
                   step.role === undefined ? 'USER' : step.role,
                   contentValue(step.content as Content),
+                  step.systemSender ?? null,
+                  step.customAnnouncer ?? null,
                   // v4's own helper: the id's last two digits become the
                   // second, so `createdAt DESC` is a total order.
                   `2026-01-01T00:00:${(step.id as string).slice(-2).padStart(2, '0')}.000Z`,
@@ -308,6 +354,12 @@ describe('P4.D204 chat message FTS oracle', () => {
                 };
                 return;
               }
+              case 'stale':
+                stale = staleChatMessageFtsTriggers(db);
+                return;
+              case 'master':
+                master = masterRows(db);
+                return;
             }
           });
           error = err;
@@ -325,6 +377,9 @@ describe('P4.D204 chat message FTS oracle', () => {
                   error,
                   rebuild,
                   progress,
+                  stale,
+                  master,
+                  logs: [...logLines],
                 }),
               ),
             );

@@ -46,7 +46,21 @@ interface Spec {
   testPepperBase64: string;
   chats: Array<Record<string, unknown> & { id: string; createdAt: string; updatedAt: string }>;
   seedMessages: Array<{ chatId: string; messages: Array<Record<string, unknown>> }>;
+  /** P4.D363: Staff rows written AFTER the index is built, under the LEGACY
+   * insert trigger (FTS venue) — an index built under the old rule, not yet
+   * rebuilt. On the plain venue they are ordinary rows. */
+  staleIndexedMessages: Array<{ chatId: string; messages: Array<Record<string, unknown>> }>;
 }
+
+/** v4's `LEGACY_INSERT_TRIGGER` (`chat-message-fts.test.ts` at `624d0d25c`). */
+const LEGACY_INSERT_TRIGGER = `CREATE TRIGGER "chat_messages_fts_ai" AFTER INSERT ON "chat_messages"
+  WHEN new."type" = 'message' AND new."role" IN ('USER','ASSISTANT') AND new."content" IS NOT NULL
+BEGIN
+  INSERT INTO "chat_messages_fts_map"("messageId") VALUES (new."id");
+  INSERT INTO "chat_messages_fts"(rowid, content)
+    VALUES ((SELECT "ftsId" FROM "chat_messages_fts_map" WHERE "messageId" = new."id"),
+            qt_text(new."content"));
+END`;
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -99,6 +113,19 @@ async function main(): Promise<void> {
     if (!db) throw new Error('QT_FIXTURE_FTS=1 but there is no raw SQLite database');
     ensureChatMessageFtsSchema(db);
     indexed = rebuildChatMessageFtsIndex(db).indexed;
+    // P4.D363: the stale-index plant — the legacy trigger in place for the
+    // write, then v4's REAL ensure replaces it again (a stale replace), so the
+    // fixture's triggers are current but its index still holds the Staff row.
+    db.exec('DROP TRIGGER "chat_messages_fts_ai"');
+    db.exec(LEGACY_INSERT_TRIGGER);
+    for (const seed of spec.staleIndexedMessages) {
+      await repo.addMessages(seed.chatId, seed.messages as never);
+    }
+    ensureChatMessageFtsSchema(db);
+  } else {
+    for (const seed of spec.staleIndexedMessages) {
+      await repo.addMessages(seed.chatId, seed.messages as never);
+    }
   }
 
   await closeDatabase();

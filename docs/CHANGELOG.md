@@ -69,6 +69,12 @@ _Docs-only change._
 
 The order's Status records the `SCHEMA` sha and the C2 names as landed (the new `services/connection_profiles.rs`, the chain's append point, the oracle plant signature, and the measured `'0.0'` → true read rule).
 
+#### 2026-11-09 — feat(search): the message FTS index without the Staff — the eligibility rule, the stale-trigger replace, the joined-row filter and `participantId` on every global hit (v4 902c6efe9 + c539c82e0)
+
+_Versions: core 0.0.1429._
+
+P4.D363 cut (a). `chat_message_fts_eligibility_sql` gains v4's `AND "systemSender" IS NULL AND "customAnnouncer" IS NULL` (v4 #121: Staff rows carry role `ASSISTANT`), so the counts, the rebuild, the LIKE fallback and the insert trigger move together. The `_ai` trigger's `WHEN` is now that fragment at alias `new` byte for byte (v4 compares the stored `sqlite_master.sql` and drops a differing trigger on every boot), pinned by `insert_trigger_when_is_the_fragment`. New `stale_chat_message_fts_triggers` (v4's SQL, `sqlite_master` order, `IF NOT EXISTS` stripped once) and the stale-replace arm of `ensure_chat_message_fts_schema`, with v4's DEBUG `Replacing outdated chat message FTS triggers` (`staleJson`). Global search re-applies the fragment on the joined row of the FTS arm, and every hit is `{messageId, content, chatId, role, participantId, createdAt}`, with `participantId` null when absent (contract C8). Differentials grown at pin `624d0d25c`: `chat_message_fts` (27 scenarios, `stale` / `master` ops, per-step logs), `chat_message_fts_reconcile` (8, the module logger's lines in order), `chats_search` (Staff and announcer rows, a Staff row indexed under the legacy trigger, hits byte-compared, `TRIGGER_TEXT_NO_PING_PONG`) and `ui_search` (two planted Staff rows, asserted present and absent). The pairing test names `EMPTY_AUTHOR_TRUTHINESS_VS_IS_NULL`.
+
 #### 2026-11-08 — SCHEMA: the 624d0d25c D23 re-dump (moves 22 / 23 + kind / brahma fresh-only), the Anthropic sampling strip and two column ensures as one chain, the column plumbing, the export dumps (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._

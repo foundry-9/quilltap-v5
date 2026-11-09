@@ -104,6 +104,23 @@
           "role": "SYSTEM",
           "content": "The airship system notice that must never match",
           "createdAt": "2026-01-06T01:02:00.000Z"
+        },
+        {
+          "id": "fa000000-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "An airship recalled in a whisper from the Commonplace Book",
+          "createdAt": "2026-01-06T01:03:00.000Z",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "id": "fa000000-0000-4000-8000-000000000008",
+          "role": "ASSISTANT",
+          "content": "An airship arrival proclaimed by the Town Crier",
+          "createdAt": "2026-01-06T01:04:00.000Z",
+          "customAnnouncer": {
+            "kind": "custom",
+            "displayName": "Town Crier"
+          }
         }
       ]
     },

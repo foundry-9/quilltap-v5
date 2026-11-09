@@ -61,6 +61,24 @@
 //! ```
 //!
 //! With `QT_ORACLE_CHAT_MESSAGE_FTS` unset the differential SKIPs (and says so).
+//!
+//! ## P4.D363 (v4 `902c6efe9`, pin `624d0d25c`)
+//!
+//! The corpus DDL gains `systemSender` / `customAnnouncer` (v4's own reduced
+//! DDL), every `insert` binds eight columns (absent author → NULL), and two
+//! step ops join: `stale` (each side's `stale_chat_message_fts_triggers`, in
+//! `sqlite_master` order — the comparand) and `master` (a re-dump of the five
+//! objects' `sqlite_master` rows, so the text a stale REPLACE leaves on disk
+//! is compared). Every observed step also compares `logs` — what the step
+//! sent through the module's logger (v4: a spy on the bare `@/lib/logger`;
+//! v5: `captured_with`, filtered to `context=db.chat-message-fts`), by level,
+//! message and fields (`durationMs` a clock; arrays under `…Json`).
+//!
+//! `TRIGGER_TEXT_NO_PING_PONG`, the v4→v5 direction by transitivity: the `ddl`
+//! row pins v5's statements to v4's, and every scenario's `sqliteMaster` row
+//! (and every `master` step) pins v5's STORED text to v4's stored text — so
+//! v4's `staleChatMessageFtsTriggers` over a v5-written trigger is `[]`, and
+//! the `stale` steps after an `ensure` prove the same from v5's side.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -68,9 +86,11 @@ use std::path::PathBuf;
 use quilltap_core::db::chat_message_fts::{
     chat_message_fts_eligibility_sql, chat_message_fts_object_names, count_eligible_chat_messages,
     count_indexed_chat_messages, ensure_chat_message_fts_schema, missing_chat_message_fts_objects,
-    rebuild_chat_message_fts_index, CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS,
+    rebuild_chat_message_fts_index, stale_chat_message_fts_triggers,
+    CHAT_MESSAGE_FTS_SCHEMA_STATEMENTS,
 };
 use quilltap_core::db::text_compression::{register_qt_text, text_to_blob, TextCell};
+use quilltap_core::test_support::captured_with;
 use rusqlite::types::ValueRef;
 use rusqlite::Connection;
 use serde::Deserialize;
@@ -118,6 +138,12 @@ struct Step {
     /// is the tri-state serde needs to tell those two apart.
     #[serde(default, deserialize_with = "double_option")]
     role: Option<Option<String>>,
+    /// P4.D363: absent = NULL.
+    #[serde(default, rename = "systemSender")]
+    system_sender: Option<String>,
+    /// P4.D363: absent = NULL.
+    #[serde(default, rename = "customAnnouncer")]
+    custom_announcer: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -333,14 +359,21 @@ fn to_value_opt<T: Into<Value>>(v: Option<T>) -> Value {
     v.map(Into::into).unwrap_or(Value::Null)
 }
 
-/// Run one step, returning `(error, rebuild, progress)` the way the oracle does.
-fn run_step(
-    conn: &Connection,
-    step: &Step,
-    long: &str,
-) -> (Option<String>, Option<Value>, Option<Value>) {
+/// What one step produced besides the state `observe` reads.
+struct StepOut {
+    error: Option<String>,
+    rebuild: Option<Value>,
+    progress: Option<Value>,
+    stale: Option<Value>,
+    master: Option<Value>,
+}
+
+/// Run one step, returning what the oracle records for it.
+fn run_step(conn: &Connection, step: &Step, long: &str) -> StepOut {
     let mut rebuild = None;
     let mut progress = None;
+    let mut stale = None;
+    let mut master = None;
     let outcome: Result<(), String> = (|| match step.op.as_str() {
         "ensure" => ensure_chat_message_fts_schema(conn).map_err(|e| sqlite_message(&e)),
         "exec" => conn
@@ -360,8 +393,17 @@ fn run_step(
             );
             let content = bind_content(step.content.as_ref().expect("insert needs content"), long);
             conn.execute(
-                r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","createdAt") VALUES (?,?,?,?,?,?)"#,
-                rusqlite::params![id, "chat-1", row_type, role, content.as_ref(), created_at],
+                r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","systemSender","customAnnouncer","createdAt") VALUES (?,?,?,?,?,?,?,?)"#,
+                rusqlite::params![
+                    id,
+                    "chat-1",
+                    row_type,
+                    role,
+                    content.as_ref(),
+                    step.system_sender,
+                    step.custom_announcer,
+                    created_at
+                ],
             )
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -401,9 +443,63 @@ fn run_step(
             }));
             Ok(())
         }
+        "stale" => {
+            let names = stale_chat_message_fts_triggers(conn).map_err(|e| sqlite_message(&e))?;
+            stale = Some(Value::from(names));
+            Ok(())
+        }
+        "master" => {
+            master = Some(sqlite_master_objects(conn));
+            Ok(())
+        }
         other => panic!("unknown step op: {other}"),
     })();
-    (outcome.err(), rebuild, progress)
+    StepOut {
+        error: outcome.err(),
+        rebuild,
+        progress,
+        stale,
+        master,
+    }
+}
+
+/// One of v4's logged lines.
+#[derive(Debug, Deserialize)]
+struct OracleLog {
+    level: String,
+    message: String,
+    context: Value,
+}
+
+/// v5's rendered line against one of v4's: level/target, message, the
+/// module context, every field (`durationMs` a clock; arrays as `…Json`).
+fn assert_log_matches(line: &str, want: &OracleLog, at: &str) {
+    let level = want.level.to_uppercase();
+    assert!(
+        line.starts_with(&format!("{level} quilltap::db")),
+        "{at}: level/target\n  want: {level} quilltap::db\n  got:  {line}"
+    );
+    assert!(
+        line.contains(&want.message),
+        "{at}: message {:?}\n  got: {line}",
+        want.message
+    );
+    if let Value::Object(ctx) = &want.context {
+        for (key, value) in ctx {
+            if key == "durationMs" {
+                continue;
+            }
+            let needle = match value {
+                Value::Array(_) => format!("{key}Json={}", serde_json::to_string(value).unwrap()),
+                Value::String(s) => format!("{key}={s}"),
+                other => format!("{key}={other}"),
+            };
+            assert!(
+                line.contains(&needle),
+                "{at}: missing `{needle}`\n  got: {line}"
+            );
+        }
+    }
 }
 
 /// v5's `sqlite_master` rows for the five objects, in the oracle's shape.
@@ -516,7 +612,7 @@ fn chat_message_fts_matches_oracle() {
         compared += 1;
 
         for (i, step) in scenario.steps.iter().enumerate() {
-            let (error, rebuild, progress) = run_step(&conn, step, &long);
+            let (out, lines) = captured_with(|| run_step(&conn, step, &long));
             let observed = !scenario.quiet || step.op != "insert" || i == scenario.steps.len() - 1;
             if !observed {
                 continue;
@@ -538,9 +634,33 @@ fn chat_message_fts_matches_oracle() {
             assert_eq!(oracle_op, &step.op, "{:?} step {i}: op", scenario.name);
 
             let mut got = observe(&conn, scenario, &corpus);
-            got.insert("error".into(), to_value_opt(error));
-            got.insert("rebuild".into(), rebuild.unwrap_or(Value::Null));
-            got.insert("progress".into(), progress.unwrap_or(Value::Null));
+            got.insert("error".into(), to_value_opt(out.error));
+            got.insert("rebuild".into(), out.rebuild.unwrap_or(Value::Null));
+            got.insert("progress".into(), out.progress.unwrap_or(Value::Null));
+            got.insert("stale".into(), out.stale.unwrap_or(Value::Null));
+            got.insert("master".into(), out.master.unwrap_or(Value::Null));
+
+            // P4.D363: the step's log lines, in order and NOTHING ELSE.
+            let ours: Vec<&String> = lines
+                .iter()
+                .filter(|l| l.contains("context=db.chat-message-fts"))
+                .collect();
+            let theirs: Vec<OracleLog> = serde_json::from_value(
+                oracle_observation
+                    .get("logs")
+                    .cloned()
+                    .unwrap_or(Value::Array(vec![])),
+            )
+            .expect("oracle logs");
+            let at = format!("scenario {:?} step {i} ({})", scenario.name, step.op);
+            assert_eq!(
+                ours.len(),
+                theirs.len(),
+                "{at}: log COUNT diverged\n  rust:   {ours:#?}\n  oracle: {theirs:#?}"
+            );
+            for (n, want) in theirs.iter().enumerate() {
+                assert_log_matches(ours[n], want, &format!("{at} log {n}"));
+            }
 
             for key in [
                 "error",
@@ -554,6 +674,8 @@ fn chat_message_fts_matches_oracle() {
                 "obsErrors",
                 "rebuild",
                 "progress",
+                "stale",
+                "master",
             ] {
                 let mine = got.get(key).unwrap_or(&Value::Null);
                 let theirs = oracle_observation.get(key).unwrap_or(&Value::Null);
@@ -587,7 +709,9 @@ fn corpus_covers_every_behaviour() {
         .iter()
         .flat_map(|s| s.steps.iter().map(|st| st.op.as_str()))
         .collect();
-    for op in ["ensure", "exec", "insert", "update", "delete", "rebuild"] {
+    for op in [
+        "ensure", "exec", "insert", "update", "delete", "rebuild", "stale", "master",
+    ] {
         assert!(ops.contains(&op), "no corpus step exercises `{op}`");
     }
     assert!(
@@ -625,4 +749,18 @@ fn corpus_covers_every_behaviour() {
     assert!(inserts
         .iter()
         .any(|s| matches!(s.content, Some(Content::LongBlob))));
+    // P4.D363: a Staff row, an announcer row, and the `''` author of
+    // `EMPTY_AUTHOR_TRUTHINESS_VS_IS_NULL` on each column.
+    assert!(inserts
+        .iter()
+        .any(|s| s.system_sender.as_deref().is_some_and(|v| !v.is_empty())));
+    assert!(inserts
+        .iter()
+        .any(|s| s.custom_announcer.as_deref().is_some_and(|v| !v.is_empty())));
+    assert!(inserts
+        .iter()
+        .any(|s| s.system_sender.as_deref() == Some("")));
+    assert!(inserts
+        .iter()
+        .any(|s| s.custom_announcer.as_deref() == Some("")));
 }

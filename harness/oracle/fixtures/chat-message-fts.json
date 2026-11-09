@@ -1,5 +1,5 @@
 {
-  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"createdAt\" TEXT NOT NULL\n  )",
+  "chatMessagesDdl": "CREATE TABLE \"chat_messages\" (\n    \"id\" TEXT PRIMARY KEY,\n    \"chatId\" TEXT NOT NULL,\n    \"type\" TEXT DEFAULT 'message',\n    \"role\" TEXT,\n    \"content\" TEXT,\n    \"systemSender\" TEXT DEFAULT NULL,\n    \"customAnnouncer\" TEXT DEFAULT NULL,\n    \"createdAt\" TEXT NOT NULL\n  )",
   "long": {
     "unit": "The djinn walked to the café in Istanbul, and said so at length. ",
     "times": 20
@@ -20,7 +20,10 @@
     "\"interchange\"*",
     "\"line\"*",
     "\"tool\"*",
-    "\"roleless\"*"
+    "\"roleless\"*",
+    "\"tabby\"*",
+    "\"dirigible\"*",
+    "\"sender\"*"
   ],
   "scenarios": [
     {
@@ -4868,6 +4871,196 @@
         {
           "op": "delete",
           "id": "msg-01"
+        }
+      ]
+    },
+    {
+      "name": "skips Staff messages and announcement bubbles, which carry role ASSISTANT (#121)",
+      "steps": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "the three-legged tabby"
+          },
+          "role": "ASSISTANT"
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "recall: the three-legged tabby"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "commonplaceBook"
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "the tabby arrives"
+          },
+          "role": "ASSISTANT",
+          "customAnnouncer": "{\"kind\":\"custom\",\"displayName\":\"Town Crier\"}"
+        }
+      ]
+    },
+    {
+      "name": "outdated triggers - reports a trigger whose definition no longer matches",
+      "steps": [
+        {
+          "op": "exec",
+          "sql": "DROP TRIGGER \"chat_messages_fts_ai\""
+        },
+        {
+          "op": "exec",
+          "sql": "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+        },
+        {
+          "op": "stale"
+        }
+      ]
+    },
+    {
+      "name": "outdated triggers - replaces it, and a rebuild then drops the Staff rows it let in",
+      "steps": [
+        {
+          "op": "exec",
+          "sql": "DROP TRIGGER \"chat_messages_fts_ai\""
+        },
+        {
+          "op": "exec",
+          "sql": "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+        },
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible overhead"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "host"
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "a dirigible, said plainly"
+          }
+        },
+        {
+          "op": "ensure"
+        },
+        {
+          "op": "stale"
+        },
+        {
+          "op": "master"
+        },
+        {
+          "op": "rebuild"
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "another dirigible"
+          },
+          "role": "ASSISTANT",
+          "systemSender": "lantern"
+        }
+      ]
+    },
+    {
+      "name": "two stale triggers - reported in sqlite_master order, not statement order",
+      "steps": [
+        {
+          "op": "exec",
+          "sql": "DROP TRIGGER \"chat_messages_fts_au\""
+        },
+        {
+          "op": "exec",
+          "sql": "CREATE TRIGGER \"chat_messages_fts_au\" AFTER UPDATE OF \"content\" ON \"chat_messages\"\n  WHEN qt_text(new.\"content\") IS NOT qt_text(old.\"content\")\n   AND EXISTS (SELECT 1 FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\")\nBEGIN\n  DELETE FROM  \"chat_messages_fts\"\n    WHERE rowid = (SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = old.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+        },
+        {
+          "op": "exec",
+          "sql": "DROP TRIGGER \"chat_messages_fts_ai\""
+        },
+        {
+          "op": "exec",
+          "sql": "CREATE TRIGGER \"chat_messages_fts_ai\" AFTER INSERT ON \"chat_messages\"\n  WHEN new.\"type\" = 'message' AND new.\"role\" IN ('USER','ASSISTANT') AND new.\"content\" IS NOT NULL\nBEGIN\n  INSERT INTO \"chat_messages_fts_map\"(\"messageId\") VALUES (new.\"id\");\n  INSERT INTO \"chat_messages_fts\"(rowid, content)\n    VALUES ((SELECT \"ftsId\" FROM \"chat_messages_fts_map\" WHERE \"messageId\" = new.\"id\"),\n            qt_text(new.\"content\"));\nEND"
+        },
+        {
+          "op": "stale"
+        },
+        {
+          "op": "ensure"
+        },
+        {
+          "op": "stale"
+        },
+        {
+          "op": "master"
+        }
+      ]
+    },
+    {
+      "name": "a missing trigger is not a stale one",
+      "steps": [
+        {
+          "op": "exec",
+          "sql": "DROP TRIGGER \"chat_messages_fts_ad\""
+        },
+        {
+          "op": "stale"
+        },
+        {
+          "op": "ensure"
+        },
+        {
+          "op": "stale"
+        }
+      ]
+    },
+    {
+      "name": "an empty-string author is still an author to the index",
+      "steps": [
+        {
+          "op": "insert",
+          "id": "msg-01",
+          "content": {
+            "kind": "text",
+            "value": "an empty sender"
+          },
+          "role": "ASSISTANT",
+          "systemSender": ""
+        },
+        {
+          "op": "insert",
+          "id": "msg-02",
+          "content": {
+            "kind": "text",
+            "value": "an empty announcer sender"
+          },
+          "role": "ASSISTANT",
+          "customAnnouncer": ""
+        },
+        {
+          "op": "insert",
+          "id": "msg-03",
+          "content": {
+            "kind": "text",
+            "value": "a plain sender"
+          }
+        },
+        {
+          "op": "rebuild"
         }
       ]
     }

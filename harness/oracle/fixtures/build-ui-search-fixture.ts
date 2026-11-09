@@ -85,6 +85,10 @@ interface MessageSpec {
   role: string;
   content: string;
   createdAt: string;
+  /** P4.D363: a Staff row (absent on a character line). */
+  systemSender?: string;
+  /** P4.D363: an announcement bubble (absent on a character line). */
+  customAnnouncer?: Record<string, unknown>;
 }
 interface ChatSpec {
   id: string;
@@ -311,6 +315,8 @@ async function main(): Promise<void> {
           content: m.content,
           createdAt: m.createdAt,
           attachments: [],
+          ...(m.systemSender ? { systemSender: m.systemSender } : {}),
+          ...(m.customAnnouncer ? { customAnnouncer: m.customAnnouncer } : {}),
         })) as never,
       );
     }
@@ -535,6 +541,19 @@ async function main(): Promise<void> {
     if (!db) throw new Error('no raw SQLite database to build the message search index on');
     ensureChatMessageFtsSchema(db);
     const rebuilt = rebuildChatMessageFtsIndex(db);
+    // P4.D363 — the vacuity guard: the planted Staff / announcer rows exist,
+    // are authored by the Staff, and carry the `airship` text the messages
+    // cases query, so their ABSENCE from every hit is the comparand.
+    const staff = db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM "chat_messages"
+          WHERE ("systemSender" IS NOT NULL OR "customAnnouncer" IS NOT NULL)
+            AND qt_text("content") LIKE '%airship%'`,
+      )
+      .get() as { n: number };
+    if (Number(staff.n) !== 2) {
+      throw new Error(`expected 2 planted Staff airship rows, found ${staff.n}`);
+    }
     process.stderr.write(`  message search index: ${rebuilt.indexed} messages\n`);
   }
 

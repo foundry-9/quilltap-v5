@@ -89,6 +89,9 @@ interface Spec {
   replace: ReplaceOp[];
   postReplaceReads: ReadOp[];
   poisonedReads: ReadOp[];
+  /** P4.D363: the planted Staff / announcer rows whose ABSENCE from every
+   * `searchMessagesGlobal` hit is the comparand. */
+  staffMessageIds: string[];
 }
 
 /** The poisoned venue's plant — byte-identical to the Rust test's. */
@@ -204,6 +207,20 @@ async function main(): Promise<void> {
       process.exit(0);
     }
 
+    // 0) P4.D363 — the vacuity guard: every planted Staff row exists, is
+    //    authored by the Staff, and matches the `quick` queries' LIKE text —
+    //    so its absence from the hits is a filter at work, not a miss. On the
+    //    FTS venue the stale-index row is also really IN the index.
+    const plantedStaff = (await rawQuery(
+      `SELECT m."id" AS id,
+              m."systemSender" IS NOT NULL OR m."customAnnouncer" IS NOT NULL AS staff,
+              qt_text(m."content") LIKE '%quick%' AS likeMatches,
+              ${venue === 'fts' ? `EXISTS (SELECT 1 FROM "chat_messages_fts_map" x WHERE x."messageId" = m."id")` : 'NULL'} AS indexed
+         FROM "chat_messages" m
+        WHERE m."id" IN (${spec.staffMessageIds.map((id) => `'${id}'`).join(',')})
+        ORDER BY m."id"`,
+    )) as Array<Record<string, unknown>>;
+
     // 1) The read methods (reads happen before any mutation).
     const reads: Array<{ kind: string; result: unknown }> = [];
     for (const op of spec.reads) {
@@ -237,6 +254,7 @@ async function main(): Promise<void> {
         case: 'chats-search',
         venue,
         reads,
+        plantedStaff,
         replace,
         postReplaceReads,
         messages,

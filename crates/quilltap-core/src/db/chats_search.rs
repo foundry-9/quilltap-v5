@@ -92,6 +92,7 @@ fn defer_text_decode(matching_ids_sql: &str) -> String {
     format!(
         r#"
     SELECT m."id" AS id, m."chatId" AS chatId, m."role" AS role,
+           m."participantId" AS participantId,
            s."ca" AS createdAt, qt_text(m."content") AS content
       FROM ({matching_ids_sql}) s
       JOIN "chat_messages" m ON m."id" = s."mid"
@@ -102,6 +103,11 @@ fn defer_text_decode(matching_ids_sql: &str) -> String {
 
 /// The indexed path: probe the FTS5 index, then join back for the columns the
 /// caller wants (v4 `buildFtsSearchSql`).
+///
+/// The eligibility filter is repeated against the joined row so that an index
+/// built under an older, looser rule (v4 #121: Staff whispers were indexed)
+/// can never surface a row the current rule excludes, even before it is
+/// rebuilt (v4 `902c6efe9`, P4.D363).
 ///
 /// The `chatId IN (…)` list is kept for PARITY with the pre-index query rather
 /// than being replaced with a join on `chats.userId`. It binds the same
@@ -119,10 +125,12 @@ fn build_fts_search_sql(chat_id_count: usize) -> String {
         JOIN "chat_messages_fts_map" x ON x."ftsId" = f.rowid
         JOIN "chat_messages" mm        ON mm."id" = x."messageId"
        WHERE "chat_messages_fts" MATCH ?
+         AND {eligibility}
          AND mm."chatId" IN ({placeholders})
        ORDER BY mm."createdAt" DESC
        LIMIT ?
-  "#
+  "#,
+        eligibility = chat_message_fts_eligibility_sql("mm")
     ))
 }
 
@@ -246,8 +254,11 @@ impl<'c> ChatSearchRepository<'c> {
 
     /// `searchMessagesGlobal` (SQLite branch) — the FTS5 index with an exact-scan
     /// fallback, ordered `createdAt DESC` and capped in SQL. Returns
-    /// `{ messageId, content, chatId, role, createdAt }` per row. Over-long
-    /// search OR empty `chat_ids` → `[]`.
+    /// `{ messageId, content, chatId, role, participantId, createdAt }` per
+    /// row, in that KEY ORDER (v4 `GlobalMessageSearchHit`, `c539c82e0`;
+    /// contract C8) — `participantId` is ALWAYS present, JSON `null` when the
+    /// column is NULL (v4's `row.participantId ?? null`). Over-long search OR
+    /// empty `chat_ids` → `[]`.
     ///
     /// **Never answers `Err`** (P4.105). v4 wraps the whole body in
     /// `safeQuery(…, 'Failed to search messages globally', { chatCount }, [])`
@@ -384,14 +395,18 @@ impl<'c> ChatSearchRepository<'c> {
             let id: String = row.get(0)?;
             let chat_id: String = row.get(1)?;
             let role: String = row.get(2)?;
-            let created_at: String = row.get(3)?;
+            // The seat that spoke the line (v4 `c539c82e0`).
+            let participant_id: Option<String> = row.get(3)?;
+            let created_at: String = row.get(4)?;
             // Already decoded by `qt_text()` in the outer select.
-            let content: Option<String> = row.get(4)?;
+            let content: Option<String> = row.get(5)?;
+            // `preserve_order`: the `json!` key order IS the wire order.
             Ok(json!({
                 "messageId": id,
                 "content": content.unwrap_or_default(),
                 "chatId": chat_id,
                 "role": role,
+                "participantId": participant_id,
                 "createdAt": created_at,
             }))
         })?;
@@ -498,9 +513,15 @@ mod tests {
     /// The reduced `chat_messages` the two SQL shapes actually name — the same
     /// columns `chat-message-fts.json` carries, so the log pins need no
     /// fixture.
+    ///
+    /// P4.D363: widened with `participantId` (the hit reads it, `c539c82e0`)
+    /// and the two author columns before `createdAt` (v4's own reduced DDL —
+    /// the insert trigger's `WHEN` names both).
     const REDUCED_DDL: &str = r#"CREATE TABLE "chat_messages" (
         "id" TEXT PRIMARY KEY, "chatId" TEXT NOT NULL, "type" TEXT DEFAULT 'message',
-        "role" TEXT, "content" TEXT, "createdAt" TEXT NOT NULL)"#;
+        "role" TEXT, "participantId" TEXT, "content" TEXT,
+        "systemSender" TEXT DEFAULT NULL, "customAnnouncer" TEXT DEFAULT NULL,
+        "createdAt" TEXT NOT NULL)"#;
 
     /// An in-memory main db with `qt_text` registered, two eligible messages,
     /// and the FTS objects present only when `indexed`.
@@ -953,5 +974,84 @@ mod tests {
                 "at most the fallback predicate may decode inside the subquery: {inner}"
             );
         }
+    }
+
+    // ------------------------------------------- P4.D363 (`902c6efe9` / `c539c82e0`)
+
+    /// C8: every hit is `{messageId, content, chatId, role, participantId,
+    /// createdAt}` IN THAT ORDER, `participantId` present and `null` when the
+    /// column is NULL — on both the FTS and the LIKE arms. Byte-compared
+    /// through `to_string` (a `Map ==` ignores key order).
+    #[test]
+    fn a_hit_carries_participant_id_between_role_and_created_at() {
+        let m1 = r#"{"messageId":"m1","content":"she went for a walk along the promenade","chatId":"c1","role":"USER","participantId":"seat-1","createdAt":"2026-01-01T00:00:01.000Z"}"#;
+        let m2 = r#"{"messageId":"m2","content":"the sidewalk was crowded","chatId":"c1","role":"USER","participantId":null,"createdAt":"2026-01-01T00:00:02.000Z"}"#;
+        // FTS: `"walk"*` is a token PREFIX (m1 only); the LIKE arm (no index)
+        // is a substring scan (m2's "sidewalk" too).
+        for (indexed, want) in [(true, vec![m1]), (false, vec![m2, m1])] {
+            let conn = db(indexed);
+            conn.execute(
+                r#"UPDATE "chat_messages" SET "participantId" = 'seat-1' WHERE "id" = 'm1'"#,
+                [],
+            )
+            .unwrap();
+            let hits = ChatSearchRepository::new(&conn)
+                .search_messages_global(&chats(), "walk", 100)
+                .unwrap();
+            let text: Vec<String> = hits
+                .iter()
+                .map(|h| serde_json::to_string(h).unwrap())
+                .collect();
+            assert_eq!(text, want, "indexed={indexed}");
+        }
+    }
+
+    /// The joined-row filter's own proof: a Staff row INDEXED under the legacy
+    /// trigger (a pre-round instance not yet rebuilt) is never returned by the
+    /// FTS arm. Mutation: drop the `AND {eligibility}` line from
+    /// `build_fts_search_sql` → this test returns `staff`.
+    #[test]
+    fn an_indexed_staff_row_is_filtered_on_the_joined_row() {
+        let conn = db(true);
+        conn.execute_batch(r#"DROP TRIGGER "chat_messages_fts_ai""#)
+            .unwrap();
+        conn.execute_batch(crate::db::chat_message_fts::tests::LEGACY_INSERT_TRIGGER)
+            .unwrap();
+        conn.execute(
+            r#"INSERT INTO "chat_messages" ("id","chatId","type","role","content","systemSender","createdAt")
+               VALUES ('staff','c1','message','ASSISTANT','a walk recalled','commonplaceBook','2026-01-01T00:00:09.000Z')"#,
+            [],
+        )
+        .unwrap();
+        // Self-check: the legacy trigger really indexed it.
+        let indexed: i64 = conn
+            .query_row(
+                r#"SELECT COUNT(*) FROM "chat_messages_fts_map" WHERE "messageId" = 'staff'"#,
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(indexed, 1);
+        let hits = ChatSearchRepository::new(&conn)
+            .search_messages_global(&chats(), "walk", 100)
+            .unwrap();
+        let ids: Vec<&str> = hits
+            .iter()
+            .map(|h| h["messageId"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["m1"]);
+    }
+
+    /// The FTS SQL carries the fragment at alias `mm` on the line after
+    /// `MATCH ?`, before the `chatId IN` list — v4's position.
+    #[test]
+    fn the_fts_sql_re_applies_the_eligibility_rule() {
+        let fts = build_fts_search_sql(2);
+        let want = format!(
+            "WHERE \"chat_messages_fts\" MATCH ?\n         AND {}\n         AND mm.\"chatId\" IN (?, ?)",
+            chat_message_fts_eligibility_sql("mm")
+        );
+        assert!(fts.contains(&want), "{fts}");
+        assert!(fts.contains("m.\"role\" AS role,\n           m.\"participantId\" AS participantId,\n           s.\"ca\" AS createdAt"));
     }
 }

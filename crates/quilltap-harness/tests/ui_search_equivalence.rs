@@ -362,6 +362,41 @@ fn ui_search_matches_oracle() {
         oracle.insert(name, v);
     }
 
+    // ── P4.D363: the planted Staff rows (v4 `902c6efe9`) ──
+    // Two `airship` rows authored by the Staff (one `systemSender`, one
+    // `customAnnouncer`) sit in the fixture — and are absent from EVERY
+    // oracle body. Assert both halves, so the absence is a filter at work
+    // and not a miss.
+    const STAFF_IDS: [&str; 2] = [
+        "fa000000-0000-4000-8000-000000000007",
+        "fa000000-0000-4000-8000-000000000008",
+    ];
+    {
+        let scratch = tempfile::tempdir().expect("tempdir");
+        let copy = scratch.path().join("main.db");
+        std::fs::copy(&main_src, &copy).expect("copy fixture");
+        let writer =
+            quilltap_core::db::Writer::open_writable(&copy, TEST_PEPPER).expect("open copy");
+        let n: i64 = writer
+            .connection()
+            .query_row(
+                r#"SELECT COUNT(*) FROM "chat_messages"
+                    WHERE "id" IN (?1, ?2)
+                      AND ("systemSender" IS NOT NULL OR "customAnnouncer" IS NOT NULL)
+                      AND qt_text("content") LIKE '%airship%'"#,
+                STAFF_IDS,
+                |r| r.get(0),
+            )
+            .expect("count planted Staff rows");
+        assert_eq!(
+            n, 2,
+            "the planted Staff airship rows are missing from the fixture"
+        );
+    }
+    for id in STAFF_IDS {
+        assert!(!raw.contains(id), "v4 returned the Staff row {id}");
+    }
+
     // ── The corpus-shape gate (a truncated fixture must not pass silently) ──
     assert_eq!(
         order,

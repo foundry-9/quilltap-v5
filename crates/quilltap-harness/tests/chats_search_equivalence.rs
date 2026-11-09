@@ -75,6 +75,28 @@
 //! tree whose `get_messages` still rethrew: read 2 (count) answered `Err: sqlite
 //! error: no such table: chat_messages` where v4 answers `0`.
 //!
+//! ## P4.D363 (v4 `902c6efe9` + `c539c82e0`, pin `624d0d25c`)
+//!
+//! Every `searchMessagesGlobal` hit now carries `participantId` between
+//! `role` and `createdAt` (contract C8), so every read is BYTE-compared
+//! through `serde_json::to_string` — a `Map ==` ignores key order and would
+//! pass with `participantId` last. Chat B gains a Staff row
+//! (`systemSender: 'commonplaceBook'`), an announcement bubble
+//! (`customAnnouncer: {kind:'custom', displayName:'Town Crier'}` — the shape
+//! v4's `MessageEventSchema` accepts through the real repository) and a third
+//! Staff row the builder writes AFTER the index is built under v4's LEGACY
+//! insert trigger, so on the `fts` venue it is INDEXED (a pre-rebuild index)
+//! and only the joined-row filter keeps it out. Each matches the `quick`
+//! queries' LIKE text; the oracle's `plantedStaff` vacuity row proves it, and
+//! this side asserts the same of its own copy. Their ABSENCE from every hit is
+//! the comparand.
+//!
+//! `TRIGGER_TEXT_NO_PING_PONG` (a): over the `fts` fixture — triggers written
+//! by v4's REAL ensure at the pin, including a stale REPLACE — v5's
+//! `stale_chat_message_fts_triggers` answers `[]`, and v5's ensure on a copy
+//! logs nothing and leaves `sqlite_master` byte-unchanged. (b), v5 → v4, is
+//! `chat_message_fts_equivalence`'s by transitivity.
+//!
 //! ## Regenerating (two fixtures, three invocations, ONE NDJSON)
 //!
 //! ```bash
@@ -124,6 +146,9 @@ struct Spec {
     post_replace_reads: Vec<ReadOp>,
     #[serde(rename = "poisonedReads")]
     poisoned_reads: Vec<ReadOp>,
+    /// P4.D363: the planted Staff / announcer rows.
+    #[serde(rename = "staffMessageIds")]
+    staff_message_ids: Vec<String>,
 }
 
 /// The poisoned venue's plant — byte-identical to the oracle case's.
@@ -179,6 +204,9 @@ struct Oracle {
     messages: Value,
     #[serde(rename = "ftsMap")]
     fts_map: Value,
+    /// P4.D363's vacuity row.
+    #[serde(rename = "plantedStaff")]
+    planted_staff: Vec<Value>,
 }
 
 fn run_read(writer: &Writer, op: &ReadOp) -> Value {
@@ -248,6 +276,59 @@ fn run_venue(venue: &str, fixture: &str, spec: &Spec, oracle: &Oracle) {
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open {venue} fixture copy: {e}"));
 
+    // 0) P4.D363 — the vacuity guard, on BOTH sides: every planted Staff row
+    //    exists, is Staff-authored, matches the LIKE text, and (fts) the
+    //    stale-index row really is in the index.
+    assert_eq!(oracle.planted_staff.len(), spec.staff_message_ids.len());
+    for (i, id) in spec.staff_message_ids.iter().enumerate() {
+        let row = &oracle.planted_staff[i];
+        assert_eq!(
+            row["id"],
+            Value::from(id.as_str()),
+            "{venue}: planted order"
+        );
+        assert_eq!(
+            row["staff"],
+            Value::from(1),
+            "{venue}: {id} not Staff in v4's copy"
+        );
+        assert_eq!(
+            row["likeMatches"],
+            Value::from(1),
+            "{venue}: {id} misses the LIKE text"
+        );
+        let (staff, like, indexed): (i64, i64, Option<i64>) = writer
+            .connection()
+            .query_row(
+                &format!(
+                    r#"SELECT m."systemSender" IS NOT NULL OR m."customAnnouncer" IS NOT NULL,
+                              qt_text(m."content") LIKE '%quick%',
+                              {}
+                         FROM "chat_messages" m WHERE m."id" = ?1"#,
+                    if venue == "fts" {
+                        r#"EXISTS (SELECT 1 FROM "chat_messages_fts_map" x WHERE x."messageId" = m."id")"#
+                    } else {
+                        "NULL"
+                    }
+                ),
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap_or_else(|e| panic!("{venue}: planted {id} missing: {e}"));
+        assert_eq!((staff, like), (1, 1), "{venue}: {id}");
+        assert_eq!(
+            indexed.map(Value::from).unwrap_or(Value::Null),
+            row["indexed"],
+            "{venue}: {id} index membership"
+        );
+    }
+    if venue == "fts" {
+        assert!(
+            oracle.planted_staff.iter().any(|r| r["indexed"] == 1),
+            "the fts venue must carry a Staff row INDEXED under the legacy trigger"
+        );
+    }
+
     // 1) Read methods (before any mutation).
     assert_eq!(
         spec.reads.len(),
@@ -261,9 +342,11 @@ fn run_venue(venue: &str, fixture: &str, spec: &Spec, oracle: &Oracle) {
             oracle_read.kind, op.kind,
             "{venue}: read {i}: kind mismatch"
         );
+        // BYTE-compared (C8's key order is the point — memory note
+        // `serde-json-map-eq-ignores-order`).
         assert_eq!(
-            got,
-            oracle_read.result,
+            serde_json::to_string(&got).unwrap(),
+            serde_json::to_string(&oracle_read.result).unwrap(),
             "{venue}: read {i} ({} {:?}): result diverged\n  rust:   {}\n  oracle: {}",
             op.kind,
             op.search_text,
@@ -303,8 +386,8 @@ fn run_venue(venue: &str, fixture: &str, spec: &Spec, oracle: &Oracle) {
     for (i, op) in spec.post_replace_reads.iter().enumerate() {
         let got = run_read(&writer, op);
         assert_eq!(
-            got,
-            oracle.post_replace_reads[i].result,
+            serde_json::to_string(&got).unwrap(),
+            serde_json::to_string(&oracle.post_replace_reads[i].result).unwrap(),
             "{venue}: post-replace read {i} ({:?}): result diverged\n  rust:   {}\n  oracle: {}",
             op.search_text,
             serde_json::to_string(&got).unwrap(),
@@ -628,4 +711,55 @@ fn the_two_venues_disagree_where_token_semantics_bite() {
         !hits(plain, "%_").is_empty(),
         "`%_` must match the literal `50%_off` row through ESCAPE"
     );
+}
+
+/// P4.D363 `TRIGGER_TEXT_NO_PING_PONG` (a): the `fts` fixture's triggers were
+/// written by v4's REAL `ensureChatMessageFtsSchema` at the pin (the last call
+/// a stale REPLACE of the legacy `_ai`). v5 must see nothing stale, and its
+/// own ensure must log nothing and leave `sqlite_master` byte-unchanged —
+/// otherwise each app would replace the other's trigger on every boot.
+/// Mutation: append a space to v5's `_ai` `WHEN` → this reddens (as do the
+/// `ddl` / `sqliteMaster` rows of `chat_message_fts_equivalence`).
+#[test]
+fn trigger_text_no_ping_pong() {
+    let Ok(fts) = std::env::var("QT_FIXTURE_CHSEARCH_FTS") else {
+        eprintln!("SKIP: set QT_FIXTURE_CHSEARCH_FTS (see header).");
+        return;
+    };
+    let spec = spec();
+    let scratch = tempfile::Builder::new()
+        .prefix("qt-chsearch-pingpong-")
+        .tempdir()
+        .expect("tempdir");
+    let work = scratch.path().join("pingpong.db");
+    std::fs::copy(&fts, &work).expect("copy fts fixture");
+    let writer = Writer::open_writable(&work, &spec.test_pepper_base64).expect("open");
+    let conn = writer.connection();
+    let master = || -> Vec<(String, Option<String>)> {
+        conn.prepare("SELECT name, sql FROM sqlite_master ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    };
+    assert!(
+        master().iter().any(|(n, _)| n == "chat_messages_fts_ai"),
+        "the fixture carries v4's triggers"
+    );
+    assert_eq!(
+        quilltap_core::db::chat_message_fts::stale_chat_message_fts_triggers(conn).unwrap(),
+        Vec::<String>::new(),
+        "v5 sees v4's trigger text as stale"
+    );
+    let before = master();
+    let ((), lines) = quilltap_core::test_support::captured_with(|| {
+        quilltap_core::db::chat_message_fts::ensure_chat_message_fts_schema(conn).unwrap()
+    });
+    assert!(
+        !lines.iter().any(|l| l.contains("Replacing outdated")),
+        "{lines:?}"
+    );
+    assert_eq!(master(), before, "v5's ensure moved v4's sqlite_master");
+    eprintln!("OK: TRIGGER_TEXT_NO_PING_PONG (a) over v4's fts fixture.");
 }

@@ -140,6 +140,25 @@
           "content": "a third quick reply to close it out",
           "participantId": "fc000001-0000-4000-8000-000000000001",
           "createdAt": "2026-02-02T00:01:03.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000004",
+          "role": "ASSISTANT",
+          "content": "a quick recall whispered by the Commonplace Book",
+          "systemSender": "commonplaceBook",
+          "createdAt": "2026-02-02T00:01:04.000Z"
+        },
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "a quick word from the Town Crier",
+          "customAnnouncer": {
+            "kind": "custom",
+            "displayName": "Town Crier"
+          },
+          "createdAt": "2026-02-02T00:01:05.000Z"
         }
       ]
     },
@@ -270,6 +289,26 @@
         }
       ]
     }
+  ],
+  "staleIndexedMessages": [
+    {
+      "chatId": "c0000020-0000-4000-8000-000000000001",
+      "messages": [
+        {
+          "type": "message",
+          "id": "e0000020-0000-4000-8000-000000000006",
+          "role": "ASSISTANT",
+          "content": "the Host makes a quick announcement",
+          "systemSender": "host",
+          "createdAt": "2026-02-02T00:01:06.000Z"
+        }
+      ]
+    }
+  ],
+  "staffMessageIds": [
+    "e0000020-0000-4000-8000-000000000004",
+    "e0000020-0000-4000-8000-000000000005",
+    "e0000020-0000-4000-8000-000000000006"
   ],
   "reads": [
     {

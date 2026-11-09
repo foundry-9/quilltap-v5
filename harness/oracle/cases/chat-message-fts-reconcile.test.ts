@@ -21,7 +21,12 @@
  *                 (`restored`, `eligible`, `indexed`, `rebuilt`);
  *   - `logs`    — every line the pass emitted, in order, with its LEVEL, its
  *                 message and its context object. All six of v4's lines are
- *                 comparands, and their order is part of the comparand;
+ *                 comparands, and their order is part of the comparand.
+ *                 P4.D363 (`902c6efe9`): the ensure the pass calls now logs
+ *                 `Replacing outdated chat message FTS triggers` through the
+ *                 BARE `@/lib/logger` (the DDL module's logger, not the
+ *                 service logger) — spied into the same ordered list, tagged
+ *                 `source: 'module'` (the service lines `source: 'service'`);
  *   - `after`   — the post-pass state: `missing`, both counts, every
  *                 `chat_messages_fts_map` row, and every corpus `MATCH`
  *                 expression's hit list.
@@ -59,6 +64,7 @@ jest.mock('@/lib/database/backends/sqlite/client', () => ({
 }));
 
 interface LogLine {
+  source: 'service' | 'module';
   level: string;
   message: string;
   context: unknown;
@@ -68,13 +74,13 @@ const mockLogLines: LogLine[] = [];
 jest.mock('@/lib/logging/create-logger', () => ({
   createServiceLogger: () => ({
     debug: (message: string, context?: unknown) =>
-      mockLogLines.push({ level: 'debug', message, context: context ?? null }),
+      mockLogLines.push({ source: 'service', level: 'debug', message, context: context ?? null }),
     info: (message: string, context?: unknown) =>
-      mockLogLines.push({ level: 'info', message, context: context ?? null }),
+      mockLogLines.push({ source: 'service', level: 'info', message, context: context ?? null }),
     warn: (message: string, context?: unknown) =>
-      mockLogLines.push({ level: 'warn', message, context: context ?? null }),
+      mockLogLines.push({ source: 'service', level: 'warn', message, context: context ?? null }),
     error: (message: string, context?: unknown) =>
-      mockLogLines.push({ level: 'error', message, context: context ?? null }),
+      mockLogLines.push({ source: 'service', level: 'error', message, context: context ?? null }),
   }),
 }));
 
@@ -84,6 +90,10 @@ interface Step {
   content?: { kind: string; value?: string };
   type?: string;
   role?: string | null;
+  /** P4.D363: absent = NULL. */
+  systemSender?: string;
+  /** P4.D363: absent = NULL. */
+  customAnnouncer?: string;
 }
 
 interface Scenario {
@@ -130,6 +140,15 @@ describe('P4.D204 chat message FTS reconciliation oracle', () => {
     const { textToBlob } = require('@/lib/database/text-compression');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { reconcileChatMessageFts } = require('@/lib/startup/reconcile-chat-message-fts');
+    // The DDL module logs through the bare logger (P4.D363's stale replace,
+    // and the rebuild's three debug lines). Spy it into the same ordered list.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { logger } = require('@/lib/logger');
+    for (const level of ['debug', 'info', 'warn', 'error']) {
+      jest.spyOn(logger, level).mockImplementation(((message: string, context?: unknown) => {
+        mockLogLines.push({ source: 'module', level, message, context: context ?? null });
+      }) as any);
+    }
 
     const contentValue = (c: Step['content']): unknown => {
       switch (c?.kind) {
@@ -146,14 +165,17 @@ describe('P4.D204 chat message FTS reconciliation oracle', () => {
 
     const runStep = (db: any, step: Step) => {
       if (step.op !== 'insert') throw new Error(`unsupported seed op: ${step.op}`);
+      // P4.D363: eight columns, absent author → NULL.
       db.prepare(
-        'INSERT INTO "chat_messages" ("id","chatId","type","role","content","createdAt") VALUES (?,?,?,?,?,?)',
+        'INSERT INTO "chat_messages" ("id","chatId","type","role","content","systemSender","customAnnouncer","createdAt") VALUES (?,?,?,?,?,?,?,?)',
       ).run(
         step.id,
         'chat-1',
         step.type ?? 'message',
         step.role === undefined ? 'USER' : step.role,
         contentValue(step.content),
+        step.systemSender ?? null,
+        step.customAnnouncer ?? null,
         `2026-01-01T00:00:${(step.id as string).slice(-2).padStart(2, '0')}.000Z`,
       );
     };
