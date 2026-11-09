@@ -120,6 +120,18 @@ pub fn open_encrypted(
     // runtime, after the key and before the probe's first read (P4.172).
     quilltap_core::db::runtime::refuse_double_quoted_strings(&conn)
         .map_err(|e| OpenFailure::bare(sqlite_msg(&e)))?;
+    // v4's driver is also built `SQLITE_DEFAULT_FOREIGN_KEYS=1` (measured:
+    // `better-sqlite3-multiple-ciphers` 13.0.3's `defines.gypi`, and a
+    // `DELETE` orphaning a child answers `FOREIGN KEY constraint failed`), so
+    // a `db --write` that would orphan a row is refused there. v5's bundled
+    // amalgamation keeps SQLite's default (off) — the round HELD that compile
+    // flag — so the WRITABLE open turns them on itself (P4.D365 H3). Never on
+    // the read-only open: `key` stays the only pragma before its first read
+    // (the read-path rule above); a read cannot violate a key anyway.
+    if !opts.readonly {
+        conn.pragma_update(None, "foreign_keys", "ON")
+            .map_err(|e| OpenFailure::bare(sqlite_msg(&e)))?;
+    }
     if let Err(e) = conn.query_row("SELECT 1", [], |_| Ok(())) {
         return Err(OpenFailure::bare(format!(
             "Cannot open {}: {}\nThe database may be encrypted with a different key, or the .dbkey file may be missing.",
@@ -172,5 +184,53 @@ mod tests {
                 "readonly={readonly}"
             );
         }
+    }
+
+    /// P4.D365 H3: v4's CLI driver (`better-sqlite3-multiple-ciphers`, built
+    /// `SQLITE_DEFAULT_FOREIGN_KEYS=1`) enforces foreign keys on every
+    /// connection, so a `db --write` DELETE that would orphan a child row is
+    /// refused. v5's writable open turns them on itself; the read-only open
+    /// issues no pragma beyond `key` (CLAUDE.md's read-path rule).
+    #[test]
+    fn the_writable_open_enforces_foreign_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("quilltap.db");
+        {
+            let w = quilltap_core::db::Writer::open_writable(&path, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE parent (id TEXT PRIMARY KEY NOT NULL);
+                     CREATE TABLE child (id TEXT PRIMARY KEY NOT NULL,
+                       parentId TEXT NOT NULL REFERENCES parent(id));
+                     INSERT INTO parent VALUES ('p1');
+                     INSERT INTO child VALUES ('c1', 'p1');",
+                )
+                .unwrap();
+        }
+        let open = |readonly| {
+            open_encrypted(
+                path.to_str().unwrap(),
+                Some(PEPPER),
+                OpenOptions {
+                    readonly,
+                    friendly_name: "main database",
+                },
+            )
+            .unwrap_or_else(|e| panic!("open (readonly={readonly}): {}", e.message))
+        };
+        let conn = open(false);
+        let err = conn.execute("DELETE FROM parent", []).unwrap_err();
+        assert_eq!(sqlite_msg(&err), "FOREIGN KEY constraint failed");
+        let parents: i64 = conn
+            .query_row("SELECT COUNT(*) FROM parent", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(parents, 1);
+        drop(conn);
+        // The read-only open still reads (the pragma is the writable path's alone).
+        let ro = open(true);
+        let children: i64 = ro
+            .query_row("SELECT COUNT(*) FROM child", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(children, 1);
     }
 }
