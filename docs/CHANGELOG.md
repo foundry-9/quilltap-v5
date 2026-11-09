@@ -251,6 +251,14 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: established_fact.rs + tier-1 family + name-leak guard (P4.D372, v4 624d0d25c)
+
+_Versions: core 0.0.1429._
+
+Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fact`. It holds the seven constants (two of them `concat!` of v4's concatenations), the kind and voice enums, `EstablishedFactFields::from_value` (strict `=== true`), the predicates, the frame / strip / framed-body functions, `frame_established_facts` (`None` is v4's "same array"; the keys follow v4's spread) and the counts. New tier-1 family `established_fact_equivalence` (oracle `cases/established-fact.ts`, 250 rows, the 90-row field grid) is green. Mutation runs flipped rows for four of five mutants. The announcement-first order is an equivalent mutant: the two predicates are mutually exclusive.
+
+New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
+
 #### 2026-11-08 — SCHEMA: the 624d0d25c D23 re-dump (moves 22 / 23 + kind / brahma fresh-only), the Anthropic sampling strip and two column ensures as one chain, the column plumbing, the export dumps (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._

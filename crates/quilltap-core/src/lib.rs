@@ -189,6 +189,7 @@ pub mod embedding_vector;
 pub mod enclave;
 pub mod enclave_budget;
 pub mod episodic;
+pub mod established_fact;
 pub mod files;
 pub mod finish_reason;
 pub mod folder_utils;
