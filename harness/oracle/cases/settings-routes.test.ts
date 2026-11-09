@@ -24,7 +24,7 @@
  *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-settings-fixture.ts
  *   QT_FIXTURE_SETTINGS_MAIN=/tmp/qt-settings-fixture.db \
  *   QT_ORACLE_OUT=/tmp/oracle-settings-routes.ndjson \
- *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *     $N/npx jest --silent --watchman=false --testTimeout=1800000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- "settings-routes\.test\.ts$"
  */
 
@@ -407,6 +407,18 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
+    }
+    // P4.D374: every brahma-console PUT also records the STORED bytes of
+    // `instance_settings['brahmaConsole']` (v4's `JSON.stringify(validated)` —
+    // the schema key order, the unknown key stripped, an explicit `null` kept),
+    // or `null` when no row exists. The Rust harness reads the same cell.
+    if (c.route === 'brahmaConsole' && c.method === 'PUT') {
+      const { rawQuery } = await import('@/lib/database/manager');
+      const rows = (await rawQuery(
+        'SELECT "value" FROM instance_settings WHERE "key" = ?',
+        ['brahmaConsole'],
+      )) as Array<{ value: string }>;
+      out.stored = rows.length > 0 ? rows[0].value : null;
     }
     if (c.dumpCells) {
       const { rawQuery } = await import('@/lib/database/manager');
@@ -3480,6 +3492,25 @@ describe('settings-routes oracle', () => {
     { name: 'cp_update_max_images_over', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: 51 }, after: 'connProfiles' },
     { name: 'cp_update_max_images_zero_string', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: '0' }, after: 'connProfiles' },
     // === end P4.D362 ===
+    // P4.D374 (v4 `c539c82e0`): `BrahmaConsoleSettingsSchema` WHOLE — `inlineConnectionProfileId:
+    // UUIDSchema.nullable().optional()` beside the budget. A stored blob is planted RAW (the
+    // shapes a v4-written row reaches); the PUT merges `{...current, ...body}` over the PARSED read.
+    { name: 'bc_inline_put_uuid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: 'b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e' }, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_both', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: 'b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e', maxAgentTurns: 70 }, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_uppercase_uuid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: 'B7E1C2D3-4F5A-4B6C-8D7E-9F0A1B2C3D4E' }, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_non_uuid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: 'not-a-uuid' }, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_non_rfc_uuid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: '11111111-1111-1111-1111-111111111111' }, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_number', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: 5 }, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_null_over_stored', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { inlineConnectionProfileId: null }, plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":120,"inlineConnectionProfileId":"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e"}'] }], after: 'brahmaConsole' },
+    { name: 'bc_inline_put_empty_over_stored', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: {}, plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":120,"inlineConnectionProfileId":"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e"}'] }], after: 'brahmaConsole' },
+    { name: 'bc_inline_put_budget_over_stored', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { maxAgentTurns: 80 }, plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"inlineConnectionProfileId":"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e","maxAgentTurns":120}'] }], after: 'brahmaConsole' },
+    { name: 'bc_inline_put_unknown_key', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { maxAgentTurns: 60, bogus: true }, after: 'brahmaConsole' },
+    { name: 'bc_inline_put_over_stored_invalid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'PUT', body: { maxAgentTurns: 70 }, plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":120,"inlineConnectionProfileId":"nope"}'] }], after: 'brahmaConsole' },
+    { name: 'bc_inline_get_stored', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'GET', plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"inlineConnectionProfileId":"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e","maxAgentTurns":120}'] }] },
+    { name: 'bc_inline_get_stored_null', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'GET', plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":90,"inlineConnectionProfileId":null}'] }] },
+    { name: 'bc_inline_get_stored_id_only', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'GET', plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"inlineConnectionProfileId":"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e"}'] }] },
+    { name: 'bc_inline_get_stored_invalid', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'GET', plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":120,"inlineConnectionProfileId":"nope"}'] }] },
+    { name: 'bc_inline_get_stored_unknown_key', family: 'brahma_console', user: 'A', route: 'brahmaConsole', url: 'http://x/api/v1/settings/brahma-console', method: 'GET', plantRaw: [{ sql: 'INSERT OR REPLACE INTO instance_settings ("key", "value") VALUES (?, ?)', params: ['brahmaConsole', '{"maxAgentTurns":120,"extra":true}'] }] },
   ];
 
   it('emits all cases', async () => {

@@ -3285,12 +3285,17 @@ pub async fn taboo_settings_update(db: &Db, phrases: Option<Option<Value>>) -> R
 
 // === P4.D57 === (the instance-wide Brahma Console turn budget — v4 `6452e2c3`)
 
-/// v4 `GET /api/v1/settings/brahma-console` — the instance-wide agent-turn budget
-/// `{maxAgentTurns}` (the default 50 when never written). A read failure is v4's
-/// `serverError('Failed to fetch brahma-console settings')`.
+// === P4.D374 === v4 `c539c82e0`: `BrahmaConsoleSettingsSchema` WHOLE on the
+// route (`createInstanceSettingHandlers`, label `brahma-console`).
+
+/// v4 `GET /api/v1/settings/brahma-console` — `successResponse(settings)`, the
+/// PARSED settings object (`{maxAgentTurns, inlineConnectionProfileId?}` in
+/// schema order; the default `{maxAgentTurns: 50}` when never written or when
+/// the stored blob fails the schema — the reader's WARN). A read failure is
+/// v4's `serverError('Failed to fetch brahma-console settings')`.
 pub fn brahma_console_settings_get(db: &Db) -> Response {
-    match db.read_main(instance_settings::get_brahma_console_settings) {
-        Ok(max_agent_turns) => Response::BrahmaConsole(json!({ "maxAgentTurns": max_agent_turns })),
+    match db.read_main(instance_settings::read_brahma_console_settings) {
+        Ok(settings) => Response::BrahmaConsole(settings.to_json()),
         Err(_) => Response::error(
             ErrorKind::Internal,
             "Failed to fetch brahma-console settings",
@@ -3298,20 +3303,24 @@ pub fn brahma_console_settings_get(db: &Db) -> Response {
     }
 }
 
-/// v4 `PUT /api/v1/settings/brahma-console` — read the current settings, merge the
-/// body OVER them (`{...current, ...body}`, so a partial body — `{}` in
-/// particular — can never wipe the value), `safeParse` the merge, persist, and
-/// echo what was stored.
+/// v4 `PUT /api/v1/settings/brahma-console` — `current = get()` (the PARSED
+/// read: a stored-invalid blob is the default `{maxAgentTurns: 50}`),
+/// `schema.safeParse({...current, ...body})`, `set`, echo what was stored.
 ///
-/// A schema violation (out of range, non-integer, a string, or an explicit
-/// `null`) is v4's `validationError` (400 `{error: 'Validation error', details}`);
-/// the port surfaces the `{error}` envelope, the Zod issue array being
-/// v4-implementation-specific. The taboo `taboo_settings_update` precedent.
+/// The merge, key by key, over v4's two schema keys (the decoder dropped every
+/// other body key, as `z.object` strips it): ABSENT keeps the current value,
+/// an explicit `null` is a present value (Zod's `.default(50)` does not fire
+/// for it → 400 on the budget; it CLEARS the inline id), a value replaces.
+/// A schema violation is v4's `validationError` (400 `{error: 'Validation
+/// error', details}`); the port surfaces the `{error}` envelope, the Zod
+/// issue array being v4-implementation-specific. The taboo
+/// `taboo_settings_update` precedent.
 pub async fn brahma_console_settings_update(
     db: &Db,
     max_agent_turns: Option<Option<Value>>,
+    inline_connection_profile_id: Option<Option<Value>>,
 ) -> Response {
-    let current = match db.read_main(instance_settings::get_brahma_console_settings) {
+    let current = match db.read_main(instance_settings::read_brahma_console_settings) {
         Ok(v) => v,
         Err(_) => {
             return Response::error(
@@ -3320,35 +3329,42 @@ pub async fn brahma_console_settings_update(
             )
         }
     };
-    // The schema's only field is `maxAgentTurns`; the merge overlays it when the
-    // body carries it (even an explicit `null` — which Zod rejects), else the
-    // current value survives and is re-validated as v4 re-validates it.
-    //
-    // P4.57: the tri-state arrives DECODED (`types::brahma_console_update_request`
-    // is the one decoder) rather than being re-derived here from a rebuilt bag.
-    let merged = match max_agent_turns {
-        Some(v) => json!({ "maxAgentTurns": v }),
-        None => json!({ "maxAgentTurns": current }),
+    // `{...current, ...body}` — the spread keeps `current`'s key positions and
+    // overwrites a present body key in place (both are schema-ordered, and the
+    // parse re-orders anyway).
+    let mut merged = match current.to_json() {
+        Value::Object(o) => o,
+        _ => serde_json::Map::new(),
     };
-    let Some(parsed) = instance_settings::parse_brahma_console_settings(&merged) else {
+    for (key, present) in [
+        ("maxAgentTurns", max_agent_turns),
+        ("inlineConnectionProfileId", inline_connection_profile_id),
+    ] {
+        if let Some(v) = present {
+            merged.insert(key.to_string(), v.unwrap_or(Value::Null));
+        }
+    }
+    let Ok(parsed) = instance_settings::parse_brahma_console_settings(&Value::Object(merged))
+    else {
         return Response::error(ErrorKind::BadRequest, "Validation error");
     };
     match db
         .write(move |w| {
-            instance_settings::set_brahma_console_settings(w.main().connection(), parsed)
+            instance_settings::write_brahma_console_settings(w.main().connection(), &parsed)
         })
         .await
     {
         // `Ok(None)` is v4's `setBrahmaConsoleSettings` THROW (the schema refused
         // the value), which lands in the route's catch as the 500 — unreachable
         // here since the handler pre-parses, but faithful.
-        Ok(Some(saved)) => Response::BrahmaConsole(json!({ "maxAgentTurns": saved })),
+        Ok(Some(saved)) => Response::BrahmaConsole(saved.to_json()),
         Ok(None) | Err(_) => Response::error(
             ErrorKind::Internal,
             "Failed to update brahma-console settings",
         ),
     }
 }
+// === /P4.D374 ===
 
 // === end P4.D57 ===
 

@@ -261,14 +261,18 @@ fn run_handler(
         }
         ("brahmaConsole", "GET") => settings::brahma_console_settings_get(db),
         ("brahmaConsole", "PUT") => {
-            let Some(Request::BrahmaConsoleSettingsUpdate { max_agent_turns }) =
-                types::brahma_console_update_request(body)
+            // P4.D374: both schema keys ride the one decoder.
+            let Some(Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns,
+                inline_connection_profile_id,
+            }) = types::brahma_console_update_request(body)
             else {
                 unreachable!("the tagged decode can only answer this variant");
             };
             rt.block_on(settings::brahma_console_settings_update(
                 db,
                 max_agent_turns,
+                inline_connection_profile_id,
             ))
         }
         other => panic!("unhandled route/method: {other:?}"),
@@ -343,6 +347,7 @@ fn settings_routes_match_v4() {
     let mut data_retention_cases = 0;
     let mut taboo_cases = 0;
     let mut brahma_console_cases = 0;
+    let mut brahma_console_stored_cases = 0; // P4.D374
     let mut composer_settings_cases = 0;
     let mut impersonation_voice_cases = 0;
     let mut custom_tool_triggers_cases = 0;
@@ -643,6 +648,32 @@ fn settings_routes_match_v4() {
             }))
             .expect("dumpCells")
         });
+        // === P4.D374 === the STORED `instance_settings['brahmaConsole']` bytes
+        // after every brahma-console PUT (v4's `JSON.stringify(validated)`),
+        // `null` when no row exists — compared as exact text.
+        if row.get("stored").is_some() {
+            let got_stored: Option<String> = rt
+                .block_on(db.write(|w| {
+                    use rusqlite::OptionalExtension;
+                    w.main()
+                        .connection()
+                        .query_row(
+                            "SELECT \"value\" FROM instance_settings WHERE \"key\" = 'brahmaConsole'",
+                            [],
+                            |r| r.get(0),
+                        )
+                        .optional()
+                        .map_err(Into::into)
+                }))
+                .expect("read the stored brahmaConsole cell");
+            assert_eq!(
+                row["stored"].as_str(),
+                got_stored.as_deref(),
+                "[{name}] the stored brahmaConsole bytes differ"
+            );
+            brahma_console_stored_cases += 1;
+        }
+        // === /P4.D374 ===
         drop(db);
         if let Some(got_cells) = got_cells {
             assert_eq!(
@@ -781,6 +812,17 @@ fn settings_routes_match_v4() {
         brahma_console_cases >= 12,
         "expected >= 12 brahma_console cases, got {brahma_console_cases} — regenerate the oracle"
     );
+    // === P4.D374 === v4 `c539c82e0`'s `inlineConnectionProfileId` arms (16 rows,
+    // 28 in the family) and the stored-bytes compare on every PUT (20 of them).
+    assert!(
+        brahma_console_cases >= 28,
+        "expected >= 28 brahma_console cases (P4.D374), got {brahma_console_cases} — regenerate the oracle"
+    );
+    assert!(
+        brahma_console_stored_cases >= 20,
+        "expected >= 20 stored-bytes brahma_console rows (P4.D374), got {brahma_console_stored_cases}"
+    );
+    // === /P4.D374 ===
     // P4.D73: the three 4.8.2 composer/typography keys. A stale oracle that
     // predates them would otherwise pass by not carrying the rows at all.
     assert!(

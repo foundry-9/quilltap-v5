@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(settings): v4's Brahma Console settings schema whole — inlineConnectionProfileId survives every read and PUT (P4.D374)
+
+_Versions: core 0.0.1434._
+
+P4.D374 Tier 1 items 14–15. v4's `BrahmaConsoleSettingsSchema` is ported whole: `{maxAgentTurns, inlineConnectionProfileId?}`, with the id an RFC-strict UUID or `null`. This ends v5's measured erasure of `inlineConnectionProfileId`, which every v5 read and PUT used to drop. `db/instance_settings.rs` gains `BrahmaConsoleSettings` (`to_json` in schema order; unknown keys stripped), a validating `parse_brahma_console_settings`, `read_brahma_console_settings` (a stored blob that fails the schema logs v4's `[InstanceSettings] brahmaConsole failed to parse — using defaults` and falls back to `{maxAgentTurns: 50}`, so a stored non-UUID id loses the stored budget as in v4) and `write_brahma_console_settings`. `get_brahma_console_settings` and `set_brahma_console_settings` keep their shapes (ruling L-2), so no turn-budget caller moves. The GET answers the parsed object, and the PUT merges the body key by key over the parsed current value and answers 400 `Validation error` on a refused merge. `settings_update_request` takes a key list, so `brahma_console_update_request` keeps its name and signature and `quilltap-web` is unchanged. `settings_routes_equivalence` grows 16 rows plus a stored-bytes check on every brahma-console PUT, and `instance_settings_json_warns_equivalence` grows 7. The settings-routes recipe header's jest timeout is raised to 1,800 s.
+
 #### 2026-11-08 — feat(tools): the four Brahma lookup tools — lookup_character, lookup_memories, lookup_messages, read_messages (P4.D374)
 
 _Versions: core 0.0.1433._

@@ -50,10 +50,10 @@ fn get(conn: &rusqlite::Connection, key: &str) -> Value {
             "staleChatDays": settings::get_data_retention_settings(conn)
                 .expect("get_data_retention_settings"),
         }),
-        "brahmaConsole" => json!({
-            "maxAgentTurns": settings::get_brahma_console_settings(conn)
-                .expect("get_brahma_console_settings"),
-        }),
+        // P4.D374: the WHOLE parsed object (v4 `c539c82e0`'s schema).
+        "brahmaConsole" => settings::read_brahma_console_settings(conn)
+            .expect("read_brahma_console_settings")
+            .to_json(),
         "taboo" => json!({
             "phrases": settings::get_taboo_settings(conn).expect("get_taboo_settings"),
         }),
@@ -142,6 +142,20 @@ fn instance_settings_json_warns_match_oracle() {
         if value != want["value"] {
             reds.push(format!("{name}: VALUE — v4 {} v5 {value}", want["value"]));
         }
+        // === P4.D374 === `brahmaConsole` is compared as BYTES: v4's Zod parse
+        // answers the schema's key order (`maxAgentTurns`, then
+        // `inlineConnectionProfileId` only when present) with unknown keys
+        // stripped, and `Value ==` is order-blind under `preserve_order`.
+        else if key == "brahmaConsole"
+            && serde_json::to_string(&value).unwrap()
+                != serde_json::to_string(&want["value"]).unwrap()
+        {
+            reds.push(format!(
+                "{name}: VALUE KEY ORDER — v4 {} v5 {value}",
+                want["value"]
+            ));
+        }
+        // === /P4.D374 ===
         let want_warns = want["warns"].as_array().expect("warns");
         if &warns != want_warns {
             reds.push(format!("{name}: WARNs — v4 {want_warns:?} v5 {warns:?}"));

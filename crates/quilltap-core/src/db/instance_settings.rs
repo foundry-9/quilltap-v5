@@ -449,76 +449,225 @@ pub const BRAHMA_MAX_AGENT_TURNS_MIN: i64 = 5;
 /// v4 `BrahmaConsoleSettingsSchema.maxAgentTurns`: `.max(200)`.
 pub const BRAHMA_MAX_AGENT_TURNS_MAX: i64 = 200;
 
-/// Parse a candidate value against v4's `BrahmaConsoleSettingsSchema`
-/// (`z.object({ maxAgentTurns: z.number().int().min(5).max(200).default(50) })`),
-/// returning the validated `maxAgentTurns` or `None` when Zod `.parse` would
-/// throw.
+// === P4.D374 === v4 `c539c82e0` (round R-2): `BrahmaConsoleSettingsSchema`
+// WHOLE — `{maxAgentTurns, inlineConnectionProfileId?}` — through the reader
+// and the writer, retiring the measured `inlineConnectionProfileId` erasure
+// (the P4.D57 shape parsed and wrote `maxAgentTurns` alone, so every v5 read
+// dropped and every v5 write erased a v4-written inline profile).
+
+/// v4 `BrahmaConsoleSettings` (`settings.types.ts:381-392`) — the parsed
+/// value: `z.object({ maxAgentTurns: z.number().int().min(5).max(200)
+/// .default(50), inlineConnectionProfileId: UUIDSchema.nullable().optional() })`.
 ///
-/// The mirror of [`validate_stale_chat_days`], only object-wrapped like taboo:
-/// `z.object` throws on a non-object; an object that OMITS `maxAgentTurns`
-/// parses via `.default(50)` → 50; a present `maxAgentTurns` must be an
-/// integer-valued number in `[5, 200]` (an explicit `null` fails `z.number()`,
-/// since `.default` fires only for `undefined`).
-pub fn parse_brahma_console_settings(value: &serde_json::Value) -> Option<i64> {
-    let obj = value.as_object()?; // `z.object` throws on a non-object
-    match obj.get("maxAgentTurns") {
-        // Zod `.default(50)` — a present object with the key absent.
-        None => Some(DEFAULT_BRAHMA_MAX_AGENT_TURNS),
-        Some(v) => {
-            let n = v.as_f64()?; // `null` / non-number → `z.number()` throws
-            if !n.is_finite() || n.fract() != 0.0 {
-                return None; // `.int()` rejects non-integers / NaN / Inf
-            }
-            let turns = n as i64;
-            (BRAHMA_MAX_AGENT_TURNS_MIN..=BRAHMA_MAX_AGENT_TURNS_MAX)
-                .contains(&turns)
-                .then_some(turns)
+/// `inline_connection_profile_id` is the three-state of a `.nullable()
+/// .optional()` key: `None` = ABSENT (Zod leaves it out of the parsed
+/// object), `Some(None)` = an explicit `null` (kept), `Some(Some(id))` = an
+/// RFC-strict uuid. Unknown keys are not carried — `z.object` strips them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrahmaConsoleSettings {
+    pub max_agent_turns: i64,
+    pub inline_connection_profile_id: Option<Option<String>>,
+}
+
+impl Default for BrahmaConsoleSettings {
+    /// v4 `DEFAULT_BRAHMA_CONSOLE_SETTINGS` = `{maxAgentTurns: 50}` (no
+    /// inline key — `readJsonSetting`'s `defaults`).
+    fn default() -> Self {
+        Self {
+            max_agent_turns: DEFAULT_BRAHMA_MAX_AGENT_TURNS,
+            inline_connection_profile_id: None,
         }
     }
 }
 
-/// v4 `getBrahmaConsoleSettings()` — the effective `maxAgentTurns` budget.
-///
-/// Returns the documented default (50) when the setting is unset. When the
-/// stored blob is present but not a valid `BrahmaConsoleSettingsSchema` object
-/// (unparseable, non-object, or a `maxAgentTurns` outside `[5, 200]` / not an
-/// integer) v4 logs a warning and falls back to the default — reproduced here.
-/// A stored object that OMITS `maxAgentTurns` parses via Zod `.default(50)` → 50
-/// (no warning). The read itself is fallible-tolerant (a missing table on a
-/// pre-provisioning instance resolves to the default).
-pub fn get_brahma_console_settings(main: &Connection) -> Result<i64, DbError> {
-    Ok(read_json_setting(
-        main,
-        KEY_BRAHMA_CONSOLE,
-        parse_brahma_console_settings,
-        || DEFAULT_BRAHMA_MAX_AGENT_TURNS,
-    ))
+impl BrahmaConsoleSettings {
+    /// The parsed object in v4's schema key order: `maxAgentTurns`, then
+    /// `inlineConnectionProfileId` ONLY when present (`Some(None)` → `null`).
+    /// Its compact text is v4's `JSON.stringify(validated)`.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut obj = serde_json::Map::new();
+        obj.insert(
+            "maxAgentTurns".into(),
+            serde_json::json!(self.max_agent_turns),
+        );
+        if let Some(id) = &self.inline_connection_profile_id {
+            obj.insert(
+                "inlineConnectionProfileId".into(),
+                id.clone()
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            );
+        }
+        serde_json::Value::Object(obj)
+    }
 }
 
-/// v4 `setBrahmaConsoleSettings(value)` — validate then persist the Brahma
-/// Console settings object. The caller has already merged over the current value
-/// (the PUT route's `{...current, ...body}`); this re-validates `maxAgentTurns`
-/// against the schema (v4's `BrahmaConsoleSettingsSchema.parse` before the
-/// write) and stores the canonical JSON, returning the validated value the route
-/// echoes back.
+/// v4 `BrahmaConsoleSettingsSchema.parse(value)` — the parsed settings, or
+/// Zod's issue list (in shape order) where `.parse` would throw.
 ///
-/// v4's setter lets a schema violation THROW without writing; `Ok(None)` IS that
-/// throw — nothing is written, and it is deliberately not a [`DbError`] because
-/// no database operation failed (the taboo `set_taboo_settings` precedent). The
-/// route pre-parses, so the refusal is reachable only from a direct caller
-/// (v4's own accessor suite exercises exactly that).
+/// - a non-object → the root `invalid_type` (`expected object`);
+/// - `maxAgentTurns` ABSENT → `.default(50)`; present: a non-number →
+///   `invalid_type` (an explicit `null` too — `.default` fires only for
+///   `undefined`), a non-integer → `.int()`'s `invalid_type expected int`, an
+///   integer outside `[5, 200]` → `too_small` / `too_big`;
+/// - `inlineConnectionProfileId` absent → `None`, `null` → `Some(None)`, a
+///   string `z.uuid()` accepts ([`zod_uuid_ok`](crate::api::zod_issues::zod_uuid_ok),
+///   RFC-strict) → `Some(Some)`, any other string → `invalid_format` /
+///   `uuid`, any other type → `invalid_type expected string`;
+/// - every other key is DROPPED (`z.object` strips unknown keys).
+///
+/// The issue BYTES reach only the reader's WARN `error` and the route's
+/// dropped `details`; the outcome (parse vs refuse) is what the two
+/// differentials compare.
+pub fn parse_brahma_console_settings(
+    value: &serde_json::Value,
+) -> Result<BrahmaConsoleSettings, Vec<ZodIssue>> {
+    use crate::api::zod_issues::{key, zod_uuid_ok, MAX_SAFE_INTEGER_I64};
+    use serde_json::Value;
+    let Some(obj) = value.as_object() else {
+        return Err(vec![ZodIssue::invalid_type("object", vec![], Some(value))]);
+    };
+    let mut issues = Vec::new();
+    let mut max_agent_turns = DEFAULT_BRAHMA_MAX_AGENT_TURNS;
+    match obj.get("maxAgentTurns") {
+        None => {}
+        Some(v) => {
+            let path = vec![key("maxAgentTurns")];
+            match v.as_f64() {
+                None => issues.push(ZodIssue::invalid_type("number", path, Some(v))),
+                Some(n) if n.fract() != 0.0 => {
+                    issues.push(ZodIssue::invalid_int_type(path, Some(v)))
+                }
+                Some(n) if n > MAX_SAFE_INTEGER_I64 as f64 => {
+                    issues.push(ZodIssue::too_big_int(path))
+                }
+                Some(n) if n < -(MAX_SAFE_INTEGER_I64 as f64) => {
+                    issues.push(ZodIssue::too_small_int(path))
+                }
+                Some(n) => {
+                    let turns = n as i64;
+                    if turns < BRAHMA_MAX_AGENT_TURNS_MIN {
+                        issues.push(ZodIssue::too_small_number(
+                            serde_json::json!(BRAHMA_MAX_AGENT_TURNS_MIN),
+                            path,
+                        ));
+                    } else if turns > BRAHMA_MAX_AGENT_TURNS_MAX {
+                        issues.push(ZodIssue::too_big_number(
+                            serde_json::json!(BRAHMA_MAX_AGENT_TURNS_MAX),
+                            path,
+                        ));
+                    } else {
+                        max_agent_turns = turns;
+                    }
+                }
+            }
+        }
+    }
+    let inline_connection_profile_id = match obj.get("inlineConnectionProfileId") {
+        None => None,
+        Some(Value::Null) => Some(None),
+        Some(Value::String(id)) if zod_uuid_ok(id) => Some(Some(id.clone())),
+        Some(Value::String(_)) => {
+            issues.push(ZodIssue::invalid_uuid(vec![key(
+                "inlineConnectionProfileId",
+            )]));
+            None
+        }
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "string",
+                vec![key("inlineConnectionProfileId")],
+                Some(other),
+            ));
+            None
+        }
+    };
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    Ok(BrahmaConsoleSettings {
+        max_agent_turns,
+        inline_connection_profile_id,
+    })
+}
+
+/// v4 `getBrahmaConsoleSettings()` = `readJsonSetting('brahmaConsole',
+/// BrahmaConsoleSettingsSchema, {maxAgentTurns: 50})`: an absent row → the
+/// defaults, silently; a stored value → V8 `JSON.parse` then the schema
+/// parse (the PARSED object — unknown keys stripped, schema key order); a
+/// failure of either → WARN `[InstanceSettings] brahmaConsole failed to parse
+/// — using defaults` `{error}` (V8's `JSON.parse` message / `ZodError.message`)
+/// and the defaults. **A stored non-UUID `inlineConnectionProfileId` now fails
+/// the WHOLE parse, so a stored budget is lost to 50** — v4's own behaviour
+/// (survey Headline 9). The read is fallible-tolerant (a missing table on a
+/// pre-provisioning instance resolves to the defaults).
+pub fn read_brahma_console_settings(main: &Connection) -> Result<BrahmaConsoleSettings, DbError> {
+    let Some(raw) = read_setting(main, KEY_BRAHMA_CONSOLE) else {
+        return Ok(BrahmaConsoleSettings::default());
+    };
+    let parsed = crate::inventory::types::js_json_parse(&raw).and_then(|v| {
+        parse_brahma_console_settings(&v)
+            .map_err(|issues| crate::api::zod_issues::zod_error_message(&issues))
+    });
+    match parsed {
+        Ok(settings) => Ok(settings),
+        Err(error) => {
+            tracing::warn!(
+                error = %error,
+                "[InstanceSettings] {} failed to parse — using defaults",
+                KEY_BRAHMA_CONSOLE
+            );
+            Ok(BrahmaConsoleSettings::default())
+        }
+    }
+}
+
+/// The effective `maxAgentTurns` budget — `getBrahmaConsoleSettings()
+/// .maxAgentTurns` (ruling L-2: the turn-budget readers keep this shape; it is
+/// a wrapper over [`read_brahma_console_settings`], WARN included).
+pub fn get_brahma_console_settings(main: &Connection) -> Result<i64, DbError> {
+    Ok(read_brahma_console_settings(main)?.max_agent_turns)
+}
+
+/// v4 `setBrahmaConsoleSettings(value)` = `writeJsonSetting`: re-validate the
+/// WHOLE object against the schema, write `JSON.stringify(validated)`, and
+/// return what the row now holds. The caller has already merged over the
+/// current value (the PUT route's `{...current, ...body}`).
+///
+/// v4's setter lets a schema violation THROW without writing; `Ok(None)` IS
+/// that throw — nothing is written, and it is deliberately not a [`DbError`]
+/// (the taboo `set_taboo_settings` precedent). The route pre-parses, so the
+/// refusal is reachable only from a direct caller.
+pub fn write_brahma_console_settings(
+    main: &Connection,
+    value: &BrahmaConsoleSettings,
+) -> Result<Option<BrahmaConsoleSettings>, DbError> {
+    let Ok(validated) = parse_brahma_console_settings(&value.to_json()) else {
+        return Ok(None);
+    };
+    write_setting(main, KEY_BRAHMA_CONSOLE, &validated.to_json().to_string())?;
+    Ok(Some(validated))
+}
+
+/// v4 `setBrahmaConsoleSettings({ maxAgentTurns })` — the budget-only call
+/// shape (v4's accessor tests and every seed in this tree). Exactly v4's: the
+/// object written is `{maxAgentTurns}` WHOLE, so a stored inline profile is
+/// NOT carried (v4's setter replaces the blob; only the PUT route merges).
+/// Kept so the turn-budget test callers do not move (ruling L-2).
 pub fn set_brahma_console_settings(
     main: &Connection,
     max_agent_turns: i64,
 ) -> Result<Option<i64>, DbError> {
-    let candidate = serde_json::json!({ "maxAgentTurns": max_agent_turns });
-    let Some(validated) = parse_brahma_console_settings(&candidate) else {
-        return Ok(None);
-    };
-    let value = serde_json::json!({ "maxAgentTurns": validated });
-    write_setting(main, KEY_BRAHMA_CONSOLE, &value.to_string())?;
-    Ok(Some(validated))
+    Ok(write_brahma_console_settings(
+        main,
+        &BrahmaConsoleSettings {
+            max_agent_turns,
+            inline_connection_profile_id: None,
+        },
+    )?
+    .map(|s| s.max_agent_turns))
 }
+// === /P4.D374 ===
 
 // === end P4.D57 ===
 
@@ -2546,44 +2695,155 @@ mod p4d57_brahma_console_tests {
 
     // ---- the schema's parse (v4's route arms depend on it) ----
 
+    fn turns(v: serde_json::Value) -> Option<i64> {
+        parse_brahma_console_settings(&v)
+            .ok()
+            .map(|s| s.max_agent_turns)
+    }
+
     #[test]
     fn parse_defaults_an_absent_key_and_rejects_bad_shapes() {
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({})),
-            Some(50)
-        );
+        assert_eq!(turns(serde_json::json!({})), Some(50));
         // A non-object throws; `null` / a non-integer / out-of-range all fail.
-        assert_eq!(parse_brahma_console_settings(&serde_json::json!(50)), None);
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": null })),
-            None
-        );
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 12.5 })),
-            None
-        );
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": "fifty" })),
-            None
-        );
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 4 })),
-            None
-        );
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 201 })),
-            None
-        );
+        assert_eq!(turns(serde_json::json!(50)), None);
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": null })), None);
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": 12.5 })), None);
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": "fifty" })), None);
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": 4 })), None);
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": 201 })), None);
         // Boundaries are inclusive.
+        assert_eq!(turns(serde_json::json!({ "maxAgentTurns": 5 })), Some(5));
         assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 5 })),
-            Some(5)
-        );
-        assert_eq!(
-            parse_brahma_console_settings(&serde_json::json!({ "maxAgentTurns": 200 })),
+            turns(serde_json::json!({ "maxAgentTurns": 200 })),
             Some(200)
         );
     }
+
+    // === P4.D374 === v4 `c539c82e0`: `inlineConnectionProfileId` — every arm
+    // of `UUIDSchema.nullable().optional()`, the schema key order, the strip.
+    const ID: &str = "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e";
+
+    #[test]
+    fn p4d374_parse_inline_profile_arms() {
+        use serde_json::json;
+        let p = |v| parse_brahma_console_settings(&v);
+        // absent → None (and absent from the parsed object)
+        let s = p(json!({ "maxAgentTurns": 60 })).unwrap();
+        assert_eq!(s.inline_connection_profile_id, None);
+        assert_eq!(s.to_json().to_string(), r#"{"maxAgentTurns":60}"#);
+        // null → Some(None), kept
+        let s = p(json!({ "inlineConnectionProfileId": null })).unwrap();
+        assert_eq!(s.inline_connection_profile_id, Some(None));
+        assert_eq!(
+            s.to_json().to_string(),
+            r#"{"maxAgentTurns":50,"inlineConnectionProfileId":null}"#
+        );
+        // a uuid → Some(Some), schema order whatever the input order; an
+        // unknown key stripped
+        let s =
+            p(json!({ "inlineConnectionProfileId": ID, "extra": 1, "maxAgentTurns": 70 })).unwrap();
+        assert_eq!(
+            s.to_json().to_string(),
+            format!(r#"{{"maxAgentTurns":70,"inlineConnectionProfileId":"{ID}"}}"#)
+        );
+        // upper case passes Zod's case-insensitive pattern
+        assert!(p(json!({ "inlineConnectionProfileId": ID.to_uppercase() })).is_ok());
+        // a non-uuid string / a non-RFC uuid → invalid_format; a number → invalid_type
+        for bad in [json!("nope"), json!("11111111-1111-1111-1111-111111111111")] {
+            let issues = p(json!({ "inlineConnectionProfileId": bad })).unwrap_err();
+            assert_eq!(issues.len(), 1);
+            assert_eq!(issues[0].to_value()["code"], "invalid_format");
+            assert_eq!(
+                issues[0].to_value()["path"],
+                json!(["inlineConnectionProfileId"])
+            );
+        }
+        let issues = p(json!({ "inlineConnectionProfileId": 7 })).unwrap_err();
+        assert_eq!(issues[0].to_value()["code"], "invalid_type");
+        // both keys bad → both issues, in shape order
+        let issues = p(json!({ "inlineConnectionProfileId": 7, "maxAgentTurns": 4 })).unwrap_err();
+        assert_eq!(issues.len(), 2);
+        assert_eq!(issues[0].to_value()["path"], json!(["maxAgentTurns"]));
+    }
+
+    #[test]
+    fn p4d374_read_keeps_the_inline_profile_and_a_bad_id_loses_the_budget() {
+        let c = store();
+        write_setting(
+            &c,
+            KEY_BRAHMA_CONSOLE,
+            &format!(r#"{{"inlineConnectionProfileId":"{ID}","maxAgentTurns":120}}"#),
+        )
+        .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| read_brahma_console_settings(&c));
+        assert_eq!(
+            got.unwrap().to_json().to_string(),
+            format!(r#"{{"maxAgentTurns":120,"inlineConnectionProfileId":"{ID}"}}"#)
+        );
+        assert!(
+            lines.iter().all(|l| !l.starts_with("WARN ")),
+            "silent: {lines:?}"
+        );
+        // A stored non-uuid id fails the WHOLE parse → the defaults + the WARN
+        // carrying `ZodError.message`.
+        write_setting(
+            &c,
+            KEY_BRAHMA_CONSOLE,
+            r#"{"maxAgentTurns":120,"inlineConnectionProfileId":"nope"}"#,
+        )
+        .unwrap();
+        let (got, lines) = crate::test_support::captured_with(|| read_brahma_console_settings(&c));
+        assert_eq!(got.unwrap(), BrahmaConsoleSettings::default());
+        let warns: Vec<&String> = lines.iter().filter(|l| l.starts_with("WARN ")).collect();
+        assert_eq!(warns.len(), 1, "{lines:?}");
+        assert!(
+            warns[0].contains("[InstanceSettings] brahmaConsole failed to parse — using defaults")
+                && warns[0].contains("\"invalid_format\""),
+            "{}",
+            warns[0]
+        );
+        // V8's JSON.parse message on a syntax error.
+        write_setting(&c, KEY_BRAHMA_CONSOLE, r#"{"maxAgentTurns":"#).unwrap();
+        let (_, lines) = crate::test_support::captured_with(|| read_brahma_console_settings(&c));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("error=Unexpected end of JSON input")),
+            "{lines:?}"
+        );
+        assert_eq!(get_brahma_console_settings(&c).unwrap(), 50);
+    }
+
+    #[test]
+    fn p4d374_write_stores_v4s_json_stringify_and_refuses_without_writing() {
+        let c = store();
+        let s = BrahmaConsoleSettings {
+            max_agent_turns: 90,
+            inline_connection_profile_id: Some(Some(ID.to_string())),
+        };
+        assert_eq!(
+            write_brahma_console_settings(&c, &s).unwrap(),
+            Some(s.clone())
+        );
+        assert_eq!(
+            read_setting(&c, KEY_BRAHMA_CONSOLE).unwrap(),
+            format!(r#"{{"maxAgentTurns":90,"inlineConnectionProfileId":"{ID}"}}"#)
+        );
+        let s = BrahmaConsoleSettings {
+            max_agent_turns: 90,
+            inline_connection_profile_id: Some(Some("nope".into())),
+        };
+        assert_eq!(write_brahma_console_settings(&c, &s).unwrap(), None);
+        // unchanged
+        assert!(read_setting(&c, KEY_BRAHMA_CONSOLE).unwrap().contains(ID));
+        // the budget-only setter writes `{maxAgentTurns}` WHOLE (v4's call shape)
+        assert_eq!(set_brahma_console_settings(&c, 33).unwrap(), Some(33));
+        assert_eq!(
+            read_setting(&c, KEY_BRAHMA_CONSOLE).unwrap(),
+            r#"{"maxAgentTurns":33}"#
+        );
+    }
+    // === /P4.D374 ===
 
     #[test]
     fn brahma_console_is_portable_by_default() {

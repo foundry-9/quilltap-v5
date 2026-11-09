@@ -4188,6 +4188,18 @@ pub enum Request {
     BrahmaConsoleSettingsUpdate {
         #[serde(default, rename = "maxAgentTurns", deserialize_with = "double_option")]
         max_agent_turns: Option<Option<serde_json::Value>>,
+        // === P4.D374 === v4 `c539c82e0`: the schema's second key, the inline
+        // `@Brahma` connection profile — the same raw tri-state (`None` =
+        // absent → the merge keeps the stored id, `Some(None)` = `null` →
+        // cleared, `Some(Some(v))` = a value the handler's parse validates as
+        // an RFC uuid, 400 otherwise).
+        #[serde(
+            default,
+            rename = "inlineConnectionProfileId",
+            deserialize_with = "double_option"
+        )]
+        inline_connection_profile_id: Option<Option<serde_json::Value>>,
+        // === /P4.D374 ===
     },
     // === end P4.D57 ===
 
@@ -4855,12 +4867,20 @@ where
 /// unreachable while these variants' fields are raw `Value`s (they accept every
 /// JSON shape); callers map it to the route's own catch-all rather than
 /// panicking on a route.
-fn settings_update_request(body: &serde_json::Value, key: &str, type_tag: &str) -> Option<Request> {
+///
+/// P4.D374: `keys` is the schema's key LIST (the Brahma Console's
+/// `BrahmaConsoleSettingsSchema` carries two since v4 `c539c82e0`); every
+/// other body key is dropped, as `z.object` strips it.
+fn settings_update_request(
+    body: &serde_json::Value,
+    keys: &[&str],
+    type_tag: &str,
+) -> Option<Request> {
     let mut map = match body {
         serde_json::Value::Object(o) => o.clone(),
         _ => serde_json::Map::new(),
     };
-    map.retain(|k, _| k == key);
+    map.retain(|k, _| keys.contains(&k.as_str()));
     map.insert(
         "type".into(),
         serde_json::Value::String(type_tag.to_string()),
@@ -4902,19 +4922,24 @@ pub fn wardrobe_instructions_set_request(
 /// v4 `PUT /api/v1/settings/data-retention` body → [`Request::DataRetentionSettingsUpdate`].
 /// See [`settings_update_request`].
 pub fn data_retention_update_request(body: &serde_json::Value) -> Option<Request> {
-    settings_update_request(body, "staleChatDays", "dataRetentionSettingsUpdate")
+    settings_update_request(body, &["staleChatDays"], "dataRetentionSettingsUpdate")
 }
 
 /// v4 `PUT /api/v1/settings/taboo` body → [`Request::TabooSettingsUpdate`].
 /// See [`settings_update_request`].
 pub fn taboo_update_request(body: &serde_json::Value) -> Option<Request> {
-    settings_update_request(body, "phrases", "tabooSettingsUpdate")
+    settings_update_request(body, &["phrases"], "tabooSettingsUpdate")
 }
 
 /// v4 `PUT /api/v1/settings/brahma-console` body → [`Request::BrahmaConsoleSettingsUpdate`].
 /// See [`settings_update_request`].
 pub fn brahma_console_update_request(body: &serde_json::Value) -> Option<Request> {
-    settings_update_request(body, "maxAgentTurns", "brahmaConsoleSettingsUpdate")
+    // P4.D374: both of v4's schema keys (`c539c82e0`).
+    settings_update_request(
+        body,
+        &["maxAgentTurns", "inlineConnectionProfileId"],
+        "brahmaConsoleSettingsUpdate",
+    )
 }
 
 /// Typed DTO per variant (the uniffi payoff). `Error` carries the one
@@ -6576,7 +6601,8 @@ mod tests {
         assert!(matches!(
             absent,
             Request::BrahmaConsoleSettingsUpdate {
-                max_agent_turns: None
+                max_agent_turns: None,
+                ..
             }
         ));
 
@@ -6586,7 +6612,8 @@ mod tests {
         assert!(matches!(
             null,
             Request::BrahmaConsoleSettingsUpdate {
-                max_agent_turns: Some(None)
+                max_agent_turns: Some(None),
+                ..
             }
         ));
 
@@ -6596,6 +6623,7 @@ mod tests {
         match value {
             Request::BrahmaConsoleSettingsUpdate {
                 max_agent_turns: Some(Some(v)),
+                ..
             } => assert_eq!(v, serde_json::json!(80)),
             other => panic!("expected Some(Some(_)), got {other:?}"),
         }
@@ -6609,7 +6637,8 @@ mod tests {
         assert!(matches!(
             bad,
             Request::BrahmaConsoleSettingsUpdate {
-                max_agent_turns: Some(Some(_))
+                max_agent_turns: Some(Some(_)),
+                ..
             }
         ));
     }
@@ -6643,7 +6672,9 @@ mod tests {
             match req {
                 Request::DataRetentionSettingsUpdate { stale_chat_days } => stale_chat_days,
                 Request::TabooSettingsUpdate { phrases } => phrases,
-                Request::BrahmaConsoleSettingsUpdate { max_agent_turns } => max_agent_turns,
+                Request::BrahmaConsoleSettingsUpdate {
+                    max_agent_turns, ..
+                } => max_agent_turns,
                 other => panic!("decoder answered the wrong variant: {other:?}"),
             }
         }
@@ -6682,6 +6713,30 @@ mod tests {
                 .expect("a foreign-keyed body decodes");
             assert_eq!(tristate(&foreign), &None, "{key}: foreign keys dropped");
         }
+    }
+
+    /// P4.D374 (v4 `c539c82e0`): the Brahma decoder retains BOTH schema keys,
+    /// each with its own tri-state, and drops every other key.
+    #[test]
+    fn p4d374_brahma_console_decoder_retains_both_keys() {
+        use serde_json::json;
+        let both = |body: serde_json::Value| match brahma_console_update_request(&body) {
+            Some(Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns,
+                inline_connection_profile_id,
+            }) => (max_agent_turns, inline_connection_profile_id),
+            other => panic!("decoded to {other:?}"),
+        };
+        assert_eq!(both(json!({})), (None, None));
+        assert_eq!(
+            both(json!({ "inlineConnectionProfileId": null, "bogus": 1 })),
+            (None, Some(None))
+        );
+        assert_eq!(
+            both(json!({ "inlineConnectionProfileId": "x", "maxAgentTurns": 9 })),
+            (Some(Some(json!(9))), Some(Some(json!("x"))))
+        );
+        assert_eq!(both(json!("fifty")), (None, None));
     }
 
     /// P4.D216 (v4 `d1c06cd9d`): `groupList` became a struct variant for the

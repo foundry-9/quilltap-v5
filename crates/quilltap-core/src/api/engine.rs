@@ -4928,12 +4928,22 @@ impl CoreEngine {
             },
             // P4.57: the decoded tri-state passes STRAIGHT through (see the
             // data-retention arm above).
-            Request::BrahmaConsoleSettingsUpdate { max_agent_turns } => match self.ready_db() {
+            // === P4.D374 === both of v4's schema keys pass through (`c539c82e0`).
+            Request::BrahmaConsoleSettingsUpdate {
+                max_agent_turns,
+                inline_connection_profile_id,
+            } => match self.ready_db() {
                 Ok(db) => {
-                    super::settings::brahma_console_settings_update(&db, max_agent_turns).await
+                    super::settings::brahma_console_settings_update(
+                        &db,
+                        max_agent_turns,
+                        inline_connection_profile_id,
+                    )
+                    .await
                 }
                 Err(resp) => resp,
             },
+            // === /P4.D374 ===
             // === end P4.D57 ===
             // === P4.6ae === (the general files family — lane A, append-only)
             Request::FilesList {
