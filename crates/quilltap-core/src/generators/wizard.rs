@@ -22,11 +22,11 @@ use base64::Engine as _;
 use serde_json::{json, Map, Value};
 
 use crate::api::system_qtap::js_truthy;
+use crate::characters::kind::{resolve_character_kind, CharacterKind, DEFAULT_CHARACTER_KIND};
 use crate::cheap_llm::profile_params_value;
 use crate::db::files::FileFull;
 use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
-use crate::characters::kind::{resolve_character_kind, CharacterKind, DEFAULT_CHARACTER_KIND};
 use crate::db::{characters_read, connection_profiles, DbError};
 use crate::generators::file_content::{extract_file_content, file_entry_of};
 use crate::generators::generated_items::{
@@ -1240,8 +1240,9 @@ mod kind_line_tests {
         // No mount partition: any read would fail, so silence proves no read.
         let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
         for id in [None, Some("")] {
-            let (kind, lines) =
-                crate::test_support::captured_with(|| resolve_wizard_character_kind(&db, &request(id)));
+            let (kind, lines) = crate::test_support::captured_with(|| {
+                resolve_wizard_character_kind(&db, &request(id))
+            });
             assert_eq!(kind, CharacterKind::Roleplay);
             let lines = kind_lines(&lines);
             assert_eq!(lines.len(), 1, "{id:?}: {lines:?}");
@@ -1259,7 +1260,10 @@ mod kind_line_tests {
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open_main(dir.path().join("main.db"), PEPPER).unwrap();
         let (kind, lines) = crate::test_support::captured_with(|| {
-            resolve_wizard_character_kind(&db, &request(Some("a2000002-0000-4000-8000-000000000001")))
+            resolve_wizard_character_kind(
+                &db,
+                &request(Some("a2000002-0000-4000-8000-000000000001")),
+            )
         });
         assert_eq!(kind, CharacterKind::Roleplay);
         let lines = kind_lines(&lines);

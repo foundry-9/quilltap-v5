@@ -199559,3 +199559,143 @@ None new. H8 (from P4.D374) is settled on the union as recorded above. Union obl
 **Versions at close:** core **0.0.1434**; host 0.0.224, web 0.0.256, cli 0.0.38, tauri 0.0.9, sys 0.1.0, harness 0.0.1110 (unmoved by this lane).
 
 **Cleanup:** the branch is pushed; the pin worktree removed and pruned; the lane's `target/` deleted. `/tmp/p4d370/` is left for the unifier (oracles, fixtures, recipes, the gate env and log, `lane-record.md`).
+
+## P4.D371 — the four prompt generators follow the character's kind (v4 `3ae4cf582` + `ba6c8fe0f` / `7ff5fda89` field semantics) — LANE COMPLETE (2026-11-09)
+
+Branch `claude/p4-d371-generators-47dabb`, cut from `KIND` (`4ff9bff3e`, P4.D369's stacking commit). The session started in the worktree the app made (`.claude/worktrees/p4-d371-generators-47dabb`, reached through the spaceless `~/source/quilltap-v5` path) on that exact commit with a clean tree; no move was needed. Pin `/tmp/qt-v4-pin-p4.d371-624d0d25c` at `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`, `package.json` `4.13.0-dev.8`.
+
+### §R.2 probe (observation, 2026-11-09 12:40 CST)
+
+- v4 moved: `main` at `921fe94bb`, 43 commits past the pin; `bugfix` at `d67c70a51` ("started 4.12.2 bug branch").
+- Tree dirty: `app/salon/[id]/SalonView.tsx`, `announcement-render-items(.test).ts`, `GreenRoomPanel.tsx`, `VirtualizedMessageList.tsx`, `useGreenRoom.ts`, `app/styles/qt-components/_green-room.css`, `docs/CHANGELOG.md`, `help/chats.md`, `packages/theme-storybook/{package.json,src/css/qt-components.css}`. The uncommitted Optimizer work of planning (R-B) no longer shows as dirt — v4 has since committed Optimizer changes (`0f47488f4` among the 43); none of it is ported here (R-B).
+- The pin was usable throughout; never swept, never recreated.
+
+### Pin `node_modules`
+
+`npm ci --offline --ignore-scripts` succeeded first time (no `ENOTCACHED`), then `npm rebuild better-sqlite3`: `better-sqlite3` 13.0.3, `zod` 4.6.7, `openai` 7.47.0, `@openrouter/sdk` 1.5.34, `mermaid` 12.3.0. `.claude/pin-plugin-sdks.sh` floors: openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3; CLI driver 13.0.3 / SQLite 3.53.4 / `chacha20`.
+
+### Contract C5 consumed (never edited)
+
+`characters::kind::{CharacterKind, DEFAULT_CHARACTER_KIND, kind_or_default, resolve_character_kind, GeneratorDirectionKey { Stakes, Task }, KindPolicy, kind_policy}`. The direction field's Rust name is **`KindPolicy.generator_direction`**. No C5 gap.
+
+### Commits
+
+1. `2b9e7f716` — field semantics regenerated whole + the two kind-routed functions + the Wizard by kind (core 0.0.1430). **The actual split folds the order's suggested commits (1) and (2):** a field-semantics-only commit would have left `trust_directions_order`'s Wizard pin red (the old `FIELD_PROMPT_SYSTEM_PROMPT` bytes), and the Wizard's prompts regen removes that constant.
+2. `7e374b408` — External Prompt (core 0.0.1431).
+3. `f300d037a` — the Optimizer (core 0.0.1432).
+4. `4b561fff3` — Summon From Lore + `V4_APP_VERSION` (core 0.0.1433).
+5. `285f43a7d` — the leaf header no longer carries the generator's repo-writing recipe (no bump).
+6. `37062fe04` — the Wizard WARN unit pin + External's log-order pin (core 0.0.1434).
+7. The close commit — `cargo fmt` over the lane's files, this record, the order's status header (core 0.0.1435).
+
+Per-commit verification was each unit's families by name plus the unit pins; the full workspace gate ran once, at the end (below), under the two-gate cap.
+
+### Red-first (item 1) — oracles at the pin, Rust at `KIND`
+
+- `generators_leaf_equivalence`: RED at `field semantics 'TRUST_SAFEGUARDS_DIRECTION'` ("Five points" vs "Six points"). Measured per row against the committed constants: exactly the five predicted byte reds (`TRUST_SAFEGUARDS_DIRECTION`, `COMPANION_TRUST_DISPOSITION`, `GATED_COMPANION_TRUST_DISPOSITION`, `COMMITTEE_DRIFT_GUARDRAIL`, `EXAMPLE_DIALOGUE_COVERAGE`), 8 green, 3 missing (`STAKES_AND_REACTION_DIRECTION`, `ASSISTANT_TASK_DIRECTION`, `FLATTENING_DRIFT_SIGNAL`), so the export-set assert is 13 vs 16.
+- `generators_wizard_prompts_equivalence`: RED at `FIELD_PROMPTS.exampleDialogues` (line 13, `.` vs `;`). Per row: exactly ONE byte red among the nine remaining field prompts, `exampleDialogues`, as predicted; `systemPrompt` absent from v4's 9.
+- `character_optimizer_prompts_equivalence`: RED at `getAnalysisPrompt` (roleplay), line 32 — v5 `""` where v4 has the `- Flattening —` bullet (8277 vs 9506 bytes).
+- `ai_import_assembly_equivalence`: RED, **1 row** — `SYSTEM_PROMPTS_PROMPT`. **⚠ Correction to the order:** `FIRST_MESSAGE_PROMPT` is NOT a row of this family (it is not exported, and `cases/ai-import-assembly.ts` records only the exported constant); its `EXAMPLE_DIALOGUE_COVERAGE` move is covered by `ai_import_tier3` only.
+- **The four tier-3 families were NOT run red-first on `KIND`'s source** (a second checkout + build was not spent on it). Their flip is carried by the tier-1 reds above: every recorded call of the four carries one of the moved constants, and `ai_import_tier3`'s version row moved `4.12.0-dev.0` → `4.13.0-dev.8`. The mutation proofs below are the evidence that each tier-3 family can fail on these surfaces.
+
+### The generator extension (items 3–4) and idempotence
+
+- `gen-field-semantics.mjs` now emits: the module doc (consumers gain the External Prompt generator); one `pub const` per string row in recorded (= v4 source) order, with updated / new docs; a fixed template block — `use crate::characters::kind::{kind_policy, CharacterKind, GeneratorDirectionKey}`, the private `generator_direction_text` (exhaustive `match`), `generator_direction_for`, `kind_drift_signal_for`; `CORE_VAULT_FILE_SUMMARIES` from a recorded `{name, entries}` row (`[(&str, &str); 9]`), `core_vault_file_summary`, `ALL_EXPORTS` (16 string rows), and the `core_vault_file_summary_tests` module. It refuses an NDJSON lacking the summaries row or any of the three new exports. The en-dash in the `properties.json` summary is emitted **literal** (`0.1–1.0`), not `\u{2013}`.
+- **Idempotence:** a second regen from the same NDJSON plus `cargo fmt -p quilltap-core` left both generated files byte-identical (`cmp`). `tools/self_inventory.rs` compiles unchanged.
+- `ALL_EXPORTS` 13 → 16. **`CORE_VAULT_FILE_SUMMARIES`' first oracle diff: EQUAL** (9 rows, order and bytes).
+- `gen-wizard-prompts.mjs` emits `SYSTEM_PROMPT_FIELD_PROMPT_STAKES` / `_TASK` from the recorded `system_prompt_field` rows and a template tail (`build_system_prompt_field_prompt` through `kind_policy`, `wizard_field_prompt`). `FIELD_PROMPTS` 10 → 9; the family's floor moves `>= 10` → `>= 9`.
+
+### The units
+
+- **Wizard:** `wizard_field_max_tokens` (2500 / 1000 / 4000 / 500); `resolve_wizard_character_kind` called once in `run_wizard_core` after the context prompt (v4's two sites `:917` / `:1183` are this one body); the loop through `wizard_field_prompt(other, character_kind)`.
+- **External Prompt:** `build_meta_system_prompt(kind)`; measured lengths **8212** (roleplay) / **7588** (assistant) UTF-16 units (5664 before), pinned in `trust_directions_order`. `over_budget_refuses` now reads `Estimated input: ~2906 tokens`; `scenario_dangling_is_omitted` `~2271`. **P4.D362's recorded `external_prompt` red** (the `safe limit ~1000 tokens` budget text) is GREEN here.
+- **Optimizer:** the three passes by kind; the runner's DEBUG before the memory pipeline; the three call sites pass the kind.
+- **Summon From Lore:** `system_prompts_prompt()` carries `generator_direction_for(DEFAULT_CHARACTER_KIND)`.
+
+### The log lines (item 12)
+
+| line | level | target | keys (order) | pinned by | silence leg |
+|---|---|---|---|---|---|
+| `[CharacterWizard] New character; writing for the default kind` | debug | `quilltap::character_wizard` | `kind` | `character_wizard_tier3` (every no-id row that reaches the loop) + `kind_line_tests` | the profile / document / image failure rows and the Zod rows emit none (tier 3) |
+| `[CharacterWizard] Writing for the character's kind` | debug | same | `characterId, kind` | tier 3 (`stream_existing_data_subset`, `…_existing_roleplay`, `stream_character_id_missing`, `…_still_resolves_kind`) | a no-id row emits none; a failed read emits none (`kind_line_tests`) |
+| `[CharacterWizard] Could not read the character; writing for the default kind` | **warn** | same | `characterId, error` | `kind_line_tests` (no mount partition → `Mount index database is in degraded mode`) | `stream_character_id_missing` (`Ok(None)`) emits no WARN (tier 3) |
+| `External prompt meta-prompt built for the character's kind` | debug | `quilltap::external_prompt_generator` | `characterId`, `kind` (own tracing fields, camelCase) | `external_prompt_tier3` `logLines` (Tier 2 item 16 — 11 lines compared) | `missing_character_404`, `missing_profile` and the Zod rows emit none; `missing_system_prompt` logs it BEFORE its WARN (asserted) |
+| `[CharacterOptimizer] Optimizing for the character's kind` | debug | `quilltap::character_optimizer` | `characterId, kind` | `character_optimizer_tier3` (28 rows) | `missing_character_404` and the Zod rows emit none |
+
+All five run on the caller's thread; `captured_with` sees the Wizard's; External's capture rides the future (`WithSubscriber`) because its family is a multi-thread runtime. `DbError` → v4's `error.message` through `db::fallback::error_text` (the bare message; a `PartitionUnavailable(MountIndex)` renders v4's degraded-guard sentence). `fallback_home_guard`: the read is a `?`-free default, not a new fallback home — see the gate for its by-name result.
+
+### Plants and the U1 rows (H1)
+
+- One helper per side: v4's REAL `writeDatabaseDocument` (oracle) / `DocMountFileLinksRepository::write_database_document` (`crates/quilltap-harness/tests/common/kind_plant.rs`, pulled in by `#[path]`, so `common/mod.rs` stays untouched). The planted text is the character's committed `properties.json` with `"kind": "assistant"` appended (the fixtures carry no `diagramStyle` key). v4's side self-checks `resolveCharacterKind(await findById(id)) === kind` and throws otherwise; v5's side reads the bytes back.
+- U1 tests, red on this branch BY DESIGN, green on the union once P4.D369's read overlay carries `kind`:
+  - `character_wizard_assistant_kind_rows` (`stream_system_prompt_existing_assistant`): first diff = the system-prompt field message — v5 sends the STAKES text where v4 sends TASK.
+  - `character_optimizer_assistant_kind_rows` (`assistant_kind_no_flattening`): first diff = the analysis call's user message — v5 carries `- Flattening —` and the drift signal, v4 neither.
+  - `external_prompt_assistant_kind_rows` (`assistant_kind_meta_prompt`): v5's STAKES meta prompt misses the canned table keyed on v4's TASK prompt (`no canned completion registered …`).
+- New corpus rows: wizard +5 (46 cases); optimizer +1 (32); external +1 (18 — the order said 18 existing; it was 17); ai-import none (42 cases — the order said 45).
+
+### P4.D362's hunks taken verbatim
+
+`external_prompt_tier3` failed at the pin before reaching any row of mine: v4's profile update writes `maxImagesPerRequest`, which the committed `characters-*` pair predates (`no such column`). P4.D362 fixed it on its branch after `SCHEMA` (`9024789a2`, `plant412Columns` / `ensure_4_12_columns_on`). This lane applied that commit's two hunks for `external-prompt-tier3.test.ts` and `external_prompt_tier3_equivalence.rs` **byte-identical** (its `pascal_custom_tools_route` hunk not taken), so the union merges them as one change.
+
+### Mutation proofs (item 15) — each reverted after its run
+
+- `wizard_field_max_tokens("systemPrompt")` → 1000: `generators_wizard_prompts` red at `wizardFieldMaxTokens('systemPrompt')`; `character_wizard_tier3` red on `stream_skip_all_fields`, `json_skip_all_fields`, `stream_system_prompt_new_character`, `…_existing_roleplay`, `stream_character_id_missing` (`maxTokens` 1000 vs 2500).
+- The direction placed AFTER the gated disposition in `build_meta_system_prompt`: every external row with a call red (canned miss), 9 in all.
+- `generator_direction_text` arms swapped: `generators_leaf` red at `generatorDirectionFor 'roleplay'`.
+- `kind_drift_signal_for(Task)` → `Some`: `generators_leaf` red at the `kind_drift_signal` assistant row; `character_optimizer_prompts` red at `getAnalysisPrompt 'analysis-prompt' (assistant)`.
+- `resolve_wizard_character_kind` moved above the NAME step: `stream_name_throws_keeps_request_name` red (the kind DEBUG logged before `Failed to generate field: name`). The order's literal mutation — before `build_context_prompt` but after the name step — is an **equivalent mutant**: `build_context_prompt` is pure and logs nothing, so no row can see it.
+
+### Tier 2
+
+- **16 — DONE.** `external_prompt_tier3` compares the kind line. v4's side: a spy on `Logger.prototype.debug` (the generator's module-level `logger.child(...)` is frozen at the oracle's `LOG_LEVEL=error`, so the line never reaches a transport; the prototype spy sees the call and its own context argument).
+- **17 — `WARN_UNREACHABLE_IN_ORACLE`.** Tried: a corrupt `properties.json` (`{ "pronouns": `) planted through the real writer — v4's `findById` does NOT throw (its overlay falls back), measured at the pin, so no plant of that class reaches the WARN. A throwing-column plant was not attempted (it would have to fail v4's and v5's reads alike; memory note `throwing-plant-must-fail-both-reads`). The WARN is pinned by `kind_line_tests`.
+- **18 —** `ai_import_assembly` records `SYSTEM_PROMPTS_PROMPT` as one constant row; the relationships array is runtime context (the Prior Analysis), not part of the constant, so "with / without relationships" is not a tier-1 shape. Both carry the stakes direction by construction; `ai_import_tier3` drives the runtime.
+
+### Recorded (Tier 3) and HANDOFFs
+
+- 19: v4's later Optimizer work (R-B) — NOT ported.
+- 20 / **H2 → P4.D382:** `help/character-optimizer.md`, `help/character-creation.md`, `help/ai-character-import.md`, `help/character-external-prompt.md`, and `docs/developer/features/character-kind-and-roleplay-defaults.md` — edited by none of this lane's commits.
+- 21: `CORE_VAULT_FILE_SUMMARIES['properties.json']` does not mention `kind` at the pin — v4-faithful, recorded bytes.
+- 22 (R-Z): External Prompt's pre-existing snake_case tracing fields (`character_id`, `system_prompt_id`, …) — not fixed here.
+- 23: no SPA surface.
+- **H1 → the unifier:** the three U1 tests above, by name.
+- **H3 → P4.D373:** `field_semantics.rs` has ONE author this round (this lane).
+- `common/kind_plant.rs` is new and lane-owned; `common/mod.rs` is untouched.
+
+### Oracle regen recipes (each from the pin, outputs lane-private)
+
+Each was run with a lane-private copy of the family's own header recipe (memory note `parallel-lane-shared-resources`: the committed defaults under `/tmp/oracle-*` are shared), not through the sweep driver:
+
+- tier 1 (tsx, from the pin): `cd /tmp/qt-v4-pin-p4.d371-624d0d25c && npx tsx <v5w>/harness/oracle/cases/<case>.ts > /tmp/p4d371/oracle-<case>.ndjson` for `generators-field-semantics`, `generators-leaf`, `generators-wizard-prompts`, `character-optimizer-prompts`, `ai-import-assembly`; then `node harness/oracle/tools/gen-field-semantics.mjs …` / `gen-wizard-prompts.mjs …` and `cargo fmt -p quilltap-core`.
+- tier 3 (jest, staged under `/tmp/p4d371/stage-<stem>` with `lib/v4-migrations.ts` copied for External): `character-wizard-tier3` / `character-optimizer-tier3` / `ai-import-tier3` with `QT_FIXTURE_CG_MAIN/MOUNT` = the committed `character-generators-*` pair, `external-prompt-tier3` with `QT_FIXTURE_CHARACTERS_MAIN/MOUNT` = the `characters-*` pair; `QT_ORACLE_OUT=/tmp/p4d371/oracle-<family>.ndjson`; `npx jest --silent --watchman=false --testTimeout=300000 --roots "$PWD" --roots "$TMPO/cases" -- <stem>`.
+- Env: `QT_ORACLE_GENERATORS_LEAF`, `QT_ORACLE_GENERATORS_WIZARD_PROMPTS`, `QT_ORACLE_CHARACTER_OPTIMIZER_PROMPTS`, `QT_ORACLE_AI_IMPORT_ASSEMBLY`, `QT_ORACLE_CHARACTER_WIZARD`, `QT_ORACLE_CHARACTER_OPTIMIZER`, `QT_ORACLE_EXTERNAL_PROMPT`, `QT_ORACLE_AI_IMPORT`.
+- The committed headers are canonical; `recipe_sweep.py --self-test` → 0 failures, and no family's extracted recipe writes into the repository.
+
+### Fixtures changed
+
+Corpora only: `character-wizard-tier3.json` (+5), `character-optimizer-tier3.json` (+1), `external-prompt-tier3.json` (+1). No `.db` pair rebuilt. Other oracles invalidated: none beyond this lane's families (`headshoulders_backfill_tier3` reuses `generate_field_for_caller` with its own prompt and is untouched).
+
+### Gotchas
+
+- The sweep driver reads EVERY two-space command line in a test header's doc comment after `Run:` as part of the run stage — a generator recipe pasted there becomes a repo-writing step. Keep such recipes in the generator's own header.
+- A v4 module-level `logger.child(...)` keeps the parent's level from load time; a spy on the root `logger.debug` never sees it. Spy `Logger.prototype.debug`.
+- An `&`-launched regen dies with its Bash call's shell; always use a tracked background job.
+- v4's character overlay does not throw on corrupt `properties.json`, so that is not a usable throwing plant for a `findById` WARN.
+
+### 💸 for the owed dogfood pass
+
+As the order lists: the Wizard's system prompt on an existing assistant character (TASK direction, `maxTokens` 2500, the `Writing for the character's kind` DEBUG with `kind: assistant`); on a new character (`New character; …` and the STAKES direction incl. the off-screen-`{{user}}` bullet); External Prompt on the assistant character (the DEBUG, the TASK direction, a slightly higher estimate); the Optimizer on a roleplay vs an assistant character (`Flattening —` and the drift signal only for roleplay); Summon From Lore's `system_prompts` step (the stakes direction, the six-point safeguards).
+
+### The gate (final tree)
+
+- `cargo fmt --all --check`: clean after the close commit's `cargo fmt` (it touched only this lane's files; the two generated modules unchanged).
+- `cargo clippy --workspace --all-targets -- -D warnings` and with `--features quilltap-core/native-transport` (after `npm ci` + `npm run build` in `apps/web`): both clean.
+- `cargo test --workspace --no-fail-fast` (background, `CARGO_INCREMENTAL=0`, the lane's eight oracle vars + `QT_FIXTURE_CG_MAIN/MOUNT` + `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin; log `/tmp/p4d371/workspace-gate.log`): **906 result lines / 6,078 passed / 7 failed / 3 ignored.** The seven, each named:
+  - **by design (H1):** `character_wizard_assistant_kind_rows`, `character_optimizer_assistant_kind_rows`, `external_prompt_assistant_kind_rows`;
+  - **inherited from the base, sibling-owned:** `spelling_guard` (a `quilttap` in `surveys/2026-11-04-setupphase-vendor-norport.md:295`, fixed on main), `builtin_prompt_templates_guard` (P4.D373), `cli_differential` (red at SCHEMA; no `QT_NODE` in a lane block), `provider_sdk_version_guard` (the pin's root `openai` 7.47.0 / `@openrouter/sdk` 1.5.34 vs the recorded 7.45.0 / 1.5.9 — P4.D364's re-pin, R-F).
+- Every family of this lane green BY NAME in that run: `generators_leaf`, `generators_wizard_prompts`, `character_optimizer_prompts`, `ai_import_assembly`, `character_wizard_tier3` (main), `character_optimizer_tier3` (main), `external_prompt_tier3` (main + the route-line test), `ai_import_tier3`; plus `headshoulders_backfill(_enqueue)`, `self_inventory`, `fallback_home_guard` (unmoved), `trust_directions_order`, `kind_directions_order`, `generators::wizard::kind_line_tests`. `tool_execution_tier2` was not run against an oracle in this lane (no regen); its link to this lane — the `CORE_VAULT_FILE_SUMMARIES` bytes — is proven equal by the leaf family's first oracle row set.
+- No SPA file and no e2e spec moved; no Playwright.
+
+### Versions at close
+
+core 0.0.1435 (no other crate bumped; harness frozen 0.0.1110).

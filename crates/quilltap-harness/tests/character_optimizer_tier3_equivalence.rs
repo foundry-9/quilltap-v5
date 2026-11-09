@@ -849,7 +849,10 @@ fn character_optimizer_assistant_kind_rows() {
         return;
     };
     let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
-    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind row");
+    assert!(
+        !planted.is_empty(),
+        "the corpus lost its planted assistant-kind row"
+    );
     let mut failed: Vec<String> = Vec::new();
     for c in planted {
         let want_row = &oracle[&c.name];
@@ -894,7 +897,9 @@ fn character_optimizer_matches_oracle() {
         kind_lines += want_row
             .log_lines
             .iter()
-            .filter(|l| l["message"] == json!("[CharacterOptimizer] Optimizing for the character's kind"))
+            .filter(|l| {
+                l["message"] == json!("[CharacterOptimizer] Optimizing for the character's kind")
+            })
             .count();
         let got = run_case(&spec, &corpus, c);
         // P4.157 R-B: every `subId` a canned answer names must be an id v4

@@ -174,7 +174,10 @@ fn generators_wizard_prompts_match_oracle() {
                 value,
             } => {
                 eq(
-                    &format!("buildSystemPromptFieldPrompt('{}') [{direction}]", character_kind.as_str()),
+                    &format!(
+                        "buildSystemPromptFieldPrompt('{}') [{direction}]",
+                        character_kind.as_str()
+                    ),
                     build_system_prompt_field_prompt(character_kind),
                     &value,
                 );
@@ -185,14 +188,28 @@ fn generators_wizard_prompts_match_oracle() {
                 character_kind,
                 value,
             } => {
-                let label = format!("wizardFieldPrompt('{field}', '{}')", character_kind.as_str());
-                match (wizard_field_prompt(&field, character_kind), value.as_deref()) {
+                let label = format!(
+                    "wizardFieldPrompt('{field}', '{}')",
+                    character_kind.as_str()
+                );
+                match (
+                    wizard_field_prompt(&field, character_kind),
+                    value.as_deref(),
+                ) {
                     (Some(got), Some(want)) => eq(&label, got, want),
                     (None, None) => {}
                     (got, want) => panic!(
                         "{label}: v5 {} where v4 {}",
-                        if got.is_some() { "answered" } else { "had none" },
-                        if want.is_some() { "answered" } else { "had none" }
+                        if got.is_some() {
+                            "answered"
+                        } else {
+                            "had none"
+                        },
+                        if want.is_some() {
+                            "answered"
+                        } else {
+                            "had none"
+                        }
                     ),
                 }
                 seen_wizard_fields.push((field, character_kind));
@@ -232,14 +249,20 @@ fn generators_wizard_prompts_match_oracle() {
     );
 
     // P4.D371: the direction rows, and every (field, kind) pair, both ways.
-    assert_eq!(seen_directions, system_prompt_fields, "system-prompt field coverage");
+    assert_eq!(
+        seen_directions, system_prompt_fields,
+        "system-prompt field coverage"
+    );
     let kinds = [CharacterKind::Roleplay, CharacterKind::Assistant];
     let want_pairs: Vec<(String, CharacterKind)> = wizard_fields
         .iter()
         .flat_map(|f| kinds.iter().map(move |k| (f.clone(), *k)))
         .collect();
     assert_eq!(seen_wizard_fields, want_pairs, "wizardFieldPrompt coverage");
-    assert_eq!(seen_max_tokens, wizard_fields, "wizardFieldMaxTokens coverage");
+    assert_eq!(
+        seen_max_tokens, wizard_fields,
+        "wizardFieldMaxTokens coverage"
+    );
     assert!(
         wizard_fields.len() >= 14,
         "wizard field corpus: {}",

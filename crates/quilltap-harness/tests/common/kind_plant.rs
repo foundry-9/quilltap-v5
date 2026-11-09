@@ -28,7 +28,8 @@ pub fn plant_vault_properties(
     character_id: &str,
     properties: &str,
 ) {
-    let main_w = Writer::open_writable(main, pepper).expect("open the main copy for the kind plant");
+    let main_w =
+        Writer::open_writable(main, pepper).expect("open the main copy for the kind plant");
     let mount_point_id: String = main_w
         .connection()
         .query_row(
@@ -53,5 +54,8 @@ pub fn plant_vault_properties(
             |row| row.get(0),
         )
         .expect("kind plant: read properties.json back");
-    assert_eq!(read_back, properties, "kind plant: the vault link reads other bytes");
+    assert_eq!(
+        read_back, properties,
+        "kind plant: the vault link reads other bytes"
+    );
 }

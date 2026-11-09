@@ -23,10 +23,10 @@ use quilltap_core::generators::optimizer::{
     get_system_prompt_suggestion_prompt,
 };
 use quilltap_core::generators::wizard::wizard_field_max_tokens;
-use serde_json::{json, Value};
 use quilltap_core::generators::wizard_prompts::{
     build_system_prompt_field_prompt, field_prompt, wizard_field_prompt,
 };
+use serde_json::{json, Value};
 
 /// v4's `toMatch(/…/i)`.
 fn has_ci(haystack: &str, needle: &str) -> bool {
@@ -67,9 +67,9 @@ fn the_stakes_direction_forbids_absolute_temperament_rules_and_keeps_danger_felt
     assert!(d.contains("Do not invent violence or drama"));
     // v4 `7ff5fda89`: characters decided {{user}} had gone to the boathouse and
     // planned around it for turns.
-    assert!(d.contains(
-        "does not decide where {{user}} is or what {{user}} has been doing off-screen"
-    ));
+    assert!(
+        d.contains("does not decide where {{user}} is or what {{user}} has been doing off-screen")
+    );
 }
 
 #[test]
@@ -111,8 +111,7 @@ fn the_companion_disposition_carries_the_positive_half_of_trust() {
 }
 
 #[test]
-fn the_universal_safeguards_forbid_asserting_users_interior_and_still_forbid_general_deference()
-{
+fn the_universal_safeguards_forbid_asserting_users_interior_and_still_forbid_general_deference() {
     let d = TRUST_SAFEGUARDS_DIRECTION;
     assert!(d.contains("Six points"));
     assert!(d.contains("never tells {{user}} what {{user}} really meant"));

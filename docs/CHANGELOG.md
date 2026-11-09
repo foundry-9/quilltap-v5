@@ -195,6 +195,12 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: lane close — cargo fmt over the lane's files, the lane record, LANE COMPLETE
+
+_Versions: core 0.0.1435._
+
+`cargo fmt` over the files this lane touched (import order and line wrapping only; the generated `field_semantics.rs` / `wizard_prompts.rs` are unchanged). The P4.D371 lane record goes into `status-log.md`, with the gate, and the work order's status header reads LANE COMPLETE.
+
 #### 2026-11-09 — P4.D371: pin the Wizard's kind WARN and External Prompt's log order
 
 _Versions: core 0.0.1434._

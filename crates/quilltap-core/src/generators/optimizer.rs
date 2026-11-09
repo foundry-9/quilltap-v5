@@ -31,6 +31,7 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 use crate::api::system_qtap::js_truthy;
+use crate::characters::kind::{resolve_character_kind, CharacterKind};
 use crate::cheap_llm::{build_character_cache_key, profile_params_value};
 use crate::clock::{iso_from_unix_ms, iso_to_ms};
 use crate::db::database_store::write_database_document;
@@ -39,7 +40,6 @@ use crate::db::memories_read::{
     find_by_character_about_character, search_by_content_about_character,
 };
 use crate::db::runtime::Db;
-use crate::characters::kind::{resolve_character_kind, CharacterKind};
 use crate::db::{characters_read, connection_profiles, embedding_profiles, wardrobe_read, DbError};
 use crate::generators::field_semantics::{
     generator_direction_for, kind_drift_signal_for, COMMITTEE_DRIFT_GUARDRAIL,
@@ -434,9 +434,7 @@ pub fn get_analysis_prompt(kind: CharacterKind) -> String {
     } else {
         ""
     };
-    let flattening_guardrail = drift_signal
-        .map(|d| format!("\n\n{d}"))
-        .unwrap_or_default();
+    let flattening_guardrail = drift_signal.map(|d| format!("\n\n{d}")).unwrap_or_default();
     format!(
         r#"{FULL_FIELD_SEMANTICS}
 

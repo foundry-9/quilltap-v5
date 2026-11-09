@@ -741,7 +741,10 @@ fn character_wizard_assistant_kind_rows() {
         return;
     };
     let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
-    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind rows");
+    assert!(
+        !planted.is_empty(),
+        "the corpus lost its planted assistant-kind rows"
+    );
     let mut failed: Vec<String> = Vec::new();
     for c in planted {
         let want_row = &oracle[&c.name];

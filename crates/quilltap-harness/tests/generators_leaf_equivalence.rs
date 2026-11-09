@@ -317,7 +317,10 @@ fn generators_leaf_matches_oracle() {
     // And v5 declares no export the oracle did not drive.
     let ours: Vec<String> = ALL_EXPORTS.iter().map(|(n, _)| n.to_string()).collect();
     assert_eq!(ours, field_semantics, "v5 field-semantics export set");
-    assert_eq!(seen_direction, generator_direction, "generatorDirectionFor coverage");
+    assert_eq!(
+        seen_direction, generator_direction,
+        "generatorDirectionFor coverage"
+    );
     assert_eq!(seen_drift, kind_drift_signal, "kindDriftSignalFor coverage");
     assert_eq!(
         seen_summaries, core_vault_file_summaries,

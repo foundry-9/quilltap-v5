@@ -172,7 +172,9 @@ const KIND_LINE: &str = "External prompt meta-prompt built for the character's k
 fn kind_log_lines(lines: &[String]) -> Vec<Value> {
     lines
         .iter()
-        .filter(|l| l.starts_with("DEBUG quilltap::external_prompt_generator") && l.contains(KIND_LINE))
+        .filter(|l| {
+            l.starts_with("DEBUG quilltap::external_prompt_generator") && l.contains(KIND_LINE)
+        })
         .map(|l| {
             let field = |k: &str| {
                 l.split(' ')
@@ -697,7 +699,10 @@ async fn external_prompt_matches_oracle() {
             failed.push(d);
         }
     }
-    assert!(kind_lines >= 5, "the oracle recorded only {kind_lines} kind lines");
+    assert!(
+        kind_lines >= 5,
+        "the oracle recorded only {kind_lines} kind lines"
+    );
     eprintln!(
         "external_prompt_tier3_equivalence: {} cases driven, {} model calls recorded, {kind_lines} kind lines",
         corpus.cases.len(),
@@ -722,7 +727,10 @@ async fn external_prompt_assistant_kind_rows() {
         return;
     };
     let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
-    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind row");
+    assert!(
+        !planted.is_empty(),
+        "the corpus lost its planted assistant-kind row"
+    );
     let mut failed: Vec<String> = Vec::new();
     for case in planted {
         let o = &oracle[&case.name];

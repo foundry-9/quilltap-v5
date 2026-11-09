@@ -354,14 +354,25 @@ fn character_optimizer_prompts_match_oracle() {
         vec![CharacterKind::Roleplay, CharacterKind::Assistant],
         "the oracle's kind list"
     );
-    assert_eq!(analysis_kinds, character_kinds, "getAnalysisPrompt kind coverage");
+    assert_eq!(
+        analysis_kinds, character_kinds,
+        "getAnalysisPrompt kind coverage"
+    );
     let by_kind = |ids: &[String]| -> Vec<(String, CharacterKind)> {
         ids.iter()
             .flat_map(|id| character_kinds.iter().map(move |k| (id.clone(), *k)))
             .collect()
     };
-    assert_eq!(new_prompt_rows, by_kind(&analyses), "new-prompts kind coverage");
-    assert_eq!(s_sp_kinds, by_kind(&system_prompts), "system-prompt kind coverage");
+    assert_eq!(
+        new_prompt_rows,
+        by_kind(&analyses),
+        "new-prompts kind coverage"
+    );
+    assert_eq!(
+        s_sp_kinds,
+        by_kind(&system_prompts),
+        "system-prompt kind coverage"
+    );
     assert!(
         saw_schema_preamble,
         "SUGGESTION_SCHEMA_PREAMBLE was never recorded"

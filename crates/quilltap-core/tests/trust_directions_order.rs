@@ -7,6 +7,7 @@
 //! `ai-import-system-prompts.test.ts`, `character-wizard-prompts.test.ts`,
 //! `character-optimizer-helpers.test.ts`, `external-prompt-generator.test.ts`.
 
+use quilltap_core::characters::kind::CharacterKind;
 use quilltap_core::generators::ai_import::system_prompts_prompt;
 use quilltap_core::generators::external_prompt::build_meta_system_prompt;
 use quilltap_core::generators::field_semantics::{
@@ -18,7 +19,6 @@ use quilltap_core::generators::optimizer::{
     get_new_system_prompts_suggestion_prompt, get_system_prompt_suggestion_prompt,
     SUGGESTION_SCHEMA_PREAMBLE,
 };
-use quilltap_core::characters::kind::CharacterKind;
 use quilltap_core::generators::wizard_prompts::build_system_prompt_field_prompt;
 use serde_json::json;
 
