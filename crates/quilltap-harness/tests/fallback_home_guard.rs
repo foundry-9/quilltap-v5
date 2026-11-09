@@ -224,6 +224,10 @@ const HOME_MESSAGES: &[&str] = &[
     "Error listing file links for browser",
     "Error clearing hard-link group",
     // === /P4.D381 ===
+    // === P4.D374 (v4 `c539c82e0`) — `countByCharacterId`'s fallback, the
+    // Brahma lookups' reader (`memories.repository.ts:973-983`) ===
+    "Error counting memories for character",
+    // === /P4.D374 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

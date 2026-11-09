@@ -538,11 +538,22 @@ pub fn parse_brahma_console_settings(
                 Some(n) if n.fract() != 0.0 => {
                     issues.push(ZodIssue::invalid_int_type(path, Some(v)))
                 }
+                // Zod 4.6.7's `.int()` safe-range check is `continue: true`:
+                // past ±MAX_SAFE_INTEGER the `origin: "int"` issue is followed
+                // by `.max(200)` / `.min(5)`'s own (measured at `624d0d25c`).
                 Some(n) if n > MAX_SAFE_INTEGER_I64 as f64 => {
-                    issues.push(ZodIssue::too_big_int(path))
+                    issues.push(ZodIssue::too_big_int(path.clone()));
+                    issues.push(ZodIssue::too_big_number(
+                        serde_json::json!(BRAHMA_MAX_AGENT_TURNS_MAX),
+                        path,
+                    ));
                 }
                 Some(n) if n < -(MAX_SAFE_INTEGER_I64 as f64) => {
-                    issues.push(ZodIssue::too_small_int(path))
+                    issues.push(ZodIssue::too_small_int(path.clone()));
+                    issues.push(ZodIssue::too_small_number(
+                        serde_json::json!(BRAHMA_MAX_AGENT_TURNS_MIN),
+                        path,
+                    ));
                 }
                 Some(n) => {
                     let turns = n as i64;
@@ -2717,6 +2728,34 @@ mod p4d57_brahma_console_tests {
             turns(serde_json::json!({ "maxAgentTurns": 200 })),
             Some(200)
         );
+    }
+
+    /// Zod 4.6.7 measured at `624d0d25c`: `.int()`'s safe-range check is
+    /// `continue: true`, so an integer past ±MAX_SAFE_INTEGER carries the
+    /// `origin: "int"` range issue AND the `.min(5)` / `.max(200)` one after
+    /// it — two issues, in that order (only the GET's WARN text shows them).
+    #[test]
+    fn parse_an_unsafe_integer_carries_both_range_issues() {
+        use serde_json::json;
+        let issues = |v: serde_json::Value| {
+            parse_brahma_console_settings(&json!({ "maxAgentTurns": v }))
+                .unwrap_err()
+                .iter()
+                .map(|i| i.to_value())
+                .collect::<Vec<_>>()
+        };
+        let big = issues(json!(1e20));
+        assert_eq!(
+            serde_json::to_string(&big).unwrap(),
+            r#"[{"code":"too_big","maximum":9007199254740991,"note":"Integers must be within the safe integer range.","origin":"int","inclusive":true,"path":["maxAgentTurns"],"message":"Too big: expected int to be <=9007199254740991"},{"origin":"number","code":"too_big","maximum":200,"inclusive":true,"path":["maxAgentTurns"],"message":"Too big: expected number to be <=200"}]"#
+        );
+        let small = issues(json!(-1e20));
+        assert_eq!(
+            serde_json::to_string(&small).unwrap(),
+            r#"[{"code":"too_small","minimum":-9007199254740991,"note":"Integers must be within the safe integer range.","origin":"int","inclusive":true,"path":["maxAgentTurns"],"message":"Too small: expected int to be >=-9007199254740991"},{"origin":"number","code":"too_small","minimum":5,"inclusive":true,"path":["maxAgentTurns"],"message":"Too small: expected number to be >=5"}]"#
+        );
+        // An in-range overflow keeps its one issue.
+        assert_eq!(issues(json!(250)).len(), 1);
     }
 
     // === P4.D374 === v4 `c539c82e0`: `inlineConnectionProfileId` — every arm
