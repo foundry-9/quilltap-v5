@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — feat(tool-loop): submit_final_response is the research flavour's alone; the force-final INFO (v4 96156566b)
+
+_Versions: core 0.0.1432._
+
+P4.D370 unit C. `native_tool_loop.rs` computes one `submit_offered` (`enabled` and the `research` flavour) that gates `submit_final_response` detection (hence the ghost-wrap guardrail and the agent-mode exit) and the force-final promotion. An in-character turn runs a stray `submit_final_response` as an ordinary tool call and keeps its prose; at the cap it still runs the force-final pass, with the in-character sentence and no promotion. v4's `Agent mode max turns reached, forcing final response` INFO is logged at the top of the force-final branch (`quilltap::native_tool_loop`; `chatId`, `iterations`, `maxTurns`, `flavor`). Oracle re-aim: `native-tool-loop-tier3.test.ts` passes each case's `flavor` to v4's loop (its four agent-mode rows had silently become "submit is an ordinary call" at the pin) and records the INFO per case; the corpus gains a chat and two in-character cases (`ic_stray_submit_is_ordinary`, `ic_max_turns_prose_force_final`). The family's `events` comparand stays red until P4.D366's frames dialect joins it.
+
 #### 2026-11-09 — feat(agent-mode): the Agent Mode flavour follows the responding character's kind, with v4's resolver INFO (v4 96156566b)
 
 _Versions: core 0.0.1431._

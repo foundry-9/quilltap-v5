@@ -7,17 +7,24 @@
 //!   1. detect provider-native tool calls in the last raw response (the injected
 //!      [`ToolCallDetector`] seam — the provider wire parse is W4.7). Zero calls
 //!      → break.
-//!   2. In agent mode, `submit_final_response` terminates the loop and stamps
-//!      `streaming.full_response` with the model's structured final answer; the
-//!      **ghost-wrap guardrail** rejects a sole iteration-0
-//!      `submit_final_response` with no prose.
+//!   2. In research-flavoured agent mode (an assistant character), the only
+//!      flavour offered it, `submit_final_response` is special: it terminates
+//!      the loop and stamps `streaming.full_response` with the model's
+//!      structured final answer. The **ghost-wrap guardrail** rejects a sole
+//!      iteration-0 `submit_final_response` with no prose. An in-character turn
+//!      runs a stray `submit_final_response` like any other call (v4
+//!      `96156566b`).
 //!   3. Per iteration: dispatch via [`process_tool_calls`], append the assistant
 //!      turn + one message per tool result via the shared threading helpers
 //!      ([`build_assistant_tool_call_message`] / [`build_tool_result_messages`]),
 //!      re-stream with the same tool slate, accumulate into
 //!      `streaming.full_response`.
 //!   4. After the loop, if iterations hit `effective_max_turns` without a
-//!      successful submit, agent mode runs a single **force-final** pass.
+//!      successful submit, agent mode runs a single **force-final** pass. For
+//!      research it may overwrite `streaming.full_response` from a
+//!      `submit_final_response` in the force-final response; for in-character
+//!      (a roleplay character) it asks for the turn in prose with no further
+//!      tools.
 //!
 //! The loop MUTATES the [`StreamingState`] in place (`full_response`, `usage`,
 //! `cache_usage`, `attachment_results`, `raw_response`, `thought_signature`,
@@ -59,6 +66,7 @@ use super::tool_execution::{
     process_tool_calls, GeneratedImage, StatusContext, ToolCall, ToolExecutionContext, ToolMessage,
     ToolProcessingResult, ToolRunner,
 };
+use crate::characters::kind::AgentModeFlavor;
 
 /// The synthetic tool result for an iteration-0 sole `submit_final_response` with
 /// no accompanying prose — almost always a re-wrap of a previously-concluded turn
@@ -258,6 +266,9 @@ where
     // turn" (preserve prose).
     let mut real_work_iterations: i64 = 0;
     let mut agent_mode_completed = false;
+    // Only the research flavour is offered submit_final_response; an
+    // in-character turn ends when the model stops calling tools (v4 :143-145).
+    let submit_offered = agent_mode.enabled && agent_mode.flavor == AgentModeFlavor::Research;
 
     while current_raw_response.is_some() && tool_iterations < effective_max_turns {
         // The operator's hard stop (P4.D335, v4 `2b5e8ee24`): tools already run
@@ -286,7 +297,7 @@ where
         // cut-off call — reject the whole batch (v4 :156).
         let truncated = is_truncated_finish_reason(extract_finish_reason(raw).as_deref());
 
-        let submit_final_index = if agent_mode.enabled {
+        let submit_final_index = if submit_offered {
             tool_calls
                 .iter()
                 .position(|tc| tc.name == "submit_final_response")
@@ -633,6 +644,15 @@ where
     // `else` — host-side logging, omitted), so the two conditions collapse.
     if tool_iterations >= effective_max_turns && !agent_mode_completed && agent_mode.enabled {
         {
+            // v4 :413-418 — before the status emit, v4's order.
+            tracing::info!(
+                target: "quilltap::native_tool_loop",
+                chatId = %chat_id,
+                iterations = tool_iterations,
+                maxTurns = effective_max_turns,
+                flavor = agent_mode.flavor.as_str(),
+                "Agent mode max turns reached, forcing final response"
+            );
             sink.emit(ChatEvent::status(StatusPayload {
                 stage: "agent_force_final".into(),
                 message: "Requesting final response...".into(),
@@ -769,8 +789,9 @@ where
                     flush_reasoning_segment(state);
 
                     // If the force-final response contains submit_final_response,
-                    // promote its `response` over what streamed (v4 :451–466).
-                    if let Some(raw) = chunk.raw_response.as_ref() {
+                    // promote its `response` over what streamed (v4 :451–466) —
+                    // research only (v4 :465 `submitOffered`).
+                    if let Some(raw) = chunk.raw_response.as_ref().filter(|_| submit_offered) {
                         let final_calls = detector.detect(raw, &provider_name);
                         if let Some(submit) = final_calls
                             .iter()
@@ -950,7 +971,7 @@ mod tests {
                     max_turns: 10,
                     enabled_source: crate::services::agent_mode::AgentModeSource::Global,
                     // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
-                    flavor: crate::characters::kind::AgentModeFlavor::InCharacter,
+                    flavor: AgentModeFlavor::InCharacter,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,
@@ -1069,7 +1090,7 @@ mod tests {
                     max_turns: 10,
                     enabled_source: crate::services::agent_mode::AgentModeSource::Global,
                     // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
-                    flavor: crate::characters::kind::AgentModeFlavor::InCharacter,
+                    flavor: AgentModeFlavor::InCharacter,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,

@@ -49,6 +49,7 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use quilltap_core::characters::kind::AgentModeFlavor;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
@@ -122,6 +123,18 @@ struct AgentModeSpec {
     enabled: bool,
     #[serde(rename = "maxTurns")]
     max_turns: i64,
+    /// P4.D370 (v4 `96156566b`): the responding character's flavour — read
+    /// through ONE parse ([`flavor_of`]); an unknown or absent spelling panics.
+    flavor: String,
+}
+
+/// ONE parse of a corpus flavour onto C5's `AgentModeFlavor` (no default).
+fn flavor_of(s: &str, case: &str) -> AgentModeFlavor {
+    match s {
+        "research" => AgentModeFlavor::Research,
+        "in-character" => AgentModeFlavor::InCharacter,
+        other => panic!("case {case}: unknown agent-mode flavor {other:?}"),
+    }
 }
 
 #[derive(Deserialize, Clone)]
@@ -350,6 +363,8 @@ async fn native_tool_loop_tier3_matches_oracle() {
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
     // P4.D335: v4's `Native tool loop halted…` INFO, per case.
     let mut oracle_halt_logs: HashMap<String, Value> = HashMap::new();
+    // P4.D370: v4's `Agent mode max turns reached…` INFO, per case.
+    let mut oracle_agent_logs: HashMap<String, Value> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -364,6 +379,10 @@ async fn native_tool_loop_tier3_matches_oracle() {
             Some("llmlogs") => oracle_llm_logs = Some(common::oracle_llm_logs(&v)),
             Some("haltLog") => {
                 oracle_halt_logs.insert(v["case"].as_str().unwrap().into(), v["lines"].clone());
+            }
+            // P4.D370: v4's force-final INFO, per case.
+            Some("agentLog") => {
+                oracle_agent_logs.insert(v["case"].as_str().unwrap().into(), v["lines"].clone());
             }
             other => panic!("unknown oracle row kind {other:?}"),
         }
@@ -421,6 +440,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
     }
 
     let mut halts_seen = 0usize;
+    let mut agent_lines_seen = 0usize; // P4.D370
     for c in &spec.cases {
         let detector = RegistryToolCallDetector::built_in();
         let sink = RecordingSink::new();
@@ -518,7 +538,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                     enabled: c.agent_mode.enabled,
                     max_turns: c.agent_mode.max_turns,
                     enabled_source: AgentModeSource::Global,
-                    flavor: quilltap_core::characters::kind::AgentModeFlavor::Research,
+                    flavor: flavor_of(&c.agent_mode.flavor, &c.name),
                 },
                 provider: c.provider.clone(),
                 base_url: None,
@@ -557,6 +577,37 @@ async fn native_tool_loop_tier3_matches_oracle() {
             .collect();
         assert_eq!(got_halt, want_halt, "{}: the loop-head halt INFO", c.name);
         halts_seen += want_halt.len();
+        // P4.D370: the force-final INFO, v4's keys in v4's order (`chatId`,
+        // `iterations`, `maxTurns`, `flavor`). Every case that never reaches
+        // the branch carries NONE on both sides (the silence leg).
+        let want_agent: Vec<String> = oracle_agent_logs
+            .get(&c.name)
+            .unwrap_or_else(|| panic!("oracle agentLog missing for {}", c.name))
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                let mut out = format!(
+                    "INFO quilltap::native_tool_loop {}",
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["context"].as_object().unwrap() {
+                    let v = v
+                        .as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| v.to_string());
+                    out.push_str(&format!(" {k}={v}"));
+                }
+                out
+            })
+            .collect();
+        let got_agent: Vec<String> = lines
+            .iter()
+            .filter(|l| l.contains("Agent mode max turns reached"))
+            .cloned()
+            .collect();
+        assert_eq!(got_agent, want_agent, "{}: the force-final INFO", c.name);
+        agent_lines_seen += want_agent.len();
 
         let got_result = json!({
             "fullResponse": state.full_response,
@@ -586,6 +637,10 @@ async fn native_tool_loop_tier3_matches_oracle() {
     assert_eq!(
         halts_seen, 1,
         "exactly `stop-between-batches` halts at the loop head"
+    );
+    assert_eq!(
+        agent_lines_seen, 2,
+        "exactly `multi-iter-forcefinal` and `ic_max_turns_prose_force_final` reach the force-final branch"
     );
 
     // chats dump: the deterministic agentTurnCount writes (no normalization —

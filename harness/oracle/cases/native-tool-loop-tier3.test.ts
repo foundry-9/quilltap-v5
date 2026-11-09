@@ -91,7 +91,9 @@ interface CaseSpec {
   provider: string;
   model: string;
   temperature: number;
-  agentMode: { enabled: boolean; maxTurns: number };
+  // P4.D370 (v4 `96156566b`): the responding character's flavour rides the
+  // resolved agent mode; only `research` is offered submit_final_response.
+  agentMode: { enabled: boolean; maxTurns: number; flavor: 'research' | 'in-character' };
   initialFullResponse: string;
   // Real anthropic rawResponse: `content[]` tool_use blocks + `stop_reason`.
   initialRawResponse: unknown;
@@ -253,6 +255,9 @@ async function main(): Promise<void> {
   }));
   // …and the halt INFO, off the `Logger` prototype (before the level check).
   let haltLines: Array<Record<string, unknown>> = [];
+  // === P4.D370 ===
+  let agentLines: Array<Record<string, unknown>> = [];
+  // === P4.D370 ===
   {
     const { Logger } = await import('@/lib/logger');
     const original = Logger.prototype.info;
@@ -265,6 +270,11 @@ async function main(): Promise<void> {
       if (message === 'Native tool loop halted: the operator stopped the turn') {
         haltLines.push({ level: 'info', message, context: context ?? null });
       }
+      // === P4.D370 === the force-final INFO (v4 :413-418), per case.
+      if (message === 'Agent mode max turns reached, forcing final response') {
+        agentLines.push({ level: 'info', message, context: context ?? null });
+      }
+      // === P4.D370 ===
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
   }
@@ -305,6 +315,7 @@ async function main(): Promise<void> {
     streamCallIndex = 0;
     mockStop = new AbortController();
     haltLines = [];
+    agentLines = []; // === P4.D370 ===
 
     const streaming = {
       fullResponse: c.initialFullResponse,
@@ -344,6 +355,7 @@ async function main(): Promise<void> {
         enabled: c.agentMode.enabled,
         maxTurns: c.agentMode.maxTurns,
         enabledSource: 'global',
+        flavor: c.agentMode.flavor, // === P4.D370 ===
       } as never,
       formattedMessages: c.formattedMessages as never,
       modelParams: { temperature: c.temperature },
@@ -378,6 +390,7 @@ async function main(): Promise<void> {
     );
     lines.push(JSON.stringify({ kind: 'events', case: c.name, events: eventSink }));
     lines.push(JSON.stringify({ kind: 'haltLog', case: c.name, lines: haltLines }));
+    lines.push(JSON.stringify({ kind: 'agentLog', case: c.name, lines: agentLines })); // === P4.D370 ===
   }
 
   for (const row of cannedRows) {
