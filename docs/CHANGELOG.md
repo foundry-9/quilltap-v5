@@ -700,6 +700,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(inventory): the mount owner and the title lint's location through classify_mount, owners read raw (v4 0c47f4539 (j); P4.D378)
+
+_Versions: core 0.0.1432._
+
+P4.D378 items 9–10 + 13. `describe_mount` is a filter over the tier walk's `classify_mount` (General first; a vault; a project's / group's OFFICIAL store read RAW — an owner whose `properties.json` cannot be hydrated is still named, R-F); its `general_mount_point_id` parameter is gone. The title lint's `location_for_mount` names a group's / project's official store as THAT owner's location (scope, id, name), so refusals read `(The Covenant)` where they read the store's mount name, and a group store's Census / rows carry `scope=group`. NEW `inventory_mount_owner_tier2_equivalence` (v4's REAL `mountOwnerResolver` / `mountScopeOf`, incl. two R-F rows); `inventory_title_lint` grows five rows; two pre-existing rows' Census `poolsJson` order is the ruled `CONSULTED_CROSS_TIER_INTERLEAVE`, carved both ways with both orders pinned literally. A v4 issue is DRAFTED (not filed): `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`.
+
 #### 2026-11-09 — fix(pools): inside a tier the earlier mount wins — wearable pool, Inventory pool, dressing instructions (v4 0c47f4539 (b)/(c)/(f); P4.D378)
 
 _Versions: core 0.0.1431._

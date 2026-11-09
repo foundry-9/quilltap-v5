@@ -33,6 +33,20 @@
 //! a definition that parses but fails the schema — v4 never deals it and
 //! never counts it as unread, so the lint still verifies the title.
 //!
+//! P4.D378 item 10 (v4 `0c47f4539` at `624d0d25c` — the location over
+//! `classifyMount`): `store-group-official-write` (a group's official store
+//! is the GROUP's location — the Census line's `scope`),
+//! `store-project-official-write` (the project's official store),
+//! `store-linked-project-write` (a store merely LINKED to the project stays
+//! the nameless project-tier location, named by the mount — equal on both
+//! sides), and `store-{group,project}-official-shadow-refused` (a refusal
+//! naming the store's OWNER: the colliding record's `origin.name` is the
+//! group's / project's raw name, not the store's mount name). v4's
+//! `readPrior` refusal (`store "<owner>"` vs `store <id>`) sits behind a
+//! FALLBACK read and is unreachable through v4's real code (the module doc of
+//! `title_lint_documents.rs`), so the owner name is carried by the shadow
+//! refusals' `landsOn` instead.
+//!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
@@ -92,6 +106,22 @@ const TABLES: &[&str] = &[
 ];
 
 /// v4's repository lines a lint read can reach (the R-7 fallbacks).
+/// P4.D378 — `CONSULTED_CROSS_TIER_INTERLEAVE`, a RULED deliberate divergence
+/// (the human, 2026-11-09: v5 reading the pool's tiers one after the other is
+/// the intended behaviour; v4's `Promise.all` cross-tier interleave of
+/// `consultedMounts` — `lib/inventory/pool.ts:260-270` — is read as a v4 bug,
+/// drafted as `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`).
+/// On these two rows ONLY the Census DEBUG's `poolsJson` may differ, and only
+/// as these two literal orders (consulted: v4 [vault, dangling, general,
+/// covenant], v5 [vault, dangling, covenant, general]; the dangling store is in
+/// `unread`, not `pools`). Two-way: the carve reds if the sides converge.
+const CONSULTED_CROSS_TIER_INTERLEAVE: [&str; 2] = [
+    "lint-fail-closed-dangling-group",
+    "lint-leaving-unverifiable-mount",
+];
+const INTERLEAVE_POOLS_V4: &str = r#"poolsJson=["store \"Friday Character Vault\"","store \"Quilltap General\"","store \"Group Files: The Covenant\""]"#;
+const INTERLEAVE_POOLS_V5: &str = r#"poolsJson=["store \"Friday Character Vault\"","store \"Group Files: The Covenant\"","store \"Quilltap General\""]"#;
+
 const REPO_LINES: &[&str] = &[
     "Error finding document by mount point and path",
     "Error finding documents by mount point IDs and folder",
@@ -881,9 +911,46 @@ fn inventory_title_lint_matches_oracle() {
         if g.0 != w.0 {
             failures.push(format!("{name} OUTCOME\n  v5: {}\n  v4: {}", g.0, w.0));
         }
-        if g.1 != w.1 {
+        // === P4.D378 === `CONSULTED_CROSS_TIER_INTERLEAVE` — a RULED
+        // deliberate divergence (the human, 2026-11-09; see the const). The
+        // Census DEBUG's `poolsJson` must be EXACTLY the two literal orders —
+        // v4's on the oracle, v5's here; with v5's swapped for v4's, every
+        // line must then match byte for byte. It reds if the sides converge.
+        if CONSULTED_CROSS_TIER_INTERLEAVE.contains(&name) {
+            let census = |lines: &[String]| -> Vec<usize> {
+                lines
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, l)| l.contains("[InventoryTitleLint] Census"))
+                    .map(|(i, _)| i)
+                    .collect()
+            };
+            let (gc, wc) = (census(&g.1), census(&w.1));
+            assert_eq!(gc.len(), 1, "{name}: one v5 Census line: {:#?}", g.1);
+            assert_eq!(wc.len(), 1, "{name}: one v4 Census line: {:#?}", w.1);
+            assert!(
+                g.1[gc[0]].contains(INTERLEAVE_POOLS_V5),
+                "{name}: v5's pools order moved — re-measure the ruled carve: {}",
+                g.1[gc[0]]
+            );
+            assert!(
+                w.1[wc[0]].contains(INTERLEAVE_POOLS_V4),
+                "{name}: v4's pools order moved (converged?) — the ruled carve must go: {}",
+                w.1[wc[0]]
+            );
+            let mut swapped = g.1.clone();
+            swapped[gc[0]] = swapped[gc[0]].replace(INTERLEAVE_POOLS_V5, INTERLEAVE_POOLS_V4);
+            if swapped != w.1 {
+                failures.push(format!(
+                    "{name} LINES (beyond the ruled pools order)\n  v5: {swapped:#?}\n  v4: {:#?}",
+                    w.1
+                ));
+            }
+            eprintln!("RECORDED {name} CONSULTED_CROSS_TIER_INTERLEAVE (RULED 2026-11-09: v5 serial tier order intended)");
+        } else if g.1 != w.1 {
             failures.push(format!("{name} LINES\n  v5: {:#?}\n  v4: {:#?}", g.1, w.1));
         }
+        // === /P4.D378 ===
         if got_tags != want_tags {
             failures.push(format!(
                 "{name} [InventoryPool] TAGS\n  v5: {got_tags:?}\n  v4: {want_tags:?}"

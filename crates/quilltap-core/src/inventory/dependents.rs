@@ -20,10 +20,9 @@ use super::folders::{is_inventory_item_document_path, INVENTORY_FOLDER};
 use super::types::{InventoryFields, InventoryRecord, InventoryScope};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_points::{find_all_full_json, DocMountPointsRepository};
-use crate::db::groups::GroupsRepository;
 use crate::db::inventory_readers::{parse_inventory_item_file, InventoryDoc};
-use crate::db::projects::ProjectsRepository;
-use crate::db::{characters_read, fallback, instance_settings, DbError};
+use crate::db::reach::{classify_mount, OwnerScope};
+use crate::db::{fallback, DbError};
 
 /// A record and the mount it was read from (v4 `MountedInventoryRecord`).
 #[derive(Debug, Clone)]
@@ -190,62 +189,32 @@ pub fn find_records_anywhere(
     found
 }
 
-fn str_field(v: &Value, key: &str) -> Option<String> {
-    v.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-/// Who owns a mount: a character vault, a group or project store, or General
-/// (v4 `describeMount`). Precedence: General, then the character whose vault
-/// it is, then the first project / group whose official store it is, else
-/// `unknown` named by the mount row.
+/// Who owns a mount — a character vault, a group or project store, or General
+/// (v4 `mountOwnerResolver`'s `describe`, `0c47f4539`): a filter over the
+/// shared [`classify_mount`] (General first; a character's vault; a project's /
+/// group's OFFICIAL store, read RAW — so an owner whose store cannot be
+/// hydrated is still named); any other store is `unknown`, named for the
+/// mount itself (`null` when the mount row is absent too).
+///
+/// R-F: the owners are read RAW (`findByOfficialMountPointIdRaw`), where the
+/// baseline read the HYDRATED `findAll()` and dropped an owner whose store it
+/// could not read (falling through to `unknown`).
 pub fn describe_mount(
     main: &Connection,
     mount: &Connection,
     mount_point_id: &str,
-    general_mount_point_id: Option<&str>,
 ) -> Result<MountDescription, DbError> {
-    if Some(mount_point_id) == general_mount_point_id {
+    if let Some(owner) = classify_mount(main, mount_point_id)? {
         return Ok(MountDescription {
-            scope: MountScope::General,
-            owner_id: None,
-            owner_name: Some("Quilltap General".to_string()),
-            owner_archived: false,
-        });
-    }
-    if let Some(character) =
-        characters_read::find_by_document_mount_point_id_raw(main, mount_point_id)
-    {
-        return Ok(MountDescription {
-            scope: MountScope::Character,
-            owner_id: str_field(&character, "id"),
-            owner_name: str_field(&character, "name"),
-            owner_archived: crate::inventory::types::js_truthy(character.get("archivedAt")),
-        });
-    }
-    let official = |rows: Vec<Value>| {
-        rows.into_iter()
-            .find(|r| r.get("officialMountPointId").and_then(Value::as_str) == Some(mount_point_id))
-    };
-    let projects = ProjectsRepository::new(main, mount)
-        .find_all()
-        .map_err(|e| e.into_db())?;
-    if let Some(project) = official(projects) {
-        return Ok(MountDescription {
-            scope: MountScope::Project,
-            owner_id: str_field(&project, "id"),
-            owner_name: str_field(&project, "name"),
-            owner_archived: false,
-        });
-    }
-    let groups = GroupsRepository::new(main, mount)
-        .find_all()
-        .map_err(|e| e.into_db())?;
-    if let Some(group) = official(groups) {
-        return Ok(MountDescription {
-            scope: MountScope::Group,
-            owner_id: str_field(&group, "id"),
-            owner_name: str_field(&group, "name"),
-            owner_archived: false,
+            scope: match owner.scope {
+                OwnerScope::General => MountScope::General,
+                OwnerScope::Character => MountScope::Character,
+                OwnerScope::Project => MountScope::Project,
+                OwnerScope::Group => MountScope::Group,
+            },
+            owner_id: owner.owner_id,
+            owner_name: Some(owner.owner_name),
+            owner_archived: owner.archived,
         });
     }
     let name = fallback::find_by_id_or_none("doc_mount_points", mount_point_id, || {
@@ -267,12 +236,9 @@ pub fn mount_scope_of(
     mount: &Connection,
     mount_point_id: &str,
 ) -> Result<Option<InventoryScope>, DbError> {
-    let general = instance_settings::get_general_mount_point_id(main)?;
-    Ok(
-        describe_mount(main, mount, mount_point_id, general.as_deref())?
-            .scope
-            .inventory_scope(),
-    )
+    Ok(describe_mount(main, mount, mount_point_id)?
+        .scope
+        .inventory_scope())
 }
 
 /// Whether an object living at `target` is within reach of a kit kept at
@@ -289,8 +255,7 @@ pub fn is_reachable_from_kit_tier(
     if target_mount_point_id == kit_mount_point_id || target_scope == InventoryScope::General {
         return Ok(true);
     }
-    let general = instance_settings::get_general_mount_point_id(main)?;
-    let owner = describe_mount(main, mount, kit_mount_point_id, general.as_deref())?;
+    let owner = describe_mount(main, mount, kit_mount_point_id)?;
     let (MountScope::Character, Some(owner_id)) = (owner.scope, owner.owner_id) else {
         return Ok(false);
     };
@@ -323,7 +288,6 @@ pub fn find_kits_stranded_by_move(
         ".json",
         &[item_id.to_string()],
     );
-    let general = instance_settings::get_general_mount_point_id(main)?;
     let mut out = Vec::new();
     for doc in &docs {
         if !is_inventory_item_document_path(&doc.relative_path) {
@@ -345,7 +309,7 @@ pub fn find_kits_stranded_by_move(
         )? {
             continue;
         }
-        let owner = describe_mount(main, mount, &doc.mount_point_id, general.as_deref())?;
+        let owner = describe_mount(main, mount, &doc.mount_point_id)?;
         // `kit.title || kit.name || null`.
         let name = [kit.title(), kit.str_of("name")]
             .into_iter()
@@ -384,7 +348,6 @@ pub fn find_dependents(
         .into_iter()
         .filter(|m| m.record.str_of("parentId") == Some(archetype_id))
         .collect();
-    let general = instance_settings::get_general_mount_point_id(main)?;
     let mut owners: Vec<(String, MountDescription)> = Vec::new();
     let mut out = Vec::new();
     for MountedInventoryRecord {
@@ -395,7 +358,7 @@ pub fn find_dependents(
         let owner = match owners.iter().find(|(mp, _)| *mp == mount_point_id) {
             Some((_, d)) => d.clone(),
             None => {
-                let d = describe_mount(main, mount, &mount_point_id, general.as_deref())?;
+                let d = describe_mount(main, mount, &mount_point_id)?;
                 owners.push((mount_point_id.clone(), d.clone()));
                 d
             }

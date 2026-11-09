@@ -2684,6 +2684,86 @@
     }
    ],
    "tools": false
+  },
+  {
+   "name": "store-group-official-write",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:group}}",
+    "relativePath": "Inventory/medal.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777701\",\n  \"kind\": \"item\",\n  \"name\": \"medal\",\n  \"title\": \"Bronze Medal\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-project-official-write",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/spyglass.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777702\",\n  \"kind\": \"item\",\n  \"name\": \"spyglass\",\n  \"title\": \"Brass Spyglass\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-linked-project-write",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "f7000000-0000-4000-8000-000000000071",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777703\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Annex Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "INSERT INTO doc_mount_points (id,name,basePath,mountType,storeType,includePatterns,excludePatterns,enabled,lastScannedAt,scanStatus,lastScanError,conversionStatus,conversionError,fileCount,chunkCount,totalSizeBytes,createdAt,updatedAt) SELECT 'f7000000-0000-4000-8000-000000000071','Quest Annex',basePath,mountType,storeType,includePatterns,excludePatterns,enabled,lastScannedAt,scanStatus,lastScanError,conversionStatus,conversionError,fileCount,chunkCount,totalSizeBytes,createdAt,updatedAt FROM doc_mount_points WHERE id='f1000000-0000-4000-8000-000000000001'; INSERT INTO project_doc_mount_links (id,projectId,mountPointId,createdAt,updatedAt) VALUES ('f7000000-0000-4000-8000-000000000072','d1000000-0000-4000-8000-000000000001','f7000000-0000-4000-8000-000000000071','2026-02-01T00:00:00.000Z','2026-02-01T00:00:00.000Z')"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "store-group-official-shadow-refused",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:group}}",
+    "relativePath": "Inventory/ribbon.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777705\",\n  \"kind\": \"item\",\n  \"name\": \"ribbon\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:group}}",
+     "path": "Inventory/sash.json",
+     "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777704\",\n  \"kind\": \"item\",\n  \"name\": \"sash\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "store-project-official-shadow-refused",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/ribbon.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777707\",\n  \"kind\": \"item\",\n  \"name\": \"ribbon\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Inventory/sash.json",
+     "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777706\",\n  \"kind\": \"item\",\n  \"name\": \"sash\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": true
   }
  ]
 }

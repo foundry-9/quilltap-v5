@@ -1,0 +1,95 @@
+{
+ "_comment": "P4.D378 item 9 — inventory_mount_owner_tier2_equivalence rows over the build-inventory-title-lint-fixture.ts pair (ids from inventory-title-lint.json). `{{mp:<general|friday|project|group>}}` resolves through the pair's raw rows on both sides.",
+ "rows": [
+  {
+   "name": "general",
+   "probe": "{{mp:general}}",
+   "steps": []
+  },
+  {
+   "name": "vault_live",
+   "probe": "{{mp:friday}}",
+   "steps": []
+  },
+  {
+   "name": "vault_archived",
+   "probe": "{{mp:friday}}",
+   "steps": [
+    {
+     "do": "sql",
+     "db": "main",
+     "sql": "UPDATE characters SET archivedAt = '2026-03-01T00:00:00.000Z' WHERE id = 'c1000000-0000-4000-8000-000000000001'"
+    }
+   ]
+  },
+  {
+   "name": "project_official",
+   "probe": "{{mp:project}}",
+   "steps": []
+  },
+  {
+   "name": "group_official",
+   "probe": "{{mp:group}}",
+   "steps": []
+  },
+  {
+   "name": "linked_only_unknown",
+   "probe": "f7000000-0000-4000-8000-000000000081",
+   "steps": [
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "INSERT INTO doc_mount_points (id,name,basePath,mountType,storeType,includePatterns,excludePatterns,enabled,lastScannedAt,scanStatus,lastScanError,conversionStatus,conversionError,fileCount,chunkCount,totalSizeBytes,createdAt,updatedAt) SELECT 'f7000000-0000-4000-8000-000000000081','Quest Annex',basePath,mountType,storeType,includePatterns,excludePatterns,enabled,lastScannedAt,scanStatus,lastScanError,conversionStatus,conversionError,fileCount,chunkCount,totalSizeBytes,createdAt,updatedAt FROM doc_mount_points WHERE id='f1000000-0000-4000-8000-000000000001'; INSERT INTO project_doc_mount_links (id,projectId,mountPointId,createdAt,updatedAt) VALUES ('f7000000-0000-4000-8000-000000000082','d1000000-0000-4000-8000-000000000001','f7000000-0000-4000-8000-000000000081','2026-02-01T00:00:00.000Z','2026-02-01T00:00:00.000Z')"
+    }
+   ]
+  },
+  {
+   "name": "missing_mount",
+   "probe": "f8888888-0000-4000-8000-000000000088",
+   "steps": []
+  },
+  {
+   "name": "project_official_store_unreadable",
+   "probe": "{{mp:project}}",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "properties.json",
+     "content": "{"
+    }
+   ],
+   "hydrated": {
+    "entity": "projects",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "group_official_store_unreadable",
+   "probe": "{{mp:group}}",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:group}}",
+     "path": "properties.json",
+     "content": "{"
+    }
+   ],
+   "hydrated": {
+    "entity": "groups",
+    "id": "e1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "general_is_also_a_vault",
+   "probe": "{{mp:friday}}",
+   "steps": [
+    {
+     "do": "sql",
+     "db": "main",
+     "sql": "UPDATE instance_settings SET value = '{{mp:friday}}' WHERE key = 'generalMountPointId'"
+    }
+   ]
+  }
+ ]
+}

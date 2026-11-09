@@ -33,7 +33,6 @@
 //! so a filesystem write never reaches here.
 
 use rusqlite::Connection;
-use serde_json::Value;
 
 use super::errors::{InventoryRefusal, InventoryTitleLintUnread};
 use super::folders::is_inventory_item_document_path;
@@ -49,6 +48,7 @@ use crate::db::doc_mount_points::DocMountPointsRepository;
 use crate::db::fallback;
 use crate::db::inventory_readers::{parse_inventory_item_file, InventoryDoc};
 use crate::db::item_folder_ops::{VaultFolderMount, VaultFolderMountScope};
+use crate::db::reach::{classify_mount, OwnerScope};
 use crate::jsstr::utf16_len;
 use crate::pascal::tool_gate_keys::collect_tool_gate_keys;
 
@@ -137,54 +137,51 @@ impl PendingTitleLintRows {
 }
 
 /// The location an `Inventory/` folder in this mount belongs to (v4
-/// `locationForMount`), in v4's order: a character's vault, Quilltap General,
-/// else any existing store as a PROJECT-scoped location ("A project or group
-/// store, or any store linked to a project: its pool is its own folder plus
-/// General").
+/// `locationForMount`, over the shared `classifyMount` since `0c47f4539`): the
+/// owner [`classify_mount`] names — General first, a character's vault, a
+/// project's or group's OFFICIAL store (read RAW, R-F), named as THAT owner's
+/// location with its id and name — or for any other existing store (one merely
+/// linked to a project) a nameless project-tier location. Either way a shared
+/// store's pool is its own folder plus General. A failed General-pointer read
+/// inside the classification answers no owner (the existing-store arm), as the
+/// baseline's `.ok()` did.
 fn location_for_mount(
     main: &Connection,
     mount: &Connection,
     mount_point_id: &str,
 ) -> Option<InventoryLocation> {
-    if let Some(character) =
-        crate::db::characters_read::find_by_document_mount_point_id_raw(main, mount_point_id)
-    {
-        let id = character
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        let name = character
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
+    if let Some(owner) = classify_mount(main, mount_point_id).ok().flatten() {
+        if owner.scope == OwnerScope::General {
+            return Some(inventory_location_for_mount(
+                VaultFolderMount {
+                    mount_point_id: mount_point_id.to_string(),
+                    scope: VaultFolderMountScope::General,
+                    character_id: None,
+                },
+                None,
+                general_inventory_origin(),
+            ));
+        }
+        // v4 `owner.ownerId as string`.
+        let owner_id = owner.owner_id.unwrap_or_default();
+        let (folder_scope, scope) = match owner.scope {
+            OwnerScope::Character => (VaultFolderMountScope::Character, InventoryScope::Character),
+            OwnerScope::Project => (VaultFolderMountScope::Project, InventoryScope::Project),
+            OwnerScope::Group => (VaultFolderMountScope::Group, InventoryScope::Group),
+            OwnerScope::General => unreachable!("answered above"),
+        };
         return Some(inventory_location_for_mount(
             VaultFolderMount {
                 mount_point_id: mount_point_id.to_string(),
-                scope: VaultFolderMountScope::Character,
-                character_id: Some(id.clone()),
+                scope: folder_scope,
+                character_id: (owner.scope == OwnerScope::Character).then(|| owner_id.clone()),
             },
-            Some(&id),
+            Some(&owner_id),
             InventoryOrigin {
-                scope: InventoryScope::Character,
-                id: Some(id.clone()),
-                name,
+                scope,
+                id: Some(owner_id.clone()),
+                name: owner.owner_name,
             },
-        ));
-    }
-    let general = crate::db::instance_settings::get_general_mount_point_id(main)
-        .ok()
-        .flatten();
-    if general.as_deref() == Some(mount_point_id) {
-        return Some(inventory_location_for_mount(
-            VaultFolderMount {
-                mount_point_id: mount_point_id.to_string(),
-                scope: VaultFolderMountScope::General,
-                character_id: None,
-            },
-            None,
-            general_inventory_origin(),
         ));
     }
     let (_, name) = fallback::find_by_id_or_none("doc_mount_points", mount_point_id, || {
