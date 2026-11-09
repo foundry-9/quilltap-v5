@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the document-store data layer — v4 query keys, the store source with settle-after-write, and the per-store mountPoints realtime arm (P4.D387; v4 c34986421)
+
+_Versions: SPA 0.5.977._
+
+P4.D387 commit 4 (items 6–7). `document-browser/document-store.keys.ts` spells v4's `queryKeys.mountPoints` (`all`, `lists`, `list`, `store`, `detail`, `files`, `links`, `content`, `rendered`) and `projects.stores` exactly. `document-store.api.ts` carries the reads (`mountPointGet`, the C13 `mountFilesList` listing, the `mountPointList` store catalogue with derived capabilities, `mountFileLinks`, `mountFileRenderHtml`, the utf-8 `mountFileRead`, the project stores with `officialMountPointId`), `buildMountFileRawUrl` (`?raw=1`), and every write on its dispatch verb. The two GET actions ride P4.D381's dispatch variants rather than the REST `?action=` legs (ruling L-2's switch). `document-store.source.ts`'s `createDocumentStoreSource` is v4's `useDocumentStoreSource` twin: `injectQuery` reads, entries filed under their folder, and each op wrapped in v4's `settle`, which invalidates this store, the touched destination and the store lists in a `finally`. `core/realtime-topic-map.ts`'s `mountPoints` arm now maps a scoped hint to `[store(id), lists]` and a bare one to `[all]`, and `mountPointKeys.all` joins the reconnect sweep after `characterKeys.all` (v4 `topic-map.ts:35`, `:158-161`). The spec's sweep-count assert is relaxed to `toContainEqual` for the unifier to restore (§S.4).
+
 #### 2026-11-08 — feat(spa): only the dialog on top answers Escape or an outside click — anotherDialogOwns in qt-modal (P4.D387; v4 5efe53ea7)
 
 _Versions: SPA 0.5.976._

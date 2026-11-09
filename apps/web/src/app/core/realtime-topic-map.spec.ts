@@ -2,6 +2,7 @@ import { partialMatchKey } from '@tanstack/angular-query-experimental';
 import { describe, expect, it } from 'vitest';
 
 import { chatKeys } from '../chat/chat-keys';
+import { mountPointKeys } from '../document-browser/document-store.keys'; // === P4.D387 ===
 import { characterKeys } from '../screens/characters/characters.api';
 import { projectKeys } from '../screens/prospero/projects.api';
 import { storyBackgroundKeys } from '../screens/salon/story-background.api';
@@ -99,13 +100,14 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     ]);
   });
 
-  it('mountPoints is RECOGNISED but has no v5 target (recorded gap, not a bug)', () => {
-    // v4 invalidates `queryKeys.mountPoints.all`; v5 has no document-store query
-    // key at all (the same gap `workspace/core/tab-refetch.ts` records). The row
-    // exists so the topic is known rather than unknown.
+  // === P4.D387 ===
+  it('mountPoints: scoped by store id takes that store and the store lists; bare, the namespace (v4 topic-map.ts:158-161)', () => {
     expect(REALTIME_TOPICS).toContain('mountPoints');
-    expect(queryKeysForTopic('mountPoints')).toEqual([]);
+    expect(queryKeysForTopic('mountPoints', 'mp-1')).toEqual([mountPointKeys.store('mp-1'), mountPointKeys.lists]);
+    expect(queryKeysForTopic('mountPoints')).toEqual([mountPointKeys.all]);
+    expect(ALL_REALTIME_PREFIXES).toContainEqual(mountPointKeys.all);
   });
+  // === end P4.D387 ===
 
   it('memories: scoped narrows to the chat\'s count; UNSCOPED takes every memories key (R-AB, v4 topic-map.ts:106)', () => {
     expect(queryKeysForTopic('memories')).toEqual([chatKeys.all, ['memories']]);
@@ -144,14 +146,13 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
 
   // `storytellerRounds` ninth (P4.D344), `customToolInterventions` tenth
   // (P4.D346) — v4's declaration order, restored positionally at the union.
-  it('carries every topic and nine sweep prefixes (mountPoints, inventory and wardrobe have none — v5 sweeps `memories` twice over)', () => {
-    // §R.10 (t) / L-9: length-agnostic on the lane (P4.D386 adds `wardrobe`
-    // after `inventory`); the unifier restores the positional assert (§S.4).
-    expect(REALTIME_TOPICS).toContain('wardrobe');
-    expect(REALTIME_TOPICS.indexOf('inventory')).toBeLessThan(REALTIME_TOPICS.indexOf('wardrobe'));
-    expect(REALTIME_TOPICS.indexOf('wardrobe')).toBeLessThan(REALTIME_TOPICS.indexOf('storytellerRounds'));
-    expect(REALTIME_TOPICS.slice(-2)).toEqual(['storytellerRounds', 'customToolInterventions']);
-    expect(ALL_REALTIME_PREFIXES).toHaveLength(9);
+  // `wardrobe` (P4.D386) after `inventory`, and P4.D387's `mount-points` sweep
+  // prefix — the positional asserts restored at the union (§S.4).
+  it('carries all eleven topics and ten sweep prefixes (inventory and wardrobe have none — v5 sweeps `memories` twice over)', () => {
+    expect(REALTIME_TOPICS).toHaveLength(11);
+    expect(REALTIME_TOPICS.slice(7)).toEqual(['inventory', 'wardrobe', 'storytellerRounds', 'customToolInterventions']);
+    expect(ALL_REALTIME_PREFIXES).toContainEqual(['mount-points']);
+    expect(ALL_REALTIME_PREFIXES).toHaveLength(10);
     // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
     expect(ALL_REALTIME_PREFIXES).toContainEqual(['memories']);
     // v4 `topic-map.ts:38-40`: the custom-tools namespace closes the sweep.

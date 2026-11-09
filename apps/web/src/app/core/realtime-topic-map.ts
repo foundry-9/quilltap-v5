@@ -20,6 +20,7 @@
 
 import { chatKeys } from '../chat/chat-keys';
 import { customToolsKeys } from '../chat/custom-tools.api';
+import { mountPointKeys } from '../document-browser/document-store.keys'; // === P4.D387 ===
 import { memoryKeys } from '../memory/memory.api';
 import { characterKeys } from '../screens/characters/characters.api';
 import { projectKeys } from '../screens/prospero/projects.api';
@@ -55,6 +56,9 @@ export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   chatKeys.all,
   projectKeys.all,
   characterKeys.all,
+  // === P4.D387 (v4 `topic-map.ts:35`, after `characters.all`) ===
+  mountPointKeys.all,
+  // === end P4.D387 ===
   // `memories` (below): the Salon LIST's memory badge (the same `chatKeys.all`
   // prefix the `chats` row above already sweeps — listed again, matching v4's
   // topic-per-row shape) and EVERY memories key — v4's
@@ -129,16 +133,15 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
           ]
         : [characterKeys.all];
 
+    // === P4.D387 ===
     case 'mountPoints':
-      // ⚠ NO v5 TARGET. v4 invalidates `queryKeys.mountPoints.all` — "no
-      // per-store detail key exists yet; the namespace prefix is the narrowest
-      // thing there is". v5 has no store key AT ALL: `ScriptoriumStore` and the
-      // store-detail view hold plain signals and re-run their own loads via
-      // `onTabActivated` (the same gap `workspace/core/tab-refetch.ts` records
-      // for its `scriptorium` row). The row exists so the topic is recognised
-      // rather than logged as unknown; it resolves to nothing until a document
-      // store vertical grows a query key.
-      return [];
+      // v4 `topic-map.ts:158-161` (`c34986421`): scoped by store id, that
+      // store's detail, listing and link lookups (all under
+      // `mountPointKeys.store(id)`), plus the store lists (their counts move).
+      // Bare, the namespace. The keys are the document-store browser's
+      // (`document-browser/document-store.keys.ts`, v4's spellings).
+      return id ? [mountPointKeys.store(id), mountPointKeys.lists] : [mountPointKeys.all];
+    // === end P4.D387 ===
 
     case 'memories':
       // v4 narrows to a per-chat memory count (`queryKeys.memories.chatCount
