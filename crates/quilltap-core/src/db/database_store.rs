@@ -328,6 +328,121 @@ pub fn read_database_blob_text(
     }))
 }
 
+// === P4.D380 === (v4 `a3d53eae1` — `database-store.ts:112-171` at `624d0d25c`)
+
+/// v4 `readDatabaseBlobAsDocument`'s answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DatabaseBlobDocument {
+    /// `data.toString('utf-8')` — LOSSY (an invalid sequence reads U+FFFD) and
+    /// a leading BOM is KEPT.
+    pub content: String,
+    /// `new Date(blob.lastModified).getTime()` (the LINK's `lastModified`).
+    pub mtime_ms: i64,
+    /// `data.length` — the BYTE length.
+    pub size: i64,
+}
+
+/// v4 `readDatabaseBlobAsDocument` (`database-store.ts:121-141`): a native-text
+/// file (.md, .txt, .json, .jsonl) that was uploaded, and so is stored as a
+/// blob rather than a document, read as the editor reads a document — its own
+/// bytes as UTF-8. `None` for any other kind of file, or when no blob is
+/// there. Saving it writes a document at the same path, which repoints the
+/// link and collects the blob (`linkDocumentContent`).
+///
+/// The `mtime` parse keeps the P4.D354 reader's shape: an unparseable
+/// `lastModified` is `0` where v4's `getTime()` is `NaN` (recorded, P4.D380
+/// item 25 — the K12 NOTE).
+pub fn read_database_blob_as_document(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Result<Option<DatabaseBlobDocument>, StoreError> {
+    let rel = normalise_relative_path(relative_path)?;
+    if crate::services::mount_index::path_utils::detect_native_text(&rel).is_none() {
+        return Ok(None);
+    }
+    let blobs = super::doc_mount_blobs::DocMountBlobsRepository::new(conn);
+    let Some(blob) = blobs.find_by_mount_point_and_path(mount_point_id, &rel)? else {
+        return Ok(None);
+    };
+    // v4 `readData` is a fallback (`Failed to read blob data` + `null`).
+    let Some(data) = blobs.read_data_or_none(&blob.id) else {
+        return Ok(None);
+    };
+    tracing::debug!(
+        target: "quilltap::documents",
+        mountPointId = %mount_point_id,
+        relativePath = %rel,
+        size = data.len() as u64,
+        "readDatabaseBlobAsDocument: reading an uploaded text blob as a document"
+    );
+    Ok(Some(DatabaseBlobDocument {
+        content: String::from_utf8_lossy(&data).into_owned(),
+        mtime_ms: crate::episodic::js_date_parse_ms(&blob.last_modified).unwrap_or(0),
+        size: data.len() as i64,
+    }))
+}
+
+/// Which blob read answered [`read_database_blob_for_document`] (v4's
+/// `source: 'blob-bytes' | 'blob-text'`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BlobSource {
+    /// An uploaded native-text blob's own bytes.
+    BlobBytes,
+    /// A converted blob's extracted text — not the file's own bytes.
+    BlobText,
+}
+
+impl BlobSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BlobSource::BlobBytes => "blob-bytes",
+            BlobSource::BlobText => "blob-text",
+        }
+    }
+}
+
+/// v4 `readDatabaseBlobForDocument`'s answer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlobForDocument {
+    pub content: String,
+    pub mtime_ms: i64,
+    pub size: i64,
+    pub source: BlobSource,
+    /// The blob's stored MIME type — `blob-text` only (v4 spreads it only there).
+    pub stored_mime_type: Option<String>,
+}
+
+/// v4 `readDatabaseBlobForDocument` (`database-store.ts:151-171`) — the one
+/// way to read an uploaded blob where a document was expected (#134): a
+/// native-text upload is read as its own bytes, any other kind falls back to
+/// its converted `extractedText`. `None` when neither is there.
+pub fn read_database_blob_for_document(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Result<Option<BlobForDocument>, StoreError> {
+    if let Some(b) = read_database_blob_as_document(conn, mount_point_id, relative_path)? {
+        return Ok(Some(BlobForDocument {
+            content: b.content,
+            mtime_ms: b.mtime_ms,
+            size: b.size,
+            source: BlobSource::BlobBytes,
+            stored_mime_type: None,
+        }));
+    }
+    Ok(
+        read_database_blob_text(conn, mount_point_id, relative_path)?.map(|t| BlobForDocument {
+            content: t.content,
+            mtime_ms: t.mtime_ms,
+            size: t.size,
+            source: BlobSource::BlobText,
+            stored_mime_type: Some(t.stored_mime_type),
+        }),
+    )
+}
+// === end P4.D380 ===
+
 /// v4 `listDatabaseBlobTexts` (`database-store.ts:120-136`, bug 260): every
 /// blob in a store whose text can be searched, as `(relativePath, content)` —
 /// extractable types (PDF, DOCX, native text) with converted text, in the

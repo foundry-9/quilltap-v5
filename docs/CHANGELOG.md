@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(mount-index): read an uploaded blob as a document (P4.D380, v4 a3d53eae1)
+
+_Versions: core 0.0.1431._
+
+Adds `read_database_blob_as_document` and `read_database_blob_for_document` to `db/database_store.rs` (v4 `database-store.ts:112-171` at `624d0d25c`), the readers behind #134. A native-text upload (`.md`, `.txt`, `.json`, `.jsonl`) is read as its own bytes, as lossy UTF-8 with any BOM kept. Its `size` is the byte length and its `mtime` is the link's `lastModified`. Any other upload falls back to its converted text (`source: blob-text`, with `storedMimeType`). The bytes path logs v4's DEBUG `readDatabaseBlobAsDocument: reading an uploaded text blob as a document`. New tier-2 family `doc_blob_document_reads_equivalence`: the oracle builds a planted pair through v4's real `storeMountFile`, both sides read twelve paths from it, and the answers and DEBUG lines are compared byte for byte. One recorded difference, asserted both ways: `UNPARSEABLE_LAST_MODIFIED_READS_ZERO` (v4 `NaN`, v5 `0`), the P4.D354 reader's shape, kept.
+
 #### 2026-11-09 — feat(doc-edit): the resolved-file helpers — stat / move / delete with v4's absent class (P4.D380, v4 4310d435f)
 
 _Versions: core 0.0.1430._
