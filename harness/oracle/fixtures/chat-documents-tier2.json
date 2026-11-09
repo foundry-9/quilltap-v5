@@ -17,7 +17,8 @@
     "pepper and is safe to commit.",
     "",
     "DETERMINISM: every id and timestamp is pinned, so both sides produce",
-    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+    "byte-identical post-op state and the canonical dump needs ZERO normalization.",
+    "P4.D380: the two finder op kinds (`findByFilePath` / `findUnderFolder`) emit the matching row ids in order under `finds`."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -103,6 +104,121 @@
       "kind": "delete",
       "comment": "Delete the second created document (scratch.md).",
       "id": "4d000000-0000-4000-8000-000000000004"
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D380 item 9: a finder row.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "filePath": "Notes/a.md",
+        "scope": "document_store",
+        "mountPoint": "Lore",
+        "displayTitle": "a.md",
+        "isActive": true
+      },
+      "options": {
+        "id": "9d800000-0000-4000-8000-000000000001",
+        "createdAt": "2026-04-01T00:00:00.000Z",
+        "updatedAt": "2026-04-01T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D380 item 9: a finder row.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c1",
+        "filePath": "notes/b.md",
+        "scope": "project",
+        "mountPoint": null,
+        "displayTitle": "b.md",
+        "isActive": true
+      },
+      "options": {
+        "id": "9d800000-0000-4000-8000-000000000002",
+        "createdAt": "2026-04-02T00:00:00.000Z",
+        "updatedAt": "2026-04-02T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D380 item 9: a finder row.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c1",
+        "filePath": "Notes/a.md",
+        "scope": "project",
+        "mountPoint": null,
+        "displayTitle": "a.md",
+        "isActive": true
+      },
+      "options": {
+        "id": "0d800000-0000-4000-8000-000000000003",
+        "createdAt": "2026-04-03T00:00:00.000Z",
+        "updatedAt": "2026-04-03T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D380 item 9: a finder row.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "filePath": "Notes/sub/c.md",
+        "scope": "general",
+        "mountPoint": null,
+        "displayTitle": "c.md",
+        "isActive": true
+      },
+      "options": {
+        "id": "9d800000-0000-4000-8000-000000000004",
+        "createdAt": "2026-04-04T00:00:00.000Z",
+        "updatedAt": "2026-04-04T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D380 item 9: a finder row.",
+      "data": {
+        "chatId": "c0000000-0000-4000-8000-0000000000c2",
+        "filePath": "Notesy/d.md",
+        "scope": "document_store",
+        "mountPoint": "Lore",
+        "displayTitle": "d.md",
+        "isActive": true
+      },
+      "options": {
+        "id": "9d800000-0000-4000-8000-000000000005",
+        "createdAt": "2026-04-05T00:00:00.000Z",
+        "updatedAt": "2026-04-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "findByFilePath",
+      "comment": "P4.D380 item 9: v4 findByFilter({filePath}) — exact, rowid order, any chat / scope.",
+      "arg": "Notes/a.md"
+    },
+    {
+      "kind": "findByFilePath",
+      "comment": "P4.D380 item 9: a case-differing path matches nothing.",
+      "arg": "notes/a.md"
+    },
+    {
+      "kind": "findByFilePath",
+      "comment": "P4.D380 item 9: no row.",
+      "arg": "none.md"
+    },
+    {
+      "kind": "findUnderFolder",
+      "comment": "P4.D380 item 9 / R-6: case-SENSITIVE startsWith('Notes/') over findAll() — never notes/b.md, never Notesy/.",
+      "arg": "Notes"
+    },
+    {
+      "kind": "findUnderFolder",
+      "comment": "P4.D380 item 9: a trailing slash is the same prefix.",
+      "arg": "Notes/"
+    },
+    {
+      "kind": "findUnderFolder",
+      "comment": "P4.D380 item 9 / R-6: the lower-case folder finds only its own spelling.",
+      "arg": "notes"
     }
   ]
 }

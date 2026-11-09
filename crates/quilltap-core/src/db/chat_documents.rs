@@ -501,6 +501,60 @@ impl<'c> ChatDocumentsRepository<'c> {
         Ok(rows)
     }
 
+    // === P4.D380 === (v4 `30a3b4cb7` — `chat-documents.repository.ts:240-271` at `624d0d25c`)
+
+    /// v4 `findByFilePath` — every row (any chat, any scope) whose `filePath`
+    /// is exactly `file_path`, in `findByFilter`'s row order (rowid). The
+    /// document core's move sweep reads these and keeps the ones whose recorded
+    /// address reaches the moved file's store.
+    ///
+    /// v4 wraps `findByFilter` (itself a fallback) in its own `safeQuery`
+    /// (`Error finding chat documents by file path`) — the inner fallback
+    /// answers every failure first (`Error finding entities by filter` + `[]`),
+    /// so the outer line is unreachable and this is the home's twin.
+    pub fn find_by_file_path(&self, file_path: &str) -> Vec<ChatDocumentFull> {
+        crate::db::fallback::find_by_filter_or_empty("chat_documents", || {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                        createdAt, updatedAt \
+                   FROM chat_documents WHERE filePath = ?1 ORDER BY rowid",
+            )?;
+            let rows = stmt
+                .query_map(params![file_path], row_to_full)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+    }
+
+    /// v4 `findUnderFolder` — every row (any chat, any scope) whose `filePath`
+    /// sits under `folder_path/`: `findAll()` filtered by a **case-SENSITIVE**
+    /// `startsWith` (round ruling R-6 — a v4 filing candidate, ported as v4
+    /// has it). The outer `Error finding chat documents under a folder` is
+    /// unreachable for the same reason as [`Self::find_by_file_path`]'s:
+    /// `_findAll` answers first.
+    pub fn find_under_folder(&self, folder_path: &str) -> Vec<ChatDocumentFull> {
+        let prefix = if folder_path.ends_with('/') {
+            folder_path.to_string()
+        } else {
+            format!("{folder_path}/")
+        };
+        crate::db::fallback::find_all_or_empty("chat_documents", || {
+            let mut stmt = self.conn.prepare(
+                "SELECT id, chatId, filePath, scope, mountPoint, displayTitle, isActive, \
+                        createdAt, updatedAt \
+                   FROM chat_documents ORDER BY rowid",
+            )?;
+            let rows = stmt
+                .query_map([], row_to_full)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        })
+        .into_iter()
+        .filter(|r| r.file_path.starts_with(&prefix))
+        .collect()
+    }
+    // === end P4.D380 ===
+
     /// v4 `renameFilePathInStore` (`chat-documents.repository.ts:268`): rewrite
     /// every row in `(scope, mountPoint||null)` whose `filePath` exactly matches
     /// `old_path` to `new_path` + `new_display_title`. Returns the update count.
@@ -905,3 +959,28 @@ mod tests {
         assert!(repo.find_by_id("d3").unwrap().is_some());
     }
 }
+
+// === P4.D380 === (the finders' fallback arm — v4's inner fallback answers)
+#[cfg(test)]
+mod finder_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn a_failed_read_logs_the_inner_fallback_line_and_answers_empty() {
+        let conn = Connection::open_in_memory().unwrap();
+        let repo = ChatDocumentsRepository::new(&conn);
+        let (rows, lines) = crate::test_support::captured_with(|| repo.find_by_file_path("a.md"));
+        assert!(rows.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding entities by filter collection=chat_documents error=no such table: chat_documents".to_string()]
+        );
+        let (rows, lines) = crate::test_support::captured_with(|| repo.find_under_folder("Notes"));
+        assert!(rows.is_empty());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding all entities collection=chat_documents error=no such table: chat_documents".to_string()]
+        );
+    }
+}
+// === end P4.D380 ===

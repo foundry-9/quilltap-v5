@@ -53,6 +53,12 @@ enum Op {
     Update { id: String, data: UpdateData },
     #[serde(rename = "delete")]
     Delete { id: String },
+    /// P4.D380: v4 `findByFilePath` — the answered ids, in order, under `finds`.
+    #[serde(rename = "findByFilePath")]
+    FindByFilePath { arg: String },
+    /// P4.D380: v4 `findUnderFolder` (case-sensitive, R-6).
+    #[serde(rename = "findUnderFolder")]
+    FindUnderFolder { arg: String },
 }
 
 #[derive(Deserialize)]
@@ -142,10 +148,31 @@ fn chat_documents_tier2_matches_oracle() {
     // Run the SAME op sequence through the Rust port.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let mut finds: Vec<Value> = Vec::new();
     {
         let repo = writer.chat_documents();
         for op in &spec.ops {
             match op {
+                Op::FindByFilePath { arg } => {
+                    let ids: Vec<String> = repo
+                        .find_by_file_path(arg)
+                        .into_iter()
+                        .map(|r| r.id)
+                        .collect();
+                    finds.push(
+                        serde_json::json!({"kind": "findByFilePath", "arg": arg, "ids": ids}),
+                    );
+                }
+                Op::FindUnderFolder { arg } => {
+                    let ids: Vec<String> = repo
+                        .find_under_folder(arg)
+                        .into_iter()
+                        .map(|r| r.id)
+                        .collect();
+                    finds.push(
+                        serde_json::json!({"kind": "findUnderFolder", "arg": arg, "ids": ids}),
+                    );
+                }
                 Op::Create { data, options } => {
                     repo.create(
                         &CdCreate {
@@ -204,6 +231,13 @@ fn chat_documents_tier2_matches_oracle() {
         got["rows"], oracle["rows"],
         "row state diverged\n  rust:   {}\n  oracle: {}",
         got["rows"], oracle["rows"]
+    );
+
+    // P4.D380: the finders' answers, ids in order (byte-compared).
+    assert_eq!(
+        serde_json::to_string(&Value::Array(finds)).unwrap(),
+        serde_json::to_string(&oracle["finds"]).unwrap(),
+        "finder answers diverged"
     );
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);

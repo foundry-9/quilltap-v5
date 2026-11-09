@@ -41,8 +41,9 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete';
+  kind: 'create' | 'update' | 'delete' | 'findByFilePath' | 'findUnderFolder';
   id?: string;
+  arg?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
 }
@@ -90,8 +91,14 @@ async function main(): Promise<void> {
   await initializeDatabase();
   const repo = new ChatDocumentsRepository();
 
+  // P4.D380: the two finder op kinds record the ids they answer, in order.
+  const finds: Array<{ kind: string; arg: string; ids: string[] }> = [];
   for (const op of spec.ops) {
-    if (op.kind === 'create') {
+    if (op.kind === 'findByFilePath') {
+      finds.push({ kind: op.kind, arg: op.arg as string, ids: (await repo.findByFilePath(op.arg as string)).map((r) => r.id) });
+    } else if (op.kind === 'findUnderFolder') {
+      finds.push({ kind: op.kind, arg: op.arg as string, ids: (await repo.findUnderFolder(op.arg as string)).map((r) => r.id) });
+    } else if (op.kind === 'create') {
       await repo.create(op.data as never, op.options);
     } else if (op.kind === 'update') {
       await repo.update(op.id as string, op.data as never);
@@ -122,7 +129,7 @@ async function main(): Promise<void> {
   });
 
   process.stdout.write(
-    JSON.stringify({ case: 'chat-documents-tier2', ...dump }) + '\n'
+    JSON.stringify({ case: 'chat-documents-tier2', ...dump, finds }) + '\n'
   );
   process.exit(0);
 }

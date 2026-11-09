@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(chat-documents): find rows by file path and under a folder (P4.D380, v4 30a3b4cb7)
+
+_Versions: core 0.0.1433._
+
+Adds `ChatDocumentsRepository::find_by_file_path` and `find_under_folder`, the readers the move sweeps use. They search every chat and every scope, in rowid order (measured). `find_under_folder` is a case-sensitive `starts_with` over all rows: round ruling R-6, a v4 filing candidate, ported as v4 has it. Both are v4 fallbacks. v4 wraps `findByFilter` / `findAll` in an outer `safeQuery`, but the inner fallback answers every failure first, so the outer lines (`Error finding chat documents by file path` / `… under a folder`) are unreachable. v5 uses the existing `db::fallback` homes, and `fallback_home_guard` does not move. This corrects the work order's "+2". The `chat_documents_tier2` spec gains five rows and six finder ops, among them a mixed-case folder and an id-order trap. The family compares the answered ids in order.
+
 #### 2026-11-09 — feat(documents): the document core — read, write, ensure, rename, delete, view target, one refresh chain (P4.D380, v4 a3d53eae1)
 
 _Versions: core 0.0.1432._
