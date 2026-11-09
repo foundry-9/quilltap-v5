@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
+import { AlertModalHost, AlertModalService } from './alert-modal.service';
 import { FLOATING_LAYER_ATTR } from './floating-layer';
 import { Modal } from './modal';
 
@@ -163,13 +164,152 @@ describe('Modal dialog semantics + Escape (P4.D358, v4 BaseModal at 236c04e35)',
     document.body.innerHTML = '';
   });
 
-  it('MODAL_ESCAPE_NO_STOP_PROPAGATION: two stacked modals BOTH close on one Escape (v4 parity)', () => {
+  it('two stacked modals: one Escape closes only the top one (v4 5efe53ea7 anotherDialogOwns)', async () => {
+    // BY-DESIGN flip (§R.7) of `MODAL_ESCAPE_NO_STOP_PROPAGATION`: before v4
+    // `5efe53ea7` one Escape closed both stacked BaseModals. The top dialog
+    // takes focus on open (qtDialogFocus, one frame later), so it owns Escape.
     const { host, fixture } = renderEsc();
     host.second.set(true);
     fixture.detectChanges();
-    escape();
-    expect(host.closes).toBe(1);
+    await nextFrame();
+    escape(document.activeElement ?? document);
     expect(host.innerCloses).toBe(1);
+    expect(host.closes).toBe(0);
+    document.body.innerHTML = '';
+  });
+});
+
+/**
+ * P4.D387 item 5 — v4 `5efe53ea7` `components/ui/BaseModal.tsx`
+ * `anotherDialogOwns`: only the dialog on top answers an outside click or
+ * Escape. v4's `__tests__/unit/components/ui/BaseModal-layered.test.tsx`
+ * (four cases) translated case for case, each against SIBLING stacking (v4's
+ * portaled shape) and, for cases 1–2, NESTED stacking (a `qt-modal` rendered
+ * in place inside another — `MODAL_IN_PLACE_LAYERING`).
+ */
+@Component({
+  imports: [Modal],
+  template: `
+    <qt-modal title="Picker" (close)="outer = outer + 1">
+      <button type="button" id="outer-button">Outer button</button>
+      @if (nested() && inner()) {
+        <qt-modal title="Move to" (close)="innerCount = innerCount + 1">
+          <button type="button" id="inner-option">Inner option</button>
+        </qt-modal>
+      }
+    </qt-modal>
+    @if (!nested() && inner()) {
+      <qt-modal title="Move to" (close)="innerCount = innerCount + 1">
+        <button type="button" id="inner-option">Inner option</button>
+      </qt-modal>
+    }
+    @if (alert()) {
+      <div role="alertdialog" id="alert">Delete it?</div>
+    }
+  `,
+})
+class LayerHost {
+  readonly nested = signal(false);
+  readonly inner = signal(true);
+  readonly alert = signal(false);
+  outer = 0;
+  innerCount = 0;
+}
+
+@Component({ imports: [AlertModalHost], template: `<qt-alert-modal-host />` })
+class AlertWrap {}
+
+function renderLayers(opts: { nested?: boolean; inner?: boolean; alert?: boolean }) {
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({ imports: [LayerHost] });
+  const fixture = TestBed.createComponent(LayerHost);
+  const host = fixture.componentInstance;
+  host.nested.set(opts.nested ?? false);
+  host.inner.set(opts.inner ?? true);
+  host.alert.set(opts.alert ?? false);
+  document.body.appendChild(fixture.nativeElement);
+  fixture.detectChanges();
+  return { fixture, host, el: fixture.nativeElement as HTMLElement };
+}
+
+describe('Modal layering (v4 5efe53ea7 BaseModal-layered.test.tsx)', () => {
+  for (const nested of [false, true]) {
+    const shape = nested ? 'nested' : 'sibling';
+
+    it(`case 1 (${shape}): a click inside a dialog over it does not close the modal beneath`, () => {
+      const { host, el } = renderLayers({ nested });
+      el.querySelector<HTMLElement>('#inner-option')!.click();
+      expect(host.outer).toBe(0);
+      expect(host.innerCount).toBe(0);
+      document.body.innerHTML = '';
+    });
+
+    it(`case 2 (${shape}): Escape with focus in the dialog on top closes only that one`, () => {
+      const { host, el } = renderLayers({ nested });
+      const option = el.querySelector<HTMLElement>('#inner-option')!;
+      option.focus();
+      escape(option);
+      expect(host.innerCount).toBe(1);
+      expect(host.outer).toBe(0);
+      document.body.innerHTML = '';
+    });
+  }
+
+  it('case 3: an open confirmation owns Escape even without focus', () => {
+    const { host, el } = renderLayers({ inner: false, alert: true });
+    escape(el.querySelector<HTMLElement>('#outer-button')!);
+    expect(host.outer).toBe(0);
+    document.body.innerHTML = '';
+  });
+
+  it('case 3 (the real AlertModalService confirmation): the modal beneath stays open', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [LayerHost, AlertWrap] });
+    const fixture = TestBed.createComponent(LayerHost);
+    const host = fixture.componentInstance;
+    host.inner.set(false);
+    document.body.appendChild(fixture.nativeElement);
+    fixture.detectChanges();
+    // A second createComponent detaches the first fixture's root, so the
+    // alert host is created (and attached) last.
+    const alertFixture = TestBed.createComponent(AlertWrap);
+    document.body.appendChild(alertFixture.nativeElement);
+    alertFixture.detectChanges();
+    void TestBed.inject(AlertModalService).show('Delete it?', ['Cancel', 'Delete']);
+    alertFixture.detectChanges();
+    expect(document.querySelector('[role="alertdialog"]')).not.toBeNull();
+    escape(fixture.nativeElement.querySelector('#outer-button'));
+    expect(host.outer).toBe(0);
+    document.body.innerHTML = '';
+  });
+
+  it('case 4: alone, it still closes on Escape and on an outside click', () => {
+    const { host, el } = renderLayers({ inner: false });
+    escape(document.body);
+    el.querySelector<HTMLElement>('.qt-dialog-overlay')!.click();
+    expect(host.outer).toBe(2);
+    document.body.innerHTML = '';
+  });
+
+  it('nested: the top modal still closes on its own backdrop', () => {
+    const { host, el } = renderLayers({ nested: true });
+    const overlays = el.querySelectorAll<HTMLElement>('.qt-dialog-overlay');
+    overlays[1].click();
+    expect(host.innerCount).toBe(1);
+    expect(host.outer).toBe(0);
+    document.body.innerHTML = '';
+  });
+
+  it('a non-modal popover inside the modal does not own its Escape (v4 !modal.contains)', () => {
+    const { host, el } = renderLayers({ inner: false });
+    const pop = document.createElement('div');
+    pop.setAttribute('role', 'dialog');
+    const btn = document.createElement('button');
+    pop.appendChild(btn);
+    el.querySelector('#outer-button')!.parentElement!.appendChild(pop);
+    btn.focus();
+    escape(btn);
+    expect(host.outer).toBe(1);
     document.body.innerHTML = '';
   });
 });

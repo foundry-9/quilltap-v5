@@ -2,16 +2,17 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  type ElementRef,
   computed,
   inject,
   input,
   output,
+  viewChild,
 } from '@angular/core';
 
 import { DialogFocus, mintDialogId } from './dialog-focus';
 import { isInFloatingLayer } from './floating-layer';
 import { Icon } from './icon';
-
 
 const MAX_WIDTHS: Record<string, string> = {
   md: '28rem',
@@ -36,11 +37,25 @@ const MAX_WIDTHS: Record<string, string> = {
  * focus (`qtDialogFocus`).
  *
  * The Escape listener is DOCUMENT-level, bubble phase, and does not stop
- * propagation, as v4's is — so two stacked `qt-modal`s BOTH close on one Escape,
- * exactly as two stacked v4 `BaseModal`s do (`MODAL_ESCAPE_NO_STOP_PROPAGATION`).
- * A host that needs the inner-popover behaviour keeps its own capture-phase
- * handler and binds `[closeOnEscape]="false"` (v4's `escapeCapture` opt-in):
- * one owner of Escape per host, never both.
+ * propagation, as v4's is. Since v4 `5efe53ea7` only the dialog ON TOP answers
+ * an Escape or an outside click (`anotherDialogOwns`, SPA ruling R11): an
+ * event belongs to another dialog when its target is inside one, or focus is
+ * (a topmost dialog holds focus), or a confirmation (`role="alertdialog"`,
+ * always on top) is open. So two stacked `qt-modal`s no longer BOTH close on
+ * one Escape — the by-design flip of the old `MODAL_ESCAPE_NO_STOP_PROPAGATION`
+ * pin. A host that needs the inner-popover behaviour still keeps its own
+ * capture-phase handler and binds `[closeOnEscape]="false"` (v4's
+ * `escapeCapture` opt-in): one owner of Escape per host, never both.
+ *
+ * `MODAL_IN_PLACE_LAYERING` (a port adaptation, not a behavioural divergence):
+ * v4's modals are portaled to `<body>`, so its `!modal.contains(dialog)` clause
+ * excludes only the modal's own non-modal popovers. A `qt-modal` renders in
+ * place, so a stacked one is often a DOM DESCENDANT of the one beneath it.
+ * Here another dialog owns the event when it is not this modal's own card and
+ * not a dialog this modal sits inside (one beneath it), and EITHER lies outside
+ * this modal (v4's case) OR lies inside it carrying `aria-modal="true"` or
+ * `role="alertdialog"` (a layered modal, not an in-dialog popover). v4's four
+ * layered cases hold exactly (`modal.spec.ts`).
  */
 @Component({
   selector: 'qt-modal',
@@ -49,6 +64,7 @@ const MAX_WIDTHS: Record<string, string> = {
   template: `
     <div class="qt-dialog-overlay" [class]="overlayClass()" (click)="onBackdrop()">
       <div
+        #card
         class="qt-dialog flex flex-col max-h-[90vh]"
         [style.max-width]="maxWidthRem()"
         role="dialog"
@@ -100,6 +116,7 @@ export class Modal {
   protected readonly maxWidthRem = computed(() => MAX_WIDTHS[this.maxWidth()] ?? MAX_WIDTHS['lg']);
   /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
   protected readonly titleId = mintDialogId();
+  private readonly card = viewChild.required<ElementRef<HTMLElement>>('card');
 
   constructor() {
     // v4 `useClickOutside.ts:98-110`'s `onEscape`: a document keydown, bubble
@@ -111,6 +128,7 @@ export class Modal {
     const onDocumentKeydown = (event: KeyboardEvent): void => {
       if (isInFloatingLayer(event.target)) return;
       if (event.key !== 'Escape' || !this.closeOnEscape() || event.defaultPrevented) return;
+      if (this.anotherDialogOwns(event.target)) return;
       this.close.emit();
     };
     document.addEventListener('keydown', onDocumentKeydown);
@@ -118,8 +136,31 @@ export class Modal {
   }
 
   protected onBackdrop(): void {
-    if (this.closeOnBackdrop()) {
+    if (this.closeOnBackdrop() && !this.anotherDialogOwns(null)) {
       this.close.emit();
     }
   }
+
+  /**
+   * v4 `BaseModal.tsx` `anotherDialogOwns(modal, target)` (`5efe53ea7`), with
+   * the in-place clause (`MODAL_IN_PLACE_LAYERING`, the class doc). A backdrop
+   * click passes no target: the click landed on this modal's own overlay, so
+   * only focus and an open confirmation can belong to another dialog (v4: "a
+   * topmost dialog holds focus, so this also covers a click on that dialog's
+   * own backdrop").
+   */
+  private anotherDialogOwns(target: EventTarget | null): boolean {
+    const own = this.card().nativeElement;
+    const others = [dialogOf(target), dialogOf(document.activeElement), ...document.querySelectorAll('[role="alertdialog"]')];
+    return others.some((dialog) => {
+      if (dialog === null || dialog === own || dialog.contains(own)) return false;
+      if (!own.contains(dialog)) return true;
+      return dialog.getAttribute('aria-modal') === 'true' || dialog.getAttribute('role') === 'alertdialog';
+    });
+  }
+}
+
+/** The dialog (or alert) an element belongs to, if any (v4 `dialogOf`). */
+function dialogOf(node: EventTarget | null): Element | null {
+  return node instanceof Element ? node.closest('[role="dialog"],[role="alertdialog"]') : null;
 }

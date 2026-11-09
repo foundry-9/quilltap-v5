@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): only the dialog on top answers Escape or an outside click — anotherDialogOwns in qt-modal (P4.D387; v4 5efe53ea7)
+
+_Versions: SPA 0.5.976._
+
+P4.D387 commit 3 (item 5, SPA ruling R11). `ui/modal.ts` ports v4 `BaseModal.tsx`'s `dialogOf` / `anotherDialogOwns`. An Escape or a backdrop click is ignored when another dialog owns it: the target is in one, focus is in one, or a `role="alertdialog"` confirmation is open. The census-read handler name `onDocumentKeydown` is kept. v4's portaled `!modal.contains(dialog)` clause is adapted for v5's in-place modals (`MODAL_IN_PLACE_LAYERING`, a port adaptation recorded in the module doc): a dialog this modal sits inside never owns its events, and a dialog inside this modal owns them only when it is `aria-modal="true"` or an `alertdialog`. `modal.spec.ts` translates v4's four `BaseModal-layered.test.tsx` cases, with sibling and nested stacking for cases 1–2, plus the real `AlertModalService`. The old `MODAL_ESCAPE_NO_STOP_PROPAGATION` pin flips by design: one Escape now closes only the top modal. Measured: no non-modal `role="dialog"` sits inside a `qt-modal` in v5. `WARDROBE_VIEWER_ESCAPE_LAYERED` was re-measured and STANDS: v4's wardrobe item editor closes through `useEscapeKey`, not `BaseModal`, and `wardrobe-item-editor.spec.ts` stays green, unchanged.
+
 #### 2026-11-08 — feat(spa): the .docx reading copy's DOMPurify sanitizer on a private instance, byte-equal to v4's under jsdom (P4.D387; v4 c34986421)
 
 _Versions: SPA 0.5.975._
