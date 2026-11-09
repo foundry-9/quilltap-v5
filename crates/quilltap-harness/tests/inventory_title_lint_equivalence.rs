@@ -110,7 +110,8 @@ const TABLES: &[&str] = &[
 /// (the human, 2026-11-09: v5 reading the pool's tiers one after the other is
 /// the intended behaviour; v4's `Promise.all` cross-tier interleave of
 /// `consultedMounts` — `lib/inventory/pool.ts:260-270` — is read as a v4 bug,
-/// drafted as `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`).
+/// filed as v4 issue foundry-9/quilltap-server#155 — draft at
+/// `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`).
 /// On these two rows ONLY the Census DEBUG's `poolsJson` may differ, and only
 /// as these two literal orders (consulted: v4 [vault, dangling, general,
 /// covenant], v5 [vault, dangling, covenant, general]; the dangling store is in
