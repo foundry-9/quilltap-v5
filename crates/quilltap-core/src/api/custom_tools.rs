@@ -408,7 +408,9 @@ pub fn chat_custom_tools_list(
     let chat_id_owned = chat_id.to_string();
     let out = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
+            // v4 `repos.chats.findById` is a fallback read: a failed read logs
+            // `Error finding entity by ID` and takes the 404 arm, never a 500.
+            let Some(chat) = chats_read::find_by_id_or_none(main, &chat_id_owned) else {
                 return Ok(None);
             };
             let perspectives = load_perspectives(main, mount, &chat, chat_id);
@@ -607,7 +609,9 @@ pub fn chat_custom_tool_presets(
 
     let out = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let Some(chat) = chats_read::find_by_id(main, chat_id)? else {
+            // v4 `repos.chats.findById` is a fallback read: a failed read logs
+            // `Error finding entity by ID` and takes the 404 arm, never a 500.
+            let Some(chat) = chats_read::find_by_id_or_none(main, chat_id) else {
                 return Ok(Outcome::NoChat);
             };
             let perspectives = load_perspectives(main, mount, &chat, chat_id);
@@ -810,7 +814,9 @@ pub async fn chat_custom_tool_run(
 
     let prep = db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
+            // v4 `repos.chats.findById` is a fallback read: a failed read logs
+            // `Error finding entity by ID` and takes the 404 arm, never a 500.
+            let Some(chat) = chats_read::find_by_id_or_none(main, &chat_id_owned) else {
                 return Ok(RunPrep::NoChat);
             };
             let perspectives = load_perspectives(main, mount, &chat, &chat_id_owned);
@@ -1837,6 +1843,93 @@ mod tests {
         let at = |k: &str| keys.iter().position(|s| *s == k).unwrap();
         assert_eq!(at("vaultMountPointId"), at("asCharacterId") + 1);
         assert_eq!(at("definitionPath"), at("vaultMountPointId") + 1);
+    }
+}
+
+#[cfg(test)]
+mod chat_read_fallback_tests {
+    //! v4's three custom-tools handlers (`handleList`, `handlePresets`,
+    //! `handleRun` — `chats/[id]/custom-tools/route.ts:260, :392, :455`) read
+    //! the chat through `repos.chats.findById`, base `_findById`: a FALLBACK
+    //! `safeQuery` (`base.repository.ts:247-258`). A failed read logs `Error
+    //! finding entity by ID {collection: chats, id}` and answers `null`, so the
+    //! route answers `notFound('Chat')` — never a 500.
+    use super::*;
+    use crate::api::types::ErrorKind;
+    use crate::db::runtime::DbPaths;
+
+    /// A main partition with NO `chats` table (every chat read fails) beside an
+    /// open mount index.
+    fn chatless_db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-custom-tools-chat-read-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open(
+            DbPaths {
+                main: dir.path().join("main.db"),
+                mount_index: Some(dir.path().join("mount-index.db")),
+                llm_logs: None,
+            },
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    fn assert_chat_not_found(response: &Response, lines: &[String]) {
+        match response {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::NotFound, "{}", e.message);
+                assert_eq!(e.message, "Chat not found");
+            }
+            other => panic!("expected the Chat 404, got {other:?}"),
+        }
+        let home: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(home.len(), 1, "{lines:?}");
+        assert!(
+            home[0].starts_with(
+                "ERROR quilltap::db Error finding entity by ID collection=chats id=chat-1"
+            ),
+            "{}",
+            home[0]
+        );
+    }
+
+    #[test]
+    fn presets_answers_the_chat_404_when_the_chat_read_fails() {
+        let (db, _dir) = chatless_db();
+        let (response, lines) = crate::test_support::captured_with(|| {
+            chat_custom_tool_presets(&db, "user-1", "chat-1", Some("roll"), None)
+        });
+        assert_chat_not_found(&response, &lines);
+    }
+
+    #[test]
+    fn list_answers_the_chat_404_when_the_chat_read_fails() {
+        let (db, _dir) = chatless_db();
+        let (response, lines) = crate::test_support::captured_with(|| {
+            chat_custom_tools_list(&db, "user-1", "chat-1", 0)
+        });
+        assert_chat_not_found(&response, &lines);
+    }
+
+    #[test]
+    fn run_answers_the_chat_404_when_the_chat_read_fails() {
+        let (db, _dir) = chatless_db();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (response, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(chat_custom_tool_run(
+                &db, "user-1", "chat-1", "roll", None, None, None, None, 0,
+            ))
+        });
+        assert_chat_not_found(&response, &lines);
     }
 }
 
