@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — test(salon): two union-gated assistant-kind cases in the orchestrator tier-3 corpus
+
+_No crate versions bumped._
+
+P4.D370 Tier 2 item 13. A new per-call `characterKind` plant writes a character's kind through each side's production update chokepoint (v4 `repos.characters.update`, v5 `vault_character_update::update_character`) before the call and restores `roleplay` after it. Two calls appended at the end of `fixtures/orchestrator-tier3.json` plant Friday as an assistant: `p4d370_assistant_agent_on` (v4 sends the MANDATORY preamble, the research block and `submit_final_response`, both agent-mode lines with `flavor: research`) and `p4d370_assistant_agent_off` (the MANDATORY preamble, no agent block). Both are red on this branch by construction and named in `UNION_GATED_ON_P4D369`: v5 writes and reads the vault `kind` only once P4.D369's writer and read overlay join.
+
 #### 2026-11-09 — feat(tool-loop): v4's non-agent `Max tool iterations reached` WARN
 
 _Versions: core 0.0.1434._

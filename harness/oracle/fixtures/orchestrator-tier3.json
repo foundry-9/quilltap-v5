@@ -4854,6 +4854,36 @@
    "fileIds": [
     "1f151050-0000-4000-8000-000000000050"
    ]
+  },
+  {
+   "name": "p4d370_assistant_agent_on",
+   "kind": "chain",
+   "chatId": "ab000001-0000-4000-8000-000000000001",
+   "content": "Assess the archive's ledger.",
+   "continueMode": false,
+   "streamLabel": "p4d370_assistant_agent_on",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "characterKind": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "kind": "assistant"
+   },
+   "_comment": "P4.D370 Tier 2 item 13: Friday planted as an ASSISTANT, Agent Mode ON — the MANDATORY preamble, the research block, submit_final_response on the slate. UNION-GATED on P4.D369's read overlay."
+  },
+  {
+   "name": "p4d370_assistant_agent_off",
+   "kind": "chain",
+   "chatId": "9fe3f87b-3833-46a9-bc1e-a88fc43dee6b",
+   "content": "Summarise the ledger for me.",
+   "continueMode": false,
+   "streamLabel": "p4d370_assistant_agent_off",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "characterKind": {
+    "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+    "kind": "assistant"
+   },
+   "_comment": "P4.D370 Tier 2 item 13: Friday planted as an ASSISTANT, Agent Mode OFF — the MANDATORY preamble, no agent block. UNION-GATED on P4.D369's read overlay."
   }
  ],
  "streams": {
@@ -7159,6 +7189,36 @@
       "promptTokens": 160,
       "completionTokens": 12,
       "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "p4d370_assistant_agent_on": [
+   [
+    {
+     "content": "Friday reports on the ledger."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 31,
+      "completionTokens": 6,
+      "totalTokens": 37
+     }
+    }
+   ]
+  ],
+  "p4d370_assistant_agent_off": [
+   [
+    {
+     "content": "Friday summarises the ledger."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 29,
+      "completionTokens": 5,
+      "totalTokens": 34
      }
     }
    ]

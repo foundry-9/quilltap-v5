@@ -166,6 +166,29 @@ mod common;
 // Spec.
 // ---------------------------------------------------------------------------
 
+// === P4.D370 ===
+/// `CallSpec.characterKind` (Tier 2 item 13).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct CharacterKindPlantW {
+    character_id: String,
+    kind: String,
+}
+
+/// UNION_GATED_ON_P4D369 — P4.D370 Tier 2 item 13. These two calls plant Friday
+/// as an ASSISTANT (v4's `repos.characters.update(id, {kind})` → the vault's
+/// `properties.json`) and expect v4's research surface: the MANDATORY tool-rules
+/// preamble, the `## Agent Mode Instructions` block and `submit_final_response`
+/// on the slate when Agent Mode is ON, and `flavor=research` on both agent-mode
+/// INFO lines. On P4.D370's branch they are RED by construction: the `kind` key
+/// reaches v5's vault writer (`vault_character_update::update_character`) and its
+/// read overlay only with P4.D369's later commits (`b8024c66c`), so v5 still
+/// resolves Friday as `roleplay`. They are NEVER skipped — they run and fail
+/// loudly until the union, where the unifier flips them by running the family.
+#[allow(dead_code)]
+const UNION_GATED_ON_P4D369: &[&str] = &["p4d370_assistant_agent_on", "p4d370_assistant_agent_off"];
+// === P4.D370 ===
+
 #[derive(Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CallW {
@@ -206,6 +229,12 @@ struct CallW {
     /// are the corpus's last).
     #[serde(default)]
     wardrobe_items: Vec<WardrobeItemW>,
+    // === P4.D370 === (Tier 2 item 13) a character's kind planted IN-CASE
+    // before the call (and restored to `roleplay` after it), through the
+    // production update chokepoint — see `UNION_GATED_ON_P4D369`.
+    #[serde(default)]
+    character_kind: Option<CharacterKindPlantW>,
+    // === P4.D370 ===
     /// P4.D328: Inventory objects planted IN-CASE before the call (the
     /// inventory calls follow the wardrobe ones, last).
     #[serde(default)]
@@ -2197,6 +2226,12 @@ fn orchestrator_tier3_matches_oracle() {
             })
             .unwrap_or_else(|e| panic!("{}: plant an inventory object: {e}", call.name));
         }
+        // === P4.D370 === (Tier 2 item 13) the kind plant, through the
+        // production update chokepoint (v4 `repos.characters.update`).
+        if let Some(plant) = call.character_kind.clone() {
+            plant_character_kind(&db, &call.name, &plant.character_id, &plant.kind);
+        }
+        // === P4.D370 ===
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
         // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
         // extraction → MEMORY_EXTRACTION, per-call characterId) and the summary
@@ -2572,6 +2607,11 @@ fn orchestrator_tier3_matches_oracle() {
             call.name.clone(),
             std::mem::take(&mut *streaming.recorded_api_keys.lock().unwrap()),
         );
+        // === P4.D370 === (Tier 2 item 13) the kind plant undone.
+        if let Some(plant) = call.character_kind.clone() {
+            plant_character_kind(&db, &call.name, &plant.character_id, "roleplay");
+        }
+        // === P4.D370 ===
     }
 
     // === P4.D305: the user-message trigger site, by name ===
@@ -4808,6 +4848,24 @@ fn room_rows_in_rowid_order(db: &Db, chat_id: &str) -> Vec<RoomRow> {
 }
 
 /// A wire tool's name in either shape (`{function: {name}}` / `{name}`).
+// === P4.D370 ===
+/// Write a character's `kind` through v5's production update chokepoint (the
+/// vault's `properties.json`), as v4's `repos.characters.update(id, {kind})`.
+fn plant_character_kind(db: &Db, call: &str, character_id: &str, kind: &str) {
+    let (id, kind) = (character_id.to_string(), kind.to_string());
+    db.write_blocking(move |ws| {
+        let main = ws.main().connection();
+        let mount = ws.mount_index().expect("mount").connection();
+        let mut patch = serde_json::Map::new();
+        patch.insert("kind".into(), Value::String(kind));
+        quilltap_core::db::vault_character_update::update_character(main, mount, &id, &patch)
+            .map(|_| ())
+            .map_err(|e| quilltap_core::db::DbError::Internal(format!("{e:?}")))
+    })
+    .unwrap_or_else(|e| panic!("{call}: plant a character kind: {e}"));
+}
+// === P4.D370 ===
+
 fn wire_tool_name(t: &Value) -> Option<&str> {
     t.get("function")
         .and_then(|f| f.get("name"))

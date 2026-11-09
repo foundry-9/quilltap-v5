@@ -132,6 +132,11 @@ interface CallSpec {
    *  REAL `resolveInventoryLocation(…, { ensure: true }).create` with pinned
    *  ids / stamps. The inventory calls follow the wardrobe ones, last. */
   inventoryObjects?: Array<{ scope: string; owner: string | null; record: Record<string, unknown> }>;
+  // === P4.D370 === (Tier 2 item 13) a character's KIND planted IN-CASE before
+  // the call through v4's REAL `repos.characters.update` (the vault's
+  // `properties.json`), and restored to `roleplay` after it.
+  characterKind?: { characterId: string; kind: string };
+  // === P4.D370 ===
   /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
    *  persists them, so the corpus needed a way to hang one on a call. */
   fileIds?: string[];
@@ -1121,6 +1126,11 @@ async function main(): Promise<void> {
       if (!loc) throw new Error(`${call.name}: no inventory location for ${o.scope}:${o.owner}`);
       await loc.create(o.record as never);
     }
+    // === P4.D370 === (Tier 2 item 13) the kind plant.
+    if (call.characterKind) {
+      await repos.characters.update(call.characterKind.characterId, { kind: call.characterKind.kind } as never);
+    }
+    // === P4.D370 ===
     try {
       const stream = await handleSendMessage(repos, call.chatId, spec.userId, {
         content: call.continueMode ? undefined : call.content,
@@ -1178,6 +1188,11 @@ async function main(): Promise<void> {
 
     // Let the fire-and-forget background triggers settle before the next call.
     await new Promise((resolve) => setTimeout(resolve, 200));
+    // === P4.D370 === (Tier 2 item 13) the kind plant undone.
+    if (call.characterKind) {
+      await repos.characters.update(call.characterKind.characterId, { kind: 'roleplay' } as never);
+    }
+    // === P4.D370 ===
     // P4.D291: which letters the turn left unalerted, then the plant undone.
     let unalerted: string[] | null = null;
     if (letterVault && letterPath) {
