@@ -48,7 +48,7 @@ use super::shared::{
     scope_from_str, store_error_message, Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
-use crate::db::database_store::{self, database_document_exists, database_folder_exists};
+use crate::db::database_store::{self, database_document_exists};
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, ResolvedPath};
 use crate::doc_edit::qtap_uri::parse_qtap_uri;
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
@@ -228,9 +228,9 @@ pub fn handle_move_file(
 // doc_copy_file
 // ============================================================================
 
-/// v4 `resolveCopyDestination` (database-mount branch): if the resolved
-/// destination points at an existing folder, append the source basename (posix
-/// join); otherwise use the resolved relative path. The trim/`.`/`/`/`./` early
+/// v4 `resolveCopyDestination`: if the resolved destination is a folder per
+/// `statDocument` (either backing), append the source basename (posix join);
+/// otherwise use the resolved relative path. The trim/`.`/`/`/`./` early
 /// return yields the bare source basename.
 fn resolve_copy_destination(
     mount: &Connection,
@@ -242,17 +242,12 @@ fn resolve_copy_destination(
     if normalised.is_empty() || normalised == "." || normalised == "/" || normalised == "./" {
         return Ok(source_basename.to_string());
     }
-    let mut dest_is_directory = false;
-    if resolved_dest.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved_dest.mount_point_id.as_deref() {
-            dest_is_directory = database_folder_exists(mount, mp, &resolved_dest.relative_path)
-                .map_err(|e| e.to_string())?;
-        }
-    } else if !resolved_dest.absolute_path.is_empty() {
-        // Filesystem dest: v4 `fs.stat(...).isDirectory()`, false on a stat error.
-        dest_is_directory = fs_stat_is_dir(&resolved_dest.absolute_path) == Some(true);
-    }
-    if dest_is_directory {
+    // v4 `a3d53eae1`: `(await statDocument(resolvedDest)) === 'folder'` — the
+    // core's one stat (a database document at the path is a FILE even beside a
+    // same-path folder row; a stat error other than absence, or a database path
+    // with no mount point id, is the copy's error rather than "not a folder").
+    use crate::documents::core::{stat_document, DocKind};
+    if stat_document(mount, resolved_dest).map_err(|e| e.message())? == Some(DocKind::Folder) {
         Ok(posix_join(&resolved_dest.relative_path, source_basename))
     } else {
         Ok(resolved_dest.relative_path.clone())
@@ -979,4 +974,117 @@ fn fs_stat_is_dir(absolute_path: &str) -> Option<bool> {
 /// v4 `fs.access(p)` (F_OK) — true when the path resolves to an existing entry.
 fn fs_path_exists(absolute_path: &str) -> bool {
     std::path::Path::new(absolute_path).exists()
+}
+
+#[cfg(test)]
+mod resolve_copy_destination_tests {
+    //! v4 `resolveCopyDestination` (`file-management-handlers.ts:163-182` at
+    //! `624d0d25c`, moved by `a3d53eae1`): the destination is a directory iff
+    //! `(await statDocument(resolvedDest)) === 'folder'` — the core's ONE stat,
+    //! which also THROWS where it throws (a database path with no
+    //! `mountPointId`).
+    use super::*;
+    use crate::db::table_shape::Partition;
+    use crate::doc_edit::DocEditScope;
+
+    fn fs_dest(base: &std::path::Path, rel: &str) -> ResolvedPath {
+        ResolvedPath {
+            absolute_path: base.join(rel).to_string_lossy().into_owned(),
+            scope: DocEditScope::DocumentStore,
+            mount_point_id: Some("mp-fs".into()),
+            mount_point_name: Some("Shelf".into()),
+            mount_type: Some("filesystem".into()),
+            base_path: base.to_string_lossy().into_owned(),
+            relative_path: rel.into(),
+        }
+    }
+
+    fn db_dest(mount_point_id: Option<&str>, rel: &str) -> ResolvedPath {
+        ResolvedPath {
+            absolute_path: String::new(),
+            scope: DocEditScope::DocumentStore,
+            mount_point_id: mount_point_id.map(str::to_string),
+            mount_point_name: Some("Ledger".into()),
+            mount_type: Some("database".into()),
+            base_path: String::new(),
+            relative_path: rel.into(),
+        }
+    }
+
+    fn mount_with_folder(mount_point_id: &str, path: &str) -> Connection {
+        let mount = Connection::open_in_memory().unwrap();
+        crate::test_support::ensure_table_from_dump(
+            &mount,
+            Partition::MountIndex,
+            "doc_mount_folders",
+        );
+        crate::test_support::ensure_table_from_dump(
+            &mount,
+            Partition::MountIndex,
+            "doc_mount_documents",
+        );
+        mount
+            .execute(
+                "INSERT INTO doc_mount_folders (id, mountPointId, parentId, name, path, createdAt, updatedAt) \
+                 VALUES ('f-1', ?1, NULL, ?2, ?2, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![mount_point_id, path],
+            )
+            .unwrap();
+        mount
+    }
+
+    #[test]
+    fn an_existing_directory_takes_the_source_basename() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("notes")).unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        assert_eq!(
+            resolve_copy_destination(&mount, &fs_dest(dir.path(), "notes"), "notes", "a.md"),
+            Ok("notes/a.md".to_string())
+        );
+    }
+
+    #[test]
+    fn a_plain_file_path_is_the_file_target() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("notes")).unwrap();
+        std::fs::write(dir.path().join("notes/old.md"), "x").unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        // An absent path and an existing FILE are both the final file path.
+        for rel in ["notes/new.md", "notes/old.md"] {
+            assert_eq!(
+                resolve_copy_destination(&mount, &fs_dest(dir.path(), rel), rel, "a.md"),
+                Ok(rel.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn a_database_folder_takes_the_source_basename() {
+        let mount = mount_with_folder("mp-db", "drafts");
+        assert_eq!(
+            resolve_copy_destination(&mount, &db_dest(Some("mp-db"), "drafts"), "drafts", "a.md"),
+            Ok("drafts/a.md".to_string())
+        );
+        assert_eq!(
+            resolve_copy_destination(
+                &mount,
+                &db_dest(Some("mp-db"), "drafts/b.md"),
+                "drafts/b.md",
+                "a.md"
+            ),
+            Ok("drafts/b.md".to_string())
+        );
+    }
+
+    /// v4's `statDocument` throws `Database-backed ResolvedPath is missing
+    /// mountPointId`; the copy surfaces it rather than guessing "not a folder".
+    #[test]
+    fn a_database_destination_without_a_mount_point_id_is_statdocuments_error() {
+        let mount = Connection::open_in_memory().unwrap();
+        assert_eq!(
+            resolve_copy_destination(&mount, &db_dest(None, "drafts"), "drafts", "a.md"),
+            Err(crate::documents::core::read::MISSING_MOUNT_POINT_ID.to_string())
+        );
+    }
 }
