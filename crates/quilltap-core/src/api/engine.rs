@@ -5318,6 +5318,22 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D345 ===
+            // === P4.D379 ===
+            Request::ChatCustomToolPresets {
+                chat_id,
+                tool,
+                as_character_id,
+            } => match self.ready_db() {
+                Ok(db) => super::custom_tools::chat_custom_tool_presets(
+                    &db,
+                    SINGLE_USER_ID,
+                    &chat_id,
+                    tool.as_deref(),
+                    as_character_id.as_deref(),
+                ),
+                Err(r) => r,
+            },
+            // === end P4.D379 ===
             // --- unit 12: Pascal's Workbench collection resource ---
             Request::CustomToolsLibrary => match self.ready_db() {
                 Ok(db) => super::custom_tools::custom_tools_library(&db),

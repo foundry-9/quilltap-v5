@@ -2654,6 +2654,20 @@ pub enum Request {
         decision: Option<serde_json::Value>,
     },
     // === end P4.D345 ===
+    // === P4.D379 ===
+    /// v4 `GET /api/v1/chats/[id]/custom-tools?action=presets&tool=…&asCharacterId=…`
+    /// → `{presets, stores, unread}` (contract C11). Both query values are
+    /// optional: an absent `tool` reads as `""` (which v4's identifier test
+    /// refuses), and an empty `asCharacterId` behaves exactly like an absent one.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolPresets {
+        chat_id: String,
+        #[serde(default)]
+        tool: Option<String>,
+        #[serde(default)]
+        as_character_id: Option<String>,
+    },
+    // === end P4.D379 ===
     /// v4 `GET /api/v1/custom-tools` → the Workbench library: every definition
     /// in every enabled store, valid or broken, with attachment badges.
     CustomToolsLibrary,
@@ -5022,6 +5036,10 @@ pub enum Response {
     /// `POST ?action=intervention-resolve` body (`{resolved}`).
     CustomToolInterventionResolve(serde_json::Value),
     // === end P4.D345 ===
+    // === P4.D379 ===
+    /// `GET ?action=presets` body (`{presets, stores, unread}`, contract C11).
+    CustomToolPresets(serde_json::Value),
+    // === end P4.D379 ===
     /// v4 `GET /api/v1/custom-tools` body (`{tools, errors}` — the Workbench
     /// library).
     CustomToolsLibrary(serde_json::Value),

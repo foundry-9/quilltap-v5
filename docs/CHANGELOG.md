@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(api): the custom-tool presets handler and its dispatch verb (P4.D379 item 4, v4 fd165fce0)
+
+_Versions: core 0.0.1433._
+
+NEW `api::custom_tools::chat_custom_tool_presets`, v4 `handlePresets` at the `624d0d25c` pin: the `tool` name is checked against `IDENTIFIER_PATTERN` before the chat read (400 `A valid custom tool name is required`, so a bad tool on a missing chat answers 400, not 404), then the chat (404), then the perspective — `asCharacterId` if non-empty (400 `No character participant with id <id> is in this chat`), otherwise the operator-preferred character (400 `This chat has no character whose presets could be read`) — then the preset pool, the DEBUG `Custom-tool presets listed for the operator`, and 200 `{presets, stores, unread}`. New boundary verb `chatCustomToolPresets {chatId, tool?, asCharacterId?}` → `customToolPresets` (contract C11), with the engine arm. The sentences are public constants. The `vaultMountPointId` comment follows v4's new wording. `dispatch_wrong_type_census`: the route-identifier exclusion moves 523 → 525 (`chat_id` and `as_character_id`, which the `*_id` heuristic drops) and `tool` gets a `V4::Query` row. New contract guard `pascal_presets_wire_contract`.
+
 #### 2026-11-09 — feat(pascal): the custom-tool preset pool walks the tiers (P4.D379 item 3, v4 fd165fce0 + 0c47f4539)
 
 _Versions: core 0.0.1432._

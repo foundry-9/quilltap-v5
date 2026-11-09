@@ -19,6 +19,12 @@
 //!   character's fact sheet and groups. It names the operator's own played
 //!   character whenever one is a candidate — see [`prefer_operator`], and the
 //!   `characterLabel` it earns when none is.
+//! - **GET `?action=presets&tool=<name>&asCharacterId=<id>`**
+//!   (`chat_custom_tool_presets`, P4.D379, v4 `fd165fce0`) — one tool's run
+//!   presets as that character sees them: the same character → group → project
+//!   → General walk the roster takes, nearest preset of a name winning, plus
+//!   every store on the walk as a place to save one. See
+//!   [`crate::pascal::tool_preset_pool`].
 //! - **POST `?action=run`** (`chat_custom_tool_run`) — run one tool at the
 //!   operator's behest. Posts Pascal's outcome and nothing else: the
 //!   announcement is byte-identical to a character's roll, so the transcript
@@ -343,10 +349,10 @@ fn build_listing(
         m.insert("characterLabel".into(), json!(label));
     }
     m.insert("asCharacterId".into(), json!(perspective.character_id));
-    // That character's vault mount, where run presets
-    // (`Tools/{name}.{preset}.settings.json`) are kept (v4 `c988fbd2`). JSON
-    // `null` — never absent, never invented — for a character whose vault could
-    // not be resolved; the dialog hides its preset controls off this field.
+    // That character's vault mount — the nearest store on the preset walk, and
+    // so the dialog's default place to save one (v4 `fd165fce0`). JSON `null` —
+    // never absent, never invented — for a character whose vault could not be
+    // resolved; presets still load from the farther tiers.
     m.insert(
         "vaultMountPointId".into(),
         json!(perspective.character_mount_point_id),
@@ -527,6 +533,123 @@ pub fn chat_custom_tools_list(
         Err(e) => internal(e),
     }
 }
+
+// === P4.D379 ===
+/// `GET ?action=presets`'s first 400: the `tool` query value fails v4's
+/// `IDENTIFIER_PATTERN` (or is absent, which reads as `""`).
+pub const PRESETS_INVALID_TOOL: &str = "A valid custom tool name is required";
+/// `GET ?action=presets`'s 400 for a non-empty `asCharacterId` that names no
+/// character participant: `No character participant with id <id> is in this
+/// chat` ([`presets_unknown_character`]).
+pub const PRESETS_UNKNOWN_CHARACTER_PREFIX: &str = "No character participant with id ";
+/// The tail of [`PRESETS_UNKNOWN_CHARACTER_PREFIX`]'s sentence.
+pub const PRESETS_UNKNOWN_CHARACTER_SUFFIX: &str = " is in this chat";
+/// `GET ?action=presets`'s 400 for a chat with no readable character.
+pub const PRESETS_NO_CHARACTER: &str = "This chat has no character whose presets could be read";
+/// `GET ?action=presets`'s 404 body text (v4 `notFound('Chat')`).
+pub const PRESETS_CHAT_NOT_FOUND: &str = "Chat not found";
+
+/// v4's second sentence, for one `asCharacterId`.
+pub fn presets_unknown_character(as_character_id: &str) -> String {
+    format!("{PRESETS_UNKNOWN_CHARACTER_PREFIX}{as_character_id}{PRESETS_UNKNOWN_CHARACTER_SUFFIX}")
+}
+
+/// v4 `handlePresets` — one tool's run presets, walked like the roster.
+///
+/// The checks run in v4's order: the tool name FIRST (so a bad tool on a missing
+/// chat answers 400, not 404), then the chat, then the perspective. The tool
+/// need not exist — presets of an unknown tool list fine. `as_character_id` is
+/// tested for TRUTHINESS, as v4's `asCharacterId ? … : …` does: `Some("")` takes
+/// the no-name branch exactly like `None`.
+pub fn chat_custom_tool_presets(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    tool: Option<&str>,
+    as_character_id: Option<&str>,
+) -> Response {
+    use crate::pascal::custom_tool_types::IDENTIFIER_PATTERN;
+    use crate::pascal::tool_preset_pool::{resolve_tool_preset_pool, ToolPresetPoolContext};
+
+    let tool_name = tool.unwrap_or("");
+    let as_character_id = as_character_id.filter(|s| !s.is_empty());
+    if !IDENTIFIER_PATTERN.is_match(tool_name) {
+        return bad_request(PRESETS_INVALID_TOOL);
+    }
+
+    enum Outcome {
+        NoChat,
+        NoPerspective,
+        Pool(Value),
+    }
+
+    let out = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            let Some(chat) = chats_read::find_by_id(main, chat_id)? else {
+                return Ok(Outcome::NoChat);
+            };
+            let perspectives = load_perspectives(main, mount, &chat);
+            // The same choice POST makes, so the presets listed are the ones the
+            // run they fill in will be made from.
+            let perspective = match as_character_id {
+                Some(cid) => perspectives.iter().find(|p| p.character_id == cid),
+                None if !perspectives.is_empty() => Some(
+                    prefer_operator(
+                        &perspectives,
+                        |p: &Perspective| p.character_id.as_str(),
+                        &operator_character_ids(&chat),
+                    )
+                    .0,
+                ),
+                None => None,
+            };
+            let Some(perspective) = perspective else {
+                return Ok(Outcome::NoPerspective);
+            };
+
+            // v4 `chat.projectId ?? null`; an empty id resolves no tier either way.
+            let project_id = chat
+                .get("projectId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            let pool = resolve_tool_preset_pool(
+                &ToolPresetPoolContext {
+                    user_id: user_id.to_string(),
+                    character_id: Some(perspective.character_id.clone()),
+                    character_mount_point_id: perspective.character_mount_point_id.clone(),
+                    project_id,
+                    tool_name: tool_name.to_string(),
+                },
+                main,
+                mount,
+            )?;
+
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = HANDLER,
+                chatId = chat_id,
+                tool = tool_name,
+                characterId = %perspective.character_id,
+                presets = pool.presets.len() as u64,
+                stores = pool.stores.len() as u64,
+                "Custom-tool presets listed for the operator",
+            );
+            Ok(Outcome::Pool(pool.to_value()))
+        })
+    });
+
+    match out {
+        Ok(Outcome::Pool(data)) => Response::CustomToolPresets(data),
+        Ok(Outcome::NoChat) => not_found("Chat"),
+        Ok(Outcome::NoPerspective) => bad_request(match as_character_id {
+            Some(cid) => presets_unknown_character(cid),
+            None => PRESETS_NO_CHARACTER.to_string(),
+        }),
+        Err(e) => internal(e),
+    }
+}
+// === end P4.D379 ===
 
 /// The outcome of the read phase of a run (v4 `handleRun`'s guards).
 enum RunPrep {

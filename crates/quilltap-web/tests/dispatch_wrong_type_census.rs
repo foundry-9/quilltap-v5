@@ -1684,6 +1684,15 @@ const CENSUS: &[Row] = &[
         v4: V4::Query,
         note: "`chats/[id]/handlers/get.ts:228` `searchParams` (`=== 'true'`)",
     },
+    // === P4.D379 ===
+    Row {
+        variant: "ChatCustomToolPresets",
+        field: "tool",
+        rust_type: "Option<String>",
+        v4: V4::Query,
+        note: "`chats/[id]/custom-tools/route.ts:386` `searchParams.get('tool') ?? ''`",
+    },
+    // === end P4.D379 ===
     Row {
         variant: "ChatCustomToolRun",
         field: "tool",
@@ -2987,7 +2996,18 @@ fn is_route_identifier(field: &str) -> bool {
 // container_id` (the owner's `[id]` segment, as on `WardrobeItemsCopy`); its
 // `scope` is the census's one new ROW; the `{ itemId }` body rides raw.
 // Measured red at 524 against 523 first; the unifier sums the lanes' moves.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 524;
+//
+// === P4.D379 ===
+// **P4.D379 (+2): 523 → 525** — `Request::ChatCustomToolPresets`: its `chat_id`
+// (the `[id]` PATH segment of `GET /api/v1/chats/[id]/custom-tools?action=
+// presets`) AND its `as_character_id` — a v4 QUERY value (`route.ts:387`
+// `searchParams.get('asCharacterId')`) that the `*_id` heuristic drops all the
+// same. The order predicted +1 and two `V4::Query` rows; measured +2 and ONE
+// row (`tool`). Neither query value can wrong-type: a query string carries no
+// JSON type. Measured red at 525 against 523 first; the unifier recounts the
+// constant by NUMBER on the union (H3).
+// === end P4.D379 ===
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 526;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus
