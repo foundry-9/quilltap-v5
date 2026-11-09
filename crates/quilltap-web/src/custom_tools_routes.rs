@@ -9,6 +9,8 @@
 //! - P4.D345 (operator intervention, v4 `839575d89`): `GET ?action=interventions`
 //!   → `{holds}`; `POST ?action=intervention-preview | intervention-reask |
 //!   intervention-resolve` → `{preview}` / `{preview, consults}` / `{resolved}`.
+//! - P4.D379 (run presets, v4 `fd165fce0`): `GET ?action=presets&tool=<name>
+//!   &asCharacterId=<id>` → `{presets, stores, unread}`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -28,7 +30,9 @@ fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumRespons
         | CoreResponse::CustomToolInterventions(v)
         | CoreResponse::CustomToolInterventionPreview(v)
         | CoreResponse::CustomToolInterventionReask(v)
-        | CoreResponse::CustomToolInterventionResolve(v) => (
+        | CoreResponse::CustomToolInterventionResolve(v)
+        // === P4.D379 ===
+        | CoreResponse::CustomToolPresets(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
@@ -57,9 +61,11 @@ pub async fn custom_tools_get(
 ) -> AxumResponse {
     // P4.D345: v4 `withActionDispatch({ interventions: handleListInterventions },
     // handleList)` (`route.ts:517`) — one action beside the default list.
+    // === P4.D379 === v4 `fd165fce0` adds `presets` (`route.ts:582-584`), in
+    // that literal order — the unknown-action envelope lists `Object.keys`.
     let action = match crate::query::dispatch_action(
         &pairs,
-        &["interventions"],
+        &["interventions", "presets"],
         "GET",
         "/api/v1/chats/[id]/custom-tools",
     ) {
@@ -68,6 +74,13 @@ pub async fn custom_tools_get(
     };
     let req = match action {
         Some("interventions") => CoreRequest::ChatCustomToolInterventionsList { chat_id: id },
+        // === P4.D379 === v4 `searchParams.get` — the FIRST value of a repeated key.
+        Some("presets") => CoreRequest::ChatCustomToolPresets {
+            chat_id: id,
+            tool: crate::query::first(&pairs, "tool").map(str::to_string),
+            as_character_id: crate::query::first(&pairs, "asCharacterId").map(str::to_string),
+        },
+        // === end P4.D379 ===
         _ => CoreRequest::ChatCustomToolsList { chat_id: id },
     };
     match dispatch_core(&state, req).await {

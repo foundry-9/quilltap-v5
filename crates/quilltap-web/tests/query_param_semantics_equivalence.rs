@@ -893,9 +893,12 @@ async fn unserved_known_actions_are_pinned_v5_side() {
         );
     }
 
-    // custom-tools GET: v4's map at the `236c04e35` pin holds ONE action
-    // (`interventions`, P4.D345 — it was EMPTY before v4 `839575d89`) — so
-    // `Unknown action: <x>` lists it.
+    // === P4.D379 ===
+    // custom-tools GET: v4's map at the `624d0d25c` pin holds TWO actions
+    // (`interventions`, P4.D345 — it was EMPTY before v4 `839575d89` — and
+    // `presets`, v4 `fd165fce0`), in that literal order — so `Unknown action:
+    // <x>` lists both.
+    // === end P4.D379 ===
     let resp = client
         .get(format!(
             "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=foo"
@@ -906,7 +909,30 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     assert_eq!(resp.status().as_u16(), 400);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Unknown action: foo");
-    assert_eq!(body["availableActions"], json!(["interventions"]));
+    // === P4.D379 ===
+    assert_eq!(
+        body["availableActions"],
+        json!(["interventions", "presets"])
+    );
+
+    // `?action=presets` with a tool name v4's `IDENTIFIER_PATTERN` refuses
+    // answers v4's first 400 through the router, before any chat read (the
+    // route family pins the bytes; this pins the edge's arm and its
+    // first-value query read).
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=presets&tool=Coin&tool=coin"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(
+        body,
+        json!({"error": "A valid custom tool name is required"})
+    );
+    // === end P4.D379 ===
 
     // === P4.D345: the intervention actions at the edge ===
     // `?action=interventions` lists (nothing held here) …
@@ -989,7 +1015,8 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body,
-        json!({"error": "Unknown action: ", "availableActions": ["interventions"]})
+        // === P4.D379 === (v4 `fd165fce0` at the `624d0d25c` pin)
+        json!({"error": "Unknown action: ", "availableActions": ["interventions", "presets"]})
     );
 
     // The duplicate-key class on a NON-action key is pinned where the venue

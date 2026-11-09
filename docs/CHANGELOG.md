@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(web): GET custom-tools ?action=presets at the edge (P4.D379 item 5, v4 fd165fce0)
+
+_Versions: web 0.0.257._
+
+`quilltap-web`'s custom-tools GET now dispatches `?action=presets` to `chatCustomToolPresets`, reading `tool` and `asCharacterId` with the first-value rule v4's `searchParams.get` uses, and unwraps `customToolPresets` to v4's raw 200 body. The GET action list is `["interventions","presets"]`, in v4's order, so an unknown action's envelope lists both. `query_param_semantics_equivalence`'s two pins of that list move with it, and a new edge assertion pins `?action=presets&tool=Coin&tool=coin` answering 400 `A valid custom tool name is required` before any chat read.
+
 #### 2026-11-09 — feat(api): the custom-tool presets handler and its dispatch verb (P4.D379 item 4, v4 fd165fce0)
 
 _Versions: core 0.0.1433._
