@@ -20,12 +20,30 @@
 //! Run:
 //!   QT_ORACLE_GENERATORS_LEAF=/tmp/oracle-generators-leaf.ndjson cargo test -p quilltap-harness --test generators_leaf_equivalence
 //!
+//! The field-semantics module itself is GENERATED from v4's exports (P4.D371
+//! extended the generator to emit the two kind-routed functions and the
+//! `CORE_VAULT_FILE_SUMMARIES` record too):
+//!   npx tsx $V5W/harness/oracle/cases/generators-field-semantics.ts > /tmp/oracle-generators-field-semantics.ndjson
+//!   node $V5W/harness/oracle/tools/gen-field-semantics.mjs /tmp/oracle-generators-field-semantics.ndjson $V5W/crates/quilltap-core/src/generators/field_semantics.rs
+//!   cargo fmt -p quilltap-core
+//!
+//! P4.D371 (v4 `3ae4cf582`) row kinds: `generator_direction` /
+//! `kind_drift_signal` drive `generatorDirectionFor` / `kindDriftSignalFor`
+//! over P4.D369's eight kind inputs (an `undefined` input arrives as an ABSENT
+//! `input` key — `character_kind_equivalence`'s convention — and reaches the
+//! port as `kind_or_default(None)`; a JSON `null` input as `Some(&Null)`), and
+//! `core_vault_file_summary` gives the summaries record its first oracle.
+//!
 //! While the v4 checkout sits on `bugfix` (drift-ledger §1), the regen needs a
 //! detached worktree pinned at the baseline — that is the sweep driver's job
 //! (`recipe_sweep.py --run generators_leaf_equivalence --v4 <pin>`), never a
 //! path baked into this header.
 
-use quilltap_core::generators::field_semantics::ALL_EXPORTS;
+use quilltap_core::characters::kind::kind_or_default;
+use quilltap_core::generators::field_semantics::{
+    core_vault_file_summary, generator_direction_for, kind_drift_signal_for, ALL_EXPORTS,
+    CORE_VAULT_FILE_SUMMARIES,
+};
 use quilltap_core::generators::generated_properties::{
     describe_generated_properties, parse_generated_properties, GeneratedProperties,
 };
@@ -35,8 +53,14 @@ use quilltap_core::generators::llm_json::{
 };
 use quilltap_core::generators::sanitize_pronouns::{sanitize_pronouns, Pronouns};
 use quilltap_core::model::tool_wire::normalize_js_numbers;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::Value;
+
+/// A PRESENT key — `null` included — is `Some`; only an absent key is `None`
+/// (with `#[serde(default)]`). v4's `undefined` input is the absent key.
+fn present<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
+    Value::deserialize(d).map(Some)
+}
 
 #[derive(Deserialize)]
 struct Attempt {
@@ -85,12 +109,34 @@ enum Row {
     },
     #[serde(rename = "field_semantics")]
     FieldSemantics { id: String, value: String },
+    /// P4.D371 — v4 `generatorDirectionFor(input)`.
+    #[serde(rename = "generator_direction")]
+    GeneratorDirection {
+        id: String,
+        #[serde(default, deserialize_with = "present")]
+        input: Option<Value>,
+        out: String,
+    },
+    /// P4.D371 — v4 `kindDriftSignalFor(input)`; v4's `null` is `None`.
+    #[serde(rename = "kind_drift_signal")]
+    KindDriftSignal {
+        id: String,
+        #[serde(default, deserialize_with = "present")]
+        input: Option<Value>,
+        out: Option<String>,
+    },
+    /// P4.D371 — one `CORE_VAULT_FILE_SUMMARIES` entry, in v4's order.
+    #[serde(rename = "core_vault_file_summary")]
+    CoreVaultFileSummary { id: String, value: String },
     #[serde(rename = "coverage", rename_all = "camelCase")]
     Coverage {
         llm_json: Vec<String>,
         pronouns: Vec<String>,
         properties: Vec<String>,
         field_semantics: Vec<String>,
+        generator_direction: Vec<String>,
+        kind_drift_signal: Vec<String>,
+        core_vault_file_summaries: Vec<String>,
         missing_pronouns_label: String,
     },
 }
@@ -129,6 +175,9 @@ fn generators_leaf_matches_oracle() {
     let mut seen_pronouns: Vec<String> = Vec::new();
     let mut seen_properties: Vec<String> = Vec::new();
     let mut seen_semantics: Vec<String> = Vec::new();
+    let mut seen_direction: Vec<String> = Vec::new();
+    let mut seen_drift: Vec<String> = Vec::new();
+    let mut seen_summaries: Vec<String> = Vec::new();
     let mut coverage: Option<Row> = None;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -215,6 +264,32 @@ fn generators_leaf_matches_oracle() {
                 assert_eq!(ours.1, value, "field semantics '{id}'");
                 seen_semantics.push(id);
             }
+            Row::GeneratorDirection { id, input, out } => {
+                let kind = kind_or_default(input.as_ref());
+                assert_eq!(
+                    generator_direction_for(kind),
+                    out,
+                    "generatorDirectionFor '{id}' (resolved {kind:?})"
+                );
+                seen_direction.push(id);
+            }
+            Row::KindDriftSignal { id, input, out } => {
+                let kind = kind_or_default(input.as_ref());
+                assert_eq!(
+                    kind_drift_signal_for(kind),
+                    out.as_deref(),
+                    "kindDriftSignalFor '{id}' (resolved {kind:?})"
+                );
+                seen_drift.push(id);
+            }
+            Row::CoreVaultFileSummary { id, value } => {
+                assert_eq!(
+                    core_vault_file_summary(&id),
+                    value,
+                    "CORE_VAULT_FILE_SUMMARIES['{id}']"
+                );
+                seen_summaries.push(id);
+            }
             r @ Row::Coverage { .. } => coverage = Some(r),
         }
     }
@@ -224,6 +299,9 @@ fn generators_leaf_matches_oracle() {
         pronouns,
         properties,
         field_semantics,
+        generator_direction,
+        kind_drift_signal,
+        core_vault_file_summaries,
         missing_pronouns_label,
     }) = coverage
     else {
@@ -238,6 +316,25 @@ fn generators_leaf_matches_oracle() {
     // And v5 declares no export the oracle did not drive.
     let ours: Vec<String> = ALL_EXPORTS.iter().map(|(n, _)| n.to_string()).collect();
     assert_eq!(ours, field_semantics, "v5 field-semantics export set");
+    assert_eq!(seen_direction, generator_direction, "generatorDirectionFor coverage");
+    assert_eq!(seen_drift, kind_drift_signal, "kindDriftSignalFor coverage");
+    assert_eq!(
+        seen_summaries, core_vault_file_summaries,
+        "CORE_VAULT_FILE_SUMMARIES coverage"
+    );
+    // Both ways, ORDER included: the generated record IS v4's insertion order.
+    let our_paths: Vec<String> = CORE_VAULT_FILE_SUMMARIES
+        .iter()
+        .map(|(p, _)| p.to_string())
+        .collect();
+    assert_eq!(
+        our_paths, core_vault_file_summaries,
+        "v5 CORE_VAULT_FILE_SUMMARIES key set and order"
+    );
+    assert!(
+        generator_direction.len() >= 8 && kind_drift_signal.len() >= 8,
+        "kind corpus shrank below P4.D369's eight inputs"
+    );
     assert_eq!(
         missing_pronouns_label, MISSING_PRONOUNS_LABEL,
         "the corpus's missingPronounsLabel moved; update the test constant"
@@ -257,11 +354,14 @@ fn generators_leaf_matches_oracle() {
     );
 
     eprintln!(
-        "OK: generators-leaf matched oracle ({} llm_json / {} pronouns / {} properties / {} field-semantics exports).",
+        "OK: generators-leaf matched oracle ({} llm_json / {} pronouns / {} properties / {} field-semantics exports / {} generator directions / {} drift signals / {} core-vault summaries).",
         llm_json.len(),
         pronouns.len(),
         properties.len(),
-        field_semantics.len()
+        field_semantics.len(),
+        generator_direction.len(),
+        kind_drift_signal.len(),
+        core_vault_file_summaries.len()
     );
 }
 

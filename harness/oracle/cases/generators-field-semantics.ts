@@ -24,11 +24,15 @@ import {
   COMPANION_TRUST_DISPOSITION_GATE,
   GATED_COMPANION_TRUST_DISPOSITION,
   COMMITTEE_DRIFT_GUARDRAIL,
+  STAKES_AND_REACTION_DIRECTION,
+  ASSISTANT_TASK_DIRECTION,
+  FLATTENING_DRIFT_SIGNAL,
   EXAMPLE_DIALOGUE_COVERAGE,
   PROPERTIES_SEMANTICS,
   PHYSICAL_DESCRIPTION_SEMANTICS,
   WARDROBE_SEMANTICS,
   FULL_FIELD_SEMANTICS,
+  CORE_VAULT_FILE_SUMMARIES,
 } from '@/lib/services/character-field-semantics';
 
 const exports_: Array<[string, string]> = [
@@ -45,6 +49,13 @@ const exports_: Array<[string, string]> = [
   ['COMPANION_TRUST_DISPOSITION_GATE', COMPANION_TRUST_DISPOSITION_GATE],
   ['GATED_COMPANION_TRUST_DISPOSITION', GATED_COMPANION_TRUST_DISPOSITION],
   ['COMMITTEE_DRIFT_GUARDRAIL', COMMITTEE_DRIFT_GUARDRAIL],
+  // P4.D371 (v4 3ae4cf582): the two kind directions and the flattening drift
+  // signal, in v4's source order (declared between COMMITTEE_DRIFT_GUARDRAIL
+  // and EXAMPLE_DIALOGUE_COVERAGE; the private GENERATOR_DIRECTIONS table and
+  // the two functions sit between them and are not exports of this list).
+  ['STAKES_AND_REACTION_DIRECTION', STAKES_AND_REACTION_DIRECTION],
+  ['ASSISTANT_TASK_DIRECTION', ASSISTANT_TASK_DIRECTION],
+  ['FLATTENING_DRIFT_SIGNAL', FLATTENING_DRIFT_SIGNAL],
   ['EXAMPLE_DIALOGUE_COVERAGE', EXAMPLE_DIALOGUE_COVERAGE],
   ['PROPERTIES_SEMANTICS', PROPERTIES_SEMANTICS],
   ['PHYSICAL_DESCRIPTION_SEMANTICS', PHYSICAL_DESCRIPTION_SEMANTICS],
@@ -55,3 +66,13 @@ const exports_: Array<[string, string]> = [
 for (const [name, value] of exports_) {
   process.stdout.write(JSON.stringify({ name, value }) + '\n');
 }
+
+// P4.D371: v4's CORE_VAULT_FILE_SUMMARIES record (`074e1e01a`), recorded as
+// ONE row of [path, summary] entries in insertion order, so the generator
+// emits the Rust table from v4's bytes instead of carrying a hand copy.
+process.stdout.write(
+  JSON.stringify({
+    name: 'CORE_VAULT_FILE_SUMMARIES',
+    entries: Object.entries(CORE_VAULT_FILE_SUMMARIES),
+  }) + '\n',
+);

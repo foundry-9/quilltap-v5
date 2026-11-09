@@ -26,7 +26,8 @@ use crate::cheap_llm::profile_params_value;
 use crate::db::files::FileFull;
 use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
-use crate::db::{connection_profiles, DbError};
+use crate::characters::kind::{resolve_character_kind, CharacterKind, DEFAULT_CHARACTER_KIND};
+use crate::db::{characters_read, connection_profiles, DbError};
 use crate::generators::file_content::{extract_file_content, file_entry_of};
 use crate::generators::generated_items::{
     sanitize_generated_wardrobe_items, wardrobe_items_generation_prompt, GeneratedWardrobeItem,
@@ -37,7 +38,7 @@ use crate::generators::generated_properties::{
 use crate::generators::llm_json::parse_llm_json;
 use crate::generators::optimizer::llm_json_failure_message;
 use crate::generators::wizard_prompts::{
-    field_prompt, HEAD_AND_SHOULDERS_PHYSICAL_PROMPT, PROPERTIES_PROMPT,
+    field_prompt, wizard_field_prompt, HEAD_AND_SHOULDERS_PHYSICAL_PROMPT, PROPERTIES_PROMPT,
 };
 use crate::jsnum::to_fixed;
 use crate::jsstr::js_trim;
@@ -701,6 +702,71 @@ pub struct WizardResult {
     pub errors: Option<Value>,
 }
 
+/// v4 `wizardFieldMaxTokens(field)` (`3ae4cf582`): the completion budget for
+/// one Wizard text field. A system prompt asks for up to 600 words across
+/// voice, listening, the trust safeguards and the kind's direction; at the old
+/// shared 1000-token cap a reasoning model spent part of the budget thinking
+/// and the prompt came back cut off mid-sentence.
+pub fn wizard_field_max_tokens(field: &str) -> i64 {
+    match field {
+        "systemPrompt" => 2500,
+        "exampleDialogues" | "firstMessage" => 1000,
+        "scenarios" => 4000,
+        _ => 500,
+    }
+}
+
+/// v4 `resolveWizardCharacterKind(request, repos)` (`3ae4cf582`): the kind of
+/// the character the Wizard is writing for — the stored kind of the character
+/// being edited, or the default (roleplay) for a new one. The Wizard never
+/// guesses a kind from the material. A character whose vault cannot be read
+/// is written for the default, with a warning (R-4: the run never fails over
+/// the kind). v4's `!request.characterId` is JS truthiness, so an EMPTY id is
+/// a new character too. The read is v4's `repos.characters.findById` — the
+/// overlaid read, NOT user-scoped — and a missing row (`Ok(None)`) resolves to
+/// the default with NO warning. Runs on the caller's thread (no write closure),
+/// so the lines reach the thread-scoped capture.
+fn resolve_wizard_character_kind(db: &Db, request: &WizardRequest) -> CharacterKind {
+    let character_id = match request.character_id.as_deref() {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            tracing::debug!(
+                target: WIZARD_LOG_TARGET,
+                context = %ctx(json!({"kind": DEFAULT_CHARACTER_KIND.as_str()})),
+                "[CharacterWizard] New character; writing for the default kind"
+            );
+            return DEFAULT_CHARACTER_KIND;
+        }
+    };
+    let cid = character_id.to_string();
+    match db.read_main(|main| {
+        db.read_mount_index(|mount| characters_read::find_by_id(main, mount, &cid))
+    }) {
+        Ok(character) => {
+            let kind = resolve_character_kind(character.as_ref());
+            tracing::debug!(
+                target: WIZARD_LOG_TARGET,
+                context = %ctx(json!({"characterId": character_id, "kind": kind.as_str()})),
+                "[CharacterWizard] Writing for the character's kind"
+            );
+            kind
+        }
+        Err(e) => {
+            // v4 `error instanceof Error ? error.message : String(error)` — the
+            // BARE message, never v5's `sqlite error: …` Display.
+            tracing::warn!(
+                target: WIZARD_LOG_TARGET,
+                context = %ctx(json!({
+                    "characterId": character_id,
+                    "error": crate::db::fallback::error_text(&e),
+                })),
+                "[CharacterWizard] Could not read the character; writing for the default kind"
+            );
+            DEFAULT_CHARACTER_KIND
+        }
+    }
+}
+
 /// The shared body of both runners. `emit` is the streaming twin's
 /// `onProgress` (`None` for the non-streaming twin, which emits nothing);
 /// `streaming` selects the twin-specific log wording and snippet. `Err` is
@@ -903,6 +969,12 @@ async fn run_wizard_core<CMP: CompletionProvider>(
         document_content.as_deref(),
     );
 
+    // v4 `3ae4cf582`: the kind is resolved ONCE per run, after the context
+    // prompt and before the field loop. v4 calls it at two sites (`:917`
+    // non-streaming, `:1183` streaming); this ONE body serves both twins, so
+    // the two sites are this one.
+    let character_kind = resolve_wizard_character_kind(db, request);
+
     // Generate remaining fields (excluding 'name' which was already handled)
     for field in &request.fields_to_generate {
         if field == "name" {
@@ -933,13 +1005,9 @@ async fn run_wizard_core<CMP: CompletionProvider>(
                     Ok((properties_json(&props), snippet))
                 }
                 other => {
-                    let field_prompt_text = field_prompt(other)
+                    let field_prompt_text = wizard_field_prompt(other, character_kind)
                         .ok_or_else(|| format!("Unknown wizard field: {other}"))?;
-                    let max_tokens = match other {
-                        "exampleDialogues" | "systemPrompt" | "firstMessage" => 1000,
-                        "scenarios" => 4000,
-                        _ => 500,
-                    };
+                    let max_tokens = wizard_field_max_tokens(other);
                     let raw_content =
                         generate_field(&call, &context_prompt, field_prompt_text, max_tokens)
                             .await?;

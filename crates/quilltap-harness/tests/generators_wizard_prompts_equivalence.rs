@@ -8,12 +8,20 @@
 //! ORDER is pinned, because the generated table records v4's insertion order
 //! rather than sorting.
 //!
-//! ⚠ **A measured correction to this round's work order:** `FIELD_PROMPTS` has
-//! **10** keys, not 13. Thirteen is the size of
+//! ⚠ **Measured:** `FIELD_PROMPTS` has **9** keys at v4 `3ae4cf582` (10
+//! before — `systemPrompt` moved to the kind-routed
+//! `buildSystemPromptFieldPrompt`, P4.D371). Thirteen is the size of
 //! `WizardRequest.fieldsToGenerate`'s union; `properties`,
 //! `physicalDescription` and `wardrobeItems` are served by dedicated generators
-//! rather than by this table. The floor below is 10 and the coverage row is
+//! rather than by this table. The floor below is 9 and the coverage row is
 //! diffed exactly, so a future drift in either direction is loud.
+//!
+//! P4.D371 row kinds: `system_prompt_field` (one per generator direction key,
+//! v4's `buildSystemPromptFieldPrompt(kind)` bytes), `wizard_field_prompt`
+//! (every union member + `bogus`, × both kinds — v4's `undefined` is JSON
+//! `null` ↔ `None`) and `wizard_field_max_tokens` (the same fourteen names).
+//! The module is GENERATED (`harness/oracle/tools/gen-wizard-prompts.mjs`, its
+//! header has the recipe, then `cargo fmt -p quilltap-core`).
 //!
 //! Regenerate the oracle (the corpus is committed — nothing to build):
 //!   cd ~/source/quilltap-server
@@ -25,9 +33,11 @@
 //! worktree pinned at the baseline — the sweep driver's job, never a path baked
 //! into this header.
 
-use quilltap_core::generators::wizard::build_context_prompt;
+use quilltap_core::characters::kind::CharacterKind;
+use quilltap_core::generators::wizard::{build_context_prompt, wizard_field_max_tokens};
 use quilltap_core::generators::wizard_prompts::{
-    field_prompt, FIELD_PROMPTS, HEAD_AND_SHOULDERS_PHYSICAL_PROMPT, PROPERTIES_PROMPT,
+    build_system_prompt_field_prompt, field_prompt, wizard_field_prompt, FIELD_PROMPTS,
+    HEAD_AND_SHOULDERS_PHYSICAL_PROMPT, PROPERTIES_PROMPT,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -49,9 +59,28 @@ enum Row {
         document_content: Option<String>,
         out: String,
     },
+    /// P4.D371 — v4 `buildSystemPromptFieldPrompt(characterKind)`.
+    #[serde(rename = "system_prompt_field", rename_all = "camelCase")]
+    SystemPromptField {
+        direction: String,
+        character_kind: CharacterKind,
+        value: String,
+    },
+    /// P4.D371 — v4 `wizardFieldPrompt(field, characterKind) ?? null`.
+    #[serde(rename = "wizard_field_prompt", rename_all = "camelCase")]
+    WizardFieldPrompt {
+        field: String,
+        character_kind: CharacterKind,
+        value: Option<String>,
+    },
+    /// P4.D371 — v4 `wizardFieldMaxTokens(field)`.
+    #[serde(rename = "wizard_field_max_tokens")]
+    WizardFieldMaxTokens { field: String, value: i64 },
     #[serde(rename = "coverage", rename_all = "camelCase")]
     Coverage {
         field_prompts: Vec<String>,
+        system_prompt_fields: Vec<String>,
+        wizard_fields: Vec<String>,
         contexts: Vec<String>,
     },
 }
@@ -96,6 +125,9 @@ fn generators_wizard_prompts_match_oracle() {
     let mut seen_fields: Vec<String> = Vec::new();
     let mut seen_contexts: Vec<String> = Vec::new();
     let mut seen_constants: Vec<String> = Vec::new();
+    let mut seen_directions: Vec<String> = Vec::new();
+    let mut seen_wizard_fields: Vec<(String, CharacterKind)> = Vec::new();
+    let mut seen_max_tokens: Vec<String> = Vec::new();
     let mut coverage: Option<Row> = None;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
@@ -136,12 +168,51 @@ fn generators_wizard_prompts_match_oracle() {
                 eq(&format!("buildContextPrompt '{id}'"), &got, &out);
                 seen_contexts.push(id);
             }
+            Row::SystemPromptField {
+                direction,
+                character_kind,
+                value,
+            } => {
+                eq(
+                    &format!("buildSystemPromptFieldPrompt('{}') [{direction}]", character_kind.as_str()),
+                    build_system_prompt_field_prompt(character_kind),
+                    &value,
+                );
+                seen_directions.push(direction);
+            }
+            Row::WizardFieldPrompt {
+                field,
+                character_kind,
+                value,
+            } => {
+                let label = format!("wizardFieldPrompt('{field}', '{}')", character_kind.as_str());
+                match (wizard_field_prompt(&field, character_kind), value.as_deref()) {
+                    (Some(got), Some(want)) => eq(&label, got, want),
+                    (None, None) => {}
+                    (got, want) => panic!(
+                        "{label}: v5 {} where v4 {}",
+                        if got.is_some() { "answered" } else { "had none" },
+                        if want.is_some() { "answered" } else { "had none" }
+                    ),
+                }
+                seen_wizard_fields.push((field, character_kind));
+            }
+            Row::WizardFieldMaxTokens { field, value } => {
+                assert_eq!(
+                    wizard_field_max_tokens(&field),
+                    value,
+                    "wizardFieldMaxTokens('{field}')"
+                );
+                seen_max_tokens.push(field);
+            }
             r @ Row::Coverage { .. } => coverage = Some(r),
         }
     }
 
     let Some(Row::Coverage {
         field_prompts,
+        system_prompt_fields,
+        wizard_fields,
         contexts,
     }) = coverage
     else {
@@ -160,9 +231,24 @@ fn generators_wizard_prompts_match_oracle() {
         "constant coverage"
     );
 
-    // Floors. TEN, measured — see the header's correction to the work order.
+    // P4.D371: the direction rows, and every (field, kind) pair, both ways.
+    assert_eq!(seen_directions, system_prompt_fields, "system-prompt field coverage");
+    let kinds = [CharacterKind::Roleplay, CharacterKind::Assistant];
+    let want_pairs: Vec<(String, CharacterKind)> = wizard_fields
+        .iter()
+        .flat_map(|f| kinds.iter().map(move |k| (f.clone(), *k)))
+        .collect();
+    assert_eq!(seen_wizard_fields, want_pairs, "wizardFieldPrompt coverage");
+    assert_eq!(seen_max_tokens, wizard_fields, "wizardFieldMaxTokens coverage");
     assert!(
-        field_prompts.len() >= 10,
+        wizard_fields.len() >= 14,
+        "wizard field corpus: {}",
+        wizard_fields.len()
+    );
+
+    // Floors. NINE, measured at v4 `3ae4cf582` (ten before — see the header).
+    assert!(
+        field_prompts.len() >= 9,
         "FIELD_PROMPTS shrank below the measured floor: {}",
         field_prompts.len()
     );

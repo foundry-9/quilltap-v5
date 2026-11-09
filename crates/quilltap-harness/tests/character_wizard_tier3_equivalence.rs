@@ -42,6 +42,19 @@
 //! The dispatch's `{ terminal }` payload is asserted against the last drained
 //! frame.
 //!
+//! P4.D371 (v4 `3ae4cf582`): the Wizard resolves the character's kind once per
+//! run (`[CharacterWizard] New character; writing for the default kind` /
+//! `… Writing for the character's kind`, both DEBUG and compared here at every
+//! level) and the system-prompt field carries the kind's direction on its own
+//! 2500-token budget. A case's `plant` rewrites the character's vault
+//! `properties.json` IN-CASE on both sides through the REAL
+//! `writeDatabaseDocument` / `write_database_document` (the same bytes; the
+//! oracle self-checks that v4's `findById` then resolves the planted kind).
+//! Planted rows run in their OWN test, `character_wizard_assistant_kind_rows`
+//! (U1 / H1): RED on the P4.D371 branch BY DESIGN — `KIND` alone does not make
+//! `characters_read::find_by_id` carry a stored `kind` (P4.D369's read
+//! overlay does) — and green on the union.
+//!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -91,6 +104,9 @@ use tokio::sync::broadcast;
 // P4.85 item 10: `materialize_llm_logs` — an llm-logs partition beside the
 // fixture pair, so the runners' `logLLMCall` twin has somewhere to write.
 mod common;
+// P4.D371: the in-case vault plant for the assistant-kind rows.
+#[path = "common/kind_plant.rs"]
+mod kind_plant;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +136,18 @@ struct Case {
     /// P4.151 D: the scripted PDF converter answer (absent = no script).
     #[serde(default, rename = "pdfConverter")]
     pdf_converter: Option<String>,
+    /// P4.D371: an in-case vault plant (absent = the committed pair as-is).
+    #[serde(default)]
+    plant: Option<Plant>,
+}
+
+/// P4.D371 — the bytes written to the character's vault `properties.json`
+/// before the run, on both sides, through the real document writer.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Plant {
+    character_id: String,
+    properties: String,
 }
 
 #[derive(Deserialize)]
@@ -388,7 +416,7 @@ impl GeneratorsWizardDriver for TestDriver {
     }
 }
 
-fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
+fn fresh_pair(spec: &Spec, tag: &str, plant: Option<&Plant>) -> (Db, tempfile::TempDir) {
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-wiz-{tag}-"))
         .tempdir()
@@ -397,6 +425,15 @@ fn fresh_pair(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("character-generators-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("character-generators-mount.db"), &mount).unwrap();
+    if let Some(plant) = plant {
+        kind_plant::plant_vault_properties(
+            &main,
+            &mount,
+            &spec.test_pepper_base64,
+            &plant.character_id,
+            &plant.properties,
+        );
+    }
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.
@@ -547,7 +584,7 @@ fn first_diff(got: &str, want: &str) -> String {
 }
 
 fn run_case(spec: &Spec, c: &Case) -> Value {
-    let (db, scratch) = fresh_pair(spec, &c.name);
+    let (db, scratch) = fresh_pair(spec, &c.name, c.plant.as_ref());
     let completion = Arc::new(ScriptedProvider {
         script: c
             .calls
@@ -638,11 +675,11 @@ fn run_case(spec: &Spec, c: &Case) -> Value {
     })
 }
 
-#[test]
-fn character_wizard_matches_oracle() {
+/// The oracle, the spec and the corpus, with the case sets asserted equal.
+fn load_family() -> Option<(Spec, Corpus, HashMap<String, OracleRow>)> {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_CHARACTER_WIZARD") else {
         eprintln!("SKIP: set QT_ORACLE_CHARACTER_WIZARD (see the test header).");
-        return;
+        return None;
     };
     let text = std::fs::read_to_string(&oracle_path).unwrap();
     assert!(
@@ -671,6 +708,69 @@ fn character_wizard_matches_oracle() {
         corpus_names, oracle_names,
         "the corpus and the oracle disagree on the case set"
     );
+    Some((spec, corpus, oracle))
+}
+
+/// One case's v5 run against its oracle row; `Some(diff)` when they differ.
+fn compare_case(spec: &Spec, c: &Case, want_row: &OracleRow) -> Option<String> {
+    let got = run_case(spec, c);
+    let want = json!({
+        "name": want_row.name,
+        "status": want_row.status,
+        "body": want_row.body,
+        "events": want_row.events,
+        "calls": want_row.calls,
+        "logLines": want_row.log_lines,
+        "llmLogCounts": want_row.llm_log_counts,
+        "pdfConverterCalls": want_row.pdf_converter_calls,
+        "pdfLines": want_row.pdf_lines,
+        "pdfOutcome": want_row.pdf_outcome,
+    });
+    let (g, w) = (normalize(got), normalize(want));
+    (g != w).then(|| format!("{}:\n{}", c.name, first_diff(&g, &w)))
+}
+
+/// P4.D371 U1 / H1 — the planted assistant-kind rows, apart from the main
+/// test so it stays green on the lane branch. RED here BY DESIGN until
+/// P4.D369's read overlay carries `kind` (the first diff is the STAKES text
+/// where v4 sent the TASK text); green on the union. Never `#[ignore]`d, never
+/// env-gated beyond the family's own oracle variable.
+#[test]
+fn character_wizard_assistant_kind_rows() {
+    let Some((spec, corpus, oracle)) = load_family() else {
+        return;
+    };
+    let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
+    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind rows");
+    let mut failed: Vec<String> = Vec::new();
+    for c in planted {
+        let want_row = &oracle[&c.name];
+        assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
+        // The oracle's own plant self-check: v4 READ the planted kind.
+        assert!(
+            want_row.log_lines.iter().any(|l| l["message"]
+                == json!("[CharacterWizard] Writing for the character's kind")
+                && l["context"]["kind"] == json!("assistant")),
+            "{}: v4 never resolved the planted assistant kind — the plant missed",
+            c.name
+        );
+        if let Some(d) = compare_case(&spec, c, want_row) {
+            failed.push(d);
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "{} assistant-kind case(s) DIFFER:\n{}",
+        failed.len(),
+        failed.join("\n")
+    );
+}
+
+#[test]
+fn character_wizard_matches_oracle() {
+    let Some((spec, corpus, oracle)) = load_family() else {
+        return;
+    };
 
     let mut failed: Vec<String> = Vec::new();
     let (mut model_calls, mut frames, mut vision_calls, mut zod_rows, mut json_rows) =
@@ -681,10 +781,16 @@ fn character_wizard_matches_oracle() {
     // the converter script the corpus wrote.
     let mut pdf_outcomes: BTreeMap<String, usize> = BTreeMap::new();
     let mut split_key_rows = 0usize;
-    for c in &corpus.cases {
+    // P4.D371: the 2500-token system-prompt budget must still be ASKED.
+    let mut system_prompt_budget_calls = 0usize;
+    for c in corpus.cases.iter().filter(|c| c.plant.is_none()) {
         let want_row = &oracle[&c.name];
         assert_raw_sse_decodes_to_events(&c.name, want_row.raw_sse.as_deref(), &want_row.events);
-        let got = run_case(&spec, c);
+        system_prompt_budget_calls += want_row
+            .calls
+            .iter()
+            .filter(|call| call["maxTokens"] == json!(2500))
+            .count();
         model_calls += want_row.calls.len();
         frames += want_row.events.len();
         vision_calls += want_row
@@ -743,23 +849,14 @@ fn character_wizard_matches_oracle() {
         if c.action == "ai-wizard" && want_row.status == 200 {
             json_rows += 1;
         }
-        let want = json!({
-            "name": want_row.name,
-            "status": want_row.status,
-            "body": want_row.body,
-            "events": want_row.events,
-            "calls": want_row.calls,
-            "logLines": want_row.log_lines,
-            "llmLogCounts": want_row.llm_log_counts,
-            "pdfConverterCalls": want_row.pdf_converter_calls,
-            "pdfLines": want_row.pdf_lines,
-            "pdfOutcome": want_row.pdf_outcome,
-        });
-        let (g, w) = (normalize(got), normalize(want));
-        if g != w {
-            failed.push(format!("{}:\n{}", c.name, first_diff(&g, &w)));
+        if let Some(d) = compare_case(&spec, c, want_row) {
+            failed.push(d);
         }
     }
+    assert!(
+        system_prompt_budget_calls >= 2,
+        "the oracle recorded only {system_prompt_budget_calls} system-prompt calls at the 2500 budget"
+    );
     assert!(
         model_calls >= 60,
         "the oracle recorded only {model_calls} model calls"

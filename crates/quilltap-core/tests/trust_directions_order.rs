@@ -18,7 +18,8 @@ use quilltap_core::generators::optimizer::{
     get_new_system_prompts_suggestion_prompt, get_system_prompt_suggestion_prompt,
     SUGGESTION_SCHEMA_PREAMBLE,
 };
-use quilltap_core::generators::wizard_prompts::FIELD_PROMPT_SYSTEM_PROMPT;
+use quilltap_core::characters::kind::CharacterKind;
+use quilltap_core::generators::wizard_prompts::build_system_prompt_field_prompt;
 use serde_json::json;
 
 /// `indexOf(a)` of the first occurrence, panicking (with the needle) when absent.
@@ -57,11 +58,15 @@ fn ai_import_system_prompts_prompt_carries_the_directions_in_order() {
 
 #[test]
 fn wizard_system_prompt_field_carries_the_directions_in_order() {
-    let p = FIELD_PROMPT_SYSTEM_PROMPT;
-    assert!(p.contains(TRUST_SAFEGUARDS_DIRECTION));
-    assert!(p.to_lowercase().contains("not a committee"));
-    gate_before_disposition(p, COMPANION_TRUST_DISPOSITION_GATE);
-    assert!(p.contains("under 600 words"));
+    // P4.D371 (v4 `3ae4cf582`): the field moved to a kind-routed builder; the
+    // trust order holds for both kinds.
+    for kind in [CharacterKind::Roleplay, CharacterKind::Assistant] {
+        let p = build_system_prompt_field_prompt(kind);
+        assert!(p.contains(TRUST_SAFEGUARDS_DIRECTION));
+        assert!(p.to_lowercase().contains("not a committee"));
+        gate_before_disposition(p, COMPANION_TRUST_DISPOSITION_GATE);
+        assert!(p.contains("under 600 words"));
+    }
 }
 
 #[test]
@@ -127,5 +132,8 @@ fn external_meta_prompt_carries_the_directions_and_forbids_the_literal_token() {
     assert!(p.contains(&format!(
         "{GATED_COMPANION_TRUST_DISPOSITION}\n\nThe external tool will not substitute placeholders"
     )));
-    assert_eq!(p.encode_utf16().count(), 5664);
+    // 5664 at P4.D241; 6701 once v4 `ba6c8fe0f`'s probation rewrites (the
+    // sixth safeguard + the card-table example, the six-bullet companion
+    // disposition) reached the interpolated constants (P4.D371).
+    assert_eq!(p.encode_utf16().count(), 6701);
 }

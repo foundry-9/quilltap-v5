@@ -790,6 +790,91 @@
       "calls": [
         "You keep the harbor lit."
       ]
+    },
+    {
+      "name": "stream_system_prompt_new_character",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "systemPrompt"
+        ]
+      },
+      "calls": [
+        "You are Mira, the lantern keeper."
+      ]
+    },
+    {
+      "name": "stream_system_prompt_existing_roleplay",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "systemPrompt"
+        ],
+        "characterId": "a2000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "You are Mira, the lantern keeper."
+      ]
+    },
+    {
+      "name": "stream_character_id_missing",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "systemPrompt"
+        ],
+        "characterId": "a2000002-0000-4000-8000-0000000000ff"
+      },
+      "calls": [
+        "You are Mira, the lantern keeper."
+      ]
+    },
+    {
+      "name": "stream_no_fields_still_resolves_kind",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [],
+        "characterId": "a2000002-0000-4000-8000-000000000001"
+      },
+      "calls": []
+    },
+    {
+      "name": "stream_system_prompt_existing_assistant",
+      "action": "ai-wizard-stream",
+      "body": {
+        "primaryProfileId": "c0000002-0000-4000-8000-000000000001",
+        "sourceType": "skip",
+        "characterName": "Mira",
+        "background": "A harbor town.",
+        "fieldsToGenerate": [
+          "systemPrompt"
+        ],
+        "characterId": "a2000002-0000-4000-8000-000000000001"
+      },
+      "calls": [
+        "You are Mira, the lantern keeper."
+      ],
+      "plant": {
+        "characterId": "a2000002-0000-4000-8000-000000000001",
+        "kind": "assistant",
+        "properties": "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Mimi\",\n    \"Lantern-girl\"\n  ],\n  \"title\": \"Keeper of the Lanterns\",\n  \"firstMessage\": \"*Mira sets down the oil can and squints at you.* You're not from the boats. What brings you up the lantern stairs?\",\n  \"talkativeness\": 0.6,\n  \"canChooseOutfit\": false,\n  \"kind\": \"assistant\"\n}"
+      }
     }
   ]
 }

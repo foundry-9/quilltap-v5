@@ -82,6 +82,13 @@ interface CaseSpec {
    * mismatch on v5's.
    */
   pdfConverter?: string;
+  /**
+   * P4.D371: an in-case vault plant — `properties` written to the character's
+   * `properties.json` through the REAL `writeDatabaseDocument` before the
+   * run (v5 writes the same bytes through `write_database_document`). The
+   * oracle self-checks that `findById` then resolves the planted `kind`.
+   */
+  plant?: { characterId: string; kind: string; properties: string };
 }
 
 interface Corpus {
@@ -322,6 +329,7 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  if (c.plant) await plantVaultProperties(c.plant);
   const llmLogsBefore = await llmLogTotals();
 
   const loggerModule = (await import('@/lib/logger')) as { logger: Record<string, (...a: unknown[]) => unknown> };
@@ -404,6 +412,35 @@ async function runCase(
     await closeDatabase();
     closeMountIndexSQLiteClient();
     rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * P4.D371 — plant a character's vault `properties.json` through v4's REAL
+ * document writer, then prove v4's own read resolves the planted kind (a
+ * plant that misses would make the row a test of nothing — memory note
+ * `tier-r-vacuous-equal-rows`).
+ */
+async function plantVaultProperties(plant: {
+  characterId: string;
+  kind: string;
+  properties: string;
+}): Promise<void> {
+  const { rawQuery } = await import('@/lib/database/manager');
+  const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const { resolveCharacterKind } = await import('@/lib/characters/kind');
+  const fk = (await rawQuery(
+    'SELECT characterDocumentMountPointId AS mp FROM characters WHERE id = ?',
+    [plant.characterId],
+  )) as Array<{ mp: string | null }>;
+  const mountPointId = fk[0]?.mp;
+  if (!mountPointId) throw new Error(`kind plant: no vault FK for ${plant.characterId}`);
+  await writeDatabaseDocument(mountPointId, 'properties.json', plant.properties);
+  const character = await getRepositories().characters.findById(plant.characterId);
+  const kind = resolveCharacterKind(character as never);
+  if (kind !== plant.kind) {
+    throw new Error(`kind plant missed: v4 resolved '${kind}', planted '${plant.kind}'`);
   }
 }
 

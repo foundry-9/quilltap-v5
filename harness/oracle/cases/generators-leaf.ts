@@ -45,11 +45,17 @@ import {
   COMPANION_TRUST_DISPOSITION_GATE,
   GATED_COMPANION_TRUST_DISPOSITION,
   COMMITTEE_DRIFT_GUARDRAIL,
+  STAKES_AND_REACTION_DIRECTION,
+  ASSISTANT_TASK_DIRECTION,
+  FLATTENING_DRIFT_SIGNAL,
   EXAMPLE_DIALOGUE_COVERAGE,
   PROPERTIES_SEMANTICS,
   PHYSICAL_DESCRIPTION_SEMANTICS,
   WARDROBE_SEMANTICS,
   FULL_FIELD_SEMANTICS,
+  CORE_VAULT_FILE_SUMMARIES,
+  generatorDirectionFor,
+  kindDriftSignalFor,
 } from '@/lib/services/character-field-semantics';
 
 interface TextCase {
@@ -149,6 +155,12 @@ const semantics: Array<[string, string]> = [
   ['COMPANION_TRUST_DISPOSITION_GATE', COMPANION_TRUST_DISPOSITION_GATE],
   ['GATED_COMPANION_TRUST_DISPOSITION', GATED_COMPANION_TRUST_DISPOSITION],
   ['COMMITTEE_DRIFT_GUARDRAIL', COMMITTEE_DRIFT_GUARDRAIL],
+  // P4.D371 (v4 3ae4cf582): the two kind directions and the flattening drift
+  // signal, in v4's source order (between COMMITTEE_DRIFT_GUARDRAIL and
+  // EXAMPLE_DIALOGUE_COVERAGE).
+  ['STAKES_AND_REACTION_DIRECTION', STAKES_AND_REACTION_DIRECTION],
+  ['ASSISTANT_TASK_DIRECTION', ASSISTANT_TASK_DIRECTION],
+  ['FLATTENING_DRIFT_SIGNAL', FLATTENING_DRIFT_SIGNAL],
   ['EXAMPLE_DIALOGUE_COVERAGE', EXAMPLE_DIALOGUE_COVERAGE],
   ['PROPERTIES_SEMANTICS', PROPERTIES_SEMANTICS],
   ['PHYSICAL_DESCRIPTION_SEMANTICS', PHYSICAL_DESCRIPTION_SEMANTICS],
@@ -159,6 +171,40 @@ for (const [name, value] of semantics) {
   out({ kind: 'field_semantics', id: name, value });
 }
 
+// ---- generatorDirectionFor / kindDriftSignalFor (P4.D371, v4 3ae4cf582) ---
+// The same eight inputs P4.D369's cases/character-kind.ts drives through
+// characterKindOrDefault; an `undefined` input is emitted as an ABSENT
+// `input` key (that case's convention), and kindDriftSignalFor's `null` as
+// JSON null.
+const kindInputs: Array<[string, unknown]> = [
+  ['roleplay', 'roleplay'],
+  ['assistant', 'assistant'],
+  ['mixed-case', 'Assistant'],
+  ['null', null],
+  ['number', 5],
+  ['undefined', undefined],
+  ['robot', 'robot'],
+  ['empty', ''],
+];
+const kindRow = (kind: string, id: string, input: unknown, value: unknown) => {
+  const r: Record<string, unknown> = { kind, id };
+  if (input !== undefined) r.input = input;
+  r.out = value;
+  out(r);
+};
+for (const [id, input] of kindInputs) {
+  kindRow('generator_direction', id, input, generatorDirectionFor(input as never));
+}
+for (const [id, input] of kindInputs) {
+  kindRow('kind_drift_signal', id, input, kindDriftSignalFor(input as never));
+}
+
+// ---- CORE_VAULT_FILE_SUMMARIES (P4.D371 — the hand copy's first oracle) ----
+const coreVaultEntries = Object.entries(CORE_VAULT_FILE_SUMMARIES);
+for (const [path, summary] of coreVaultEntries) {
+  out({ kind: 'core_vault_file_summary', id: path, value: summary });
+}
+
 // ---- coverage --------------------------------------------------------------
 out({
   kind: 'coverage',
@@ -166,5 +212,8 @@ out({
   pronouns: corpus.pronouns.map((c) => c.id),
   properties: corpus.properties.map((c) => c.id),
   fieldSemantics: semantics.map(([name]) => name),
+  generatorDirection: kindInputs.map(([id]) => id),
+  kindDriftSignal: kindInputs.map(([id]) => id),
+  coreVaultFileSummaries: coreVaultEntries.map(([path]) => path),
   missingPronounsLabel: corpus.missingPronounsLabel,
 });
