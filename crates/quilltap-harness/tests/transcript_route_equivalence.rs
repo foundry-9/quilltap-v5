@@ -64,6 +64,9 @@ enum Plant {
     /// `chats.userId` for a chat — poses v4's ownership arm on the one user
     /// v5 has.
     Owner(&'static str, &'static str),
+    /// P4.D372: the `isEstablishedFact` column + a seat line, a `false` cell
+    /// and a machine fact in a chat (the oracle's `facts` plant).
+    Facts(&'static str),
 }
 
 /// A fresh Db over a copy of the committed fixture, healed and planted exactly
@@ -107,6 +110,30 @@ fn venue(spec: &Spec, tag: &str, plant: Plant) -> (tempfile::TempDir, Db) {
                         rusqlite::params![user, chat],
                     )
                     .unwrap();
+            }
+            // === P4.D372 === the oracle's statements, byte for byte.
+            Plant::Facts(chat) => {
+                let c = w.connection();
+                let has: bool = c
+                    .query_row(
+                        "SELECT COUNT(*) FROM pragma_table_info('chat_messages') \
+                         WHERE name = 'isEstablishedFact'",
+                        [],
+                        |r| r.get::<_, i64>(0),
+                    )
+                    .unwrap()
+                    > 0;
+                if !has {
+                    c.execute_batch(r#"ALTER TABLE "chat_messages" ADD COLUMN "isEstablishedFact" INTEGER DEFAULT NULL"#).unwrap();
+                }
+                for sql in [
+                    r#"UPDATE "chat_messages" SET "isEstablishedFact" = 1.0 WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ?1 AND "role" = 'USER' ORDER BY "createdAt", "id" LIMIT 1)"#,
+                    r#"UPDATE "chat_messages" SET "isEstablishedFact" = 0.0 WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ?1 AND "role" = 'USER' ORDER BY "createdAt", "id" LIMIT 1 OFFSET 1)"#,
+                    r#"UPDATE "chat_messages" SET "systemSender" = 'host', "systemKind" = 'established-fact', "participantId" = NULL WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ?1 AND "role" = 'ASSISTANT' ORDER BY "createdAt", "id" LIMIT 1)"#,
+                ] {
+                    let n = c.execute(sql, rusqlite::params![chat]).unwrap();
+                    assert_eq!(n, 1, "fact plant hit {n} rows: {sql}");
+                }
             }
         }
     }
@@ -275,6 +302,13 @@ fn transcript_route_matches_oracle() {
             GROUP,
             Leg::Transcript(None),
         ),
+        // P4.D372: a seat line `true`, a `false` cell `null`, a machine fact.
+        (
+            "deus_fact_rows_project_the_flag",
+            Plant::Facts(SOLO),
+            SOLO,
+            Leg::Transcript(None),
+        ),
         (
             "transcript_404s_a_chat_owned_by_someone_else",
             Plant::Owner(SOLO, FOREIGN_USER),
@@ -381,7 +415,7 @@ fn transcript_route_matches_oracle() {
         }
     }
 
-    assert_eq!(ran, 16, "every case must have run");
+    assert_eq!(ran, 17, "every case must have run"); // P4.D372: +1 deus row
     assert!(
         failed.is_empty(),
         "transcript-route differences: {failed:?}"

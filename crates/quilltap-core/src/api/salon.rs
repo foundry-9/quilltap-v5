@@ -653,6 +653,10 @@ pub(super) fn project_message(e: &Value, attachments: Value) -> Value {
         or_null("targetParticipantIds"),
     );
     m.insert("isSilentMessage".into(), or_null("isSilentMessage"));
+    // === P4.D372 === v4 `transcript-projection.ts:239` (`db6190b44`):
+    // `event.isEstablishedFact || null` — a `false` cell projects `null` (R4).
+    m.insert("isEstablishedFact".into(), or_null("isEstablishedFact"));
+    // === /P4.D372 ===
     m.insert("systemSender".into(), or_null("systemSender"));
     m.insert("systemKind".into(), or_null("systemKind"));
     m.insert("hostEvent".into(), or_null("hostEvent"));

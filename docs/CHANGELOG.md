@@ -251,6 +251,12 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the transcript projects isEstablishedFact with or_null (P4.D372 item 21, R4)
+
+_Versions: core 0.0.1439._
+
+`project_message` gains `isEstablishedFact: or_null("isEstablishedFact")` right after `isSilentMessage` (v4's `event.isEstablishedFact || null`), so a `false` cell projects `null`. The continuation copy (`take`, v4's `?? null`) had already landed with P4.D362. `transcript_route_equivalence` gains `deus_fact_rows_project_the_flag`. Its in-case plant is the migration-shaped column, a seat line `1.0`, a `false` cell `0.0` and a machine fact, done with identical SQL on both sides. It was red first.
+
 #### 2026-11-09 — deus: the announcement's fact sender, post_established_fact, the ESTABLISHED_FACT_MEMORIES job and its handler (P4.D372 items 16–19, 26)
 
 _Versions: core 0.0.1438, host 0.0.226._

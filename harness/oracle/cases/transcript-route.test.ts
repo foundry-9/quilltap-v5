@@ -152,6 +152,10 @@ interface Plant {
   version?: { chatId: string; value: number | null };
   /** `chats.userId` for a given chat id — poses v4's ownership arm. */
   owner?: { chatId: string; userId: string };
+  /** P4.D372: the `isEstablishedFact` column (v4's migration shape, the
+   *  committed pair predates it) + a seat line (`1.0`), a `false` cell
+   *  (`0.0` → projected `null`) and a machine fact, in the given chat. */
+  facts?: { chatId: string };
 }
 
 interface CaseSpec {
@@ -207,6 +211,15 @@ const CASES: CaseSpec[] = [
     name: 'off_scene_author_cards_travel_with_the_transcript',
     url: `?chatId=${GROUP}&action=transcript`,
   },
+  // === P4.D372 (v4 `db6190b44`) === `isEstablishedFact: event.isEstablishedFact
+  // || null` — a seat line projects `true`, a `false` cell `null`, a machine
+  // fact carries its `systemKind`.
+  {
+    name: 'deus_fact_rows_project_the_flag',
+    url: `?chatId=${SOLO}&action=transcript`,
+    plant: { facts: { chatId: SOLO } },
+  },
+  // === /P4.D372 ===
   {
     name: 'transcript_404s_a_chat_owned_by_someone_else',
     url: `?chatId=${SOLO}&action=transcript`,
@@ -281,6 +294,17 @@ function plantOnCopy(mainPath: string, pepper: string, plant: Plant | undefined)
       plant.owner.chatId,
     );
   }
+  // === P4.D372 ===
+  if (plant?.facts) {
+    if (!cols('chat_messages').includes('isEstablishedFact')) {
+      db.exec('ALTER TABLE "chat_messages" ADD COLUMN "isEstablishedFact" INTEGER DEFAULT NULL');
+    }
+    for (const sql of ['UPDATE "chat_messages" SET "isEstablishedFact" = 1.0 WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ? AND "role" = \'USER\' ORDER BY "createdAt", "id" LIMIT 1)', 'UPDATE "chat_messages" SET "isEstablishedFact" = 0.0 WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ? AND "role" = \'USER\' ORDER BY "createdAt", "id" LIMIT 1 OFFSET 1)', 'UPDATE "chat_messages" SET "systemSender" = \'host\', "systemKind" = \'established-fact\', "participantId" = NULL WHERE "id" = (SELECT "id" FROM "chat_messages" WHERE "chatId" = ? AND "role" = \'ASSISTANT\' ORDER BY "createdAt", "id" LIMIT 1)']) {
+      const n = db.prepare(sql).run(plant.facts.chatId).changes;
+      if (n !== 1) throw new Error(`fact plant hit ${n} rows: ${sql}`);
+    }
+  }
+  // === /P4.D372 ===
   db.close();
 }
 
