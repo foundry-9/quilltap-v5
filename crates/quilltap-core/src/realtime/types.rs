@@ -33,6 +33,14 @@ pub enum RealtimeTopic {
     /// moved. Collection-wide (lists and folders). What a chat carries is the
     /// `chats` topic's. (v4 `e1872c94f`, P4.D324.)
     Inventory,
+    // === P4.D377 ===
+    /// Wardrobe items and folders: a file created, edited, archived, deleted or
+    /// filed, or a folder made, renamed or removed — published by every write
+    /// through a wardrobe location ([`crate::db::wardrobe_location`]).
+    /// Collection-wide: the browsers' lists and folder trees. What a chat's cast
+    /// is *wearing* is the `chats` topic's. (v4 `600c2906f`, P4.D377.)
+    Wardrobe,
+    // === P4.D377 ===
     /// A chat's storyteller rounds: a round opened, a bid landed, a selection
     /// ran, a round closed. Scoped by CHAT id (v4 `b15fe9404`, P4.D343).
     StorytellerRounds,
@@ -42,7 +50,8 @@ pub enum RealtimeTopic {
 }
 
 /// Every topic, in v4's declaration order.
-pub const REALTIME_TOPICS: [RealtimeTopic; 10] = [
+// === P4.D377 === (10 → 11: `Wardrobe` between `Inventory` and `StorytellerRounds`)
+pub const REALTIME_TOPICS: [RealtimeTopic; 11] = [
     RealtimeTopic::Jobs,
     RealtimeTopic::AutonomousRooms,
     RealtimeTopic::Chats,
@@ -51,6 +60,7 @@ pub const REALTIME_TOPICS: [RealtimeTopic; 10] = [
     RealtimeTopic::MountPoints,
     RealtimeTopic::Memories,
     RealtimeTopic::Inventory,
+    RealtimeTopic::Wardrobe, // === P4.D377 ===
     RealtimeTopic::StorytellerRounds,
     RealtimeTopic::CustomToolInterventions,
 ];
@@ -67,6 +77,7 @@ impl RealtimeTopic {
             RealtimeTopic::MountPoints => "mountPoints",
             RealtimeTopic::Memories => "memories",
             RealtimeTopic::Inventory => "inventory",
+            RealtimeTopic::Wardrobe => "wardrobe", // === P4.D377 ===
             RealtimeTopic::StorytellerRounds => "storytellerRounds",
             RealtimeTopic::CustomToolInterventions => "customToolInterventions",
         }
@@ -116,12 +127,14 @@ mod tests {
     use crate::api::types::{Event, EventPayload};
 
     #[test]
-    fn topics_are_v4s_ten_in_order() {
+    fn topics_are_v4s_eleven_in_order() {
         // `memories` came seventh: bug 128 (`4a9be9878`) appended it;
         // `inventory` eighth (`e1872c94f`, P4.D324), `storytellerRounds` ninth
         // (`b15fe9404`, P4.D343), `customToolInterventions` tenth (`839575d89`,
-        // P4.D345 — restored positionally at the union, H4). The order is v4's
-        // declaration order in `REALTIME_TOPICS`.
+        // P4.D345 — restored positionally at the union, H4). `wardrobe` is the
+        // eleventh topic ADDED but NINTH in v4's declaration order — after
+        // `inventory`, before `storytellerRounds` (`600c2906f`, P4.D377). The
+        // order is v4's declaration order in `REALTIME_TOPICS`.
         let names = REALTIME_TOPICS.map(RealtimeTopic::as_str).to_vec();
         assert_eq!(
             names,
@@ -134,6 +147,7 @@ mod tests {
                 "mountPoints",
                 "memories",
                 "inventory",
+                "wardrobe",
                 "storytellerRounds",
                 "customToolInterventions"
             ]

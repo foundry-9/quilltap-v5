@@ -170,6 +170,11 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         // Collection-wide — v4 `TOPIC_ID_FIELDS.inventory = []`; a write batch
         // announces it through `INVENTORY_PATH_PATTERN` instead (P4.D328).
         RealtimeTopic::Inventory => &[],
+        // === P4.D377 ===
+        // Collection-wide likewise — v4 `TOPIC_ID_FIELDS.wardrobe = []`; a write
+        // batch announces it through `WARDROBE_PATH_PATTERN` (`600c2906f`).
+        RealtimeTopic::Wardrobe => &[],
+        // === P4.D377 ===
         // P4.D343: v4 `job-topics.ts` `storytellerRounds: []` — no job child
         // publishes it (the round service runs in the request path).
         RealtimeTopic::StorytellerRounds => &[],
@@ -198,6 +203,32 @@ fn writes_inventory_file(write: &ChildWritePayload) -> bool {
         .map(|text| INVENTORY_PATH_PATTERN.is_match(&text))
         .unwrap_or(false)
 }
+
+// === P4.D377 ===
+/// A document-store write naming a path under a tier's `Wardrobe/` folder — an
+/// item or folder a job's `wardrobe_*` call or Pascal effect wrote — or a
+/// buffered `wardrobe.*` repository write (the replayed call writes the store
+/// itself). Either implies the `wardrobe` topic beside `mountPoints` (v4
+/// `WARDROBE_PATH_PATTERN = /(^|[\\/"])Wardrobe\//`, `600c2906f`). Case-sensitive.
+static WARDROBE_PATH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(^|[\\/"])Wardrobe/"#).expect("static pattern"));
+
+/// v4 `writesWardrobeFile`: the `wardrobe.` method prefix FIRST (no v5 job-child
+/// producer emits a `wardrobe.*` buffered write today — the arm is ported
+/// verbatim and corpus-pinned), then the `docMount` gate, then the pattern over
+/// the JSON-stringified args.
+fn writes_wardrobe_file(write: &ChildWritePayload) -> bool {
+    if write.method.starts_with("wardrobe.") {
+        return true;
+    }
+    if !write.method.starts_with("docMount") {
+        return false;
+    }
+    serde_json::to_string(&write.args)
+        .map(|text| WARDROBE_PATH_PATTERN.is_match(&text))
+        .unwrap_or(false)
+}
+// === P4.D377 ===
 
 fn extract_topic_id(topic: RealtimeTopic, args: &[Value]) -> Option<String> {
     let first = args.first()?;
@@ -246,6 +277,14 @@ pub fn topics_for_write_batch(writes: &[ChildWritePayload]) -> Vec<TopicHint> {
             seen.push(inventory_key.to_string());
             hints.push(TopicHint::collection(RealtimeTopic::Inventory));
         }
+        // === P4.D377 === the bare `wardrobe` hint, once per batch, AFTER the
+        // inventory hint and BEFORE the namespace topic (v4 `job-topics.ts:232-235`).
+        let wardrobe_key = RealtimeTopic::Wardrobe.as_str();
+        if !seen.iter().any(|k| k == wardrobe_key) && writes_wardrobe_file(write) {
+            seen.push(wardrobe_key.to_string());
+            hints.push(TopicHint::collection(RealtimeTopic::Wardrobe));
+        }
+        // === P4.D377 ===
         let namespace = write.method.split('.').next().unwrap_or(&write.method);
         let Some((_, topic)) = REPOSITORY_TOPICS.iter().find(|(ns, _)| *ns == namespace) else {
             continue;

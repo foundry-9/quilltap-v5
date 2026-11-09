@@ -373,3 +373,88 @@ for (const c of INVENTORY_HINT_CASES) {
   });
 }
 // === end P4.D328 ===
+
+// === P4.D377: the wardrobe write hint ===
+// v4 `600c2906f` (`job-topics.ts:170-184,232-235`): a `wardrobe.*` method, or a
+// `docMount*` write whose JSON-stringified args name a `Wardrobe/` path, adds
+// ONE bare `wardrobe` hint — AFTER the inventory hint, BEFORE the write's own
+// namespace topic. Case-sensitive; other methods never hint.
+const WARDROBE_HINT_CASES: { name: string; writes: { method: string; args?: unknown[] }[] }[] = [
+  {
+    name: 'batch_wardrobe_link_hint',
+    writes: [
+      {
+        method: 'docMountFileLinks.linkDocumentContent',
+        args: [MOUNT, 'Wardrobe/hat.md', { content: '---' }],
+      },
+    ],
+  },
+  {
+    name: 'batch_wardrobe_inside_json_string_value',
+    writes: [{ method: 'docMountFiles.create', args: [{ relativePath: 'Wardrobe/coat.md', mountPointId: MOUNT }] }],
+  },
+  {
+    name: 'batch_wardrobe_nested_path_slash',
+    writes: [{ method: 'docMountDocuments.upsert', args: [MOUNT, 'characters/abc/Wardrobe/Hats/cap.md'] }],
+  },
+  {
+    name: 'batch_wardrobe_method_prefix',
+    writes: [{ method: 'wardrobe.update', args: ['item-1', { title: 'x' }] }],
+  },
+  {
+    name: 'batch_wardrobe_and_inventory_order',
+    writes: [
+      { method: 'docMountFiles.create', args: [{ relativePath: 'Wardrobe/a.md' }] },
+      { method: 'docMountFiles.create', args: [{ relativePath: 'Inventory/b.json' }] },
+      { method: 'chats.update', args: [CHAT] },
+    ],
+  },
+  {
+    name: 'batch_wardrobe_both_in_one_write',
+    writes: [{ method: 'docMountFolders.create', args: ['Wardrobe/x', 'Inventory/y'] }],
+  },
+  {
+    name: 'batch_wardrobe_lowercase_miss',
+    writes: [{ method: 'docMountFiles.create', args: [{ relativePath: 'wardrobe/foo.md' }] }],
+  },
+  {
+    name: 'batch_wardrobe_non_docmount_miss',
+    writes: [{ method: 'chats.update', args: [CHAT, { note: 'Wardrobe/foo.md' }] }],
+  },
+  {
+    name: 'batch_wardrobe_method_prefix_case_miss',
+    writes: [{ method: 'Wardrobe.update', args: ['item-1'] }],
+  },
+  {
+    name: 'batch_wardrobe_bare_word_method_miss',
+    writes: [{ method: 'wardrobeItems.update', args: ['item-1'] }],
+  },
+  {
+    name: 'batch_wardrobe_mid_word_miss',
+    writes: [{ method: 'docMountFiles.create', args: ['MyWardrobe/foo.md'] }],
+  },
+  {
+    name: 'batch_wardrobe_escaped_backslash',
+    writes: [{ method: 'docMountFiles.create', args: ['C:\\Wardrobe/foo.md'] }],
+  },
+  {
+    name: 'batch_wardrobe_two_writes_one_hint',
+    writes: [
+      { method: 'wardrobe.create', args: [{ title: 'a' }] },
+      { method: 'docMountFileLinks.linkDocumentContent', args: [MOUNT, 'Wardrobe/b.md'] },
+    ],
+  },
+  {
+    name: 'batch_wardrobe_args_absent_docmount',
+    writes: [{ method: 'docMountFiles.create' }],
+  },
+];
+for (const c of WARDROBE_HINT_CASES) {
+  emit({
+    name: c.name,
+    kind: 'batch',
+    input: { writes: c.writes },
+    output: topicsForWriteBatch(c.writes),
+  });
+}
+// === end P4.D377 ===
