@@ -199421,3 +199421,141 @@ core 0.0.1432 (no other crate bumped; harness frozen).
 ### 💸 for the owed dogfood pass
 
 As the order lists (the Friday-copy `kind` count before the first v5 write; an assistant character's talkativeness edit keeps `assistant` with the DEBUG silent; PUT `{kind:'assistant'}` fires the DEBUG once and both GETs answer `assistant`, `{kind:'Assistant'}` answers 400; a POST with `kind:'assistant'` creates `roleplay`; a `.qtap` round trip keeps `assistant`) — plus: a POST carrying `talkativeness` / `aliases` / `metadata` creates the defaults (Tier 2 item 13).
+
+## P4.D370 — Agent Mode and the native tool-rules preamble follow the character's kind (lane `claude/p4-d370-agentmode-419b4b`, stacked on `KIND` `4ff9bff3e`, pin `624d0d25c`, 2026-11-09) — LANE RECORD
+
+### Start
+
+- **§2 probe (observation, §R.2), 2026-11-09 12:40 CST:** v4 moved — `main` at `921fe94bb` (`624d0d25c..main` non-empty: the Green Room / Settings / character-repository refactors, `bc484765f` Wolfi image, and more); `bugfix` moved past `997657639` (`d67c70a51` 4.12.2 bug branch, five fixes); tree DIRTY (`app/salon/[id]/*`, `app/styles/qt-components/_green-room.css`, `help/chats.md`, `packages/theme-storybook/*`, `docs/CHANGELOG.md`). Recorded and continued; the pin was unaffected.
+- **Pin:** `/tmp/qt-v4-pin-p4d370-624d0d25c` at `624d0d25c6cb…`, `package.json` `4.13.0-dev.8`. `npm ci --offline --ignore-scripts` succeeded first time (no `ENOTCACHED`); `better-sqlite3` 13.0.3, `openai` 7.47.0, `@openrouter/sdk` 1.5.34, `zod` 4.6.7, `mermaid` 12.3.0. Floor install (`.claude/pin-plugin-sdks.sh`): `@anthropic-ai/sdk` 1.4.0, `@google/genai` 2.32.0, `openai` 7.47.0, `@openrouter/sdk` 1.5.34, `plugin-utils` 2.7.3; CLI driver 13.0.3 / SQLite 3.53.4 / chacha20. The pin was never swept during the lane.
+- **Base:** the session started in the app-made worktree `.claude/worktrees/p4-d370-agentmode-419b4b` on branch `claude/p4-d370-agentmode-419b4b`, already at `KIND` `4ff9bff3e` (clean; P4.D369's status header records `KIND` = `4ff9bff3e`, no amendment). No move was needed. `KIND` carries C5 whole with wire spellings (`AgentModeFlavor::as_str` → `research` / `in-character`, `ToolRulesVariant::as_str`, all `Copy + Eq`) — no parent amendment was requested. Core at `KIND`: 0.0.1429.
+- Sibling overlap (`git log KIND..<branch> -- <path>`): P4.D366's branch touches `services/orchestrator.rs` (its own region) and the `native_tool_loop_tier3` / `orchestrator_tier3` Rust tests (the `Dialect::Frames` events hunks); no sibling touches `agent_mode.rs`, `native_tool_prompt.rs`, `pseudo_tool.rs`, `native_tool_loop.rs`, `turn_extras.rs`, `chat_admin.rs`'s agent-mode handler or `api/salon.rs`'s cascade.
+
+### Commits (core 0.0.1429 → 0.0.1434)
+
+| commit | what | core |
+|---|---|---|
+| `dfdaec056` | unit A (items 2–5): `native_tool_prompt.rs` whole at the pin, `pseudo_tool`'s variant, the Salon preamble by kind, the three assistant surfaces pinned, the `pseudo-tool-prompts.ts` re-aim | 0.0.1430 |
+| `5630c1ea8` | unit B (items 6, 8, 10 + item 7's force-final argument): the flavour, the resolver over the character row + its INFO, the two flavour builders, the three resolver callers, turn extras' flavour, the six research pins, NEW `agent_mode_flavor_equivalence`, the `turn-extras.ts` re-aim, two path capture tests | 0.0.1431 |
+| `2fd10fa97` | unit C (item 7): one `submit_offered`, the force-final INFO, the `native-tool-loop-tier3` re-aim + two in-character cases | 0.0.1432 |
+| `2c166e07c` | unit D (items 9, 11): the slate's `offerSubmitFinalResponse`, the `Injected agent mode instructions` INFO, the `agentModeLog` record | 0.0.1433 |
+| `16a103df9` | Tier 2 item 15: v4's non-agent `Max tool iterations reached` WARN + its corpus case | 0.0.1434 |
+| `abaf10c57` | Tier 2 item 13: the two union-gated assistant-kind cases | — (harness + oracle only) |
+
+The order's suggested split (A) / (B) / (C) / (D) held, except that `turn_extras.rs` (item 8) and the loop's `build_force_final_message(agent_mode.flavor)` argument folded into B: both signatures moved with `agent_mode.rs`, so B would not compile without them.
+
+### Item 1 — red-first (on `KIND`'s core, the pin's oracles)
+
+- **The pin's garbage native rows (correction 3, confirmed):** the UNMODIFIED `pseudo-tool-prompts.ts` at the pin records all four native rows as `"undefined\n\n1. **Never narr…"` — `native-true`, `native-false` (which v5 expected to be `""`), `native-default`, `native-system`.
+- **`pseudo_tool_prompts_equivalence`** (the re-aimed oracle, the UNMODIFIED Rust test reading `hasTools` with a scratch `true` for the default rows; `native_tool_rules` ABSENT in v5): **23 of 56 red** — the six native rows `native-{assistant,roleplay}-{true,default}` + `native-system-{assistant,roleplay}` (assistant on rule 6 only; roleplay on the preamble too), the four `hasTools:false` rows green, and **17 `build_simple_json` / `build_simple_json_system` rows red on the simple-JSON rule 6 — P4.D375's (C8), recorded, not fixed**: `empty`, `search-only`, `rng-plus-default-search`, `whisper-and-image`, `help-trio`, `wardrobe-subset`, `all-on`, `wardrobe-history-rollback`, `inventory-all`, `inventory-subset-with-wardrobe`, and the seven `det-tb-*` system rows.
+- **`turn_extras_equivalence`** (re-aimed oracle; the pre-flavour behaviour reproduced by forcing `Research` in a scratch copy of the test): exactly the five `-in-character` rows red (`agent-mode-no-tools`, `agent-mode-with-tools`, `agent-mode-100-turns`, `both-injections`, `google-rate-both-injections`); every research row green.
+- **`native_tool_loop_tier3_equivalence`** (the re-aimed corpus against unit B's loop, i.e. no `submit_offered`, no INFO; a scratch soft-assert copy so every red row lists): `result` red on exactly `ic_stray_submit_is_ordinary` (v5 intercepted the stray submit and replaced the prose) and `ic_max_turns_prose_force_final` (v5 promoted the force-final payload); the force-final INFO red on `multi-iter-forcefinal` and `ic_max_turns_prose_force_final`; `llm_logs` 12 vs 13 rows (the missing continuation leg); the four research rows' results green. The `events` comparand is red on EVERY row — the pin emits P4.D366's kind-tagged frames dialect.
+- **The Salon tier-3 families on `KIND`:** `orchestrator_tier3` 81 calls end on a canned miss (case names in `/tmp/p4d370/pre-orch-misses.txt`); `enclave_step_tier3` 13 `CANNED MISS` keys; `primary_stream_tier3`, `regenerate_swipe_tier3`, `retry_uncensored_tier3` carry no native preamble at all (`## Using tools` count 0 in their NDJSONs), so P4.D370 cannot move them (`retry_uncensored` green; `primary_stream` red on the frames dialect, P4.D366; `regenerate_swipe` red on a canned miss from P4.D373's group-scene text).
+- **The must-stay-green set on `KIND`:** `tool_build` 45 cases `tools mismatch` (the tool catalogue — P4.D374's `CATALOG`, not on this base); `brahma_orchestrator_tier3` `["plain_error", "run_sql_error", "textblock_error", "submit_final_error", "dup_stuck_error", "budget_exhausted_error", "stream_error_mid_turn_error_text", "stream_error_mid_turn_frames", "llm_logs_error_rows", "llm_logs_row_count"]`; `brahma_console_tier3` `oac_keyless_proceeds: result diverges` (1 miss); `help_chat_orchestrator_tier3` 12 misses (4 of 5 tests green); `carina_query_tier3` GREEN; `scenario_builder_tier3` 46 misses.
+
+### Corrections to the order / survey (measured)
+
+1. `tool_build_equivalence` does NOT move — confirmed: its red set is byte-identical before and after (hash of the red lines `19f17739` both runs).
+2. `build_context_tier3` does not move from this lane — not run; its `tool_instructions: None` was re-read.
+3. All four native rows are garbage at the pin — confirmed (above).
+4. The resolver INFO fires on the chat GET and the toggle — pinned by `services::chat_admin::agent_mode_info_tests` (two paths + a silence leg). `chatId` is present on all three v5 paths; the omitted arm is reachable only from the tier-1 driver (`null-chat--*` rows).
+5. v4's non-agent `else` WARN was unlogged — landed as Tier 2 item 15.
+6. **NEW — the must-stay-green premise is false for rule 6.** Rule 6 lives in `NATIVE_TOOL_RULES`, which BOTH preambles carry, so every assistant surface's canned key moves with this lane. Measured: `help_chat_orchestrator_tier3` went from 12 misses to **fully green** (5/5); `scenario_builder_tier3` from 46 misses to 6, each a second leg whose tool result carries 4.12.1's honest empty-search text ("An empty search is not proof that nothing happened…") — P4.D375's; the two Brahma families stayed byte-identical (their keys also carry P4.D374's lookups prompt — see H8); `carina_query_tier3` carries no native preamble (`MANDATORY` count 0) and stays green.
+7. **NEW — `native_tool_loop_tier3`'s events are frames.** The order expected this family green on the lane; its `events` comparand is P4.D366's on every row (P4.D366's branch switches the test to `sink.events_json_in(Dialect::Frames)`). Everything else in the family is green after the port.
+
+### Item 12 — the must-stay-green identity proof (same pin NDJSONs, before → after)
+
+| family | before | after | `MANDATORY` / `## Using tools` / `## Agent Mode Instructions` in the NDJSON |
+|---|---|---|---|
+| `tool_build` | 45 `tools mismatch` (hash `19f17739`) | identical | — |
+| `brahma_orchestrator_tier3` | the 10-id list above (`9e26ccf7`) | identical | 14 / 0 / 16 |
+| `brahma_console_tier3` | `oac_keyless_proceeds` (`ea766c2a`) | identical | 25 / 0 / 25 |
+| `help_chat_orchestrator_tier3` | 12 misses | **GREEN** (rule 6, correction 6) | 31 / 0 / 34 |
+| `carina_query_tier3` | green | green | 0 / 0 / 0 (no native tools) |
+| `scenario_builder_tier3` | 46 misses | 6 (P4.D375's search text) | 55 / 0 / 59 |
+
+### HANDOFF H8 from P4.D374 — settled on the union by rule 6
+
+P4.D374 recorded `brahma_console_tier3` / `brahma_orchestrator_tier3` red on its branch because v4's system prompt carries 4.12.1's rule 6, and proved both green with v4's rule-6 text applied locally. This lane's `NATIVE_TOOL_RULES` carries that rule 6 verbatim from the pin — `pseudo_tool_prompts_equivalence`'s `native-tool-rules` row and both `native-*-assistant` rows compare it byte-exact against v4's exported constant — and the assistant preamble the Brahma orchestrator passes is unchanged otherwise (`native-assistant-*` green). On THIS branch the two families stay byte-identical because their keys also carry P4.D374's lookups prompt (measured in the orchestrator family's Brahma-consult misses: "## Reach for the lookup shortcuts first" — P4.D374's). On the union (`CATALOG` + P4.D374's prompt + this rule 6) both go green, as P4.D374 measured. The unifier confirms by running the two families.
+
+### Item 11 — the Salon families after the port (record kind and owner)
+
+- **`orchestrator_tier3_equivalence`:** 86 miss dumps after the port; classified by diff: **83 on P4.D373's group-scene discipline text** (`GROUP_SCENE_DISCIPLINE`), **3 on P4.D375's simple-JSON rule 6** (`simple_json_prompt.rs:186`, "never invent specifics"); **zero** on any P4.D370 text. With P4.D373's `message_context.rs` hunk applied as an uncommitted scratch (then reverted): 59 misses — 52 whose first system message (with `## Using tools`) and agent-mode block are byte-equal to a v4 key (residual diff outside P4.D370's text), 3 P4.D375 (simple-JSON rule 6), 4 Brahma consults on P4.D374's lookups prompt. The two roleplay agent-mode calls (`agent_mode_on`, `agent_force_final`) send `## Using tools` + `## Acting in the scene` and a 36-tool slate WITHOUT `submit_final_response` — v4's recorded slate is the same 36 without it.
+  - **The `agentModeLog` comparand** (scratch: P4.D373 hunk applied, `events` skipped, the comparison run right after the calls): **83 calls EQUAL, 11 PREFIX, 0 MISMATCH.** The 11 PREFIX calls (`multi_chain`, `noncontinue_two_llm_maxdepth`, `skip_fire`, `nudge_withhold`, `skip_disabled`, `chain_error_pause`, `interrupt_yield_bare`, `interrupt_yield_with_words`, `interrupt_yield_and_skip_both`, `interrupt_decline`, `interrupt_stop_chained_turn`) are chains cut short by a sibling-owned canned miss: v5's lines are a strict prefix of v4's. The committed test's first failing comparand on this branch is the `events` frames dialect (P4.D366), which runs earlier in the test.
+  - Tier 2's two `p4d370_` calls are red by construction (union-gated on P4.D369, below).
+- **`enclave_step_tier3`:** 13 `CANNED MISS` keys after the port, each differing ONLY in P4.D373's group-scene text (the `## Using tools` preamble now matches v4's key); then the `STORED_BYTE_DIVERGENCES` count assertion (moves with the misses).
+- **`primary_stream_tier3`:** red on the SSE frames dialect (P4.D366); no native preamble in the corpus.
+- **`regenerate_swipe_tier3`:** red on a canned miss from P4.D373's group-scene text (7 keys carry it); no native preamble.
+- **`retry_uncensored_tier3`:** green (65 cases).
+- **`native_tool_loop_tier3`:** green except `events` on all 12 rows (P4.D366).
+- **`pseudo_tool_prompts_equivalence`:** 40 of 57 green; the 17 simple-JSON rows are P4.D375's.
+- **`agent_mode_flavor_equivalence` / `turn_extras_equivalence`:** green.
+
+### The INFO lines as landed (R-K3)
+
+| line | target | keys, in order | pin |
+|---|---|---|---|
+| `[AgentMode] Resolved agent mode` | `quilltap::agent_mode` (R-P6) | `chatId` (omitted when `None`), `enabled`, `maxTurns`, `enabledSource`, `flavor` | `agent_mode_flavor_equivalence` (62 resolve rows, exactly one line each); `chat_admin::agent_mode_info_tests` (toggle, GET, refused-toggle silence leg); `orchestrator_tier3`'s `agentModeLog` |
+| `Injected agent mode instructions` | the module default `quilltap_core::services::orchestrator` (as the tool-change line) | `chatId`, `maxTurns`, `enabledSource`, `flavor` | `orchestrator_tier3`'s `agentModeLog`; silence on every agent-mode-OFF call |
+| `Agent mode max turns reached, forcing final response` | `quilltap::native_tool_loop` | `chatId`, `iterations`, `maxTurns`, `flavor` | `native_tool_loop_tier3`'s `agentLog` (exactly two cases reach it) |
+| `Max tool iterations reached` (WARN, Tier 2) | `quilltap::native_tool_loop` | `iterations`, `chatId` | `native_tool_loop_tier3`'s `agentLog` (`nonagent_max_iterations_warn`) |
+
+All four are emitted on the caller / runtime thread (none inside a `Db::write` closure).
+
+**Mutation proofs:** (a) the flavour flipped in the resolver (`research` ↔ `in-character`, at P4.D370's call site, never in `kind.rs`): `agent_mode_flavor_equivalence` 117 RED lines across all 62 resolve rows; (b) the resolver INFO deleted: every resolve row red (0 lines vs 1); (c) the `Injected` INFO deleted: the two agent-mode calls fall off EQUAL in the `agentModeLog` comparison (83 → 81), which the committed test's strict per-call equality fails; (d) the force-final INFO and the cap WARN: absent in the pre-port loop, red on exactly their rows (the red-first runs above double as the deletion proofs).
+
+### Rulings as landed
+
+- R-P1 (the resolver takes the character ROW) — landed; `None` → `in-character`. One NAMED divergence: **`NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`** — v4's cascade assigns a stored non-boolean `defaultAgentModeEnabled` (`"yes"`) as `enabled` with `enabledSource: 'character'`; v5 reads only a boolean, per the order. Pinned both ways on the seven `*--character-yes` rows (the row retires if v4 changes).
+- R-P2 (`chat_id: Option<&str>`) — landed; every v5 caller passes `Some`.
+- R-P3 (flat `TurnExtrasOptions.agent_mode_flavor`) — landed.
+- R-P4 (no rename of `ToolBuildInput.agent_mode_enabled`) — landed; a fenced doc comment only.
+- R-P5 (the in-character force-final pass still runs, with `agent_force_final`) — landed (`ic_max_turns_prose_force_final`).
+- R-P6 (`quilltap::agent_mode` target) — landed.
+
+### Tier 2
+
+- **Item 13 — LANDED as union-gated** (`abaf10c57`): `p4d370_assistant_agent_on` (chat `ab000001…`, Friday planted `assistant`, agent mode ON) and `p4d370_assistant_agent_off` (chat `9fe3f87b…`, OFF). The plant is a per-call `characterKind` through each side's production update chokepoint (v4 `repos.characters.update`, v5 `vault_character_update::update_character`), restored to `roleplay` after the call. v4 at the pin: MANDATORY + `## Agent Mode Instructions` + `submit_final_response` on the slate + both lines `flavor: research` (ON); MANDATORY, no block, one `Resolved … enabled=false flavor=research` line (OFF). On this branch both calls miss their keys (v5 still resolves Friday as roleplay — `kind` reaches the vault only with P4.D369's `b8024c66c`). Named in `UNION_GATED_ON_P4D369`; never skipped.
+- **Item 14 — DEFERRED by name:** neither `enclave-step-tier3.json` nor `primary-stream-tier3.json` (nor their builders) carries any agent-mode chat or setting; adding one needs a builder change, i.e. a fixture rebuild. `primary_stream` also never runs the agent block (it is the orchestrator's splice). The in-character block is pinned on the Salon spine (`orchestrator_tier3`'s two agent-mode calls) and in tier 1.
+- **Item 15 — LANDED** (`16a103df9`).
+
+### Tier 3 records
+
+16. `flavor` on the wire: NO-PORT — v4's chat GET and toggle answer `enabled` / `enabledSource` only; no SPA or contract change.
+17. `help/agent-mode.md` (+26 / −6), `help/character-editing.md` (+1), `docs/developer/features/character-kind-and-roleplay-defaults.md`, `README.md`, `CHANGELOG`, version stamps — P4.D382's re-vendor / NO-PORT.
+18. The resolver INFO's `chat: null` arm — pinned by the tier-1 driver rows `null-chat--assistant` / `null-chat--roleplay-default-on`; unreachable in v5 production.
+19. Text-block and simple-JSON builders — unchanged by `96156566b`; the simple-JSON rule 6 is P4.D375's (C8).
+20. The ghost-wrap guardrail — no code change: it reads `has_submit`, which is research-only once detection is gated on `submit_offered`; `native_tool_loop_tier3`'s ghost-wrap row (`agent-ghostwrap`) carries `flavor: research`.
+
+### Fixtures and oracles changed (regen recipes = each file's committed header)
+
+- NEW `harness/oracle/cases/agent-mode-flavor.ts` (tsx) → `QT_ORACLE_AGENT_MODE_FLAVOR`.
+- `cases/pseudo-tool-prompts.ts` (native rows re-aimed) → `QT_ORACLE_PSEUDO_TOOL_PROMPTS`.
+- `cases/turn-extras.ts` (the flavour column) → `QT_ORACLE_TURN_EXTRAS`.
+- `cases/native-tool-loop-tier3.test.ts` + `fixtures/native-tool-loop-tier3.json` (every case's `flavor`; NEW chat `…033`; NEW cases `ic_stray_submit_is_ordinary`, `ic_max_turns_prose_force_final`, `nonagent_max_iterations_warn`) → `QT_ORACLE_NATIVE_TOOL_LOOP` + `QT_FIXTURE_NTL` (the builder rebuilds the fixture from the JSON; the new chat adds one `chats` dump row on both sides).
+- `cases/orchestrator-tier3.test.ts` (fenced `agentModeLog` record + `characterKind` plant) + `fixtures/orchestrator-tier3.json` (two `p4d370_` calls + two stream labels appended at the end, `indent=1` preserved) → `QT_ORACLE_ORCHESTRATOR` + `QT_FIXTURE_ORCH_*`. The appended calls write Friday's `properties.json` and restore it; no earlier call's premise moves.
+- Lane outputs were all under `/tmp/p4d370/` (recipes copied by hand from the sweep driver's `--show` with every `/tmp/` path rewritten: `/tmp/p4d370/recipes/*.regen.sh` / `*.run.sh`; the gate env `/tmp/p4d370/gate-env.sh`).
+
+### 💸 for the owed dogfood pass
+
+As the order lists them: a roleplay character with Agent Mode ON (the LLM Inspector shows `## Using tools` + `## Acting in the scene`, no `submit_final_response`; both INFO lines `flavor=in-character`; at max turns 1 the in-character force-final sentence and line); the same OFF; an assistant character (after P4.D369's card) ON; a Brahma and a Help-chat turn (MANDATORY + research + rule 6's new sentence); a chat GET and an agent-mode toggle (one `Resolved` line each, wire unchanged).
+
+### HANDOFFs
+
+None new. H8 (from P4.D374) is settled on the union as recorded above. Union obligations: the `events` comparands of `native_tool_loop_tier3` / `orchestrator_tier3` / `primary_stream_tier3` (P4.D366); the group-scene misses (P4.D373); the simple-JSON rule-6 rows and the search-text misses (P4.D375); the Brahma prompt misses (P4.D374); the two `UNION_GATED_ON_P4D369` calls (P4.D369).
+
+### The gate (lane close, 2026-11-09)
+
+- `cargo fmt --all --check` 0; `cargo clippy --workspace --all-targets -- -D warnings` 0; the same with `--features quilltap-core/native-transport` 0 (after `npm ci` + `npm run build` in `apps/web`); `recipe_sweep.py --self-test` 0 failures.
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`, background, env `/tmp/p4d370/gate-env.sh`, log `/tmp/p4d370/workspace-gate.log`): **906 binaries / 6,056 passed / 15 failed / 3 ignored.** By name with `--nocapture`, zero SKIP: `agent_mode_flavor_equivalence` OK (72 rows, 7 named divergences), `turn_extras_equivalence` OK, `pseudo_tool_prompts_equivalence` 40/57 (the 17 P4.D375 rows). Green by name: `tool_wire_call_site`, `tool_loop_leg_logging`, `fallback_home_guard` (unmoved), the `agent_mode` / `native_tool_prompt` / `native_tool_loop` / `chat_admin::agent_mode_info_tests` core unit tests. `character_kind_chokepoint_census` is not on `KIND` (P4.D369's `8e94be896`); no P4.D370 site compares a kind (every read is through C5's `character_kind_policy`).
+- The 15 failing tests in 14 binaries, each classified:
+  - standing at `SCHEMA`: `spelling_guard` (the setupphase vendor survey `:295`), `builtin_prompt_templates_guard` (P4.D373), `cli_differential` (P4.D365);
+  - by design, not on this base: `provider_sdk_version_guard` (P4.D364), `tool_build_equivalence` (45 rows, `CATALOG` — byte-identical before/after);
+  - H8 (P4.D374's prompt; rule 6 here): `brahma_console_tier3`, `brahma_orchestrator_tier3` — byte-identical before/after;
+  - P4.D375: `pseudo_tool_prompts_equivalence` (17 simple-JSON rows), `scenario_builder_tier3` (6 search-text misses);
+  - P4.D366 frames: `native_tool_loop_tier3` (events only), `primary_stream_tier3`;
+  - P4.D373 group-scene text (+ P4.D366 / P4.D374 / P4.D375 / P4.D369 as recorded in item 11): `orchestrator_tier3`, `enclave_step_tier3`, `regenerate_swipe_tier3` (both its tests).
+
+**Versions at close:** core **0.0.1434**; host 0.0.224, web 0.0.256, cli 0.0.38, tauri 0.0.9, sys 0.1.0, harness 0.0.1110 (unmoved by this lane).
+
+**Cleanup:** the branch is pushed; the pin worktree removed and pruned; the lane's `target/` deleted. `/tmp/p4d370/` is left for the unifier (oracles, fixtures, recipes, the gate env and log, `lane-record.md`).

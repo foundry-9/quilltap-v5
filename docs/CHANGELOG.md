@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — docs(porting): P4.D370 lane record and LANE COMPLETE status
+
+_No crate versions bumped._
+
+The P4.D370 lane record in `status-log.md` (red-first counts, the attribution of every remaining Salon red by owner, the must-stay-green proof, H8's settlement, the mutation proofs, the gate) and the order's status header.
+
 #### 2026-11-09 — test(salon): two union-gated assistant-kind cases in the orchestrator tier-3 corpus
 
 _No crate versions bumped._
