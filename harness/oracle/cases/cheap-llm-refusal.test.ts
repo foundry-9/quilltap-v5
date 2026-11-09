@@ -39,7 +39,7 @@ type Step =
 
 /**
  * P4.118: what an openai-SDK provider plugin (OPENAI_COMPATIBLE here) throws on
- * a non-2xx — the REAL `APIError` class from the checkout's `openai` 7.23.0,
+ * a non-2xx — the REAL `APIError` class from the checkout's `openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0),
  * built exactly as the client's own non-2xx path builds it (`client.js`
  * `makeRequest`: `safeJSON(errText)`, `errJSON ? undefined : errText`, then
  * `makeStatusError`'s `{error: body}` wrap when `.error == null`, then

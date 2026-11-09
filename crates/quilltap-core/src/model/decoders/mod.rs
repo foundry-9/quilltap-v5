@@ -77,7 +77,7 @@ pub struct DecodeError {
     pub message: String,
     /// The structured refusal side of the value v4's SDK threw (P4.122) — set
     /// only where the SDK throws a CODED error object mid-stream (`openai`
-    /// 7.23.0's `APIError(undefined, …)` on an error frame; see
+    /// 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)'s `APIError(undefined, …)` on an error frame; see
     /// [`openai_sdk_frame_error`]). `None` for every other decode failure; the
     /// pump attaches it to the `StreamError` it sends
     /// (`StreamError::with_refusal`), so the classifier reads the frame's
@@ -105,14 +105,14 @@ impl DecodeError {
     }
 }
 
-/// The message of the `SyntaxError` `openai` 7.23.0's `Stream.fromSSEResponse`
+/// The message of the `SyntaxError` `openai` 7.47.0's `Stream.fromSSEResponse`
 /// throws when a frame's `JSON.parse(sse.data)` fails (`core/streaming.js:
 /// 108-114`) — thrown from inside the iterator, so the plugin's catch line
 /// logs it and the stream ends with no terminal chunk (P4.128).
 pub(crate) const SDK_MALFORMED_SSE_JSON: &str =
     "Error reading response: malformed server-sent event JSON.";
 
-/// One dispatched SSE event as `openai` 7.23.0's `Stream.fromSSEResponse`
+/// One dispatched SSE event as `openai` 7.47.0's `Stream.fromSSEResponse`
 /// sees it (P4.128 — the SDK's frame semantics, recorded through the REAL SDK
 /// by the `*-sdk-*.wire` rows of the stream corpora):
 ///
@@ -151,7 +151,7 @@ pub(crate) fn sdk_frame(ev: &sse::SseEvent) -> SdkFrame {
     }
 }
 
-/// `openai` 7.23.0 `Stream.fromSSEResponse`'s two mid-stream throws (P4.122),
+/// `openai` 7.47.0 `Stream.fromSSEResponse`'s two mid-stream throws (P4.122),
 /// in the SDK's order, over one already-parsed frame:
 ///
 /// ```text

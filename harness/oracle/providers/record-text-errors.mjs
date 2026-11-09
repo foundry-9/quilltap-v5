@@ -9,9 +9,9 @@
  * `record-image-fixtures.mjs` `thrownFields` recorder, widened with `name`) —
  * plus v4's two verdicts over that same thrown value: `classifyRefusal({
  * error })` and `classifyFallbackTrigger(error)`. Never a hand-built error
- * object: the SDKs build them (`openai` 7.23.0's `makeStatusError` +
- * `APIError.makeMessage`, `@anthropic-ai/sdk` 0.115.0's whole-body `error`,
- * `@google/genai` 1.52.0's `throwErrorIfNotOK`, `@openrouter/sdk` 1.3.28's
+ * object: the SDKs build them (`openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)'s `makeStatusError` +
+ * `APIError.makeMessage`, `@anthropic-ai/sdk` 1.4.0 (re-measured P4.D364; unchanged since 0.115.0)'s whole-body `error`,
+ * `@google/genai` 2.32.0 (re-measured P4.D364; unchanged since 1.52.0)'s `throwErrorIfNotOK`, `@openrouter/sdk` 1.5.34 (re-measured P4.D364; unchanged since 1.3.28)'s
  * `OpenRouterError`s, and the two raw-`fetch` plugins' own `Error`s).
  *
  * The Rust differential (`text_http_errors_equivalence`) poses the same

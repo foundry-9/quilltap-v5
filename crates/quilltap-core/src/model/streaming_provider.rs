@@ -379,7 +379,7 @@ pub fn pre_stream_error_on_path(
 
 /// A mid-stream decode failure as the channel's `StreamError` (P4.122): the
 /// message unchanged, plus the refusal side when the decoder read one off a
-/// coded error frame (`openai` 7.23.0's `APIError(undefined, …)`) — so a
+/// coded error frame (`openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)'s `APIError(undefined, …)`) — so a
 /// `content_filter` frame before the first content chunk reaches the
 /// classifier's `provider-code` evidence exactly as a coded non-2xx does.
 pub fn decode_stream_error(e: crate::model::decoders::DecodeError) -> StreamError {

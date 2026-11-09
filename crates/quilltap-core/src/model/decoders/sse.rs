@@ -47,7 +47,7 @@
 pub struct SseEvent {
     pub event: String,
     pub data: String,
-    /// Whether `openai` 7.23.0's `SSEDecoder` would dispatch this event at
+    /// Whether `openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)'s `SSEDecoder` would dispatch this event at
     /// all (P4.128): it returns `null` at a blank line unless an `event:`
     /// value is set (a non-empty one — `!this.event`) or at least one `data:`
     /// line arrived (`this.data.length`). So an `id:`-only / `retry:`-only

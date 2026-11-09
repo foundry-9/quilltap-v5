@@ -119,7 +119,7 @@ fn sub_floor(a: i64, b: i64) -> i64 {
     (a - b).max(0)
 }
 
-/// v4 `OpenAICompatibleProvider.normalizeUsage` (plugin-utils 2.7.1, v4
+/// v4 `OpenAICompatibleProvider.normalizeUsage` (plugin-utils 2.7.3 (re-measured P4.D364; unchanged since 2.7.1), v4
 /// `a8b2d2861`; `packages/plugin-utils/src/providers/openai-compatible.ts:432-463`
 /// at the `25b8fab6a` pin) — the ONE normalisation both OAC send paths share:
 /// the non-streaming arm of [`parse_chat_completions`] and the streaming
@@ -1127,7 +1127,7 @@ pub(crate) fn google_candidate_parts(candidate: &Value) -> Option<&Vec<Value>> {
 /// WARN pass both read it): a non-empty `content.parts` array → its non-thought,
 /// non-`functionCall` text parts joined (the SDK `.text` getter's concat);
 /// else `content.text` when truthy (`:283-285`); else `''`. The `content.text`
-/// arm is MEASURED reachable through the real `@google/genai` 1.52.0 on BOTH
+/// arm is MEASURED reachable through the real `@google/genai` 2.32.0 (re-measured P4.D364; unchanged since 1.52.0) on BOTH
 /// paths — the SDK keeps the unknown key on a `send` body (P4.150 D2,
 /// `text_http_errors`' `ok_google_candidate_content_text`) and on a streamed
 /// chunk (P4.154, `ok_google_stream_candidate_content_text`).

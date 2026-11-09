@@ -2,7 +2,7 @@
 //!
 //! Transport: despite "not SSE" in the design-doc table caption, the genai
 //! Node SDK's `processStreamResponse` (verified in
-//! `@google/genai@1.52.0/dist/node/index.mjs`) reads a **`data:`-prefixed SSE**
+//! `@google/genai@2.32.0/dist/node/index.mjs`, re-measured P4.D364; unchanged since 1.52.0) reads a **`data:`-prefixed SSE**
 //! body — delimiters `\n\n` / `\r\r` / `\r\n\r\n`, each event trimmed, must
 //! `startsWith('data:')`, and the remainder trimmed + JSON-parsed into a
 //! `GenerateContentResponse`. So this decoder sits on the SAME shared
@@ -48,7 +48,7 @@ use super::{DecodeError, StreamChunk, StreamDecoder};
 use crate::jsstr::js_trim;
 use crate::model::stream::{StreamCacheUsage, StreamUsage};
 
-/// `@google/genai` 1.52.0 `processStreamResponse`'s `buffer`: everything after
+/// `@google/genai` 2.32.0 `processStreamResponse`'s `buffer`: everything after
 /// the last complete event (the module doc). Bytes, since the three
 /// delimiters are ASCII; decoded only for the EOF check.
 #[derive(Default)]

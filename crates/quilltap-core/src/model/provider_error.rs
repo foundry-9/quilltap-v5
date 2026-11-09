@@ -20,9 +20,9 @@
 //!
 //! | provider | v4's thrown value |
 //! |---|---|
-//! | OPENAI, OPENAI_COMPATIBLE (Azure arrives here), DEEPSEEK, NANOGPT, Z_AI, GROK | `openai` 7.23.0 `APIError`: `makeStatusError` wraps a JSON body whose `.error == null` as `{error: body}`; `code` = that inner `error.code`, and `.error` IS the inner value, so both classifier slots read the same code; `makeMessage` renders the message |
-//! | ANTHROPIC | `@anthropic-ai/sdk` 0.115.0 `APIError`: `.error` is the WHOLE body (no wrap), there is no `.code` — only `body.code` reaches the nested slot; `type` is never read |
-//! | GOOGLE | `@google/genai` 1.52.0 `ApiError {name, status}` whose message is `JSON.stringify(body)` — or, for a non-JSON content type, of a synthesized `{error:{message, code, status: statusText}}` |
+//! | OPENAI, OPENAI_COMPATIBLE (Azure arrives here), DEEPSEEK, NANOGPT, Z_AI, GROK | `openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0) `APIError`: `makeStatusError` wraps a JSON body whose `.error == null` as `{error: body}`; `code` = that inner `error.code`, and `.error` IS the inner value, so both classifier slots read the same code; `makeMessage` renders the message |
+//! | ANTHROPIC | `@anthropic-ai/sdk` 1.4.0 (re-measured P4.D364; unchanged since 0.115.0) `APIError`: `.error` is the WHOLE body (no wrap), there is no `.code` — only `body.code` reaches the nested slot; `type` is never read |
+//! | GOOGLE | `@google/genai` 2.32.0 (re-measured P4.D364; unchanged since 1.52.0) `ApiError {name, status}` whose message is `JSON.stringify(body)` — or, for a non-JSON content type, of a synthesized `{error:{message, code, status: statusText}}` |
 //! | OPENROUTER | the raw Chat Completions `fetch` path: `new Error(\`OpenRouter API error: ${status} - ${text}\`)` |
 //! | OLLAMA | raw `fetch`: `new Error(\`Ollama API error: ${status} ${text}\`)` |
 //!
@@ -87,11 +87,11 @@ pub fn transport_error_refusal(provider: &str, error: &TransportError) -> Option
 ///
 /// | client | timeout | connect |
 /// |---|---|---|
-/// | `openai` 7.23.0 (OPENAI, OPENAI_COMPATIBLE, DEEPSEEK, NANOGPT, Z_AI, GROK) and `@anthropic-ai/sdk` 0.115.0 | `Request timed out.` (`APIConnectionTimeoutError`) | `Connection error.` (`APIConnectionError`) |
-/// | `@google/genai` 1.52.0 | `This operation was aborted` (the `AbortError` of its `httpOptions.timeout` controller) | `fetch failed` (undici's `TypeError`; genai does not retry) |
+/// | `openai` 7.47.0 (OPENAI, OPENAI_COMPATIBLE, DEEPSEEK, NANOGPT, Z_AI, GROK) and `@anthropic-ai/sdk` 1.4.0 | `Request timed out.` (`APIConnectionTimeoutError`) | `Connection error.` (`APIConnectionError`) |
+/// | `@google/genai` 2.32.0 | `This operation was aborted` (the `AbortError` of its `httpOptions.timeout` controller) | `fetch failed` (undici's `TypeError`; genai does not retry) |
 /// | OLLAMA and OpenRouter's raw `fetch` · send | `The operation was aborted due to timeout` (`AbortSignal.timeout`'s `TimeoutError`) | `fetch failed` |
 /// | OLLAMA and OpenRouter's raw `fetch` · stream | `This operation was aborted` (the first-byte `AbortController`) | `fetch failed` |
-/// | `@openrouter/sdk` 1.3.28 (OpenRouter off the raw path) | `Request timed out` | `Unable to make request` |
+/// | `@openrouter/sdk` 1.5.34 (re-measured P4.D364; unchanged since 1.3.28) (OpenRouter off the raw path) | `Request timed out` | `Unable to make request` |
 ///
 /// Every row but the last is RECORDED through the real plugins
 /// (`record-text-errors.mjs`'s `transport_fetch_throws` / `transport_hang`
@@ -215,7 +215,7 @@ fn prop<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
 }
 
 /// `APIError.makeMessage(status, error, message)` — identical in `openai`
-/// 7.23.0 and `@anthropic-ai/sdk` 0.115.0:
+/// 7.47.0 and `@anthropic-ai/sdk` 1.4.0:
 ///
 /// ```text
 /// const msg = error?.message ? (typeof error.message === 'string' ?
@@ -256,7 +256,7 @@ fn err_message<'a>(err_json: Option<&Value>, body: &'a str) -> Option<&'a str> {
     }
 }
 
-/// `openai` 7.23.0: `makeStatusError` then `APIError.generate`, which hands
+/// `openai` 7.47.0: `makeStatusError` then `APIError.generate`, which hands
 /// the constructor `errorResponse?.error`. The ONE home of the SDK's `{error:
 /// body}` wrap rule — the image dialect's non-2xx helper reads it too (P4.122).
 pub(crate) fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
@@ -276,7 +276,7 @@ pub(crate) fn openai_sdk_error(status: u16, body: &str) -> RefusalError {
     }
 }
 
-/// The error `openai` 7.23.0 THROWS from inside a 200 stream (P4.122):
+/// The error `openai` 7.47.0 THROWS from inside a 200 stream (P4.122):
 /// `Stream.fromSSEResponse` answers an `event: error` frame with `new
 /// APIError(undefined, data?.error ?? data, undefined, headers)` and any other
 /// frame whose `data.error` is truthy with `new APIError(undefined,
@@ -314,7 +314,7 @@ fn openai_sdk_normalized(err_json: Option<&Value>) -> Option<Value> {
     }
 }
 
-/// The RAW `APIError.code` `openai` 7.23.0 sets for a non-2xx `body` — the
+/// The RAW `APIError.code` `openai` 7.47.0 sets for a non-2xx `body` — the
 /// normalized inner error's `code`, any JSON type (`this.code =
 /// error?.code`). The image plugins' moderation mappers read it raw (Z.AI
 /// stringifies a number; OpenAI/xAI test for a string), so it is exposed
@@ -324,7 +324,7 @@ pub(crate) fn openai_sdk_raw_code(body: &str) -> Option<Value> {
     prop(prop(normalized.as_ref(), "error"), "code").cloned()
 }
 
-/// `@anthropic-ai/sdk` 0.115.0: no normalization, `const error =
+/// `@anthropic-ai/sdk` 1.4.0: no normalization, `const error =
 /// errorResponse` — the WHOLE body — and no `code` property at all.
 fn anthropic_sdk_error(status: u16, body: &str) -> RefusalError {
     let err_json = safe_json(body);
@@ -343,7 +343,7 @@ fn anthropic_sdk_error(status: u16, body: &str) -> RefusalError {
     }
 }
 
-/// `@google/genai` 1.52.0 `throwErrorIfNotOK`. The JSON branch is taken when
+/// `@google/genai` 2.32.0 `throwErrorIfNotOK`. The JSON branch is taken when
 /// the body parses (the module doc's approximation of `content-type`).
 fn google_api_error(status: u16, body: &str) -> RefusalError {
     let error_body = safe_json(body).unwrap_or_else(|| {
@@ -811,7 +811,7 @@ mod tests {
 
     /// P4.122 — `makeMessage`'s two NO-status branches, through the
     /// mid-stream builder (`APIError(undefined, error)`; bytes from
-    /// `openai` 7.23.0 `core/error.js`, recorded in the stream corpora).
+    /// `openai` 7.47.0 `core/error.js`, recorded in the stream corpora).
     #[test]
     fn openai_stream_error_has_no_status_and_no_wrap() {
         let e = openai_stream_error(&serde_json::json!({"code":"content_filter","message":"X"}));

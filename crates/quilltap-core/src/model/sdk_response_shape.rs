@@ -22,7 +22,7 @@
 //! | OPENAI_COMPATIBLE | `response.choices[0]`, `choice.message.tool_calls` (plugin-utils 2.6.2 `providers/index.js:425-426`) |
 //! | DEEPSEEK, Z_AI | `response.choices[0]`, `choice.message`, `msg.reasoning_content` (DeepSeek `provider.ts:258-260`, Z.AI `:350-353`) |
 //! | NANOGPT | `response.choices[0]`, `choice.message`, `msg.reasoning` (`:313-320`) |
-//! | OPENAI, GROK | the SDK's `'object' in rsp` (`openai` 7.23.0 `resources/responses/responses.js:86`), its `addOutputText` walk when `rsp.object === 'response'` (`lib/ResponsesParser.js:195-208`), then the plugin's `for (const item of response.output)` reading `item.type` (OpenAI `:440`, Grok `:239` / `:341`) |
+//! | OPENAI, GROK | the SDK's `'object' in rsp` (`openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0) `resources/responses/responses.js:86`), its `addOutputText` walk when `rsp.object === 'response'` (`lib/ResponsesParser.js:195-208`), then the plugin's `for (const item of response.output)` reading `item.type` (OpenAI `:440`, Grok `:239` / `:341`) |
 //! | ANTHROPIC | `response.content.filter(block => block.type === 'text')` (`:508-510`) |
 //! | GOOGLE, OLLAMA, OPENROUTER | none that throws on a JSON shape (Google WARNs `No candidates found in Google response` instead; Ollama and OpenRouter's raw `fetch` read with `?.`) |
 //!

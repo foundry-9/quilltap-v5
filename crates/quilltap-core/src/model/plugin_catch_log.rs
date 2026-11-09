@@ -424,7 +424,7 @@ macro_rules! google_extract_warn {
 ///    parts found in Google response candidate` `{context, modelName,
 ///    finishReason}` (`:276-280`, P4.150 D2), then `content.text` when truthy
 ///    (`:283-285` — MEASURED reachable through the real `@google/genai`
-///    1.52.0: the SDK keeps the unknown `content.text` key), else `''`.
+///    2.32.0 (re-measured P4.D364; unchanged since 1.52.0): the SDK keeps the unknown `content.text` key), else `''`.
 ///
 /// An `undefined` context value never reaches v4's line, so `blockReason` /
 /// `finishReason` are OMITTED when absent. Returns the step-3 fallback text
@@ -459,7 +459,7 @@ pub fn emit_google_extract_text_warns(
     if crate::model::response_parse::google_candidate_parts(first).is_some() {
         return None;
     }
-    // genai 1.52.0's `candidateFromMldev` copies `finishReason` only when it
+    // genai 2.32.0's `candidateFromMldev` copies `finishReason` only when it
     // is `!= null`, so an explicit JSON `null` is as absent as a missing key —
     // v4's line omits the field either way.
     match first.get("finishReason").filter(|v| !v.is_null()) {

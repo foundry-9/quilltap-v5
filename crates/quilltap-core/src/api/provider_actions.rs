@@ -683,6 +683,42 @@ mod tests {
         assert_eq!(wire.seen.lock().unwrap().len(), 1);
     }
 
+    /// P4.D364 item 12 — the validate-probe CONVERGENCE. v4's `validateApiKey`
+    /// (`qtap-plugin-anthropic/provider.ts:887-906` at `624d0d25c`) sends
+    /// `{model, max_tokens: 1, messages}` and never a sampling key; before
+    /// P4.D364 v5's probe went through the shared builder's `temperature: 1`
+    /// default. Now: no `temperature` / `top_p`, `max_tokens: 1`, the
+    /// `2026-10-21` version, Bearer auth. (Observation, unchanged: v4's validate
+    /// literal orders `max_tokens` before `messages`, its chat calls — which the
+    /// shared builder matches, byte-pinned by the corpus — after; key ORDER
+    /// only, wire-irrelevant.)
+    #[test]
+    fn anthropic_validate_probe_sends_no_sampling_key() {
+        let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);
+        let v = WireConnectionValidator {
+            transport: &wire,
+            user_agent: "ua",
+            base_url_env: None,
+            localhost_gateway: None,
+        };
+        assert_eq!(v.validate("ANTHROPIC", "sk-ant", None), Ok(true));
+        let seen = wire.seen.lock().unwrap();
+        assert_eq!(seen[0].0, "POST");
+        assert_eq!(seen[0].1, "https://api.anthropic.com/v1/messages");
+        let body: serde_json::Value = serde_json::from_str(&seen[0].2).unwrap();
+        assert!(body.get("temperature").is_none(), "{body}");
+        assert!(body.get("top_p").is_none(), "{body}");
+        assert_eq!(body["max_tokens"], serde_json::json!(1));
+        let headers = &seen[0].3;
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "anthropic-version" && v == "2026-10-21"));
+        assert!(headers
+            .iter()
+            .any(|(k, v)| k == "Authorization" && v == "Bearer sk-ant"));
+        assert!(!headers.iter().any(|(k, _)| k == "x-api-key"));
+    }
+
     #[test]
     fn openai_validate_is_the_moderations_probe() {
         let wire = ScriptedWire::new(vec![Ok(WireResponse::new(200, "{}"))]);

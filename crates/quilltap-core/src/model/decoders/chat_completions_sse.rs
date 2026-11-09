@@ -674,7 +674,7 @@ impl StreamDecoder for ChatCompletionsSseDecoder {
         let events = self.sse.finish();
         let mut out = self.process_events(events);
         // `SseParser::finish` dispatches at most ONE event (the one whose
-        // trailing blank line never came — `openai` 7.23.0's `SSEDecoder.
+        // trailing blank line never came — `openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)'s `SSEDecoder.
         // flush` delivers it too), so an error here has nothing before it.
         if self.pending_error.is_some() {
             return self.take_pending();

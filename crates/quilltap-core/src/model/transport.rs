@@ -413,7 +413,7 @@ mod native {
                                 // or the connection breaking — is a transport
                                 // failure, never an empty answer. v4's SDK
                                 // throws `Request timed out.` from its body
-                                // read here (`openai` 7.23.0
+                                // read here (`openai` 7.47.0 (re-measured P4.D364; unchanged since 7.23.0)
                                 // `parseResponseWithTimeout`, `client.js:
                                 // 580-585`); this arm used to swallow the error
                                 // into an EMPTY 200, which then failed the
