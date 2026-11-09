@@ -42,7 +42,10 @@ pub mod view_target;
 pub mod write;
 
 pub use delete::{delete_document, DeleteOutcome};
-pub use moves::{compute_rename_target, rename_document, RenameOutcome, RenameTarget};
+pub use moves::{
+    compute_rename_target, rename_document, sweep_chat_documents_after_folder_move,
+    sweep_chat_documents_after_move, RenameOutcome, RenameTarget, SweepStore,
+};
 pub use read::{
     document_exists, is_enoent, read_document, stat_document, DocKind, DocumentRead, DocumentSource,
 };

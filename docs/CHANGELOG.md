@@ -790,6 +790,25 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(documents): the chat_documents sweeps — moves follow every open copy (P4.D380, v4 30a3b4cb7)
+
+_Versions: core 0.0.1434._
+
+Adds `sweep_chat_documents_after_move` and `sweep_chat_documents_after_folder_move`, with v4's same-store matcher (`move.ts:108-290` at `624d0d25c`), to `documents/core/moves.rs`. Rows are matched by the store they reach, not by the address they were recorded under:
+
+- a `document_store` row by its store name (exactly one enabled match) or by the store id;
+- a `project` row through its chat's project's official store;
+- a `general` row only literally;
+- without a store id, every row only literally.
+
+Lookups are cached per sweep (by the trimmed, lower-cased name and by chat), behind a `SweepLookups` seam. A unit test counts the lookups (item 20). v4's lines, with `logFields: {chatId}` first:
+
+- INFO `Swept chat_documents after a document move` / `… after a folder move`;
+- DEBUG `No chat_documents rows to sweep after a document move` (the file sweep only);
+- WARN `Failed to sweep chat_documents after a document move` / `… after a folder move`, answering `0`, never failing.
+
+Five unit tests pin the corpus: two addresses of one store, a different project's `project` row that must not move, a `general` row, an ambiguous name, a store row with no name, the case-sensitive folder prefix (R-6), and the update failure. The six call sites are wired in the Document Mode and doc-tool commits that follow.
+
 #### 2026-11-09 — feat(chat-documents): find rows by file path and under a folder (P4.D380, v4 30a3b4cb7)
 
 _Versions: core 0.0.1433._

@@ -517,3 +517,345 @@ fn view_target_for_classifies_non_text_store_files() {
         None
     );
 }
+
+// --- the sweeps (item 10) + the matcher's caches (item 20) -----------------
+
+mod sweeps {
+    use super::super::moves::{
+        sweep_chat_documents_after_folder_move_with, sweep_chat_documents_after_move_with,
+        SweepLookups, SweepStore,
+    };
+    use crate::test_support::global_capture;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    const STORE: &str = "5a000000-0000-4000-8000-000000000001";
+    const OTHER: &str = "5a000000-0000-4000-8000-000000000002";
+
+    #[derive(Clone, Default)]
+    struct Counted {
+        names: Rc<RefCell<Vec<String>>>,
+        chats: Rc<RefCell<Vec<String>>>,
+        by_name: HashMap<String, Vec<String>>,
+        by_chat: HashMap<String, String>,
+    }
+    impl SweepLookups for Counted {
+        fn store_ids_for_name(&mut self, name: &str) -> Vec<String> {
+            self.names.borrow_mut().push(name.to_string());
+            self.by_name
+                .get(&name.trim().to_lowercase())
+                .cloned()
+                .unwrap_or_default()
+        }
+        fn official_store_for_chat(&mut self, chat_id: &str) -> Option<String> {
+            self.chats.borrow_mut().push(chat_id.to_string());
+            self.by_chat.get(chat_id).cloned()
+        }
+    }
+
+    fn main_with(rows: &[(&str, &str, &str, &str, Option<&str>)]) -> rusqlite::Connection {
+        let c = rusqlite::Connection::open_in_memory().unwrap();
+        c.execute_batch(
+            "CREATE TABLE chat_documents (id TEXT PRIMARY KEY, chatId TEXT NOT NULL, \
+             filePath TEXT NOT NULL, scope TEXT, mountPoint TEXT, displayTitle TEXT, \
+             isActive INTEGER, createdAt TEXT, updatedAt TEXT)",
+        )
+        .unwrap();
+        for (id, chat, path, scope, mp) in rows {
+            c.execute(
+                "INSERT INTO chat_documents VALUES (?1, ?2, ?3, ?4, ?5, 'old', 1, \
+                 '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![id, chat, path, scope, mp],
+            )
+            .unwrap();
+        }
+        c
+    }
+
+    fn path_of(c: &rusqlite::Connection, id: &str) -> (String, String) {
+        c.query_row(
+            "SELECT filePath, displayTitle FROM chat_documents WHERE id = ?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    fn lookups() -> Counted {
+        let mut l = Counted::default();
+        l.by_name.insert("lore".into(), vec![STORE.into()]);
+        l.by_name
+            .insert("twins".into(), vec![STORE.into(), OTHER.into()]);
+        l.by_chat.insert("chat-b".into(), STORE.into());
+        l.by_chat.insert("chat-c".into(), OTHER.into());
+        l
+    }
+
+    #[test]
+    fn a_move_follows_every_row_that_reaches_the_same_store() {
+        global_capture::install();
+        let main = main_with(&[
+            (
+                "r-a",
+                "chat-a",
+                "notes/a.md",
+                "document_store",
+                Some("Lore"),
+            ),
+            ("r-b", "chat-b", "notes/a.md", "project", None),
+            ("r-c", "chat-c", "notes/a.md", "project", None),
+            ("r-g", "chat-a", "notes/a.md", "general", None),
+            (
+                "r-id",
+                "chat-a",
+                "notes/a.md",
+                "document_store",
+                Some(STORE),
+            ),
+            (
+                "r-twin",
+                "chat-a",
+                "notes/a.md",
+                "document_store",
+                Some("Twins"),
+            ),
+            ("r-bare", "chat-a", "notes/a.md", "document_store", None),
+        ]);
+        let l = lookups();
+        let store = SweepStore {
+            scope: "document_store",
+            mount_point: Some(Some("lore")),
+            mount_point_id: Some(STORE),
+        };
+        let (n, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_move_with(
+                &main,
+                l.clone(),
+                store,
+                "notes/a.md",
+                "archive/b.md",
+                None,
+                Some("chat-x"),
+            )
+        });
+        // By name (case-insensitive), as `project` through chat B's project,
+        // and by the store's own id; not chat C's other project, not the
+        // `general` row, not an ambiguous name, not a name-less store row.
+        assert_eq!(n, 3);
+        for id in ["r-a", "r-b", "r-id"] {
+            assert_eq!(
+                path_of(&main, id),
+                ("archive/b.md".into(), "b.md".into()),
+                "{id}"
+            );
+        }
+        for id in ["r-c", "r-g", "r-twin", "r-bare"] {
+            assert_eq!(path_of(&main, id).0, "notes/a.md", "{id}");
+        }
+        assert_eq!(
+            lines,
+            vec![format!("INFO quilltap::documents Swept chat_documents after a document move chatId=chat-x scope=document_store mountPoint=lore mountPointId={STORE} from=notes/a.md to=archive/b.md rowsUpdated=3")]
+        );
+        // Item 20: one lookup per cache key — "Lore" and "Twins" once each,
+        // each chat once.
+        assert_eq!(l.names.borrow().len(), 2, "{:?}", l.names.borrow());
+        assert_eq!(l.chats.borrow().len(), 2, "{:?}", l.chats.borrow());
+    }
+
+    #[test]
+    fn the_name_cache_keys_on_the_trimmed_lower_cased_name_and_the_chat_cache_on_the_chat() {
+        let main = main_with(&[
+            ("r-1", "chat-b", "a.md", "document_store", Some("Lore")),
+            ("r-2", "chat-b", "a.md", "document_store", Some("  LORE ")),
+            ("r-3", "chat-b", "a.md", "project", None),
+            ("r-4", "chat-b", "a.md", "project", None),
+        ]);
+        let l = lookups();
+        let store = SweepStore {
+            scope: "project",
+            mount_point: None,
+            mount_point_id: Some(STORE),
+        };
+        let n = sweep_chat_documents_after_move_with(
+            &main,
+            l.clone(),
+            store,
+            "a.md",
+            "b.md",
+            Some("Bee"),
+            None,
+        );
+        assert_eq!(n, 4);
+        assert_eq!(
+            l.names.borrow().as_slice(),
+            ["Lore"],
+            "one findByName for both spellings"
+        );
+        assert_eq!(
+            l.chats.borrow().as_slice(),
+            ["chat-b"],
+            "one project hop for one chat"
+        );
+        assert_eq!(path_of(&main, "r-4").1, "Bee", "an explicit title wins");
+    }
+
+    #[test]
+    fn without_a_store_id_only_the_literal_address_moves_and_a_miss_logs_debug() {
+        global_capture::install();
+        let main = main_with(&[
+            ("r-g", "chat-a", "a.md", "general", None),
+            ("r-p", "chat-a", "a.md", "project", None),
+        ]);
+        let store = SweepStore {
+            scope: "general",
+            mount_point: Some(None),
+            mount_point_id: None,
+        };
+        assert_eq!(
+            sweep_chat_documents_after_move_with(
+                &main,
+                lookups(),
+                store,
+                "a.md",
+                "b.md",
+                None,
+                None
+            ),
+            1
+        );
+        let (n, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_move_with(
+                &main,
+                lookups(),
+                store,
+                "none.md",
+                "b.md",
+                None,
+                Some("c1"),
+            )
+        });
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap::documents No chat_documents rows to sweep after a document move chatId=c1 scope=general mountPoint=null from=none.md".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_failed_update_warns_and_answers_zero() {
+        global_capture::install();
+        let main = main_with(&[("r-g", "chat-a", "a.md", "general", None)]);
+        // A trigger makes the UPDATE itself fail; the read still finds the row.
+        main.execute_batch(
+            "CREATE TRIGGER no_update BEFORE UPDATE ON chat_documents \
+             BEGIN SELECT RAISE(ABORT, 'refused'); END;",
+        )
+        .unwrap();
+        let store = SweepStore {
+            scope: "general",
+            mount_point: None,
+            mount_point_id: None,
+        };
+        let (n, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_move_with(
+                &main,
+                lookups(),
+                store,
+                "a.md",
+                "b.md",
+                None,
+                None,
+            )
+        });
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            vec!["WARN quilltap::documents Failed to sweep chat_documents after a document move scope=general from=a.md to=b.md error=refused".to_string()]
+        );
+        let (n, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_folder_move_with(&main, lookups(), store, "", "x", None)
+        });
+        assert_eq!(n, 0);
+        assert!(lines.is_empty(), "no row under '/': {lines:?}");
+    }
+
+    #[test]
+    fn a_folder_move_rewrites_the_prefix_case_sensitively_and_logs_only_a_positive_sweep() {
+        global_capture::install();
+        let main = main_with(&[
+            (
+                "r-1",
+                "chat-a",
+                "Notes/a.md",
+                "document_store",
+                Some("Lore"),
+            ),
+            (
+                "r-2",
+                "chat-a",
+                "Notes/sub/b.md",
+                "document_store",
+                Some("Lore"),
+            ),
+            (
+                "r-3",
+                "chat-a",
+                "notes/c.md",
+                "document_store",
+                Some("Lore"),
+            ),
+            (
+                "r-4",
+                "chat-a",
+                "Notesy/d.md",
+                "document_store",
+                Some("Lore"),
+            ),
+        ]);
+        let store = SweepStore {
+            scope: "document_store",
+            mount_point: Some(Some("Lore")),
+            mount_point_id: Some(STORE),
+        };
+        let (n, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_folder_move_with(
+                &main,
+                lookups(),
+                store,
+                "Notes",
+                "Archive/",
+                Some("c1"),
+            )
+        });
+        assert_eq!(n, 2);
+        assert_eq!(
+            path_of(&main, "r-1"),
+            ("Archive/a.md".into(), "a.md".into())
+        );
+        assert_eq!(
+            path_of(&main, "r-2"),
+            ("Archive/sub/b.md".into(), "b.md".into())
+        );
+        assert_eq!(path_of(&main, "r-3").0, "notes/c.md", "R-6: case-sensitive");
+        assert_eq!(path_of(&main, "r-4").0, "Notesy/d.md");
+        assert_eq!(
+            lines,
+            vec![format!("INFO quilltap::documents Swept chat_documents after a folder move chatId=c1 scope=document_store mountPoint=Lore mountPointId={STORE} from=Notes to=Archive/ rowsUpdated=2")]
+        );
+        let (_, lines) = global_capture::capture(|| {
+            sweep_chat_documents_after_folder_move_with(
+                &main,
+                lookups(),
+                store,
+                "Nowhere",
+                "X",
+                None,
+            )
+        });
+        assert!(
+            lines.is_empty(),
+            "no DEBUG arm in the folder twin: {lines:?}"
+        );
+    }
+}
