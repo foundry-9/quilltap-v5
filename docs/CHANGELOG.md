@@ -87,6 +87,12 @@ _Versions: core 0.0.1429._
 
 P4.D363 cut (a). `chat_message_fts_eligibility_sql` gains v4's `AND "systemSender" IS NULL AND "customAnnouncer" IS NULL` (v4 #121: Staff rows carry role `ASSISTANT`), so the counts, the rebuild, the LIKE fallback and the insert trigger move together. The `_ai` trigger's `WHEN` is now that fragment at alias `new` byte for byte (v4 compares the stored `sqlite_master.sql` and drops a differing trigger on every boot), pinned by `insert_trigger_when_is_the_fragment`. New `stale_chat_message_fts_triggers` (v4's SQL, `sqlite_master` order, `IF NOT EXISTS` stripped once) and the stale-replace arm of `ensure_chat_message_fts_schema`, with v4's DEBUG `Replacing outdated chat message FTS triggers` (`staleJson`). Global search re-applies the fragment on the joined row of the FTS arm, and every hit is `{messageId, content, chatId, role, participantId, createdAt}`, with `participantId` null when absent (contract C8). Differentials grown at pin `624d0d25c`: `chat_message_fts` (27 scenarios, `stale` / `master` ops, per-step logs), `chat_message_fts_reconcile` (8, the module logger's lines in order), `chats_search` (Staff and announcer rows, a Staff row indexed under the legacy trigger, hits byte-compared, `TRIGGER_TEXT_NO_PING_PONG`) and `ui_search` (two planted Staff rows, asserted present and absent). The pairing test names `EMPTY_AUTHOR_TRUTHINESS_VS_IS_NULL`.
 
+#### 2026-11-09 — test(harness): the OpenRouter pricing oracle carries 1.5.34's required `endpoints`; the family docs name the new SDK floors (P4.D364 Tier 2)
+
+_No crate versions bumped._
+
+`@openrouter/sdk` 1.5.34's `Model$inboundSchema` requires `endpoints`. The `openrouter-sdk-pricing` oracle's seed models lacked it, so every page failed validation and v4's fetcher answered nothing. The Rust family then went red with "no multi-page scenario". The seeds now carry `endpoints: []`, and the family is green from the pin again (3 / 499 / 503 / 1003 / 0 outputs). The `record-request-envelopes.mjs` and `text_http_errors_equivalence.rs` headers now name the new floors and rows.
+
 #### 2026-11-09 — fix(providers): pin the Anthropic validate probe's convergence and re-cite the SDK versions the re-record proved unmoved (P4.D364 Tier 2)
 
 _Versions: core 0.0.1430._

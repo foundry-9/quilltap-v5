@@ -35,6 +35,13 @@
  * headers v5 MODELS (User-Agent, HTTP-Referer/X-Title, content-type, auth,
  * anthropic-version) — a subset, since the SDKs add plumbing headers a single
  * reqwest transport neither sends nor should.
+ *
+ * P4.D364 (the `624d0d25c` floors): `@anthropic-ai/sdk` 1.4.0 sends
+ * `anthropic-version: 2026-10-21` and the key as `Authorization: Bearer`; the
+ * anthropic block gained `sampling-absent` / `top-p-only` (no sampling key on
+ * any model), the three empty-message-skip rows, and the three
+ * `assistant-*` rows `request_builder_equivalence` records by name as
+ * `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`.
  */
 
 import { writeFileSync } from 'node:fs';

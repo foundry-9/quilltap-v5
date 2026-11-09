@@ -181,6 +181,9 @@ const VISION_TOOLS_MODEL = {
   },
   supported_voices: null,
   links: { details: '/api/v1/models/qwen/qwen3.7-flash-20260727/endpoints' },
+  // P4.D364: `@openrouter/sdk` 1.5.34's `Model$inboundSchema` REQUIRES `endpoints`;
+  // without it every page fails validation and v4's fetcher answers nothing.
+  endpoints: [],
 };
 
 /** Text-only + tools, and free (`"0"` prices — the parseFloat-of-"0" arm). */
@@ -220,6 +223,9 @@ const TEXT_TOOLS_FREE_MODEL = {
   },
   supported_voices: null,
   links: { details: '/api/v1/models/inclusionai/ling-3.0-flash-20260723/endpoints' },
+  // P4.D364: `@openrouter/sdk` 1.5.34's `Model$inboundSchema` REQUIRES `endpoints`;
+  // without it every page fails validation and v4's fetcher answers nothing.
+  endpoints: [],
 };
 
 /** Vision, NO tools — the `supportsTools: false` arm stays exercised. */
@@ -257,6 +263,9 @@ const VISION_NO_TOOLS_MODEL = {
   default_parameters: {},
   supported_voices: null,
   links: { details: '/api/v1/models/google/gemini-3.1-flash-lite-image-20260630/endpoints' },
+  // P4.D364: `@openrouter/sdk` 1.5.34's `Model$inboundSchema` REQUIRES `endpoints`;
+  // without it every page fails validation and v4's fetcher answers nothing.
+  endpoints: [],
 };
 
 const SEEDS = [VISION_TOOLS_MODEL, TEXT_TOOLS_FREE_MODEL, VISION_NO_TOOLS_MODEL];

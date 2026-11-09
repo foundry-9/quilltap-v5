@@ -61,7 +61,7 @@
 //!   SDKs' retries are the transport's, not the port's contract).
 //!
 //! P4.150 widened it again: six GOOGLE-only 2xx cases (one mode each, through
-//! the real `@google/genai` 1.52.0) for `extractTextFromResponse`'s `No parts
+//! the real `@google/genai` 2.32.0 — re-measured P4.D364, unchanged since 1.52.0) for `extractTextFromResponse`'s `No parts
 //! found in Google response candidate` WARN on both paths, the stream path's
 //! `No candidates…` WARN, and the `content.text` fallback — measured REACHABLE
 //! (the SDK keeps the key); every answered row now compares v4's
