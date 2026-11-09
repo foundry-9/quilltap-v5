@@ -571,6 +571,15 @@ _Versions: core 0.0.1429, web 0.0.257._
 
 The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
 
+#### 2026-11-09 — feat(storyteller): one Prospero briefing for the All at once group; the tier-3 family against v4's real handleStorytellerRun (P4.D368 items 5–8, 15)
+
+_Versions: core 0.0.1430, host 0.0.226._
+
+- The concurrent follower gate (v4 `turn-preparation.service.ts:178`): on a Prospero cadence turn only the group's first concurrent turn posts the public context briefing; the rest post only their own whispers.
+- A storyteller turn yields once after loading the transcript, so every first-wave seat of the group loads it as it stood at the operator's post before any of them writes (v4's interleaving; without it a follower skipped its cadence whisper).
+- Each storyteller turn's future is boxed in the host (several in one `join_all` overflowed the run thread's stack in a debug build).
+- New tier-3 `storyteller_simultaneous_tier3_equivalence` drives v4's real `handleStorytellerRun` (`order: 'simultaneous'`) against v5's real host spine on a minted fixture (new builder `build-storyteller-simultaneous-fixture.ts`, new oracle `storyteller-simultaneous-tier3.test.ts`): the frames per seat, the round's rows (one public briefing for the group, a whisper per seat), the round row and the round / cadence log lines; a Stop during the group; a failing concurrent turn, measured against v4 and pinned as the ruled `CONCURRENT_TURN_FAILURE_CONTAINED`. A v5-only test pins the interleaving and the seat on every frame.
+
 #### 2026-11-09 — feat(storyteller): All at once runs on the server — the concurrent group in core, seated turns in the host (P4.D368 items 2–5)
 
 _Versions: core 0.0.1429, host 0.0.225._

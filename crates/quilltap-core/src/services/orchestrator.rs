@@ -1707,6 +1707,19 @@ where
     let chat_id_owned = chat_id.clone();
     let mut existing_messages =
         db.read_main(move |c| chats_messages_read::get_messages(c, &chat_id_owned))?;
+    // === P4.D368 === the all-at-once group shares ONE transcript: v4's
+    // concurrent turns interleave at every awaited repository call, so each
+    // first-wave turn loads the transcript as it stood at the operator's post
+    // before any of them writes (`round.service.ts:398`: "everyone sees the
+    // transcript as it stood at the operator's post"). v5's reads are
+    // synchronous, so a turn would run on to its Prospero cadence posts before
+    // the next seat loaded; one cooperative yield after the load reproduces
+    // v4's order (a no-op for a sequential storyteller turn — nothing else is
+    // running on its task).
+    if storyteller_turn.is_some() {
+        super::storyteller_rounds::yield_once().await;
+    }
+    // === end P4.D368 ===
 
     // ========================================================================
     // "Nothing to add" turn-skipping — eligibility (orchestrator.service.ts:492)
@@ -1843,7 +1856,16 @@ where
                 })
             })
             .unwrap_or((None, None));
-        if project_context.is_some() || general_context.is_some() {
+        // === P4.D368 === v4 `turn-preparation.service.ts:178` /
+        // `orchestrator.service.ts:612-623`: "Concurrent storyteller turns
+        // share one message count: the group's first posts the public
+        // briefing, and the rest only their own whispers."
+        if (project_context.is_some() || general_context.is_some())
+            && !storyteller_turn
+                .as_ref()
+                .is_some_and(|s| s.concurrent_follower)
+        {
+            // === end P4.D368 ===
             let posted = prospero::post_prospero_context_announcement(
                 db,
                 prospero::ProsperoContextAnnouncement {

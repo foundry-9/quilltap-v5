@@ -734,30 +734,31 @@ where
         let seated = turn
             .concurrent
             .then(|| self.sink.seated(&turn.participant_id));
+        // Each turn's future is BOXED: the all-at-once group holds several
+        // `process_message` futures in one `join_all`, and inline they overflow
+        // the run thread's stack in a debug build.
         let result = match &seated {
             Some(seated) => {
-                self.spine
-                    .process_storyteller(
-                        self.chat_id.clone(),
-                        seated,
-                        options,
-                        log_context,
-                        Some(self.handle.clone()),
-                        false,
-                    )
-                    .await
+                Box::pin(self.spine.process_storyteller(
+                    self.chat_id.clone(),
+                    seated,
+                    options,
+                    log_context,
+                    Some(self.handle.clone()),
+                    false,
+                ))
+                .await
             }
             None => {
-                self.spine
-                    .process_storyteller(
-                        self.chat_id.clone(),
-                        self.sink,
-                        options,
-                        log_context,
-                        Some(self.handle.clone()),
-                        false,
-                    )
-                    .await
+                Box::pin(self.spine.process_storyteller(
+                    self.chat_id.clone(),
+                    self.sink,
+                    options,
+                    log_context,
+                    Some(self.handle.clone()),
+                    false,
+                ))
+                .await
             }
         };
         match result {

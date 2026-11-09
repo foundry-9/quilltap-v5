@@ -662,7 +662,7 @@ pub trait RoundTurnRunner {
 /// row `simultaneous-cap-five-on-one-profile-plus-one`: every worker's first
 /// turn starts, then every first turn ends, then the second wave starts).
 /// `tokio::task::yield_now` needs the `rt` feature core does not enable.
-struct YieldOnce(bool);
+pub(crate) struct YieldOnce(bool);
 
 impl std::future::Future for YieldOnce {
     type Output = ();
@@ -680,7 +680,7 @@ impl std::future::Future for YieldOnce {
     }
 }
 
-fn yield_once() -> YieldOnce {
+pub(crate) fn yield_once() -> YieldOnce {
     YieldOnce(false)
 }
 
