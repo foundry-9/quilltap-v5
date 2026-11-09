@@ -3457,6 +3457,29 @@ describe('settings-routes oracle', () => {
     // A non-object body: `{...current, ...body}` spreads a string into indexed
     // keys, contributing no `maxAgentTurns`, so the stored value survives.
     { name: 'bc_put_string_body', family: 'brahma_console', user: 'A', route: 'brahmaConsole', method: 'PUT', url: 'http://x/api/v1/settings/brahma-console', body: 'fifty' as never, seedBrahmaConsole: 120, after: 'brahmaConsole' },
+    // === P4.D362 — the `maxImagesPerRequest` route arms (v4 `d439f6dc9`) ===
+    // Create: absent / null → 4; otherwise `parseMaxImagesPerRequest` (a JS
+    // `Number()` of a trimmed string included) or the 400 sentence. PUT: only
+    // when the key is present; `null` is refused. The repository sampling
+    // strip is NOT measured here: jest's plugin registry is empty, so v4's
+    // `acceptsSamplingParameters` answers `true` for every provider; the
+    // strip is measured where the real plugin registers
+    // (`connection-profiles-tier2.ts`).
+    { name: 'cp_create_max_images_absent', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_absent', provider: 'OPENAI', modelName: 'gpt-4o' }, after: 'connProfiles' },
+    { name: 'cp_create_max_images_valid', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_valid', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: 8 }, after: 'connProfiles' },
+    { name: 'cp_create_max_images_string', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_string', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: '6' }, after: 'connProfiles' },
+    { name: 'cp_create_max_images_null', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_null', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: null }, after: 'connProfiles' },
+    { name: 'cp_create_max_images_zero', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_zero', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: 0 } },
+    { name: 'cp_create_max_images_over', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_over', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: 51 } },
+    { name: 'cp_create_max_images_fraction', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_fraction', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: 4.5 } },
+    { name: 'cp_create_max_images_blank', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_blank', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: '  ' } },
+    { name: 'cp_create_max_images_bool', family: 'connection_profiles', user: 'A', route: 'connProfiles', method: 'POST', url: `http://x${CP}`, body: { name: 'cp_create_max_images_bool', provider: 'OPENAI', modelName: 'gpt-4o', maxImagesPerRequest: true } },
+    { name: 'cp_update_max_images_valid', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: 12 }, after: 'connProfiles' },
+    { name: 'cp_update_max_images_string', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: '50' }, after: 'connProfiles' },
+    { name: 'cp_update_max_images_null', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: null }, after: 'connProfiles' },
+    { name: 'cp_update_max_images_over', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: 51 }, after: 'connProfiles' },
+    { name: 'cp_update_max_images_zero_string', family: 'connection_profiles', user: 'A', route: 'connProfileItem', method: 'PUT', url: cbase(spec.profiles.gpt), paramId: spec.profiles.gpt, body: { maxImagesPerRequest: '0' }, after: 'connProfiles' },
+    // === end P4.D362 ===
   ];
 
   it('emits all cases', async () => {

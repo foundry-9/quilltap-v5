@@ -24,6 +24,12 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — P4.D362: the `maxImagesPerRequest` route rows on settings-routes
+
+_No crate versions bumped._
+
+Fourteen fenced `cp_` rows on `cases/settings-routes.test.ts`. On create, an absent or `null` cap gives 4, while `8` and `"6"` are stored as given; `0`, `51`, `4.5`, a blank string and `true` each give the 400 sentence. On PUT, `12` and `"50"` are stored; `null`, `51` and `"0"` each give the 400. `settings_routes_equivalence` is green from the pin. The repository strip is not measured here: the case's plugin registry is empty, so v4 answers `true` for every provider.
+
 #### 2026-11-08 — P4.D362: the 4.12 carrier rows — flagged messages on the read / write / continuation corpora, the import carriers, and the jest provider-validation mock
 
 _No crate versions bumped._
