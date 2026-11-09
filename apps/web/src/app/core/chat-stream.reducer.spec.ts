@@ -626,6 +626,59 @@ describe('chat stream reducer — concurrent storyteller seats (P4.D344, v4 hand
     expect(reduceChatFrame(s, { ...doneFrame({ messageId: 'm-a' }), seat: seat('a') }).messages).toHaveLength(1);
   });
 
+  it('a concurrent seat that FAILS drops only its own bubble; the round streams on to chainComplete (CONCURRENT_TURN_FAILURE_CONTAINED)', () => {
+    const base = { ...initialChatStreamState(), waitingForResponse: true };
+    const midRound = foldChatFrames(
+      [
+        { kind: 'content', text: 'Ada answers ', seat: seat('ada') },
+        { kind: 'content', text: 'Bram answers ', seat: seat('bram') },
+        {
+          kind: 'error',
+          message: 'Failed to generate response',
+          errorType: 'Error',
+          details: "Bram's provider fell over",
+          seat: seat('bram'),
+        },
+      ],
+      base,
+    );
+    // Bram's half-bubble is gone; Ada's still streams; the main stream is not
+    // ended (no streaming/status reset, no errorSubmission — that is the
+    // UNSEATED arm's).
+    expect(midRound.concurrentStreams).toEqual([{ participantId: 'ada', content: 'Ada answers ' }]);
+    expect(midRound.error).toBe('Failed to generate response');
+    expect(midRound.errorSubmission).toEqual(initialChatStreamState().errorSubmission);
+    expect(midRound.finished).toBe(false);
+
+    const s = foldChatFrames(
+      [
+        { ...doneFrame({ messageId: 'm-ada', participantId: 'ada' }), seat: seat('ada') },
+        { kind: 'turnStart', participantId: 'cora', characterName: 'Cora', chainDepth: 3 },
+        { kind: 'content', text: 'Cora closes.' },
+      ],
+      midRound,
+    );
+    expect(s.concurrentStreams).toEqual([]);
+    expect(s.streaming).toBe(true);
+    expect(s.content).toBe('Cora closes.');
+
+    const end = foldChatFrames(
+      [
+        doneFrame({ messageId: 'm-cora', participantId: 'cora' }),
+        { kind: 'turnComplete', participantId: 'cora', messageId: 'm-cora', chainDepth: 3 },
+        { kind: 'chainComplete', reason: 'user_turn', nextSpeakerId: null, chainDepth: 3 },
+      ],
+      s,
+    );
+    expect(end.concurrentStreams).toEqual([]);
+    expect(end.finished).toBe(true);
+    expect(end.chainReason).toBe('user_turn');
+    expect(assistant(end.messages).map((m) => [m.id, m.content])).toEqual([
+      ['m-ada', 'Ada answers '],
+      ['m-cora', 'Cora closes.'],
+    ]);
+  });
+
   it('a seat-tagged posted surfaces deduped; a seat-tagged error is recorded bare', () => {
     const s = foldChatFrames([
       { kind: 'posted', what: 'hostAnnouncement', message: { id: 'h' }, seat: seat('a') },

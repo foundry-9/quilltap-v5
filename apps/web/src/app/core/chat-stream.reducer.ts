@@ -414,8 +414,17 @@ function reduceSeat(s: ChatStreamState, frame: ChatStreamFrame, pid: string): Ch
       return { ...s, messages: dedupePush(s.messages, postedMessage(frame)) };
     case 'error':
       // v4 toasts it and reads on; v5 records it for the run's one error toast
-      // (recorded at P4.D344 — kept).
-      return { ...s, error: frame.message };
+      // (recorded at P4.D344 — kept). The seat's turn is OVER, though: v5
+      // contains a concurrent seat's failure to that seat and the round reads
+      // on (`CONCURRENT_TURN_FAILURE_CONTAINED`), so its half-written bubble
+      // goes with it — no `done` will ever come to settle it. (v4's round
+      // rejects whole there, so v4 never reaches this case.) The shared
+      // streaming slot is left alone: the other seats and the tail stream on.
+      return {
+        ...s,
+        error: frame.message,
+        concurrentStreams: s.concurrentStreams.filter((c) => c.participantId !== pid),
+      };
     // A concurrent turn's status, thinking, tools and chain bookkeeping have no
     // bubble of their own; the round's own frames carry the rest.
     case 'reasoning':
