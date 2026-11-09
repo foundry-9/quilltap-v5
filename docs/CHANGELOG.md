@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — feat(tools): the simple-JSON tool prompt's rule 6 reads a listed conversation before saying "I don't recall" (v4 6121f59b9)
+
+_Versions: core 0.0.1433._
+
+P4.D375 C4. `tools/simple_json_prompt.rs`'s rule 6 takes v4 4.12.1's sentence: when the search lists conversations from the period, read the likeliest one with `read_conversation` before answering; only when it finds nothing and lists no conversation, say you don't recall, never inventing dates, places, or details. A unit test pins the sentence. The native-tools twin (`tools/native_tool_prompt.rs`) is P4.D370's (C8).
+
 #### 2026-11-09 — feat(tools): the search tool's window-first dated search — dated default sources, window census, window-scoped conversation search, honest-empty texts on every empty search, the census footer, the executor's opts (v4 6121f59b9)
 
 _Versions: core 0.0.1432._

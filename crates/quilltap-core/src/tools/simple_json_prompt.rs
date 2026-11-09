@@ -183,7 +183,7 @@ fn entry_for(key: &str) -> String {
 
 const PREFIX: &str = "\n## Available tools\n\nYou may call any of the following tools when it would genuinely help you respond. Calls are framed as JSON inside a `<tool_call>` XML tag:\n\n";
 
-const SUFFIX: &str = "\n\n### How to use a tool\n\nWhen you want to call a tool, write a single line of prose introducing it (optional), then emit exactly ONE `<tool_call>` block in this exact shape and stop:\n\n<tool_call>\n{\"name\": \"<tool_name>\", \"arguments\": {\"<param>\": \"<value>\"}}\n</tool_call>\n\nRules:\n- Use the canonical tool name from the list above (e.g. `\"search\"`, not `\"SEARCH\"`).\n- The `arguments` object holds the named parameters. Omit optional ones you don't need.\n- Emit at most ONE `<tool_call>` per turn. Stop immediately after the closing `</tool_call>` tag — do not narrate fictional results.\n- After you stop, the system will execute the tool and reply with a `<tool_result name=\"...\">` block. Read it, then either respond to the user or make another tool call.\n- Only call a tool when it would genuinely improve your answer. Don't decorate the response with tool calls you don't need.\n- Recalling past events: when asked about a past event or specific detail not in your current recall, use `search` (with `since`/`until` when a time period is mentioned), then `read_conversation` on the source conversation, and answer from what you find. If you find nothing, say you don't recall — never invent specifics.\n";
+const SUFFIX: &str = "\n\n### How to use a tool\n\nWhen you want to call a tool, write a single line of prose introducing it (optional), then emit exactly ONE `<tool_call>` block in this exact shape and stop:\n\n<tool_call>\n{\"name\": \"<tool_name>\", \"arguments\": {\"<param>\": \"<value>\"}}\n</tool_call>\n\nRules:\n- Use the canonical tool name from the list above (e.g. `\"search\"`, not `\"SEARCH\"`).\n- The `arguments` object holds the named parameters. Omit optional ones you don't need.\n- Emit at most ONE `<tool_call>` per turn. Stop immediately after the closing `</tool_call>` tag — do not narrate fictional results.\n- After you stop, the system will execute the tool and reply with a `<tool_result name=\"...\">` block. Read it, then either respond to the user or make another tool call.\n- Only call a tool when it would genuinely improve your answer. Don't decorate the response with tool calls you don't need.\n- Recalling past events: when asked about a past event or specific detail not in your current recall, use `search` (with `since`/`until` when a time period is mentioned), then `read_conversation` on the source conversation, and answer from what you find. If the search lists conversations from that period, read the likeliest one with `read_conversation` before answering. Only if it finds nothing and lists no conversation from that period, say you don't recall — never invent dates, places, or details.\n";
 
 /// v4 `buildSimpleJsonToolInstructions`.
 pub fn build_simple_json_tool_instructions(options: &SimpleJsonPromptOptions) -> String {
@@ -273,3 +273,19 @@ pub fn build_simple_json_tool_instructions(options: &SimpleJsonPromptOptions) ->
     let full = format!("{}{}{}", PREFIX, entries.join("\n"), SUFFIX);
     js_trim(&full).to_string()
 }
+
+// === P4.D375 ===
+#[cfg(test)]
+mod p4d375_rule_six_tests {
+    /// v4 4.12.1 `6121f59b9` (`simple-json-prompt.ts:266`,
+    /// `simple-json-prompt.test.ts`'s six added lines): rule 6 sends the model
+    /// to a listed conversation before it says it does not recall.
+    #[test]
+    fn rule_six_reads_a_listed_conversation_first() {
+        let s = super::SUFFIX;
+        assert!(s.contains("If the search lists conversations from that period, read the likeliest one with `read_conversation` before answering."));
+        assert!(s.contains("Only if it finds nothing and lists no conversation from that period, say you don't recall — never invent dates, places, or details."));
+        assert!(!s.contains("If you find nothing, say you don't recall"));
+    }
+}
+// === end P4.D375 ===
