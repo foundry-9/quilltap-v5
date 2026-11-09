@@ -293,7 +293,7 @@ pub mod wardrobe_wear_commit;
 pub mod anchor_gate_probe;
 // ── end P4.D269 ──
 pub mod established_fact_memories;
-pub mod established_fact_reminder; // P4.D372 // P4.D372
-// === P4.D366 ===
+pub mod established_fact_reminder; // P4.D372
+                                   // === P4.D366 ===
 pub mod stream_frames;
 // === end P4.D366 ===

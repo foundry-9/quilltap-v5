@@ -58,7 +58,9 @@ use crate::services::recall::query::{EmbeddingMemo, EmbeddingMemoMap};
 use crate::services::recall::search::{
     search_memories, RecallSearchOptions, SearchMemoriesOptions,
 };
-use crate::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerNames, SpeakerRow};
+use crate::services::speaker_names::{
+    resolve_speaker_names, speaker_label, SpeakerNames, SpeakerRow,
+};
 use crate::tools::llm_number::llm_number;
 use crate::tools::search::memory_archived_label;
 
