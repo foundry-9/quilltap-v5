@@ -201445,8 +201445,8 @@ Seven commits (`0eaa5d4fb..HEAD`):
     so the route line lands between the scanner's lines and the enqueue's (order
     proven against v4's captured stream).
 14. VERIFY-ONLY records — below (one was NOT verify-only: the readdir order).
-15. R-6 — measured on v4, drafted (NOT FILED):
-    `work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`.
+15. R-6 — measured on v4, drafted, FILED as v4 #147 (the human's go-ahead,
+    2026-11-08): `work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`.
 
 ### Tier 2
 
@@ -201569,7 +201569,7 @@ ported; vectors cited in `docx_html.rs`), R-P4 (the v5-worded DEBUG), R-P5
 (`is_not_fully_materialized` ported, `pub`, tier-1-covered), R-P7 (payload args,
 `_`-named, no `allow(unused)`), R-P8 (R-6 in `/tmp/p4d381/r6/`).
 
-### R-6 (measured, draft only)
+### R-6 (measured, filed as v4 #147)
 
 On v4 at the pin over the mounts fixture (APFS): a filesystem `move-folder` of
 `notes` for an indexed `Notes/` answers success and renames the directory to
@@ -201579,7 +201579,7 @@ while the database folder lookup finds `notes` for `NOTES` (NOCASE); and the
 Scriptorium's `move-folder` has no `sweepChatDocumentsAfterFolderMove` call.
 v5 ports all three faithfully. Draft:
 `docs/developer/porting/work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`
-— **awaits the human's go-ahead; NOT filed.**
+— **FILED as `foundry-9/quilltap-server#147` on the human's go-ahead (2026-11-08).**
 
 ### VERIFY-ONLY
 
