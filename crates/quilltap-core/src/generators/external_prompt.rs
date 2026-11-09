@@ -29,12 +29,11 @@
 //! direction, the five trust safeguards and the gated companion disposition from
 //! `generators::field_semantics` — the first import of that module here (P4.D241).
 
-use std::sync::LazyLock;
-
 use serde::Serialize;
 use serde_json::Value;
 
 use crate::api::system_qtap::js_truthy;
+use crate::characters::kind::{resolve_character_kind, CharacterKind};
 use crate::characters::physical_description::{
     pick_physical_description_value, PhysicalDescriptionProfile,
 };
@@ -42,7 +41,8 @@ use crate::cheap_llm::{build_character_cache_key, profile_params_value};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, connection_profiles, DbError};
 use crate::generators::field_semantics::{
-    CONVERSATIONAL_VOICE_DIRECTION, GATED_COMPANION_TRUST_DISPOSITION, TRUST_SAFEGUARDS_DIRECTION,
+    generator_direction_for, CONVERSATIONAL_VOICE_DIRECTION, GATED_COMPANION_TRUST_DISPOSITION,
+    TRUST_SAFEGUARDS_DIRECTION,
 };
 use crate::jsstr::utf16_len;
 use crate::model::completion::{
@@ -97,22 +97,27 @@ impl ExternalPromptResult {
 // Meta-prompt (wire bytes)
 // ============================================================================
 
-/// v4 `META_SYSTEM_PROMPT` (byte-exact) — the system message of the one call.
+/// v4 `buildMetaSystemPrompt(kind)` (byte-exact, `3ae4cf582` — it replaced the
+/// `META_SYSTEM_PROMPT` constant) — the system message of the one call.
 ///
 /// Since v4 `ca363178d` it interpolates three field-semantics directions —
 /// [`CONVERSATIONAL_VOICE_DIRECTION`] (an EIGHTH voice-direction site: before that
 /// commit this generator imported nothing from field semantics),
 /// [`TRUST_SAFEGUARDS_DIRECTION`] and [`GATED_COMPANION_TRUST_DISPOSITION`] —
 /// plus the no-literal-placeholder sentence, every block `\n\n`-separated
-/// (P4.D241). It grew 1227 → 5664 UTF-16 units, which moves the token estimate
-/// in the over-budget refusal by about 1110.
+/// (P4.D241). Since v4 `3ae4cf582` (P4.D371) the kind's
+/// [`generator_direction_for`] text sits between the trust safeguards and the
+/// gated companion disposition. Measured at the pin: 8212 UTF-16 units for a
+/// roleplay character, 7588 for an assistant (5664 at P4.D241), and every
+/// over-budget refusal's `Estimated input: ~N tokens` moves with it.
 ///
-/// A `LazyLock<String>`, not a `const &str`: `concat!` takes literals, not
-/// consts, and a lazily built static keeps the name and the three consumers'
-/// shape (each reads it through one deref). The placeholder sentence's two
-/// `{{user}}` sit INSIDE this `format!` template, so they are written
-/// `{{{{user}}}}`; the constants' own `{{user}}` arrive as captured arguments.
-pub static META_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
+/// Built once per run (v4 builds it after the character read and before the
+/// system-prompt lookup) and read by the estimate, the call and the log. The
+/// placeholder sentence's two `{{user}}` sit INSIDE this `format!` template, so
+/// they are written `{{{{user}}}}`; the constants' own `{{user}}` arrive as
+/// captured arguments.
+pub fn build_meta_system_prompt(kind: CharacterKind) -> String {
+    let direction = generator_direction_for(kind);
     format!(
         r#"You are a prompt engineering expert. Your task is to generate a standalone system prompt for an AI character, suitable for pasting into external tools like Claude Desktop, ChatGPT Custom Instructions, or similar hosted environments.
 
@@ -132,13 +137,15 @@ pub static META_SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
 
 {TRUST_SAFEGUARDS_DIRECTION}
 
+{direction}
+
 {GATED_COMPANION_TRUST_DISPOSITION}
 
 The external tool will not substitute placeholders: wherever the directions above say {{{{user}}}}, the generated prompt names the person the character talks with in plain words ("the user", or their name if the character data gives one), never the literal {{{{user}}}} token.
 
 Stay within the token budget specified by the user. Be thorough but concise."#
     )
-});
+}
 
 // ============================================================================
 // Helpers
@@ -338,6 +345,20 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
         return Ok(ExternalPromptResult::failure("Character not found"));
     };
 
+    // v4 `3ae4cf582`: the meta-prompt follows the character's kind (stakes or
+    // the work) — built and logged BEFORE the system-prompt lookup, so a
+    // `System prompt not found` run logs this line first. camelCase fields
+    // (§R.5); the file's older lines keep their snake_case fields (a recorded
+    // residue, R-Z).
+    let character_kind = resolve_character_kind(Some(&character));
+    let meta_system_prompt = build_meta_system_prompt(character_kind);
+    tracing::debug!(
+        target: "quilltap::external_prompt_generator",
+        characterId = %character_id,
+        kind = %character_kind.as_str(),
+        "External prompt meta-prompt built for the character's kind"
+    );
+
     // Find selected system prompt.
     let Some(system_prompt) = find_by_id(character.get("systemPrompts"), &request.system_prompt_id)
     else {
@@ -380,7 +401,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
     // Estimate input tokens (rough: 1 token ≈ 4 characters) — `.length` is
     // UTF-16 code units.
     let estimated_input_tokens =
-        ((utf16_len(&META_SYSTEM_PROMPT) + utf16_len(&user_message)) as f64 / 4.0).ceil() as i64;
+        ((utf16_len(&meta_system_prompt) + utf16_len(&user_message)) as f64 / 4.0).ceil() as i64;
     let provider = profile
         .get("provider")
         .and_then(Value::as_str)
@@ -429,7 +450,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
         .and_then(Value::as_str)
         .map(str::to_string);
     let messages = vec![
-        CompletionMessage::system(META_SYSTEM_PROMPT.as_str()),
+        CompletionMessage::system(meta_system_prompt.as_str()),
         CompletionMessage::user(user_message.clone()),
     ];
     let params = CompletionParams {
@@ -508,7 +529,7 @@ pub async fn generate_external_prompt<CMP: CompletionProvider>(
                 messages: vec![
                     LogRequestMessage {
                         role: "system".to_string(),
-                        content: META_SYSTEM_PROMPT.clone(),
+                        content: meta_system_prompt.clone(),
                         attachments: None,
                     },
                     LogRequestMessage {

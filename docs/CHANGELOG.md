@@ -195,6 +195,14 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: External Prompt follows the character's kind (v4 3ae4cf582)
+
+_Versions: core 0.0.1431._
+
+`META_SYSTEM_PROMPT` (a `LazyLock`) becomes `build_meta_system_prompt(kind)`: the kind's direction sits between the trust safeguards and the gated companion disposition, as in v4. The generator resolves the kind right after the character read and before the system-prompt lookup, builds the meta prompt once (the token estimate, the call and the LLM log all read it), and logs v4's DEBUG `External prompt meta-prompt built for the character's kind` with camelCase `characterId` / `kind`. Measured at the pin: 8212 UTF-16 units for a roleplay character, 7588 for an assistant (5664 before), so every over-budget refusal's estimate moves (`over_budget_refuses`: ~2906 tokens).
+
+`external_prompt_tier3` now compares that line (`logLines`, captured on v4's side with a spy on `Logger.prototype.debug`, since the generator's child logger is frozen at `LOG_LEVEL=error`; on v5's side by a capture that rides the future). It also takes P4.D362's `9024789a2` hunks verbatim (the 4.12 columns planted on both sides), without which v4's profile update fails at the pin with `no such column: maxImagesPerRequest`. New row `assistant_kind_meta_prompt` (Aria planted `kind: assistant` after the seeds) in its own test, `external_prompt_assistant_kind_rows`, red until P4.D369's read overlay carries `kind`. Unit pins: `trust_directions_order` checks both kinds and both lengths; `kind_directions_order` gains External's kind title and the Wizard's four.
+
 #### 2026-11-09 — P4.D371: field semantics regenerated whole from the pin, the two kind-routed functions, and the Wizard by kind (v4 3ae4cf582 / ba6c8fe0f / 7ff5fda89)
 
 _Versions: core 0.0.1430._

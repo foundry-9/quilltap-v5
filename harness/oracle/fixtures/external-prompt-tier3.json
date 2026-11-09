@@ -138,6 +138,14 @@
       "characterId": "99999999-9999-4999-8999-999999999999",
       "body": { "maxTokens": "no" },
       "reply": { "content": "unreached" }
+    },
+    {
+      "name": "assistant_kind_meta_prompt",
+      "$comment": "P4.D371 U1 — Aria's vault planted kind=assistant (after the seeds); the meta prompt carries the TASK direction. Red on the P4.D371 branch by design (H1).",
+      "characterId": "a1000000-0000-4000-8000-000000000001",
+      "body": { "connectionProfileId": "c0000001-0000-4000-8000-000000000001", "systemPromptId": "febf80ad-121b-89a7-93c9-ceca75bc668b", "maxTokens": 1000 },
+      "reply": { "content": "You are Aria.", "usage": { "promptTokens": 10, "completionTokens": 5, "totalTokens": 15 } },
+      "plant": { "characterId": "a1000000-0000-4000-8000-000000000001", "kind": "assistant", "properties": "{\n  \"pronouns\": null,\n  \"aliases\": [\n    \"Cap\"\n  ],\n  \"title\": \"Sky-Captain\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.7,\n  \"kind\": \"assistant\"\n}" }
     }
   ]
 }

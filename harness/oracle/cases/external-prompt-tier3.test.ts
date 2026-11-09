@@ -86,6 +86,14 @@ interface CaseSpec {
   body: unknown;
   seeds?: Array<Seed | string>;
   reply: Reply;
+  /**
+   * P4.D371: an in-case vault plant, AFTER the seeds — `properties` written
+   * to the character's `properties.json` through the REAL
+   * `writeDatabaseDocument` (v5 writes the same bytes through
+   * `write_database_document`). Self-checked: `findById` must then resolve
+   * the planted `kind`.
+   */
+  plant?: { characterId: string; kind: string; properties: string };
 }
 
 interface Corpus {
@@ -248,6 +256,23 @@ async function runCase(
   const repos = getRepositories();
   const llmLogsBefore = await llmLogTotals();
 
+  // P4.D371 (Tier 2 item 16): the generator's ONE kind line. Its logger is a
+  // module-level `logger.child(...)` whose level is frozen at the oracle's
+  // `LOG_LEVEL=error`, so the line never reaches a transport; a spy on the
+  // shared `Logger.prototype.debug` sees the CALL (message + the context
+  // argument v4 passes, never the child's own `module` context).
+  const logLines: Array<{ level: string; message: string; context: unknown }> = [];
+  const { Logger } = (await import('@/lib/logger')) as unknown as {
+    Logger: { prototype: Record<string, (...a: unknown[]) => unknown> };
+  };
+  const debugSpy = jest
+    .spyOn(Logger.prototype as never, 'debug' as never)
+    .mockImplementation(((message: string, context?: unknown) => {
+      if (message === "External prompt meta-prompt built for the character's kind") {
+        logLines.push({ level: 'debug', message, context: context ?? null });
+      }
+    }) as never);
+
   try {
     for (const raw of c.seeds ?? []) {
       const seed: Seed = typeof raw === 'string' ? corpus.richAria : raw;
@@ -255,6 +280,23 @@ async function runCase(
         await repos.characters.update(seed.characterId, seed.patch as never);
       } else if (seed.kind === 'profilePatch') {
         await repos.connections.update(seed.profileId, seed.patch as never);
+      }
+    }
+    if (c.plant) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+      const { resolveCharacterKind } = await import('@/lib/characters/kind');
+      const fk = (await rawQuery(
+        'SELECT characterDocumentMountPointId AS mp FROM characters WHERE id = ?',
+        [c.plant.characterId],
+      )) as Array<{ mp: string | null }>;
+      const mountPointId = fk[0]?.mp;
+      if (!mountPointId) throw new Error(`kind plant: no vault FK for ${c.plant.characterId}`);
+      await writeDatabaseDocument(mountPointId, 'properties.json', c.plant.properties);
+      const planted = await repos.characters.findById(c.plant.characterId);
+      const kind = resolveCharacterKind(planted as never);
+      if (kind !== c.plant.kind) {
+        throw new Error(`kind plant missed: v4 resolved '${kind}', planted '${c.plant.kind}'`);
       }
     }
 
@@ -268,8 +310,9 @@ async function runCase(
     const status = response.status;
     const body = await response.json();
     const llmLogCounts = llmLogDelta(llmLogsBefore, await llmLogTotals());
-    return { name: c.name, status, body, calls, llmLogCounts };
+    return { name: c.name, status, body, calls, llmLogCounts, logLines };
   } finally {
+    debugSpy.mockRestore();
     await closeDatabase();
     closeMountIndexSQLiteClient();
     rmSync(work, { recursive: true, force: true });

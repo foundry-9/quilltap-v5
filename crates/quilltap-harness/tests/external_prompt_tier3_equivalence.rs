@@ -67,6 +67,9 @@ use serde_json::{json, Value};
 // P4.85 item 10: `materialize_llm_logs` — an llm-logs partition beside the
 // fixture pair, so the runners' `logLLMCall` twin has somewhere to write.
 mod common;
+// P4.D371: the in-case vault plant for the assistant-kind row.
+#[path = "common/kind_plant.rs"]
+mod kind_plant;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -125,6 +128,17 @@ struct Case {
     #[serde(default)]
     seeds: Vec<SeedRef>,
     reply: Reply,
+    /// P4.D371: an in-case vault plant, applied AFTER the seeds.
+    #[serde(default)]
+    plant: Option<Plant>,
+}
+
+/// P4.D371 — the bytes written to the character's vault `properties.json`.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Plant {
+    character_id: String,
+    properties: String,
 }
 
 #[derive(Deserialize)]
@@ -144,6 +158,35 @@ struct OracleRow {
     /// P4.85 item 10 — `{type: count}`, zeroes dropped.
     #[serde(rename = "llmLogCounts")]
     llm_log_counts: Value,
+    /// P4.D371 (Tier 2 item 16) — the ONE kind line, `{level, message, context}`.
+    #[serde(rename = "logLines")]
+    log_lines: Vec<Value>,
+}
+
+/// P4.D371 — v4's DEBUG `External prompt meta-prompt built for the character's
+/// kind {characterId, kind}`. The only line of this generator the family
+/// compares; v5's twin carries the two keys as their own tracing fields.
+const KIND_LINE: &str = "External prompt meta-prompt built for the character's kind";
+
+/// v5's captured lines → v4's `{level, message, context}` for [`KIND_LINE`].
+fn kind_log_lines(lines: &[String]) -> Vec<Value> {
+    lines
+        .iter()
+        .filter(|l| l.starts_with("DEBUG quilltap::external_prompt_generator") && l.contains(KIND_LINE))
+        .map(|l| {
+            let field = |k: &str| {
+                l.split(' ')
+                    .find_map(|w| w.strip_prefix(&format!("{k}=")))
+                    .unwrap_or_else(|| panic!("the kind line lacks `{k}`: {l}"))
+                    .to_string()
+            };
+            json!({
+                "level": "debug",
+                "message": KIND_LINE,
+                "context": { "characterId": field("characterId"), "kind": field("kind") },
+            })
+        })
+        .collect()
 }
 
 fn oracle_dir() -> PathBuf {
@@ -477,11 +520,11 @@ fn first_diff(got: &str, want: &str) -> String {
     "(identical line-by-line)".to_string()
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn external_prompt_matches_oracle() {
+/// The family's oracle + corpus, with the case sets asserted equal.
+fn load_family() -> Option<(Corpus, BTreeMap<String, OracleRow>)> {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_EXTERNAL_PROMPT") else {
         eprintln!("SKIP: set QT_ORACLE_EXTERNAL_PROMPT (see the test header).");
-        return;
+        return None;
     };
     let text = std::fs::read_to_string(&oracle_path).unwrap();
     assert!(
@@ -503,41 +546,65 @@ async fn external_prompt_matches_oracle() {
         corpus_names, oracle_names,
         "the oracle's case set must equal the corpus's"
     );
+    Some((corpus, oracle))
+}
 
-    let mut failed: Vec<String> = Vec::new();
-    let mut calls_total = 0usize;
-    for case in &corpus.cases {
-        let o = &oracle[&case.name];
-        let (db, scratch, user_id) = fresh_pair(&case.name);
-        for seed in &case.seeds {
-            let seed = match seed {
-                SeedRef::Named(name) => {
-                    assert_eq!(name, "richAria", "the only named seed is richAria");
-                    corpus.rich_aria.clone()
-                }
-                SeedRef::Inline(s) => s.clone(),
-            };
-            apply_seed(&db, &seed).await;
-        }
-        let provider = Arc::new(RecordingProvider {
-            inner: canned_for(o, &case.reply),
-            calls: Mutex::new(Vec::new()),
-        });
-        let driver: Arc<dyn GeneratorsDetailDriver> = Arc::new(TestDriver {
-            db: db.clone(),
-            provider: Arc::clone(&provider),
-        });
+/// One case on a fresh pair: `(diff or None, model calls, the kind lines)`.
+async fn run_and_compare(corpus: &Corpus, case: &Case, o: &OracleRow) -> (Option<String>, usize) {
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::layer::SubscriberExt;
 
-        // Decode through the `Request` enum — the edge's exact decode.
-        let mut wire =
-            json!({ "type": "characterGenerateExternalPrompt", "characterId": case.character_id });
-        if let Some(obj) = case.body.as_object() {
-            for (k, v) in obj {
-                wire[k] = v.clone();
+    let (db, scratch, user_id) = fresh_pair(&case.name);
+    for seed in &case.seeds {
+        let seed = match seed {
+            SeedRef::Named(name) => {
+                assert_eq!(name, "richAria", "the only named seed is richAria");
+                corpus.rich_aria.clone()
             }
+            SeedRef::Inline(s) => s.clone(),
+        };
+        apply_seed(&db, &seed).await;
+    }
+    if let Some(plant) = &case.plant {
+        let spec: Spec = serde_json::from_str(
+            &std::fs::read_to_string(oracle_dir().join("characters.json")).unwrap(),
+        )
+        .unwrap();
+        // The pair is open; plant through its own files (WAL-less TRUNCATE
+        // journals, so a second connection sees and is seen).
+        kind_plant::plant_vault_properties(
+            &scratch.path().join("main.db"),
+            &scratch.path().join("mount.db"),
+            &spec.test_pepper_base64,
+            &plant.character_id,
+            &plant.properties,
+        );
+    }
+    let provider = Arc::new(RecordingProvider {
+        inner: canned_for(o, &case.reply),
+        calls: Mutex::new(Vec::new()),
+    });
+    let driver: Arc<dyn GeneratorsDetailDriver> = Arc::new(TestDriver {
+        db: db.clone(),
+        provider: Arc::clone(&provider),
+    });
+
+    // Decode through the `Request` enum — the edge's exact decode.
+    let mut wire =
+        json!({ "type": "characterGenerateExternalPrompt", "characterId": case.character_id });
+    if let Some(obj) = case.body.as_object() {
+        for (k, v) in obj {
+            wire[k] = v.clone();
         }
-        let req: Request = serde_json::from_value(wire).expect("decodes through Request");
-        let response = match req {
+    }
+    let req: Request = serde_json::from_value(wire).expect("decodes through Request");
+    // P4.D371: the capture rides the FUTURE (a multi-thread runtime may poll
+    // it on any worker), so the generator's lines are seen wherever it runs.
+    let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+    let subscriber = tracing_subscriber::registry()
+        .with(quilltap_core::test_support::CaptureLayer(logs.clone()));
+    let response = async {
+        match req {
             Request::CharacterGenerateExternalPrompt {
                 character_id,
                 connection_profile_id,
@@ -565,35 +632,95 @@ async fn external_prompt_matches_oracle() {
                 .await
             }
             other => panic!("decoded the wrong variant: {other:?}"),
-        };
-        let (status, body) = to_status_body(response);
-        let calls = provider.calls.lock().unwrap().clone();
-        calls_total += calls.len();
-        let counts = llm_log_counts(&db);
-        drop(driver);
-        drop(db);
-        drop(scratch);
-
-        let got = normalize(json!({
-            "name": case.name, "status": status, "body": body,
-            "calls": calls, "llmLogCounts": counts,
-        }));
-        let want = normalize(json!({
-            "name": o.name, "status": o.status, "body": o.body,
-            "calls": o.calls, "llmLogCounts": o.llm_log_counts,
-        }));
-        if got != want {
-            failed.push(format!("{}:\n{}", case.name, first_diff(&got, &want)));
         }
     }
+    .with_subscriber(subscriber)
+    .await;
+    let (status, body) = to_status_body(response);
+    let calls = provider.calls.lock().unwrap().clone();
+    let n_calls = calls.len();
+    let counts = llm_log_counts(&db);
+    let log_lines = kind_log_lines(&logs.lock().unwrap());
+    drop(driver);
+    drop(db);
+    drop(scratch);
+
+    let got = normalize(json!({
+        "name": case.name, "status": status, "body": body,
+        "calls": calls, "llmLogCounts": counts, "logLines": log_lines,
+    }));
+    let want = normalize(json!({
+        "name": o.name, "status": o.status, "body": o.body,
+        "calls": o.calls, "llmLogCounts": o.llm_log_counts, "logLines": o.log_lines,
+    }));
+    let diff = (got != want).then(|| format!("{}:\n{}", case.name, first_diff(&got, &want)));
+    (diff, n_calls)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_prompt_matches_oracle() {
+    let Some((corpus, oracle)) = load_family() else {
+        return;
+    };
+    let mut failed: Vec<String> = Vec::new();
+    let mut calls_total = 0usize;
+    // P4.D371: the kind line must still be ASKED, and its silence leg too.
+    let mut kind_lines = 0usize;
+    for case in corpus.cases.iter().filter(|c| c.plant.is_none()) {
+        let o = &oracle[&case.name];
+        kind_lines += o.log_lines.len();
+        if case.name == "missing_character_404" {
+            assert!(o.log_lines.is_empty(), "v4 logged the kind before its 404");
+        }
+        let (diff, n) = run_and_compare(&corpus, case, o).await;
+        calls_total += n;
+        if let Some(d) = diff {
+            failed.push(d);
+        }
+    }
+    assert!(kind_lines >= 5, "the oracle recorded only {kind_lines} kind lines");
     eprintln!(
-        "external_prompt_tier3_equivalence: {} cases driven, {} model calls recorded",
+        "external_prompt_tier3_equivalence: {} cases driven, {} model calls recorded, {kind_lines} kind lines",
         corpus.cases.len(),
         calls_total
     );
     assert!(
         failed.is_empty(),
         "{} case(s) DIFFER:\n{}",
+        failed.len(),
+        failed.join("\n")
+    );
+}
+
+/// P4.D371 U1 / H1 — the planted assistant-kind row, apart from the main test
+/// so it stays green on the lane branch. RED here BY DESIGN until P4.D369's
+/// read overlay carries `kind` (v5 builds the STAKES meta prompt, so the
+/// canned table keyed on v4's TASK prompt misses, and the kind line reads
+/// `roleplay`); green on the union.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn external_prompt_assistant_kind_rows() {
+    let Some((corpus, oracle)) = load_family() else {
+        return;
+    };
+    let planted: Vec<&Case> = corpus.cases.iter().filter(|c| c.plant.is_some()).collect();
+    assert!(!planted.is_empty(), "the corpus lost its planted assistant-kind row");
+    let mut failed: Vec<String> = Vec::new();
+    for case in planted {
+        let o = &oracle[&case.name];
+        assert!(
+            o.log_lines
+                .iter()
+                .any(|l| l["context"]["kind"] == json!("assistant")),
+            "{}: v4 never resolved the planted assistant kind — the plant missed",
+            case.name
+        );
+        if let Some(d) = run_and_compare(&corpus, case, o).await.0 {
+            failed.push(d);
+        }
+    }
+    assert!(
+        failed.is_empty(),
+        "{} assistant-kind case(s) DIFFER:\n{}",
         failed.len(),
         failed.join("\n")
     );

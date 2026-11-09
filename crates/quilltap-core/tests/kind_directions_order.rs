@@ -10,11 +10,16 @@
 //! v4's case-insensitive regexes are lower-cased `contains`.
 
 use quilltap_core::characters::kind::CharacterKind;
+use quilltap_core::generators::external_prompt::build_meta_system_prompt;
 use quilltap_core::generators::field_semantics::{
     generator_direction_for, kind_drift_signal_for, ALL_EXPORTS, ASSISTANT_TASK_DIRECTION,
-    COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, EXAMPLE_DIALOGUE_COVERAGE,
-    FLATTENING_DRIFT_SIGNAL, GATED_COMPANION_TRUST_DISPOSITION, STAKES_AND_REACTION_DIRECTION,
-    TRUST_SAFEGUARDS_DIRECTION,
+    COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, COMPANION_TRUST_DISPOSITION_GATE,
+    EXAMPLE_DIALOGUE_COVERAGE, FLATTENING_DRIFT_SIGNAL, GATED_COMPANION_TRUST_DISPOSITION,
+    STAKES_AND_REACTION_DIRECTION, TRUST_SAFEGUARDS_DIRECTION,
+};
+use quilltap_core::generators::wizard::wizard_field_max_tokens;
+use quilltap_core::generators::wizard_prompts::{
+    build_system_prompt_field_prompt, field_prompt, wizard_field_prompt,
 };
 
 /// v4's `toMatch(/…/i)`.
@@ -124,4 +129,60 @@ fn the_optimizer_guardrail_treats_probation_behaviour_as_drift() {
         COMMITTEE_DRIFT_GUARDRAIL,
         "never codify agreement, warmth or following"
     ));
+}
+
+// ---- character-wizard-prompts.test.ts (v4 3ae4cf582) ----------------------
+
+#[test]
+fn system_prompt_prompt_for_a_roleplay_character_carries_the_stakes_direction_before_the_companion_gate(
+) {
+    let p = build_system_prompt_field_prompt(CharacterKind::Roleplay);
+    assert!(p.contains(STAKES_AND_REACTION_DIRECTION));
+    assert!(!p.contains(ASSISTANT_TASK_DIRECTION));
+    let stakes = p.find(STAKES_AND_REACTION_DIRECTION).unwrap();
+    assert!(stakes > p.find(TRUST_SAFEGUARDS_DIRECTION).unwrap());
+    assert!(stakes < p.find(COMPANION_TRUST_DISPOSITION_GATE).unwrap());
+}
+
+#[test]
+fn system_prompt_prompt_for_an_assistant_carries_the_task_direction_instead() {
+    let p = build_system_prompt_field_prompt(CharacterKind::Assistant);
+    assert!(p.contains(ASSISTANT_TASK_DIRECTION));
+    assert!(!p.contains(STAKES_AND_REACTION_DIRECTION));
+}
+
+#[test]
+fn wizard_field_prompt_routes_system_prompt_through_the_kind_and_every_other_field_to_field_prompts(
+) {
+    assert_eq!(
+        wizard_field_prompt("systemPrompt", CharacterKind::Assistant),
+        Some(build_system_prompt_field_prompt(CharacterKind::Assistant))
+    );
+    assert_eq!(
+        wizard_field_prompt("identity", CharacterKind::Assistant),
+        field_prompt("identity")
+    );
+    assert_eq!(field_prompt("systemPrompt"), None);
+}
+
+#[test]
+fn gives_the_system_prompt_room_to_finish() {
+    // A reasoning model truncated it at the old 1000-token cap.
+    assert_eq!(wizard_field_max_tokens("systemPrompt"), 2500);
+    assert_eq!(wizard_field_max_tokens("exampleDialogues"), 1000);
+    assert_eq!(wizard_field_max_tokens("firstMessage"), 1000);
+    assert_eq!(wizard_field_max_tokens("scenarios"), 4000);
+    assert_eq!(wizard_field_max_tokens("identity"), 500);
+}
+
+// ---- external-prompt-generator.test.ts (v4 3ae4cf582) ---------------------
+
+#[test]
+fn external_prompt_follows_the_character_kind_stakes_for_roleplay_the_work_for_an_assistant() {
+    let roleplay = build_meta_system_prompt(CharacterKind::Roleplay);
+    assert!(roleplay.contains(STAKES_AND_REACTION_DIRECTION));
+    assert!(!roleplay.contains(ASSISTANT_TASK_DIRECTION));
+    let assistant = build_meta_system_prompt(CharacterKind::Assistant);
+    assert!(assistant.contains(ASSISTANT_TASK_DIRECTION));
+    assert!(!assistant.contains(STAKES_AND_REACTION_DIRECTION));
 }

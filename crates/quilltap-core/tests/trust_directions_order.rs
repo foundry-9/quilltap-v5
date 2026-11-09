@@ -8,7 +8,7 @@
 //! `character-optimizer-helpers.test.ts`, `external-prompt-generator.test.ts`.
 
 use quilltap_core::generators::ai_import::system_prompts_prompt;
-use quilltap_core::generators::external_prompt::META_SYSTEM_PROMPT;
+use quilltap_core::generators::external_prompt::build_meta_system_prompt;
 use quilltap_core::generators::field_semantics::{
     COMMITTEE_DRIFT_GUARDRAIL, COMPANION_TRUST_DISPOSITION, COMPANION_TRUST_DISPOSITION_GATE,
     CONVERSATIONAL_VOICE_DIRECTION, GATED_COMPANION_TRUST_DISPOSITION, TRUST_SAFEGUARDS_DIRECTION,
@@ -123,17 +123,29 @@ fn optimizer_new_prompts_pass_has_trust_and_its_own_gate_but_no_committee() {
 
 #[test]
 fn external_meta_prompt_carries_the_directions_and_forbids_the_literal_token() {
-    let p = META_SYSTEM_PROMPT.as_str();
-    assert!(p.contains(CONVERSATIONAL_VOICE_DIRECTION));
-    assert!(p.contains(TRUST_SAFEGUARDS_DIRECTION));
-    gate_before_disposition(p, COMPANION_TRUST_DISPOSITION_GATE);
-    assert!(p.contains("never the literal {{user}} token"));
-    // Every block `\n\n`-separated: the placeholder sentence is its OWN paragraph.
-    assert!(p.contains(&format!(
-        "{GATED_COMPANION_TRUST_DISPOSITION}\n\nThe external tool will not substitute placeholders"
-    )));
-    // 5664 at P4.D241; 6701 once v4 `ba6c8fe0f`'s probation rewrites (the
-    // sixth safeguard + the card-table example, the six-bullet companion
-    // disposition) reached the interpolated constants (P4.D371).
-    assert_eq!(p.encode_utf16().count(), 6701);
+    // P4.D371 (v4 `3ae4cf582`): the constant became `buildMetaSystemPrompt(kind)`;
+    // the kind's direction sits between the trust safeguards and the gate.
+    for (kind, want_len) in [
+        (CharacterKind::Roleplay, ROLEPLAY_META_LEN),
+        (CharacterKind::Assistant, ASSISTANT_META_LEN),
+    ] {
+        let built = build_meta_system_prompt(kind);
+        let p = built.as_str();
+        assert!(p.contains(CONVERSATIONAL_VOICE_DIRECTION));
+        assert!(p.contains(TRUST_SAFEGUARDS_DIRECTION));
+        gate_before_disposition(p, COMPANION_TRUST_DISPOSITION_GATE);
+        assert!(p.contains("never the literal {{user}} token"));
+        // Every block `\n\n`-separated: the placeholder sentence is its OWN paragraph.
+        assert!(p.contains(&format!(
+            "{GATED_COMPANION_TRUST_DISPOSITION}\n\nThe external tool will not substitute placeholders"
+        )));
+        // 5664 at P4.D241; measured at the pin per kind (the token estimate of
+        // every over-budget refusal moves with it).
+        assert_eq!(p.encode_utf16().count(), want_len, "{kind:?}");
+    }
 }
+
+/// `buildMetaSystemPrompt('roleplay').length` at v4 `624d0d25c` (UTF-16 units).
+const ROLEPLAY_META_LEN: usize = 8212;
+/// `buildMetaSystemPrompt('assistant').length` at v4 `624d0d25c` (UTF-16 units).
+const ASSISTANT_META_LEN: usize = 7588;
