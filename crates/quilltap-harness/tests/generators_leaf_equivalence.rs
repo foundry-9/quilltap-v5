@@ -22,10 +22,11 @@
 //!
 //! The field-semantics module itself is GENERATED from v4's exports (P4.D371
 //! extended the generator to emit the two kind-routed functions and the
-//! `CORE_VAULT_FILE_SUMMARIES` record too):
-//!   npx tsx $V5W/harness/oracle/cases/generators-field-semantics.ts > /tmp/oracle-generators-field-semantics.ndjson
-//!   node $V5W/harness/oracle/tools/gen-field-semantics.mjs /tmp/oracle-generators-field-semantics.ndjson $V5W/crates/quilltap-core/src/generators/field_semantics.rs
-//!   cargo fmt -p quilltap-core
+//! `CORE_VAULT_FILE_SUMMARIES` record too). Its regen recipe — the recorder,
+//! the generator, then `cargo fmt -p quilltap-core` — lives in
+//! `harness/oracle/tools/gen-field-semantics.mjs`'s header, NOT here: it
+//! writes a repository file, which this header's sweep-driven recipe must
+//! never do.
 //!
 //! P4.D371 (v4 `3ae4cf582`) row kinds: `generator_direction` /
 //! `kind_drift_signal` drive `generatorDirectionFor` / `kindDriftSignalFor`

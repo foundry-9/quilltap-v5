@@ -195,6 +195,12 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: keep the field-semantics generator recipe out of the leaf family's sweep-driven header
+
+_No crate versions bumped._
+
+The `generators_leaf_equivalence` header had picked up the recorder / generator / `cargo fmt` lines for `field_semantics.rs`; the sweep driver read them as part of the family's run stage, and the generator line writes a repository file. The header now points at `gen-field-semantics.mjs`'s own header instead. `recipe_sweep.py --self-test` passes.
+
 #### 2026-11-09 — P4.D371: Summon From Lore writes a new character for the default kind, and the AI-import version pin moves to 4.13.0-dev.8 (v4 3ae4cf582)
 
 _Versions: core 0.0.1433._
