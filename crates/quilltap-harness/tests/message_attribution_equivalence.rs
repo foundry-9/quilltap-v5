@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use quilltap_core::chat_predicates::{participant_status_from_str, ParticipantStatus};
 use quilltap_core::message_attribution::{
     attribute_messages_for_character, compute_presence_windows_for_participant,
-    filter_messages_by_history_access, filter_messages_by_presence_windows,
+    filter_messages_by_history_access_counted, filter_messages_by_presence_windows,
     filter_whisper_messages, find_user_participant_name, get_participant_name, AttributionMessage,
     AttributionParticipant, HistoryMessage, HostEvent, PresenceWindow,
 };
@@ -46,6 +46,9 @@ struct WHistMsg {
     id: String,
     #[serde(rename = "createdAtMs")]
     created_at_ms: Option<f64>,
+    // P4.D372: the established-fact mark.
+    #[serde(rename = "isEstablishedFact", default)]
+    is_established_fact: bool,
 }
 
 #[derive(Deserialize)]
@@ -79,6 +82,9 @@ struct WIdMsg {
     participant_id: Option<String>,
     #[serde(rename = "targetParticipantIds", default)]
     target_participant_ids: Option<Vec<String>>,
+    // P4.D372: the established-fact mark.
+    #[serde(rename = "isEstablishedFact", default)]
+    is_established_fact: bool,
 }
 
 #[derive(Deserialize)]
@@ -142,6 +148,12 @@ enum Row {
         #[serde(rename = "joinMs")]
         join_ms: f64,
         out: Vec<String>,
+        // P4.D372: v4's `factsKept` from its DEBUG line (0 when it did not fire)
+        // and the line's `participantId`.
+        #[serde(rename = "factsKept")]
+        facts_kept: usize,
+        #[serde(rename = "lineParticipantId")]
+        line_participant_id: Option<String>,
     },
     #[serde(rename = "presence")]
     Presence {
@@ -276,16 +288,30 @@ fn message_attribution_matches_oracle() {
                 has_history_access,
                 join_ms,
                 out,
+                facts_kept,
+                line_participant_id,
             } => {
                 let items: Vec<HistoryMessage> = msgs
                     .iter()
                     .map(|m| HistoryMessage {
                         created_at_ms: m.created_at_ms,
+                        is_established_fact: m.is_established_fact,
                     })
                     .collect();
-                let mask = filter_messages_by_history_access(&items, has_history_access, join_ms);
+                let (mask, kept) =
+                    filter_messages_by_history_access_counted(&items, has_history_access, join_ms);
                 let ids: Vec<String> = msgs.iter().map(|m| m.id.clone()).collect();
                 assert_eq!(kept_ids(&ids, &mask), out, "history '{id}'");
+                assert_eq!(kept, facts_kept, "history '{id}' factsKept");
+                // v4 logs the line only when factsKept > 0, with the seat's id.
+                assert_eq!(
+                    line_participant_id.is_some(),
+                    facts_kept > 0,
+                    "history '{id}' line presence"
+                );
+                if let Some(pid) = line_participant_id {
+                    assert_eq!(pid, format!("P-{id}"), "history '{id}' line participantId");
+                }
             }
             Row::Presence {
                 id,
@@ -308,6 +334,7 @@ fn message_attribution_matches_oracle() {
                             participant_id: he.participant_id.clone(),
                             to_status: he.to_status.as_deref().map(parse_status),
                         }),
+                        is_established_fact: false,
                     })
                     .collect();
                 let got = compute_presence_windows_for_participant(
@@ -386,6 +413,7 @@ fn message_attribution_matches_oracle() {
                         created_at: None,
                         target_participant_ids: None,
                         host_event: None,
+                        is_established_fact: false,
                     })
                     .collect();
                 let got =
@@ -439,5 +467,6 @@ fn id_msg_to_attr(m: &WIdMsg) -> AttributionMessage {
         created_at: m.created_at.clone(),
         target_participant_ids: m.target_participant_ids.clone(),
         host_event: None,
+        is_established_fact: m.is_established_fact,
     }
 }

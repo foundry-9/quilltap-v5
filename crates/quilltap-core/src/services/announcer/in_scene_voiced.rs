@@ -41,7 +41,7 @@ use crate::db::runtime::Db;
 use crate::jsstr::{js_trim, utf16_len};
 use crate::message_attribution::{
     attribute_messages_for_character, compute_presence_windows_for_participant,
-    filter_messages_by_history_access, filter_messages_by_presence_windows,
+    filter_messages_by_history_access_counted, filter_messages_by_presence_windows,
     filter_whisper_messages, AttributionMessage, AttributionParticipant, HistoryMessage, HostEvent,
 };
 use crate::message_formatter::{
@@ -275,6 +275,19 @@ fn to_attribution_message(m: &Value, with_host_event: bool) -> AttributionMessag
         } else {
             None
         },
+        is_established_fact: false,
+    }
+}
+
+/// The v4 `[MessageAttribution]` history-access line, logged by the caller of
+/// the logger-free pure filter (P4.D372 R-L2). Fires only when `facts_kept > 0`.
+pub(crate) fn log_pre_join_facts_kept(participant_id: &str, facts_kept: usize) {
+    if facts_kept > 0 {
+        tracing::debug!(
+            participantId = %participant_id,
+            factsKept = facts_kept,
+            "[MessageAttribution] Kept pre-join established facts past the history-access cut"
+        );
     }
 }
 
@@ -286,6 +299,12 @@ fn to_attribution_message(m: &Value, with_host_event: bool) -> AttributionMessag
 /// the time the played subset is taken), then applied to the played messages.
 /// Staff whispers are excluded outright — a rehearsal is about what was said in
 /// the room, so there is nothing left for whisper-role normalisation to flip.
+///
+/// P4.D372 (v4 `db6190b44`): established facts of either kind are played too —
+/// everybody knows them. A machine fact is a Host row and would otherwise fall to
+/// the Staff drop; it is re-roled `USER` (an input to the seat, not its speech).
+/// Both kinds are framed in the PLAIN voice (a rehearsal names no Staff) and
+/// MARKED so the history and presence filters keep them.
 ///
 /// ⚠ v4 filters in the order whisper → history-access → presence; `build_context`
 /// does history → whisper. The orders are NOT interchangeable in general (each
@@ -321,9 +340,30 @@ fn build_transcript_for_seat(events: &[Value], participant: &Value) -> Vec<Attri
                 Some(Value::Bool(b)) => *b,
                 Some(_) => true,
             };
-            !system_sender && matches!(role, Some("USER") | Some("ASSISTANT")) && content_ok
+            // v4 `(!m.systemSender || isEstablishedFactAnnouncement(m))`.
+            let announcement = crate::established_fact::is_established_fact_announcement(
+                &crate::established_fact::EstablishedFactFields::from_value(m),
+            );
+            (!system_sender || announcement)
+                && matches!(role, Some("USER") | Some("ASSISTANT"))
+                && content_ok
         })
-        .map(|m| to_attribution_message(m, false))
+        .map(|m| {
+            let mut am = to_attribution_message(m, false);
+            if let Some(framed) = crate::established_fact::framed_established_fact_body_of_value(
+                m,
+                crate::established_fact::EstablishedFactVoice::Plain,
+            ) {
+                if crate::established_fact::is_established_fact_announcement(
+                    &crate::established_fact::EstablishedFactFields::from_value(m),
+                ) {
+                    am.role = "USER".to_string();
+                }
+                am.content = framed;
+                am.is_established_fact = true;
+            }
+            am
+        })
         .collect();
 
     let participant_id = s(participant, "id").unwrap_or_default();
@@ -351,9 +391,12 @@ fn build_transcript_for_seat(events: &[Value], participant: &Value) -> Vec<Attri
                 .as_deref()
                 .and_then(crate::clock::iso_to_ms)
                 .map(|ms| ms as f64),
+            is_established_fact: m.is_established_fact,
         })
         .collect();
-    let mask = filter_messages_by_history_access(&hist, has_history_access, join_ms);
+    let (mask, facts_kept) =
+        filter_messages_by_history_access_counted(&hist, has_history_access, join_ms);
+    log_pre_join_facts_kept(&participant_id, facts_kept);
     shaped = shaped
         .into_iter()
         .zip(mask)
@@ -694,6 +737,67 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // === P4.D372 ===
+    use serde_json::json;
+
+    fn deus_events(pre_join_fact: bool) -> Vec<Value> {
+        let mut v = vec![json!({"type": "message", "id": "m1", "role": "ASSISTANT",
+            "content": "after", "participantId": "p-bram",
+            "createdAt": "2026-05-01T10:30:00.000Z"})];
+        if pre_join_fact {
+            v.push(json!({"type": "message", "id": "f1", "role": "ASSISTANT",
+                "content": "The bell is cracked.", "participantId": null,
+                "systemSender": "host", "systemKind": "established-fact",
+                "createdAt": "2026-05-01T09:00:00.000Z"}));
+        }
+        v
+    }
+
+    /// The `[MessageAttribution]` history-access DEBUG at this caller, with its
+    /// silence leg (no pre-join fact → no line), and the machine fact played as
+    /// a plain-framed USER line (v4 `buildTranscriptForSeat`).
+    #[test]
+    fn a_pre_join_fact_is_played_framed_and_logged_with_its_silence_leg() {
+        let seat = json!({"id": "p-vesper", "hasHistoryAccess": false,
+            "createdAt": "2026-05-01T10:00:00.000Z"});
+        let (shaped, lines) = crate::test_support::captured_with(|| {
+            build_transcript_for_seat(&deus_events(true), &seat)
+        });
+        let fact = shaped
+            .iter()
+            .find(|m| m.id.as_deref() == Some("f1"))
+            .expect("the fact is kept");
+        assert_eq!(fact.role, "USER");
+        assert!(fact.is_established_fact);
+        assert_eq!(
+            fact.content,
+            format!(
+                "{}\n\nThe bell is cracked.",
+                crate::established_fact::ESTABLISHED_FACT_PLAIN_FRAME
+            )
+        );
+        let hits: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("[MessageAttribution] Kept pre-join established facts past the history-access cut"))
+            .collect();
+        assert_eq!(hits.len(), 1, "{lines:?}");
+        assert!(
+            hits[0].contains("participantId=p-vesper") && hits[0].contains("factsKept=1"),
+            "{}",
+            hits[0]
+        );
+        assert!(hits[0].starts_with("DEBUG"), "{}", hits[0]);
+
+        let (_, quiet) = crate::test_support::captured_with(|| {
+            build_transcript_for_seat(&deus_events(false), &seat)
+        });
+        assert!(
+            !quiet.iter().any(|l| l.contains("[MessageAttribution]")),
+            "silence leg: {quiet:?}"
+        );
+    }
+    // === /P4.D372 ===
 
     /// v4 `maxTokensForSeed` — `min(4096, max(1024, floor(len / 2)))`, where
     /// `len` is UTF-16 units.

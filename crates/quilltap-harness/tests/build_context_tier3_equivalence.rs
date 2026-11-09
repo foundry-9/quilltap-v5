@@ -365,6 +365,10 @@ struct SpecMwp {
     created_at: String,
     #[serde(default)]
     target_participant_ids: Option<Vec<String>>,
+    // === P4.D372 === the `isEstablishedFact` MARK (`deus_*` rows).
+    #[serde(rename = "isEstablishedFact", default)]
+    is_established_fact: bool,
+    // === /P4.D372 ===
 }
 
 #[derive(Deserialize)]
@@ -907,6 +911,7 @@ async fn build_context_tier3_matches_oracle() {
                         created_at: Some(m.created_at.clone()),
                         target_participant_ids: m.target_participant_ids.clone(),
                         host_event: None,
+                        is_established_fact: m.is_established_fact, // P4.D372
                     },
                 )
                 .collect();

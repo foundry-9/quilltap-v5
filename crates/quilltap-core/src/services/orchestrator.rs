@@ -5557,6 +5557,10 @@ fn multi_character_fields(
                 },
             ),
             host_event: None,
+            // === P4.D372 === compile-only: this placeholder `mwp` is discarded
+            // (`_mwp_unused`); `message_context` builds and marks the real one.
+            is_established_fact: false,
+            // === /P4.D372 ===
         })
         .collect();
 

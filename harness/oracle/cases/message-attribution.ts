@@ -29,6 +29,23 @@ import {
   type PresenceWindow,
 } from '@/lib/chat/context/message-attribution';
 import type { ChatParticipantBase, Character } from '@/lib/schemas/types';
+import { logger } from '@/lib/logger';
+
+// === P4.D372 === capture v4's `[MessageAttribution] Kept pre-join …` DEBUG
+// (the module calls the root logger singleton's `debug`), so each history row
+// carries v4's `factsKept` (0 when the line did not fire).
+const attributionLines: Array<{ message: string; meta: Record<string, unknown> }> = [];
+{
+  const original = logger.debug.bind(logger);
+  (logger as unknown as { debug: unknown }).debug = (message: string, meta?: Record<string, unknown>) => {
+    if (typeof message === 'string' && message.startsWith('[MessageAttribution]')) {
+      attributionLines.push({ message, meta: meta ?? {} });
+      return;
+    }
+    return original(message, meta as never);
+  };
+}
+// === /P4.D372 ===
 
 const asMsgs = (ms: unknown[]) => ms as unknown as MessageWithParticipant[];
 const asPart = (p: unknown) => p as unknown as ChatParticipantBase;
@@ -44,7 +61,7 @@ const rows: unknown[] = [];
 
 // ---- filterMessagesByHistoryAccess ---------------------------------------
 {
-  type HMsg = { id: string; createdAt?: string };
+  type HMsg = { id: string; createdAt?: string; isEstablishedFact?: boolean };
   const cases: Array<{ id: string; msgs: HMsg[]; hasHistoryAccess: boolean; joinCreatedAt: string }> = [
     {
       id: 'full-access-keeps-all',
@@ -68,14 +85,55 @@ const rows: unknown[] = [];
       hasHistoryAccess: false,
       joinCreatedAt: '2026-01-01T00:00:00.000Z',
     },
+    // === P4.D372 === everybody knows an established fact.
+    {
+      id: 'deus-pre-join-fact-kept',
+      msgs: [
+        { id: 'before', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'fact-before', createdAt: '2026-01-02T00:00:00.000Z', isEstablishedFact: true },
+        { id: 'fact-before-2', createdAt: '2026-01-03T00:00:00.000Z', isEstablishedFact: true },
+        { id: 'fact-at-join', createdAt: '2026-02-01T00:00:00.000Z', isEstablishedFact: true },
+        { id: 'fact-after', createdAt: '2026-03-01T00:00:00.000Z', isEstablishedFact: true },
+        { id: 'after', createdAt: '2026-03-02T00:00:00.000Z' },
+      ],
+      hasHistoryAccess: false,
+      joinCreatedAt: '2026-02-01T00:00:00.000Z',
+    },
+    {
+      id: 'deus-fact-without-createdAt-kept-uncounted',
+      msgs: [{ id: 'fact-nodate', isEstablishedFact: true }, { id: 'old', createdAt: '2025-01-01T00:00:00.000Z' }],
+      hasHistoryAccess: false,
+      joinCreatedAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
+      id: 'deus-full-access-counts-nothing',
+      msgs: [{ id: 'fact-before', createdAt: '2026-01-02T00:00:00.000Z', isEstablishedFact: true }],
+      hasHistoryAccess: true,
+      joinCreatedAt: '2026-02-01T00:00:00.000Z',
+    },
+    {
+      id: 'deus-flag-false-is-no-fact',
+      msgs: [{ id: 'flag-false-before', createdAt: '2026-01-02T00:00:00.000Z', isEstablishedFact: false }],
+      hasHistoryAccess: false,
+      joinCreatedAt: '2026-02-01T00:00:00.000Z',
+    },
+    // === /P4.D372 ===
   ];
   for (const c of cases) {
-    const participant = asPart({ hasHistoryAccess: c.hasHistoryAccess, createdAt: c.joinCreatedAt });
+    const participant = asPart({ id: 'P-' + c.id, hasHistoryAccess: c.hasHistoryAccess, createdAt: c.joinCreatedAt });
+    attributionLines.length = 0;
     const out = filterMessagesByHistoryAccess(asMsgs(c.msgs), participant);
+    const kept = attributionLines.find(l => l.message === '[MessageAttribution] Kept pre-join established facts past the history-access cut');
     rows.push({
       kind: 'history',
       id: c.id,
-      msgs: c.msgs.map(m => ({ id: m.id, createdAtMs: m.createdAt ? new Date(m.createdAt).getTime() : null })),
+      msgs: c.msgs.map(m => ({
+        id: m.id,
+        createdAtMs: m.createdAt ? new Date(m.createdAt).getTime() : null,
+        isEstablishedFact: m.isEstablishedFact === true,
+      })),
+      factsKept: kept ? kept.meta.factsKept : 0,
+      lineParticipantId: kept ? kept.meta.participantId : null,
       hasHistoryAccess: c.hasHistoryAccess,
       joinMs: new Date(c.joinCreatedAt).getTime(),
       out: idsOf(out as Array<{ id?: string }>),
@@ -128,7 +186,7 @@ const rows: unknown[] = [];
 
 // ---- filterMessagesByPresenceWindows -------------------------------------
 {
-  type PMsg = { id: string; createdAt?: string };
+  type PMsg = { id: string; createdAt?: string; isEstablishedFact?: boolean };
   const cases: Array<{ id: string; msgs: PMsg[]; windows: PresenceWindow[] }> = [
     {
       id: 'empty-windows-drop-all',
@@ -166,6 +224,27 @@ const rows: unknown[] = [];
         { from: '2026-01-08T00:00:00.000Z', to: null },
       ],
     },
+    // === P4.D372 === a fact survives the presence windows (absent or not).
+    {
+      id: 'deus-fact-in-a-gap-kept',
+      msgs: [
+        { id: 'w1', createdAt: '2026-01-03T00:00:00.000Z' },
+        { id: 'gap', createdAt: '2026-01-06T00:00:00.000Z' },
+        { id: 'fact-gap', createdAt: '2026-01-06T12:00:00.000Z', isEstablishedFact: true },
+        { id: 'fact-nodate', isEstablishedFact: true },
+        { id: 'w2', createdAt: '2026-01-09T00:00:00.000Z' },
+      ],
+      windows: [
+        { from: '2026-01-02T00:00:00.000Z', to: '2026-01-05T00:00:00.000Z' },
+        { from: '2026-01-08T00:00:00.000Z', to: null },
+      ],
+    },
+    {
+      id: 'deus-empty-windows-drop-the-fact-too',
+      msgs: [{ id: 'fact', createdAt: '2026-01-02T00:00:00.000Z', isEstablishedFact: true }],
+      windows: [],
+    },
+    // === /P4.D372 ===
   ];
   for (const c of cases) {
     const out = filterMessagesByPresenceWindows(asMsgs(c.msgs), c.windows);

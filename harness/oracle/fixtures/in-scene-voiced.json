@@ -7,7 +7,10 @@
   "scenarioText": "The eastern quay after the evening bell, fog coming in off the water.",
   "projectInstructions": "{{char}} keeps to the harbour register: short sentences, no metaphor about weather.",
   "roleplayTemplatePrompt": "Narration in *asterisks*; dialogue in \"quotes\".",
-  "tabooPhrases": ["a symphony of", "little did they know"],
+  "tabooPhrases": [
+    "a symphony of",
+    "little did they know"
+  ],
   "subpromptTitle": "Measure your words",
   "subpromptContent": "{{char}} never uses three words where two will do.",
   "compiledStack": "<<seeded-compiled-stack-for-vesper>>",
@@ -29,6 +32,45 @@
       "content": "Keeps a spare signal-book under the third floorboard of the watch-house.",
       "summary": "A spare signal-book under the floorboard.",
       "importance": 0.45
+    }
+  ],
+  "_deusFactsComment": "P4.D372: planted in-case on a fresh copy (rows with plantDeusFacts) — a machine fact posted BEFORE the no-history seat joined (10:00), a seat line during her absence window (10:05-10:09), and a Host inform row the Staff drop still removes.",
+  "deusFacts": [
+    {
+      "type": "message",
+      "id": "f3000000-0000-4000-8000-0000000000d1",
+      "role": "ASSISTANT",
+      "content": "The harbour bell was cracked in the storm of last spring.",
+      "opaqueContent": "The harbour bell was cracked in the storm of last spring.",
+      "attachments": [],
+      "createdAt": "2026-05-01T09:50:00.000Z",
+      "participantId": null,
+      "systemSender": "host",
+      "systemKind": "established-fact",
+      "targetParticipantIds": null,
+      "customAnnouncer": null
+    },
+    {
+      "type": "message",
+      "id": "f3000000-0000-4000-8000-0000000000d2",
+      "role": "USER",
+      "content": "The packet boat carries the mayor's seal tonight.",
+      "attachments": [],
+      "createdAt": "2026-05-01T10:07:30.000Z",
+      "participantId": null,
+      "targetParticipantIds": null,
+      "isEstablishedFact": true
+    },
+    {
+      "type": "message",
+      "id": "f3000000-0000-4000-8000-0000000000d3",
+      "role": "ASSISTANT",
+      "content": "A Host note that is not a fact.",
+      "attachments": [],
+      "createdAt": "2026-05-01T10:08:00.000Z",
+      "participantId": null,
+      "systemSender": "host",
+      "systemKind": "inform"
     }
   ]
 }

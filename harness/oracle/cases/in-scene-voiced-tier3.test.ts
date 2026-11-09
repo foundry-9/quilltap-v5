@@ -38,6 +38,7 @@
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp "$V5W/harness/oracle/cases/in-scene-voiced-tier3.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/in-scene-voiced.json" "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"; cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"   # P4.D372
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_ISV_MAIN=$V5W/crates/quilltap-web/tests/fixtures/in-scene-voiced-main.db \
  *   QT_FIXTURE_ISV_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/in-scene-voiced-mount.db \
@@ -58,6 +59,8 @@ interface Spec {
   userIdNoDefault: string;
   seedTimestamp: string;
   frozenNowMs: number;
+  /** P4.D372: the established-fact rows `plantDeusFacts` cases write. */
+  deusFacts: Array<Record<string, unknown>>;
 }
 
 const VESPER = 'a1000000-0000-4000-8000-000000000001';
@@ -261,6 +264,10 @@ interface CaseSpec {
    *  v4's pre-fix chain took the column VERBATIM; the resolver checks existence
    *  first and falls through to the flagged prompt. */
   plantStaleDefaultColumn?: boolean;
+  /** [P4.D372 / v4 `db6190b44`] Plant the spec's `deusFacts` on the per-case
+   *  COPY (the `isEstablishedFact` column first, through v4's REAL migration —
+   *  `plant412Columns`), then the rows through v4's REAL `addMessage`. */
+  plantDeusFacts?: boolean;
   /** SERVICE rows only: what the caller resolved (the route does this itself). */
   serviceProfileId?: string;
   serviceSystemPromptId?: string | null;
@@ -315,11 +322,27 @@ async function runCase(
     await initializeProviderRegistry(plugins);
   }
 
+  // === P4.D372 === the column, on the file, before the database opens.
+  if (c.plantDeusFacts) {
+    const { plant412Columns } = await import('../lib/v4-migrations');
+    await plant412Columns(mainWork, spec.testPepperBase64);
+  }
+  // === /P4.D372 ===
+
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+
+  // === P4.D372 === the fact rows, through v4's REAL repository.
+  if (c.plantDeusFacts) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    for (const ev of spec.deusFacts) {
+      await getRepositories().chats.addMessage(c.chatId, ev as never);
+    }
+  }
+  // === /P4.D372 ===
 
   // P4.D268 (v4 `3f7320138` F6): the delivery stamp's DEBUG line, captured off
   // the logger singleton this registry generation's services import.
@@ -565,6 +588,20 @@ const CASES: CaseSpec[] = [
   // answers the FLAGGED prompt instead. The assembled system prompt rides the
   // canned key, so it IS the diffed evidence.
   { name: 'route_stale_default_column', viaRoute: true, chatId: CHAT_NOPROF, participantId: P_VESPER, seedMarkdown: 'The lamps are out.', plantStaleDefaultColumn: true },
+  // === P4.D372 === everybody knows an established fact: a machine fact posted
+  // before the no-history seat joined, and a seat line during her absence,
+  // both played (plain frame; the machine fact re-roled USER); a Host inform
+  // still falls to the Staff drop.
+  {
+    name: 'deus_service_facts_nohist',
+    chatId: CHAT_NOHIST,
+    participantId: P_VESPER,
+    seedMarkdown: 'The rings are loose and the smith is late.',
+    serviceProfileId: CONN_SEAT,
+    serviceSystemPromptId: SP_DEFAULT,
+    plantDeusFacts: true,
+  },
+  // === /P4.D372 ===
 ];
 
 async function main(): Promise<void> {

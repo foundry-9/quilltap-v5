@@ -251,6 +251,16 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the context frame pass + mwp mark, the history-access / presence exemptions, the in-scene rehearsal (P4.D372 items 4, 5, 12)
+
+_Versions: core 0.0.1432._
+
+`build_message_context` frames every fact row between the opacity rule and `normalize_whisper_roles`, in v4's order (`frame_established_fact_pass`). The voice is `host` when every LLM seat is transparent and `plain` otherwise. Machine facts are framed in both `content` and `opaqueContent`. The pass logs v4's `[Context] Framed established facts` DEBUG only when a fact is present. It then marks the multi-character `MessageWithParticipant` rows whose ids came from the pre-normalization fact set. `WhisperMessage` and `MessageWithParticipant` gain the flag.
+
+`message_attribution` keeps a marked fact past the history-access cut and the presence windows. The empty-windows arm still drops everything. `filter_messages_by_history_access_counted` returns v4's `factsKept`, using strict `<` on a present `createdAt`. The two callers, `build_context` and the in-scene rehearsal, log v4's `[MessageAttribution] Kept pre-join established facts past the history-access cut`, with a capture pin and a silence leg. The rehearsal now plays a machine fact (the Staff drop passes it), re-roles it `USER`, frames both kinds in the plain voice and marks them.
+
+`message_attribution_equivalence` grows six fact rows with v4's captured `factsKept`. `in_scene_voiced_tier3_equivalence` gains `deus_service_facts_nohist`: a pre-join machine fact, a seat line during an absence and a Host inform, planted in-case through v4's real migration and `addMessage`. Both families were red first by name. The placeholder `MessageWithParticipant` in `orchestrator.rs` gets a fenced, compile-only field.
+
 #### 2026-11-09 — deus: speaker_label widened to SpeakerRow — a machine fact is "Established fact" (P4.D372 item 9, R2)
 
 _Versions: core 0.0.1431._

@@ -85,7 +85,114 @@ pub struct WhisperMessage {
     /// it a voice in context. (`courier_transport` already read the same column
     /// for its own transcript; that parity is what the pass restores.)
     pub custom_announcer: Option<CustomAnnouncer>,
+    // === P4.D372 ===
+    /// v4 `isEstablishedFact` — `Some(b)` only for a JSON boolean (the seat-line
+    /// predicate is v4's strict `=== true`).
+    pub is_established_fact: Option<bool>,
+    // === /P4.D372 ===
 }
+
+// === P4.D372 ===
+impl WhisperMessage {
+    /// The three fields the established-fact predicates read.
+    pub(crate) fn fact_fields(&self) -> crate::established_fact::EstablishedFactFields<'_> {
+        crate::established_fact::EstablishedFactFields {
+            is_established_fact: self.is_established_fact,
+            system_sender: self.system_sender.as_deref(),
+            system_kind: self.system_kind.as_deref(),
+        }
+    }
+}
+
+/// v4 `frameEstablishedFacts` over the typed history (the twin of
+/// [`crate::established_fact::frame_established_facts`]): a machine fact is
+/// framed in BOTH `content` and `opaqueContent` (so whichever body the later
+/// Staff swap picks reads the frame); a seat line in `content` only. Every
+/// other row passes through untouched. The frame reads `content` (absent →
+/// `''`) and never the stored `opaqueContent`.
+pub(crate) fn frame_established_fact_messages(
+    msgs: &[WhisperMessage],
+    voice: crate::established_fact::EstablishedFactVoice,
+) -> Vec<WhisperMessage> {
+    use crate::established_fact::{
+        established_fact_kind_of, frame_established_fact, EstablishedFactKind,
+    };
+    msgs.iter()
+        .map(|m| {
+            let Some(kind) = established_fact_kind_of(&m.fact_fields()) else {
+                return m.clone();
+            };
+            let framed = frame_established_fact(m.content.as_deref().unwrap_or(""), kind, voice);
+            let mut out = m.clone();
+            if kind == EstablishedFactKind::Announcement {
+                out.opaque_content = Some(framed.clone());
+            }
+            out.content = Some(framed);
+            out
+        })
+        .collect()
+}
+/// v4 `buildMessageContext`'s established-fact step (`db6190b44`), between the
+/// opacity rule and `normalizeWhisperRoles`: frame each fact row's body for
+/// the model while `systemSender` / `systemKind` / `isEstablishedFact` are
+/// still on the rows. The voice follows the same chat-wide opacity rule as the
+/// Staff swap: if any LLM seat is opaque, everyone reads the plain frame with
+/// no Host. The frame is never stored.
+///
+/// Returns the (possibly framed) history and, when any fact is present, the
+/// ids of the fact rows taken BEFORE normalization erases the Host row's
+/// `systemSender` (v4's `m.id && isEstablishedFact(m)`) — the multi-character
+/// MARK's set. Logs v4's `[Context] Framed established facts` DEBUG only when
+/// a fact is present.
+pub(crate) fn frame_established_fact_pass<'m>(
+    messages_after_whisper_filter: &'m [WhisperMessage],
+    is_opaque_anywhere: bool,
+    chat_id: &str,
+) -> (
+    std::borrow::Cow<'m, [WhisperMessage]>,
+    Option<std::collections::HashSet<String>>,
+) {
+    use crate::established_fact::{
+        count_established_facts, is_established_fact, EstablishedFactVoice,
+    };
+    let fact_voice = if is_opaque_anywhere {
+        EstablishedFactVoice::Plain
+    } else {
+        EstablishedFactVoice::Host
+    };
+    let (seat_lines, machine_facts) = count_established_facts(
+        messages_after_whisper_filter
+            .iter()
+            .map(WhisperMessage::fact_fields),
+    );
+    if seat_lines + machine_facts == 0 {
+        return (
+            std::borrow::Cow::Borrowed(messages_after_whisper_filter),
+            None,
+        );
+    }
+    tracing::debug!(
+        target: "quilltap::context",
+        chatId = %chat_id,
+        seatLines = seat_lines,
+        machineFacts = machine_facts,
+        voice = fact_voice.as_str(),
+        "[Context] Framed established facts"
+    );
+    let ids = messages_after_whisper_filter
+        .iter()
+        .filter(|m| is_established_fact(&m.fact_fields()))
+        .filter_map(|m| m.id.clone().filter(|id| !id.is_empty()))
+        .collect();
+    (
+        std::borrow::Cow::Owned(frame_established_fact_messages(
+            messages_after_whisper_filter,
+            fact_voice,
+        )),
+        Some(ids),
+    )
+}
+// === /P4.D372 ===
 
 /// v4 `isRecordOnlyMessage` (`context-builder.service.ts:847`, `e7d77bb60`):
 /// true for a row that DOCUMENTS a delivery rather than being part of the
@@ -163,6 +270,7 @@ impl WhisperMessage {
             system_sender: str_field("systemSender"),
             system_kind: str_field("systemKind"),
             custom_announcer: CustomAnnouncer::from_value(v.get("customAnnouncer")),
+            is_established_fact: v.get("isEstablishedFact").and_then(Value::as_bool), // P4.D372
         }
     }
 
@@ -369,6 +477,7 @@ pub fn build_conversation_messages(
                         created_at: msg.created_at.clone(),
                         target_participant_ids: None,
                         host_event: None,
+                        is_established_fact: false, // P4.D372: marked after the build
                     }),
                     Err(_) => { /* filtered out */ }
                 }
@@ -387,6 +496,7 @@ pub fn build_conversation_messages(
                     created_at: msg.created_at.clone(),
                     target_participant_ids: msg.target_participant_ids.clone(),
                     host_event: None,
+                    is_established_fact: false, // P4.D372: marked after the build
                 });
             }
         }
@@ -1257,8 +1367,17 @@ where
     // --- C. Opaque-anywhere. ---
     let is_opaque_anywhere = compute_opaque_anywhere(params);
 
+    // === P4.D372 === Established facts (v4 `db6190b44`): see
+    // [`frame_established_fact_pass`].
+    let (messages_framed, fact_row_ids) = frame_established_fact_pass(
+        &messages_after_whisper_filter,
+        is_opaque_anywhere,
+        &build_input.chat.id,
+    );
+    // === /P4.D372 ===
+
     // --- D. Whisper-role normalization. ---
-    let filtered = normalize_whisper_roles(&messages_after_whisper_filter, is_opaque_anywhere);
+    let filtered = normalize_whisper_roles(&messages_framed, is_opaque_anywhere);
 
     // Row ids of the *human's* own turns, captured before normalization erases
     // the distinction (v4 a14a1811, bug 95) — see [`user_turn_message_ids`].
@@ -1347,6 +1466,21 @@ where
 
     // --- E. Conversation messages + first-message detection. ---
     let (conversation, mwp) = build_conversation_messages(messages_for_conversation, is_multi);
+    // === P4.D372 === Mark fact rows on the multi-character sequence:
+    // everybody knows an established fact, so the history-access cut must not
+    // hide one from a seat that joined after it was posted.
+    let mwp = match (&fact_row_ids, mwp) {
+        (Some(ids), Some(mut rows)) => {
+            for m in rows.iter_mut() {
+                if m.id.as_deref().is_some_and(|id| ids.contains(id)) {
+                    m.is_established_fact = true;
+                }
+            }
+            Some(rows)
+        }
+        (_, mwp) => mwp,
+    };
+    // === /P4.D372 ===
     let is_initial_message = !conversation
         .iter()
         .any(|m| m.role == "user" || m.role == "USER");
@@ -2307,6 +2441,7 @@ mod tests {
                         created_at: None,
                         target_participant_ids: targets.clone(),
                         host_event: None,
+                        is_established_fact: false,
                     };
                     assert_eq!(
                         is_whisper_party(&wm, ME),
@@ -2680,4 +2815,88 @@ mod tests {
         }
         // === /P4.D367 ===
     }
+
+    // === P4.D372 ===
+    mod established_fact_pass {
+        use super::super::*;
+        use crate::established_fact::{
+            leak_tests, EstablishedFactVoice, ESTABLISHED_FACT_HOST_FRAME,
+            ESTABLISHED_FACT_PLAIN_FRAME, ESTABLISHED_FACT_SEAT_FRAME,
+        };
+
+        fn rows() -> Vec<WhisperMessage> {
+            [
+                leak_tests::seat_line(),
+                leak_tests::machine_fact(),
+                leak_tests::reply(),
+            ]
+            .iter()
+            .map(WhisperMessage::from_value)
+            .collect()
+        }
+
+        #[test]
+        fn the_pass_frames_in_the_roster_voice_and_logs_once() {
+            for (opaque, voice, frame) in [
+                (false, "host", ESTABLISHED_FACT_HOST_FRAME),
+                (true, "plain", ESTABLISHED_FACT_PLAIN_FRAME),
+            ] {
+                let input = rows();
+                let ((framed, ids), lines) = crate::test_support::captured_with(|| {
+                    let (f, i) = frame_established_fact_pass(&input, opaque, "chat-1");
+                    (f.into_owned(), i)
+                });
+                assert_eq!(
+                    lines,
+                    vec![format!(
+                        "DEBUG quilltap::context [Context] Framed established facts chatId=chat-1 seatLines=1 machineFacts=1 voice={voice}"
+                    )]
+                );
+                let mut ids: Vec<_> = ids.unwrap().into_iter().collect();
+                ids.sort();
+                assert_eq!(ids, ["m-fact", "m-seat"]);
+                let machine = &framed[1];
+                assert!(machine.content.as_deref().unwrap().starts_with(frame));
+                // Both bodies carry the frame, so whichever the Staff swap picks reads it.
+                assert_eq!(machine.opaque_content, machine.content);
+                assert!(framed[0]
+                    .content
+                    .as_deref()
+                    .unwrap()
+                    .starts_with(ESTABLISHED_FACT_SEAT_FRAME));
+                assert_eq!(
+                    framed[2].content.as_deref(),
+                    Some("Then we take the ferry.")
+                );
+                // The leak walk: normalise + conversation (v4's order), then the text.
+                let normalised = normalize_whisper_roles(&framed, opaque);
+                let (conversation, _) = build_conversation_messages(&normalised, false);
+                let text = format!("{conversation:?}");
+                let v = if opaque {
+                    EstablishedFactVoice::Plain
+                } else {
+                    EstablishedFactVoice::Host
+                };
+                leak_tests::expect_facts_framed(&text.replace("\\n", "\n"), v);
+                // The machine fact reads as an input to the character, not its speech.
+                let m = conversation
+                    .iter()
+                    .find(|c| c.content.contains(leak_tests::MACHINE_FACT))
+                    .unwrap();
+                assert_eq!(m.role.to_uppercase(), "USER", "{conversation:?}");
+            }
+        }
+
+        #[test]
+        fn no_fact_means_no_line_and_the_same_history() {
+            let input: Vec<WhisperMessage> = vec![WhisperMessage::from_value(&leak_tests::reply())];
+            let ((same, ids), lines) = crate::test_support::captured_with(|| {
+                let (f, i) = frame_established_fact_pass(&input, false, "chat-1");
+                (matches!(f, std::borrow::Cow::Borrowed(_)), i)
+            });
+            assert!(same && ids.is_none());
+            assert!(lines.is_empty(), "{lines:?}");
+        }
+    }
+    // === /P4.D372 ===
 }

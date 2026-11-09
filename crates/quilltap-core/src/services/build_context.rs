@@ -139,8 +139,9 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::memory_injector::{format_current_scene_state, SceneState, SceneStateEmissionEntry};
 use crate::message_attribution::{
-    attribute_messages_for_character, filter_messages_by_history_access, filter_whisper_messages,
-    find_user_participant_name, AttributionMessage, AttributionParticipant,
+    attribute_messages_for_character, filter_messages_by_history_access_counted,
+    filter_whisper_messages, find_user_participant_name, AttributionMessage,
+    AttributionParticipant,
 };
 use crate::message_selector::{select_recent_messages, SelectableMessage};
 use crate::model::completion::CompletionProvider;
@@ -459,6 +460,12 @@ pub struct MessageWithParticipant {
     pub target_participant_ids: Option<Vec<String>>,
     /// (participant_id, to_status) — for presence, unused here (attribution only).
     pub host_event: Option<(Option<String>, Option<String>)>,
+    // === P4.D372 ===
+    /// v4's `isEstablishedFact: true` MARK, set by `buildMessageContext` on
+    /// every fact row (either kind) after the conversation is built; read by
+    /// the history-access cut ("everybody knows").
+    pub is_established_fact: bool,
+    // === /P4.D372 ===
 }
 
 /// v4 `ConnectionProfile` subset feeding `calculateMaxAvailable`.
@@ -2721,9 +2728,14 @@ where
                     .as_deref()
                     .and_then(crate::clock::iso_to_ms)
                     .map(|ms| ms as f64),
+                // === P4.D372 ===
+                is_established_fact: m.is_established_fact,
             })
             .collect();
-        let hist_mask = filter_messages_by_history_access(&hist_msgs, has_history, join_ms);
+        let (hist_mask, facts_kept) =
+            filter_messages_by_history_access_counted(&hist_msgs, has_history, join_ms);
+        crate::services::announcer::in_scene_voiced::log_pre_join_facts_kept(&rp.id, facts_kept);
+        // === /P4.D372 ===
 
         // Whisper filter.
         let attr_msgs: Vec<AttributionMessage> = mwp
@@ -2737,6 +2749,7 @@ where
                 created_at: m.created_at.clone(),
                 target_participant_ids: m.target_participant_ids.clone(),
                 host_event: None,
+                is_established_fact: m.is_established_fact, // P4.D372
             })
             .collect();
         let filtered: Vec<AttributionMessage> = attr_msgs
@@ -4537,6 +4550,7 @@ mod inter_character_log_tests {
                     created_at: Some("2026-01-01T00:00:00.000Z".to_string()),
                     target_participant_ids: None,
                     host_event: None,
+                    is_established_fact: false,
                 },
                 MessageWithParticipant {
                     id: Some("c1".to_string()),
@@ -4547,6 +4561,7 @@ mod inter_character_log_tests {
                     created_at: Some("2026-01-01T00:01:00.000Z".to_string()),
                     target_participant_ids: None,
                     host_event: None,
+                    is_established_fact: false,
                 },
             ]);
             t.human_turn_message_ids = ids.map(|v| v.iter().map(|s| s.to_string()).collect());

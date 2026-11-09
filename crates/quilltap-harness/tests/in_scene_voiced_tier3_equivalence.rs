@@ -130,6 +130,9 @@ struct Spec {
     test_pepper_base64: String,
     user_id: String,
     user_id_no_default: String,
+    /// P4.D372: the established-fact rows `plant_deus_facts` cases write.
+    #[serde(default)]
+    deus_facts: Vec<Value>,
 }
 
 fn spec_path() -> PathBuf {
@@ -330,6 +333,10 @@ struct Case {
     /// copy (the `dogfood-findings.md` overlay caveat is about store-overlay
     /// PROPERTIES; this is a plain column).
     plant_stale_default_column: bool,
+    /// [P4.D372] Plant the spec's `deusFacts` on the per-case copy — the
+    /// column through the 4.12 ensure (v4's migration, ported), then the rows
+    /// through `add_message`, as the oracle plants through v4's REAL ones.
+    plant_deus_facts: bool,
     /// SERVICE rows only — what the caller resolved.
     service_profile_id: &'static str,
     service_system_prompt_id: Option<&'static str>,
@@ -346,6 +353,7 @@ const BASE: Case = Case {
     connection_profile_id: None,
     system_prompt_id: None,
     plant_stale_default_column: false,
+    plant_deus_facts: false,
     service_profile_id: CONN_SEAT,
     service_system_prompt_id: Some(SP_DEFAULT),
     service_subprompt_ids: &[],
@@ -572,6 +580,15 @@ const CASES: &[Case] = &[
         seed_markdown: Some("The lamps are out."),
         ..BASE
     },
+    // === P4.D372 === everybody knows an established fact (see the oracle row).
+    Case {
+        name: "deus_service_facts_nohist",
+        chat_id: CHAT_NOHIST,
+        seed_markdown: Some("The rings are loose and the smith is late."),
+        plant_deus_facts: true,
+        ..BASE
+    },
+    // === /P4.D372 ===
 ];
 
 /// The seed a case actually sends. The three budget rows build theirs.
@@ -664,6 +681,23 @@ fn in_scene_voiced_tier3_matches_oracle() {
             })
             .expect("plant the stale defaultSystemPromptId");
         }
+        // === P4.D372 === the column (the ported 4.12 ensure), then the rows.
+        if case.plant_deus_facts {
+            let facts = spec.deus_facts.clone();
+            assert_eq!(facts.len(), 3, "the spec's deusFacts");
+            let chat_id = case.chat_id.to_string();
+            db.write_blocking(move |writers| {
+                quilltap_core::test_support::ensure_4_12_columns_on(writers.main().connection());
+                for f in &facts {
+                    let ev: quilltap_core::db::chats_messages::ChatEventInput =
+                        serde_json::from_value(f.clone()).expect("a deusFacts event");
+                    writers.main().chat_messages().add_message(&chat_id, &ev)?;
+                }
+                Ok(())
+            })
+            .expect("plant the deus facts");
+        }
+        // === /P4.D372 ===
         let provider = Arc::new(RecordingProvider {
             inner: canned,
             calls: Mutex::new(Vec::new()),

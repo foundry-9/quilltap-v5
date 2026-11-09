@@ -46,6 +46,10 @@ pub struct AttributionMessage {
     pub created_at: Option<String>,
     pub target_participant_ids: Option<Vec<String>>,
     pub host_event: Option<HostEvent>,
+    /// P4.D372 (v4 `db6190b44`): v4's `msg.isEstablishedFact` — the MARK
+    /// `buildMessageContext` puts on a fact row (either kind), read TRUTHY.
+    /// "Everybody knows" an established fact: the presence filter keeps it.
+    pub is_established_fact: bool,
 }
 
 /// A message reduced to what the history-access numeric filter needs: its
@@ -54,6 +58,9 @@ pub struct AttributionMessage {
 #[derive(Clone, Debug)]
 pub struct HistoryMessage {
     pub created_at_ms: Option<f64>,
+    /// P4.D372: v4's `msg.isEstablishedFact` mark — a fact survives the
+    /// history-access cut.
+    pub is_established_fact: bool,
 }
 
 /// A presence window: an interval `[from, to)` during which the participant was
@@ -79,25 +86,46 @@ pub struct MultiCharacterMessage {
 /// Filter messages by a participant's history access. With full access, every
 /// message is returned. Otherwise only messages at or after the participant's
 /// join time survive; a message with no `createdAt` (`None` ms) is kept
-/// (shouldn't happen). Returns a keep-mask aligned to `messages`.
+/// (shouldn't happen). Returns a keep-mask aligned to `messages`, and v4's
+/// `factsKept`.
+///
+/// P4.D372 (v4 `db6190b44`): "everybody knows" beats the join-time cut — a seat
+/// that joined after an established fact was posted knows it too, so a marked
+/// fact is ALWAYS kept. `facts_kept` counts the kept facts that were posted
+/// strictly BEFORE the join (`createdAt && t < join`; a NaN parse compares
+/// false). With full access v4 returns early and counts nothing (`0`).
+///
+/// This module is logger-free (R-L2): the callers log v4's
+/// `[MessageAttribution] Kept pre-join established facts past the
+/// history-access cut` with the participant id when `facts_kept > 0`.
 ///
 /// `join_ms` is `new Date(participant.createdAt).getTime()` and each message's
 /// `created_at_ms` is the same parse — both injected at the boundary.
-pub fn filter_messages_by_history_access(
+pub fn filter_messages_by_history_access_counted(
     messages: &[HistoryMessage],
     has_history_access: bool,
     join_ms: f64,
-) -> Vec<bool> {
+) -> (Vec<bool>, usize) {
     if has_history_access {
-        return vec![true; messages.len()];
+        return (vec![true; messages.len()], 0);
     }
-    messages
+    let mut facts_kept = 0usize;
+    let mask = messages
         .iter()
-        .map(|m| match m.created_at_ms {
-            None => true,
-            Some(t) => t >= join_ms,
+        .map(|m| {
+            if m.is_established_fact {
+                if m.created_at_ms.is_some_and(|t| t < join_ms) {
+                    facts_kept += 1;
+                }
+                return true;
+            }
+            match m.created_at_ms {
+                None => true,
+                Some(t) => t >= join_ms,
+            }
         })
-        .collect()
+        .collect();
+    (mask, facts_kept)
 }
 
 /// Compute the presence windows for a participant by walking Host status
@@ -167,7 +195,10 @@ pub fn filter_messages_by_presence_windows(
     }
     messages
         .iter()
+        // P4.D372: everybody knows an established fact, absent or not — kept
+        // AFTER the empty-windows arm above (v4's order: no window drops it).
         .map(|m| match m.created_at.as_deref() {
+            _ if m.is_established_fact => true,
             None => false,
             Some(t) => windows
                 .iter()
