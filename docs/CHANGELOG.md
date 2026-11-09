@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(pascal): the custom-tool preset pool walks the tiers (P4.D379 item 3, v4 fd165fce0 + 0c47f4539)
+
+_Versions: core 0.0.1432._
+
+NEW `pascal/tool_preset_pool.rs`, ported from v4 `lib/pascal/tool-preset-pool.ts` at the `624d0d25c` pin. `resolve_tool_preset_pool` resolves the tiered pool with `roster: open, enabled: require` (no participant tier) and walks it in `ordered_mounts` order: a vanished mount row is skipped silently, every store is named as a save destination before its `Tools/` listing, a listing failure becomes an `unread` entry with the bare message and the WARN `Preset listing failed for store`, a nearer preset of a name shadows farther ones (nearest first), and presets sort by `localeCompare` (ICU collation). One DEBUG `Tool presets resolved` closes the walk. A mount-row read error propagates, as v4's `findById` does. The walk is a seam (`resolve_tool_preset_pool_from`) so v4's own mocked suite drives the new family `pascal_tool_preset_pool_equivalence` (15 scenarios: v4's five plus the vanished mount, a broken near store, two shadows, collation, a mount in two tiers, pool order, an empty pool, a null character id, two broken stores, another tool's name), byte-comparing the pool, the two lines and the pool options.
+
 #### 2026-11-09 — refactor(pascal): one Tools/ listing, and the roster walks REACH's order_mounts (P4.D379 item 2, v4 fd165fce0 + 0c47f4539)
 
 _Versions: core 0.0.1431._
