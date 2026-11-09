@@ -520,8 +520,12 @@ async fn a_stream_failure_after_the_user_row_says_the_message_was_saved() {
         flip.contains(&format!("chatId={CHAT_ID} userMessageId=")),
         "{flip}"
     );
-    let id = flip.rsplit("userMessageId=").next().unwrap().trim();
+    // P4.D372 (v4 `db6190b44`): the line's THIRD key, `isEstablishedFact`,
+    // rides every post.
+    let tail = flip.rsplit("userMessageId=").next().unwrap().trim();
+    let (id, fact) = tail.split_once(' ').unwrap_or((tail, ""));
     assert_eq!(id, users[0].0, "the DEBUG names the saved row");
+    assert_eq!(fact, "isEstablishedFact=false", "{flip}");
     assert!(lines_with(&o.lines, "[OperatorPost] Pending tool results persisted").is_empty());
     assert!(lines_with(&o.lines, "(fair-rotation pause)").is_empty());
     assert_shell_lines(
@@ -777,7 +781,11 @@ async fn the_fair_rotation_pause_logs_its_user_row_flip() {
     assert!(lines_with(&lines, "(fair-rotation pause)").is_empty());
     let flip = only_line(&lines, "[OperatorPost] User message persisted chatId=");
     assert!(flip.starts_with("DEBUG"), "{flip}");
-    let id = flip.rsplit("userMessageId=").next().unwrap().trim();
+    // P4.D372 (v4 `db6190b44`): the line's THIRD key, `isEstablishedFact`,
+    // rides every post.
+    let tail = flip.rsplit("userMessageId=").next().unwrap().trim();
+    let (id, fact) = tail.split_once(' ').unwrap_or((tail, ""));
     assert_eq!(id, users[0].0, "the DEBUG names the saved row");
+    assert_eq!(fact, "isEstablishedFact=false", "{flip}");
     assert!(lines_with(&lines, "[TurnStream] Emitting error frame").is_empty());
 }

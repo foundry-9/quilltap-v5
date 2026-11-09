@@ -180,6 +180,25 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("generators/rename.rs", "run_character_rename", F),
     ("photos/chat_gallery.rs", "list_chat_gallery", F),
     ("services/announcer/in_scene_voiced.rs", "generate_inner", F),
+    // === P4.D372 === (v4 `db6190b44`) the established-fact handler reads the
+    // fact row through v4's `getMessages` (a fallback read); the two unit
+    // tests read the written rows back the same way.
+    (
+        "services/announcer/writer.rs",
+        "a_failed_enqueue_warns_and_the_fact_stands",
+        F,
+    ),
+    (
+        "services/established_fact_memories.rs",
+        "handle_established_fact_memories",
+        F,
+    ),
+    (
+        "services/operator_post.rs",
+        "the_flag_rides_the_row_and_the_lines",
+        F,
+    ),
+    // === /P4.D372 ===
     // v4's backup runs OUTSIDE the strict-failures scope (its only callers
     // are the importer's execute and preview), so a chat whose read fails is
     // written with `messages: []` and the backup completes.
@@ -533,8 +552,11 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // P4.D362 added THREE unit-test fallback calls in an existing file (the
     // `isEstablishedFact` slot pin ×2 and the pre-column read in
     // `db/chats_messages_read.rs`): 83 and 50.
-    assert_eq!((swallowing, strict), (83, 7), "census totals");
-    assert_eq!(file_count, 50, "census files");
+    // P4.D372 added THREE fallback sites in three new files (the
+    // established-fact handler, and the writer / operator-post unit tests that
+    // read their rows back): 86 and 53.
+    assert_eq!((swallowing, strict), (86, 7), "census totals");
+    assert_eq!(file_count, 53, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not
