@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — docs(porting): P4.D375 lane record and status header (lane complete)
+
+_Docs-only change._
+
+The lane record (red-first, mutation proofs, the survey and ledger corrections, the `LEXICAL_WINDOW_VS_DATE_PARSE` table and the draft v4 issue, new log lines, carves, HANDOFFs, the gate) is appended to `status-log.md`. The order's status header now reads LANE COMPLETE.
+
 #### 2026-11-09 — test(harness): recall_replay records v4's `[Memory] Window-first gather` line (P4.D375)
 
 _No crate versions bumped._

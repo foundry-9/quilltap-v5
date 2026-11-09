@@ -200169,3 +200169,184 @@ The 8 reds, each classified:
 **Versions at close:** core **0.0.1438**; host 0.0.224, web 0.0.256, cli 0.0.38, tauri 0.0.9, sys 0.1.0, harness 0.0.1110 (all unmoved by this lane).
 
 **Cleanup:** the pin worktree was removed and pruned, and the lane's `target/` was deleted. `/tmp/p4d374/` was left for the unifier's read (oracles, fixtures, the gate log, `gate-env.sh`). The branch is pushed and nothing is merged to `main`.
+
+## P4.D375 — window-first dated search, honest empty, chat-window recall gather (lane record, 2026-11-09)
+
+Branch `claude/p4-d375-search-d7b2c1`, worktree `.claude/worktrees/p4-d375-search-d7b2c1`. The session started in this worktree, already on a clean branch at `CATALOG` `91ccabb06`, so no move was needed.
+
+- `91ccabb06` is P4.D374's stacking commit, recorded in its status header on `claude/p4-d374-catalog-7f22a5`.
+- It was told apart from P4.D350's older `CATALOG:` (`5bd0a3798`, 2026-11-02, regenerating from `236c04e35`) by the pin in its subject and its date.
+
+Oracle pin `624d0d25c` (`/tmp/qt-v4-pin-p4d375-624d0d25c`).
+
+### The §2 probe (observation, §R.2)
+
+- **v4 moved:** `921fe94bb` was observed on `main` at 2026-11-09 12:40 CST, 43 commits past the pin. `bugfix` is at `d67c70a51` ("started 4.12.2 bug branch").
+- **Tree dirty:** the Green Room / Salon refactor (`app/salon/[id]/**`, `app/styles/qt-components/_green-room.css`, `help/chats.md`, `docs/CHANGELOG.md`, `packages/theme-storybook/**`). Not this lane's.
+- **The pin:** at `624d0d25c`, `package.json` `4.13.0-dev.8`.
+  - `npm ci --offline` succeeded on the first try. Verified: better-sqlite3 13.0.3, zod 4.6.7, openai 7.47.0, @openrouter/sdk 1.5.34, mermaid 12.3.0.
+  - Plugin floors from `pin-plugin-sdks.sh`: openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3. The CLI driver is 13.0.3 / SQLite 3.53.4 / chacha20.
+- The pin was never swept during the lane.
+
+### Commits
+
+| commit | sha | scope |
+|---|---|---|
+| C1 | `7299d85ac` | items 2–7 + 15 (the recall window pass), core 0.0.1430 |
+| C2 | `c73e0b9e2` | items 8–10 + 16 (chat window, `chat_ids`, the mini-recap), core 0.0.1431 |
+| C3 | `3943b28ef` | items 11–13 + 17 (the tool, the formatter, the executor), core 0.0.1432 |
+| C4 | `741d85f68` | item 14 (simple-JSON rule 6), core 0.0.1433 |
+| — | `8f467ac56` | `semantic_search_tuning_tier3`: the case's capture whitelist gains `[Memory] Window-first gather` (a red-first gap, below) |
+| — | `ae0dadea1` | `recall_replay`: the same whitelist gap, both sides |
+
+### Red-first (§R.7; on `CATALOG` with the pin's oracles, through the sweep driver)
+
+The harnesses stop at the first diverging row, so per-row counts are taken from the regenerated oracles.
+
+- **`search_tools_equivalence` (RED).**
+  - First failure: `search_empty_result`'s `formatted` (`No relevant results found.` vs v4's `Nothing matched your search. …`).
+  - Moved rows, per the pin's oracle:
+    - 32 successful search rows on the INFO (`defaultedSources`);
+    - 8 empty rows on `formatted` (`search_empty_result`, `search_invalid_empty`, `search_window_empty`, `search_about_unresolved`, `search_conversations_window_out`, `search_invalid_since`, `pool_memories_forced_off`, `pool_conversations_forced_off`);
+    - 6 dated rows on `resultJson` (`windowCensus`): `search_window_dateonly`, `search_until_createdat_fallback`, `search_since_full_iso`, `search_window_empty`, `search_conversations_window_in`, `search_conversations_window_out`.
+- **`recall_assemble_tier3_equivalence` (RED).** First failure: `retrospective_pre_searched`'s gather trace (the missing `window` / `windowAdded`). Two retrospective rows (`retrospective_pre_searched`, `mini_recap_names_no_one`) also lack `unsummarized`.
+- **`recall_replay_equivalence` (RED).** First failure: `retro_full`'s gather detail key set. 26 of 46 rows carry `window` / `windowAdded`. None carries `floorRelaxed`: the replay always builds a recall context (`replay.ts:332`, `:344`), so its floor never relaxes. Item 21's 7-day row was not grown, because it is unreachable.
+- **Unmoved, measured:** `recall_query_tier3`, `recall_deliver`, `memories_routes`.
+- **`semantic_search_tuning_tier3`: green at red-first, but only through a GAP.** Its v4 case captured a message whitelist without `[Memory] Window-first gather`, so v4's three lines were dropped.
+  - On the port it went red (v5 emits the line).
+  - Fixed by whitelisting the message (`8f467ac56`). It is green with the lines compared.
+  - `recall_replay` had the same gap on BOTH sides (`PINNED_LINES`), now closed (`ae0dadea1`, 26 v4 lines compared).
+- **`recall_probe_fixture`:** the sweep refuses it as non-extractable (`<the pin>` placeholder), so it was hand-run with `QT_V4_ROOT` = the pin. Its oracle carries no window at all (0 `windowAdded`, 0 `via: window`): unmoved, measured. Item 20's probe-world tier shape is moot.
+- **New families** (`window_first_recall`, `chat_window`) and the grown `memory_index_tier2` rows cannot run against unported v5. Their red-first is the mutation runs below.
+
+### Mutation proofs (item 18; each restored, mtime bumped)
+
+| mutation | family | flipped |
+|---|---|---|
+| vector window pass skipped | `window_first_recall` | 18 divergences (op 3 on) |
+| vector window pass skipped | `recall_replay` | `retro_full` |
+| `window_ids` filtered in the vector arm | `window_first_recall` | op 3's trace |
+| `<` for `<=` in the floor relaxation | `window_first_recall` | op 11 (the exactly-14-day row) |
+| empty `include` dropped | `memory_index_tier2` | op 8 |
+| `updatedAt` before `lastMessageAt` | `chat_window` | 8 ops |
+| `chat_ids` ignored | `chat_window` | 6 ops |
+| the current chat not excluded (recap) | `recall_assemble_tier3` | `p4d375_unsummarized_two` (see the gap below) |
+| census exclusion moved into the window read | `search_tools` | 5 rows |
+| footer on overflow alone | `search_tools` | 1 row |
+| the dated default off | `search_tools` | 14 rows |
+| narrow-window `minScore` ignored | `search_tools` | 4 rows |
+
+- **Corpus gap closed:** the first "current chat not excluded" run stayed green. The fixture's current chat seats no one, so the read never sees it. The row now seats Lyra in the current chat, and the mutated binary fails it.
+- **Not a flip, but measured:** `sort_by` for `js_array_sort_by` in the text arm cannot flip the differential. v4's `findByIds` validates every row through `MemorySchema` (`TimestampSchema` = `z.iso.datetime()`), so a row with an unparseable event time is dropped before the sort and the NaN comparator is unreachable through v4's real repository. A unit test pins the V8 order.
+  - Input `[a 10:00, c 12:00, nan, d 11:00]`: V8 gives `c, d, a, nan`; `sort_by` gives `c, a, nan, d`.
+- **A harness trap found and fixed:** the mutation runner restored files with an OLDER mtime, so cargo kept the mutated binary. The runner now bumps mtimes on restore.
+
+### Corrections (for the unifier and the ledger)
+
+1. **Ledger `:544` / survey headline 1 / §5.2 (B.6):** `No relevant results found.` is GONE from v4. EVERY empty search answers an honest-empty text; without opts it is `Nothing matched your search. …`.
+2. **Survey headline 2:** v5 already had `minScore ??` semantics. It converged.
+3. **A.7 (survey §1.1.6):** the chat-window WARN is strict-scope-only. Outside it, `findByFilter`'s fallback answers `[]` with `Error finding entities by filter`. Measured both ways in `chat_window_equivalence`.
+4. **L-4:** `pseudo-tool-prompts.ts` is P4.D370's (§R.13 wins over the survey's S2 row).
+5. **L-5:** the `search.rs` carve was respected. Lines 31 / 38 / 43, the pool region and `build_knowledge_tiers` are untouched.
+6. **Fixture choice (a lane-local departure, recorded):**
+   - `window-first-recall.ts` is a tsx case that seeds its own `base.db`, in the `memory-index-tier2` idiom. There is no separate builder or jest wrapper. It drives v4's REAL `searchRecall` (what `searchMemories` calls once it has embedded) with the query's vector in hand, so no embedding service runs under tsx.
+   - `chat-window.ts` is ONE tsx case (tier 1 + tier 2) over a copy of the search-tools builder pair, with in-case chat plants. There is no `build-chat-window-fixture.ts`.
+   - The recall-assemble "summary already fills the cap" row was not built: the committed fixture carries no vault summaries. The cap is pinned instead with 7 unsummarized in-window chats (5 listed).
+7. **v4 drops schema-invalid chat rows** (unparseable `createdAt` / `lastMessageAt`) before `findChatsInWindow`, where v5 validates no chat row (the recorded `chats_read` divergence). Those shapes are pinned by `chat_window`'s pure tier-1 rows only.
+
+### The window pass on the corpus (`window_first_recall`, the one-day UTC window `2026-11-03`)
+
+- **`findIds`:** 10 ids with `hotOnly: false`, 9 with `hotOnly: true` (the cold row dropped); 31 over a wide window.
+- **Vector arm:** `window` = 10, UNFILTERED (the excluded id counted); `windowAdded` = 1 (the NULL-`occurredAt` row; the others already rode the global top-K).
+- **Text arm:** `window` = 6, FILTERED (the pool's and the excluded ids out); `windowAdded` = 3 at `limit 1` (the `limit × 3` cut) and 4 at `limit 10`.
+- **`floorRelaxed`:** on the 1-day, exactly-14-day and text rows. Not on 14 days + 1 ms, 31 days, undated, or the prompt path.
+
+### `LEXICAL_WINDOW_VS_DATE_PARSE` (item 19; a v4-shared behaviour, both columns asserted from the oracle)
+
+| shape | gathered by SQL? | in window by `Date.parse`? |
+|---|---|---|
+| `2026-11-03` (date-only, the window's first day) | no | yes |
+| `2026-11-03T01:00:00+05:00` (offset) | yes | no |
+| `2026-11-03T23:59:59Z` (no millis, the last second) | no | yes |
+| `soon` | no | no |
+| `2026-11-03T12:61:00.000Z` | yes | no |
+
+v4's `MemorySchema` refuses four of the five at read time (only the no-millis form is a valid `z.iso.datetime()`). The no-millis row is the live case: the SQL window misses a schema-valid memory that `score` would place inside the window.
+
+**Draft v4 issue (NOT filed; the human's go-ahead first, R-Z):** "`findIdsInEventWindow` compares event times as text: a schema-valid `occurredAt` without milliseconds (`…T23:59:59Z`) on a window's last second sorts after the `…59.999Z` bound and is left out of the window-first gather, though `score` places it in the window."
+
+### New log lines (each with its pin and silence leg)
+
+| line | pinned by | silence leg |
+|---|---|---|
+| `Found memories in event window` (DEBUG, `quilltap::db`) | `window_first_recall` (every `findIds` / windowed op) + the core unit test | the undated ops |
+| `Error finding memories in event window` (ERROR) | `window_first_recall`'s dropped-column op + the unit test (strict → `Err`) | the success ops |
+| `[Memory] Window-first gather` (DEBUG, `windowJson`) | `window_first_recall`, `recall_assemble_tier3`, `semantic_search_tuning_tier3`, `recall_replay` | the undated ops; none in the text arm |
+| `Chats in time window` (DEBUG, `quilltap::chat_window`; `characterId` omitted on the operator surface) | `chat_window` | — |
+| `Could not read chats for a time window` (WARN, strict only) | `chat_window`'s two strict ops | the non-strict failure op |
+| `Conversation search restricted to window chats` (DEBUG) | `chat_window` | the `chatIds`-absent op |
+| `Memories in search window` | `search_tools` | — |
+| `No conversations in search window; chunk search skipped` | `search_tools` (+ `embedCalls` = 0) | — |
+| `Window conversation search` | `search_tools` | — |
+| The INFO's `defaultedSources` / `windowCensusJson` | every `search_tools` search row | `windowCensusJson` is absent on undated rows |
+
+- `Error finding memories in event window` is now in `fallback_home_guard`'s HOME_MESSAGES (+1).
+- Item 22 (the `windowCensusJson` → `windowCensus` file-layer rendering): it rides the existing `…Json` convention, which `search_tools`' capture compares through the stem. There is no core-level convention test to extend, and web is not bumped here. Recorded.
+
+### Carves and documentation tables
+
+- **`CHATS_BY_CHARACTER_RETHROW_LINE_ABSENT`** (`chat_window_equivalence`, a both-ways carve):
+  - v4's strict-scope `Failed to find chats by character ID` is asserted present in v4's lines and absent from v5's (met once).
+  - Retires when the rethrow line is ported for every `chats_read::find_by_character_id` caller (a follow-ups item).
+- **`LEXICAL_WINDOW_VS_DATE_PARSE`** (above): retires if v4 compares event times chronologically.
+
+### HANDOFFs
+
+| id | to | measurable |
+|---|---|---|
+| H1 | P4.D374 | Nothing to flip: P4.D374 measured its windowed `lookup_memories` rows green on its own branch. Re-run `brahma_lookup_tools_equivalence` on the union (C8: `search_memories` with a window and no recall context now runs the window pass + the floor relaxation). |
+| H2 | P4.D370 | `pseudo_tool_prompts_equivalence` from the pin on this tree: 48/52 green — every `build_simple_json*` row. The 4 red rows (`build_native/native-true`, `native-false`, `native-default`, `build_native_system/native-system`) are P4.D370's. The pin's oracle prints `undefined` at the head of each native row: the K-B re-aim of `buildNativeToolInstructions(variant, …)`. 21 oracle rows carry `lists no conversation from that period`. |
+| H3 | P4.D382 | the two help pages + the design note + the 4.12.1 release note |
+| H4 | P4.D376 / unifier | `tools/search.rs`: my hunks are fenced `// === P4.D375 ===` and touch none of `:31,38,43`, the pool region or `build_knowledge_tiers`. On this tree every `search_tools` row is green, including the documents / knowledge rows. Re-run after both lanes. |
+| H5 | unifier | `services/mod.rs` (`pub mod chat_window;`) and `db/fallback.rs` (the fenced home) are append-only. `fallback_home_guard` passes with +1. |
+
+### 💸 for the owed dogfood pass (§S.8)
+
+- A dated `search` ("what happened last Tuesday") returns the census footer.
+- An empty dated search names the period's conversations.
+- An undated empty search answers `Nothing matched "…"`.
+- A ≤ 14-day window returns a loosely matching in-window memory.
+- The retrospective mini-recap lists an unsummarized chat from the window.
+- The R-3 count on the copy: `SELECT count(*) FROM memories WHERE COALESCE(occurredAt, createdAt) NOT GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9]Z'` (no spend; a non-zero count feeds the draft issue).
+
+### The gate (lane close, 2026-11-09)
+
+- `cargo fmt --all --check`: clean.
+- `cargo clippy --workspace --all-targets -- -D warnings`: clean. With `--features quilltap-core/native-transport`: clean (`apps/web/dist` built after `npm ci`).
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`; env block `/tmp/p4d375/gate-env.sh`; oracles frozen under `/tmp/p4d375/gate/`; queued behind two sibling gates by PID):
+  - **906 binaries / 6,065 passed / 5 failed / 3 ignored.**
+  - Every red is named and owned:
+    - `cli_differential` (red at `SCHEMA`; P4.D365);
+    - `builtin_prompt_templates_guard` (red at `SCHEMA`; P4.D373);
+    - `provider_sdk_version_guard` (P4.D364, the five floors);
+    - `pseudo_tool_prompts_equivalence` (the 4 `build_native*` rows; P4.D370, H2);
+    - `spelling_guard` (the base's vendor-survey line; fixed on main).
+- Zero `SKIP:` across this lane's 15 families, checked by name with `--nocapture`.
+- The final sweep from the pin: 13 ok + `pseudo_tool_prompts` (H2) + `recall_probe_fixture` (refused by the driver, hand-run green), with `semantic_search_tuning` and `recall_replay` re-swept green after their whitelist fixes. `recipe_sweep.py --self-test`: 0 failures.
+- Marker counts in the pin's oracles:
+  - `window_first_recall`: 13 `"via":"window"`, 4 `floorRelaxed`, 1 case line (`Window-first gather` lines inside it);
+  - `memory_index_tier2`: 4 `"include":` rows;
+  - `chat_window`: 6 `Chats in time window` rows, 4 `restricted to window chats` rows;
+  - `recall_assemble`: 4 rows with `"unsummarized"`;
+  - `search_tools_search`: 47 `defaultedSources`, 53 `windowCensus`, 33 `Nothing matched`;
+  - `pseudo_tool_prompts`: 21 `lists no conversation from that period`.
+
+### Versions at close
+
+core **0.0.1433** (from 0.0.1429 at `CATALOG`; +1 per C1–C4). No other crate was bumped; the harness stays frozen at 0.0.1110.
+
+### Cleanup
+
+- The pin worktree was removed and pruned.
+- The lane's `target/` was deleted whole.
+- `/tmp/p4d375/` is left for the unifier (`gate-env.sh` + `gate/`).
