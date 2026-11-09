@@ -433,6 +433,10 @@ fn doc_mount_file_links_tier2_matches_oracle() {
             "description.md",
             "logo-copy.bin",
             "logo.bin",
+            // === P4.D380 === the upload a document was written over (v4
+            // `30a3b4cb7` — its extraction fields cleared; compared above).
+            "p4d380/upload.md",
+            // === end P4.D380 ===
             "pair/one.md",
             "properties.json",
             "secret.md",
@@ -445,8 +449,9 @@ fn doc_mount_file_links_tier2_matches_oracle() {
     );
     assert_eq!(
         folders.len(),
-        3,
-        "expected 3 folder rows (Knowledge + twins + pair)"
+        // === P4.D380 === + `p4d380/` (the upload's folder).
+        4,
+        "expected 4 folder rows (Knowledge + twins + pair + p4d380)"
     );
 
     // [40319484] The GC invariant, asserted structurally rather than by count —

@@ -78,37 +78,177 @@
     "updatedAt": "2026-02-01T00:00:00.000Z"
   },
   "ops": [
-    { "kind": "write", "relativePath": "properties.json", "content": "{\n  \"color\": \"oxblood\",\n  \"icon\": \"gear\"\n}" },
-    { "kind": "write", "relativePath": "description.md", "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog." },
-    { "kind": "write", "relativePath": "Knowledge/notes.md", "content": "alpha beta gamma" },
-    { "kind": "write", "relativePath": "alias.md", "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog." },
-    { "kind": "write", "relativePath": "description.md", "content": "# Crew\n\nA wholly rewritten body." },
-    { "kind": "write", "relativePath": "secret.md", "content": "---\ncharacter_read: false\n---\n\nFor the operator's eyes only." },
-    { "kind": "write", "relativePath": "KNOWLEDGE/atlas.md", "content": "delta epsilon zeta" },
-    { "kind": "write", "relativePath": "DESCRIPTION.md", "content": "# Crew\n\nA case-variant rewrite of the description." },
-
-    { "kind": "write", "relativePath": "twins/left.md", "content": "# Twins\n\nShared bytes, first revision." },
-    { "kind": "write", "relativePath": "twins/right.md", "content": "# Twins\n\nShared bytes, first revision." },
-    { "kind": "bind-group", "sourcePath": "twins/left.md", "destPath": "twins/right.md" },
-    { "kind": "write", "relativePath": "twins/left.md", "content": "---\ncharacter_read: false\n---\n\n# Twins\n\nSecond revision, restricted." },
-    { "kind": "write", "relativePath": "twins/third.md", "content": "---\ncharacter_read: false\n---\n\n# Twins\n\nSecond revision, restricted." },
-    { "kind": "bind-group", "sourcePath": "twins/left.md", "destPath": "twins/third.md" },
-    { "kind": "write", "relativePath": "twins/THIRD.md", "content": "# Twins\n\nThird revision, written through the third path." },
-
-    { "kind": "write", "relativePath": "pair/one.md", "content": "# Pair\n\nThe survivor." },
-    { "kind": "write", "relativePath": "pair/two.md", "content": "# Pair\n\nThe first to go." },
-    { "kind": "write", "relativePath": "pair/three.md", "content": "# Pair\n\nThe second to go." },
-    { "kind": "bind-group", "sourcePath": "pair/one.md", "destPath": "pair/two.md" },
-    { "kind": "bind-group", "sourcePath": "pair/one.md", "destPath": "pair/three.md" },
-    { "kind": "delete", "relativePath": "pair/two.md" },
-    { "kind": "delete", "relativePath": "pair/three.md" },
-
-    { "kind": "write", "relativePath": "solo.md", "content": "# Solo\n\nAn ordinary file with no link at all." },
-    { "kind": "write", "relativePath": "solo.md", "content": "# Solo\n\nRewritten, orphaning the row above." },
-
-    { "kind": "write-blob", "relativePath": "logo.bin", "dataHex": "89504e470d0a1a0a5a5a5a5a", "storedMimeType": "image/png", "originalFileName": "logo.png", "originalMimeType": "image/png", "description": "the left caption", "extractedText": "left extracted text" },
-    { "kind": "write-blob", "relativePath": "logo-copy.bin", "dataHex": "89504e470d0a1a0a5a5a5a5a", "storedMimeType": "image/png", "originalFileName": "logo.png", "originalMimeType": "image/png", "description": "the right caption", "extractedText": "right extracted text" },
-    { "kind": "bind-group", "sourcePath": "logo.bin", "destPath": "logo-copy.bin" },
-    { "kind": "write-blob", "relativePath": "logo.bin", "dataHex": "89504e470d0a1a0a62626262", "storedMimeType": "image/png", "originalFileName": "logo-v2.png", "originalMimeType": "image/png", "description": "the left caption, revised", "extractedText": "left extracted text, revised" }
+    {
+      "kind": "write",
+      "relativePath": "properties.json",
+      "content": "{\n  \"color\": \"oxblood\",\n  \"icon\": \"gear\"\n}"
+    },
+    {
+      "kind": "write",
+      "relativePath": "description.md",
+      "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog."
+    },
+    {
+      "kind": "write",
+      "relativePath": "Knowledge/notes.md",
+      "content": "alpha beta gamma"
+    },
+    {
+      "kind": "write",
+      "relativePath": "alias.md",
+      "content": "# Crew\n\nThe quick brown fox jumps over the lazy dog."
+    },
+    {
+      "kind": "write",
+      "relativePath": "description.md",
+      "content": "# Crew\n\nA wholly rewritten body."
+    },
+    {
+      "kind": "write",
+      "relativePath": "secret.md",
+      "content": "---\ncharacter_read: false\n---\n\nFor the operator's eyes only."
+    },
+    {
+      "kind": "write",
+      "relativePath": "KNOWLEDGE/atlas.md",
+      "content": "delta epsilon zeta"
+    },
+    {
+      "kind": "write",
+      "relativePath": "DESCRIPTION.md",
+      "content": "# Crew\n\nA case-variant rewrite of the description."
+    },
+    {
+      "kind": "write",
+      "relativePath": "twins/left.md",
+      "content": "# Twins\n\nShared bytes, first revision."
+    },
+    {
+      "kind": "write",
+      "relativePath": "twins/right.md",
+      "content": "# Twins\n\nShared bytes, first revision."
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "twins/left.md",
+      "destPath": "twins/right.md"
+    },
+    {
+      "kind": "write",
+      "relativePath": "twins/left.md",
+      "content": "---\ncharacter_read: false\n---\n\n# Twins\n\nSecond revision, restricted."
+    },
+    {
+      "kind": "write",
+      "relativePath": "twins/third.md",
+      "content": "---\ncharacter_read: false\n---\n\n# Twins\n\nSecond revision, restricted."
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "twins/left.md",
+      "destPath": "twins/third.md"
+    },
+    {
+      "kind": "write",
+      "relativePath": "twins/THIRD.md",
+      "content": "# Twins\n\nThird revision, written through the third path."
+    },
+    {
+      "kind": "write",
+      "relativePath": "pair/one.md",
+      "content": "# Pair\n\nThe survivor."
+    },
+    {
+      "kind": "write",
+      "relativePath": "pair/two.md",
+      "content": "# Pair\n\nThe first to go."
+    },
+    {
+      "kind": "write",
+      "relativePath": "pair/three.md",
+      "content": "# Pair\n\nThe second to go."
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "pair/one.md",
+      "destPath": "pair/two.md"
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "pair/one.md",
+      "destPath": "pair/three.md"
+    },
+    {
+      "kind": "delete",
+      "relativePath": "pair/two.md"
+    },
+    {
+      "kind": "delete",
+      "relativePath": "pair/three.md"
+    },
+    {
+      "kind": "write",
+      "relativePath": "solo.md",
+      "content": "# Solo\n\nAn ordinary file with no link at all."
+    },
+    {
+      "kind": "write",
+      "relativePath": "solo.md",
+      "content": "# Solo\n\nRewritten, orphaning the row above."
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "logo.bin",
+      "dataHex": "89504e470d0a1a0a5a5a5a5a",
+      "storedMimeType": "image/png",
+      "originalFileName": "logo.png",
+      "originalMimeType": "image/png",
+      "description": "the left caption",
+      "extractedText": "left extracted text"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "logo-copy.bin",
+      "dataHex": "89504e470d0a1a0a5a5a5a5a",
+      "storedMimeType": "image/png",
+      "originalFileName": "logo.png",
+      "originalMimeType": "image/png",
+      "description": "the right caption",
+      "extractedText": "right extracted text"
+    },
+    {
+      "kind": "bind-group",
+      "sourcePath": "logo.bin",
+      "destPath": "logo-copy.bin"
+    },
+    {
+      "kind": "write-blob",
+      "relativePath": "logo.bin",
+      "dataHex": "89504e470d0a1a0a62626262",
+      "storedMimeType": "image/png",
+      "originalFileName": "logo-v2.png",
+      "originalMimeType": "image/png",
+      "description": "the left caption, revised",
+      "extractedText": "left extracted text, revised"
+    },
+    {
+      "kind": "write-blob",
+      "lane": "P4.D380",
+      "note": "=== P4.D380 === (v4 30a3b4cb7): an uploaded native-text blob carrying its extracted text…",
+      "relativePath": "p4d380/upload.md",
+      "dataHex": "232055706c6f61640a0a6669727374207265766973696f6e0a",
+      "storedMimeType": "text/markdown",
+      "originalFileName": "upload.md",
+      "originalMimeType": "text/markdown",
+      "description": "",
+      "extractedText": "# Upload\n\nfirst revision\n"
+    },
+    {
+      "kind": "write",
+      "lane": "P4.D380",
+      "note": "…then a document written over it: linkDocumentContent clears extractedText / extractedTextSha256 / extractionStatus / extractionError (=== end P4.D380 ===).",
+      "relativePath": "p4d380/upload.md",
+      "content": "# Upload\n\nsecond revision\n"
+    }
   ]
 }

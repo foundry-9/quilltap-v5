@@ -883,12 +883,20 @@ impl<'c> DocMountFileLinksRepository<'c> {
             } else {
                 ""
             };
+            // === P4.D380 === (v4 `30a3b4cb7`, `doc-mount-file-links.repository.ts:
+            // 1295-1310`): "A document link carries no derived text (its content
+            // is the text), so the extraction fields are always cleared. Without
+            // this, a write over an uploaded text blob at the same path kept the
+            // blob's `extractedText` — read first by `docs grep` and the blob
+            // readers — describing the old revision."
             tx.execute(
                 &format!(
                     "UPDATE doc_mount_file_links SET \
                        fileId = ?1, folderId = ?2, \
                        plainTextLength = ?3, \
                        conversionStatus = 'converted', conversionError = NULL, \
+                       extractedText = NULL, extractedTextSha256 = NULL, \
+                       extractionStatus = 'none', extractionError = NULL, \
                        allowEmbed = ?4, allowCharacterRead = ?5, allowCharacterWrite = ?6, \
                        {chunk_count_set}\
                        lastModified = ?7, updatedAt = ?8 \
@@ -906,6 +914,7 @@ impl<'c> DocMountFileLinksRepository<'c> {
                     link_id,
                 ],
             )?;
+            // === end P4.D380 ===
             // Deliberate hard links move together, then the abandoned content row
             // (if this write orphaned it) is collected. Order matters: the
             // siblings must already be repointed before the GC counts the

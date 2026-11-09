@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(mount-index): a document written over an upload clears the link's extraction fields (P4.D380, v4 30a3b4cb7)
+
+_Versions: core 0.0.1435._
+
+`DocMountFileLinksRepository::link_document_content`'s UPDATE now clears `extractedText`, `extractedTextSha256`, `extractionStatus` (to `'none'`) and `extractionError`, in v4's SET position (`doc-mount-file-links.repository.ts:1295-1310` at `624d0d25c`). Before this, a document written over an uploaded text blob at the same path kept the blob's extracted text. The blob readers and `doc_grep` read that text first, so they described the old revision. The `doc_mount_file_links_tier2` corpus gains a fenced pair: a `write-blob` of an uploaded `.md` with its text, then a `write` over it. The family's row compare was red with the four assignments removed and is green with them.
+
 #### 2026-11-09 — feat(documents): the chat_documents sweeps — moves follow every open copy (P4.D380, v4 30a3b4cb7)
 
 _Versions: core 0.0.1434._
