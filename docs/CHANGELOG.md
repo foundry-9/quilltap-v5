@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — feat(tool-loop): v4's non-agent `Max tool iterations reached` WARN
+
+_Versions: core 0.0.1434._
+
+P4.D370 Tier 2 item 15, a gap beside the lane's branch. The native loop's force-final condition is split into v4's two arms: agent mode runs the force-final pass; non-agent mode now logs v4's `Max tool iterations reached` WARN (`quilltap::native_tool_loop`; `iterations`, `chatId`) at the fixed cap of 5 instead of nothing. Pinned by a new `native-tool-loop-tier3` case (`nonagent_max_iterations_warn`, five tool calls with agent mode off) whose captured v4 line rides the per-case `agentLog` record.
+
 #### 2026-11-09 — feat(salon): the Salon slate offers submit_final_response to the research flavour only; the injected-instructions INFO (v4 96156566b)
 
 _Versions: core 0.0.1433._

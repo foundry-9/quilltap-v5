@@ -24,7 +24,7 @@
 //!      research it may overwrite `streaming.full_response` from a
 //!      `submit_final_response` in the force-final response; for in-character
 //!      (a roleplay character) it asks for the turn in prose with no further
-//!      tools.
+//!      tools. Non-agent mode just logs the cap.
 //!
 //! The loop MUTATES the [`StreamingState`] in place (`full_response`, `usage`,
 //! `cache_usage`, `attachment_results`, `raw_response`, `thought_signature`,
@@ -640,10 +640,10 @@ where
         }
     }
 
-    // Force-final branch (v4 :398–476). Non-agent mode just logs the cap (v4's
-    // `else` — host-side logging, omitted), so the two conditions collapse.
-    if tool_iterations >= effective_max_turns && !agent_mode_completed && agent_mode.enabled {
-        {
+    // Force-final branch (v4 :398–490): agent mode runs one force-final pass;
+    // non-agent mode logs the cap (v4's `else` WARN — P4.D370 Tier 2).
+    if tool_iterations >= effective_max_turns && !agent_mode_completed {
+        if agent_mode.enabled {
             // v4 :413-418 — before the status emit, v4's order.
             tracing::info!(
                 target: "quilltap::native_tool_loop",
@@ -832,6 +832,13 @@ where
                 )
                 .await;
             }
+        } else {
+            tracing::warn!(
+                target: "quilltap::native_tool_loop",
+                iterations = tool_iterations,
+                chatId = %chat_id,
+                "Max tool iterations reached"
+            );
         }
         // Non-agent mode just logs the cap (host-side).
     }

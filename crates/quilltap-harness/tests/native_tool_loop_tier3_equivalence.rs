@@ -578,8 +578,9 @@ async fn native_tool_loop_tier3_matches_oracle() {
         assert_eq!(got_halt, want_halt, "{}: the loop-head halt INFO", c.name);
         halts_seen += want_halt.len();
         // P4.D370: the force-final INFO, v4's keys in v4's order (`chatId`,
-        // `iterations`, `maxTurns`, `flavor`). Every case that never reaches
-        // the branch carries NONE on both sides (the silence leg).
+        // `iterations`, `maxTurns`, `flavor`), and (Tier 2) the non-agent cap
+        // WARN (`iterations`, `chatId`). Every case that never reaches the cap
+        // carries NONE on both sides (the silence leg).
         let want_agent: Vec<String> = oracle_agent_logs
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle agentLog missing for {}", c.name))
@@ -588,7 +589,8 @@ async fn native_tool_loop_tier3_matches_oracle() {
             .iter()
             .map(|l| {
                 let mut out = format!(
-                    "INFO quilltap::native_tool_loop {}",
+                    "{} quilltap::native_tool_loop {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
                     l["message"].as_str().unwrap()
                 );
                 for (k, v) in l["context"].as_object().unwrap() {
@@ -603,10 +605,17 @@ async fn native_tool_loop_tier3_matches_oracle() {
             .collect();
         let got_agent: Vec<String> = lines
             .iter()
-            .filter(|l| l.contains("Agent mode max turns reached"))
+            .filter(|l| {
+                l.contains("Agent mode max turns reached")
+                    || l.contains("Max tool iterations reached")
+            })
             .cloned()
             .collect();
-        assert_eq!(got_agent, want_agent, "{}: the force-final INFO", c.name);
+        assert_eq!(
+            got_agent, want_agent,
+            "{}: the force-final INFO / the cap WARN",
+            c.name
+        );
         agent_lines_seen += want_agent.len();
 
         let got_result = json!({
@@ -639,8 +648,9 @@ async fn native_tool_loop_tier3_matches_oracle() {
         "exactly `stop-between-batches` halts at the loop head"
     );
     assert_eq!(
-        agent_lines_seen, 2,
-        "exactly `multi-iter-forcefinal` and `ic_max_turns_prose_force_final` reach the force-final branch"
+        agent_lines_seen, 3,
+        "exactly `multi-iter-forcefinal` and `ic_max_turns_prose_force_final` reach the force-final \
+         branch, and `nonagent_max_iterations_warn` the non-agent cap"
     );
 
     // chats dump: the deterministic agentTurnCount writes (no normalization —

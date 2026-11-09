@@ -915,6 +915,234 @@
         ]
       ],
       "dumpChats": true
+    },
+    {
+      "name": "nonagent_max_iterations_warn",
+      "chatId": "30000000-0000-4000-8000-000000000033",
+      "characterId": "20000000-0000-4000-8000-000000000002",
+      "characterName": "Ada",
+      "provider": "ANTHROPIC",
+      "model": "claude",
+      "temperature": 0.7,
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10,
+        "flavor": "in-character"
+      },
+      "initialFullResponse": "Page one. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "nw1",
+            "name": "search",
+            "input": {
+              "q": "page 1"
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada, in the scene."
+        },
+        {
+          "role": "user",
+          "content": "Read every page."
+        }
+      ],
+      "cannedTools": [
+        {
+          "name": "search",
+          "arguments": {
+            "q": "page 1"
+          },
+          "callId": "nw1",
+          "success": true,
+          "result": {
+            "formattedText": "page 1 text"
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "q": "page 2"
+          },
+          "callId": "nw2",
+          "success": true,
+          "result": {
+            "formattedText": "page 2 text"
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "q": "page 3"
+          },
+          "callId": "nw3",
+          "success": true,
+          "result": {
+            "formattedText": "page 3 text"
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "q": "page 4"
+          },
+          "callId": "nw4",
+          "success": true,
+          "result": {
+            "formattedText": "page 4 text"
+          }
+        },
+        {
+          "name": "search",
+          "arguments": {
+            "q": "page 5"
+          },
+          "callId": "nw5",
+          "success": true,
+          "result": {
+            "formattedText": "page 5 text"
+          }
+        }
+      ],
+      "streams": [
+        [
+          {
+            "content": "Page 2. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "nw2",
+                  "name": "search",
+                  "input": {
+                    "q": "page 2"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 21,
+              "completionTokens": 2,
+              "totalTokens": 23
+            }
+          }
+        ],
+        [
+          {
+            "content": "Page 3. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "nw3",
+                  "name": "search",
+                  "input": {
+                    "q": "page 3"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 22,
+              "completionTokens": 2,
+              "totalTokens": 24
+            }
+          }
+        ],
+        [
+          {
+            "content": "Page 4. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "nw4",
+                  "name": "search",
+                  "input": {
+                    "q": "page 4"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 23,
+              "completionTokens": 2,
+              "totalTokens": 25
+            }
+          }
+        ],
+        [
+          {
+            "content": "Page 5. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "nw5",
+                  "name": "search",
+                  "input": {
+                    "q": "page 5"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 24,
+              "completionTokens": 2,
+              "totalTokens": 26
+            }
+          }
+        ],
+        [
+          {
+            "content": "Page 6. "
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "nw6",
+                  "name": "search",
+                  "input": {
+                    "q": "page 6"
+                  }
+                }
+              ],
+              "stop_reason": "end_turn"
+            },
+            "usage": {
+              "promptTokens": 25,
+              "completionTokens": 2,
+              "totalTokens": 27
+            }
+          }
+        ]
+      ],
+      "dumpChats": true
     }
   ]
 }

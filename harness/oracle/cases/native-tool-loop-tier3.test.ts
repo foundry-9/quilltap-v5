@@ -277,6 +277,21 @@ async function main(): Promise<void> {
       // === P4.D370 ===
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
+    // === P4.D370 === (Tier 2) the non-agent cap WARN (v4 :487-489), per case,
+    // into the same per-case record.
+    const originalWarn = Logger.prototype.warn;
+    Logger.prototype.warn = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (message === 'Max tool iterations reached') {
+        agentLines.push({ level: 'warn', message, context: context ?? null });
+      }
+      return (originalWarn as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+    // === P4.D370 ===
   }
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
