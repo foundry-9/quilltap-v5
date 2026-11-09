@@ -2,12 +2,12 @@
 //! `doc_read_file`, `doc_write_file`, `doc_str_replace`, `doc_insert_text`,
 //! `doc_grep`, `doc_list_files`.
 //!
-//! Every write path's Librarian announcement + `triggerReindexIfNeeded` are the
-//! documented no-op seams (see [`super::shared`]); the differential oracle mocks
-//! them. `doc_read_file` reads an uploaded blob's extracted text on both of v4's
-//! paths (P4.D354, bug 260): the non-text branch (a converted pdf/docx,
-//! `derivedFromBlob: true`) and the text branch's ENOENT fallback (an uploaded
-//! `.md` / `.txt` / `.json` with no document at its path).
+//! Every read and write goes through the document core (P4.D380, v4
+//! `a3d53eae1`): `read_document` (the one blob fallback — an uploaded
+//! `.md` / `.txt` / `.json` reads as its own bytes, #134; a converted pdf/docx's
+//! text is `doc_read_file`'s `derivedFromBlob: true` branch) and
+//! `write_document` (the mtime guard, then the one refresh, run in the tool's
+//! write closure — see [`super::shared`]).
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -17,12 +17,11 @@ use super::shared::{
     assert_character_may_read, assert_character_may_write, basename, build_read_resolution_context,
     build_write_resolution_context, collect_peer_character_ids_for_reads,
     get_accessible_mount_points, get_character_blocked_read_paths, is_text_file,
-    librarian_scope_from, published_mount_point, read_file_with_mtime, resolve_actor_origin,
-    resolve_error_message, resolve_official_project_mount, scope_from_str, store_error_message,
-    write_file_with_mtime_check, AccessibleMountPointsQuery, DocEditToolContext,
+    librarian_scope_from, published_mount_point, resolve_actor_origin, resolve_error_message,
+    resolve_official_project_mount, scope_from_str, AccessibleMountPointsQuery, DocEditToolContext,
 };
 use super::DocEditToolResult;
-use crate::db::database_store::{self, list_database_files, ReadDoc};
+use crate::db::database_store::{self, list_database_files};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::doc_edit::diacritics::{
@@ -33,9 +32,7 @@ use crate::doc_edit::mime_registry::{
     validate_json, JsonlLineResult, ParseResult,
 };
 use crate::doc_edit::path_glob::PathGlob;
-use crate::doc_edit::path_resolver::{
-    resolve_doc_edit_path, resolve_mount_point_ref, ResolvedPath,
-};
+use crate::doc_edit::path_resolver::{resolve_doc_edit_path, resolve_mount_point_ref};
 use crate::doc_edit::qtap_uri::ScopedAuthority;
 use crate::doc_edit::unified_diff::generate_unified_diff;
 use crate::doc_edit::uri_producers::{uri_for_resolved_path, DocStoreUriResolver};
@@ -108,16 +105,35 @@ pub fn handle_read_file(
     // may still be readable if the blob has an extractedText representation.
     // Return that derived text with derivedFromBlob=true so callers know the
     // original bytes aren't what they're seeing. (v4 `text-handlers.ts:125-166`.)
+    //
+    // P4.D380 (v4 `a3d53eae1`): through the core's ONE read — `ENOENT` reads as
+    // nothing here, and only a `blob-text` answer is shown (a `blob-bytes` read
+    // of a non-text path cannot happen: native text ⊂ text files).
     if !is_text_file(&resolved.relative_path) {
         if let (Some("database"), Some(mp)) = (
             resolved.mount_type.as_deref(),
             resolved.mount_point_id.as_deref(),
         ) {
-            if let Some(blob) =
-                database_store::read_database_blob_text(mount, mp, &resolved.relative_path)
-                    .map_err(store_error_message)?
-            {
-                return Ok(derived_blob_read(&blob, &path, &uri, args));
+            if !mp.is_empty() {
+                let blob = match crate::documents::core::read_document(mount, &resolved) {
+                    Ok(r) => Some(r),
+                    Err(e) if e.is_enoent() => None,
+                    Err(e) => return Err(e.message()),
+                };
+                if let Some(blob) =
+                    blob.filter(|b| b.source == crate::documents::core::DocumentSource::BlobText)
+                {
+                    let text = database_store::DatabaseBlobText {
+                        content: blob.content,
+                        mtime_ms: blob.mtime_ms,
+                        size: blob.size,
+                        // v4 `blob.storedMimeType ?? 'application/octet-stream'`.
+                        stored_mime_type: blob
+                            .stored_mime_type
+                            .unwrap_or_else(|| "application/octet-stream".to_string()),
+                    };
+                    return Ok(derived_blob_read(&text, &path, &uri, args));
+                }
             }
         }
         return Ok(DocEditToolResult::fail(format!(
@@ -125,7 +141,11 @@ pub fn handle_read_file(
         )));
     }
 
-    let doc = read_text_file_or_uploaded_blob(mount, &resolved)?;
+    // "A path with no document may hold an upload — every chat upload is a
+    // blob, .md and .txt included; the core reads it as the editor does (bug
+    // 260, #134)." — the core's read; `read_text_file_or_uploaded_blob` and
+    // its DEBUG retire.
+    let doc = crate::documents::core::read_document(mount, &resolved).map_err(|e| e.message())?;
     let raw_content = doc.content;
     let mtime = doc.mtime_ms;
     let size = doc.size;
@@ -249,51 +269,6 @@ pub fn handle_read_file(
     result.insert("truncated".into(), json!(false));
 
     Ok(DocEditToolResult::ok(Value::Object(result), formatted_text))
-}
-
-/// v4 `readTextFileOrUploadedBlob` (`text-handlers.ts:78-102`, bug 260): read a
-/// text file for `doc_read_file`. In a database store a path with no document
-/// may still hold an uploaded blob — every chat upload is stored as one, `.md`
-/// and `.txt` included — so fall back to the blob's extracted text, which for
-/// native text is the file itself. ONLY on ENOENT (v5's `ENOENT:` message
-/// prefix is v4's `code === 'ENOENT'`, `shared.rs::read_file_with_mtime`) and
-/// only for a database-backed path; any other failure is rethrown unchanged.
-/// Read-only: the edit tools keep calling `read_file_with_mtime` and still see
-/// no document there.
-fn read_text_file_or_uploaded_blob(
-    mount: &Connection,
-    resolved: &ResolvedPath,
-) -> Result<ReadDoc, String> {
-    let err = match read_file_with_mtime(mount, resolved) {
-        Ok(doc) => return Ok(doc),
-        Err(e) => e,
-    };
-    if !err.starts_with("ENOENT:") {
-        return Err(err);
-    }
-    let (Some("database"), Some(mp)) = (
-        resolved.mount_type.as_deref(),
-        resolved.mount_point_id.as_deref(),
-    ) else {
-        return Err(err);
-    };
-    let Some(blob) = database_store::read_database_blob_text(mount, mp, &resolved.relative_path)
-        .map_err(store_error_message)?
-    else {
-        return Err(err);
-    };
-    tracing::debug!(
-        target: "quilltap::doc_edit",
-        mountPointId = %mp,
-        relativePath = %resolved.relative_path,
-        size = blob.size,
-        "doc_read_file: no document at path; reading the uploaded blob's text"
-    );
-    Ok(ReadDoc {
-        content: blob.content,
-        mtime_ms: blob.mtime_ms,
-        size: blob.size,
-    })
 }
 
 /// v4 `handleReadFile`'s converted-blob answer (`text-handlers.ts:132-163`):
@@ -480,12 +455,22 @@ pub fn handle_write_file(
     // Capture the pre-image before writing so the announcement shows a diff
     // (existing file) or reports the new contents (creation). An unreadable/absent
     // pre-image means this is a creation (v4's best-effort try/catch → null).
-    let previous_content: Option<String> = read_file_with_mtime(mount, &resolved)
+    let previous_content: Option<String> = crate::documents::core::read_document(mount, &resolved)
         .ok()
         .map(|d| d.content);
 
-    let mtime = write_file_with_mtime_check(main, mount, &resolved, &content_to_write, None)?;
-    // triggerReindexIfNeeded: no-op seam.
+    // P4.D380 (v4 since the baseline, `writeDocument(resolved, contentToWrite,
+    // input.expected_mtime)`): the optimistic-concurrency guard the port had
+    // dropped — honoured on a database store too, by the core's one writer.
+    let mtime = crate::documents::core::write_document(
+        main,
+        mount,
+        &resolved,
+        &content_to_write,
+        arg_i64(args, "expected_mtime"),
+        crate::documents::core::Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?;
     let written_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
@@ -602,7 +587,9 @@ pub fn handle_str_replace(
         )));
     }
 
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
     let options = DiacriticsMatchOptions {
         case_sensitive: arg_bool(args, "case_sensitive") != Some(false),
         normalize_diacritics: arg_bool(args, "normalize_diacritics") != Some(false),
@@ -658,7 +645,15 @@ pub fn handle_str_replace(
         replace,
         utf16_substring(&content, index + length, content.encode_utf16().count())
     );
-    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content, None)?;
+    let mtime = crate::documents::core::write_document(
+        main,
+        mount,
+        &resolved,
+        &new_content,
+        None,
+        crate::documents::core::Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?;
     let line_number = get_line_number(&content, index);
     let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
@@ -748,7 +743,9 @@ pub fn handle_insert_text(
         )));
     };
 
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
     let at = position.get("at").and_then(Value::as_str);
     let content_len = content.encode_utf16().count();
 
@@ -801,7 +798,15 @@ pub fn handle_insert_text(
         insert_content,
         utf16_substring(&content, insert_offset, content_len)
     );
-    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content, None)?;
+    let mtime = crate::documents::core::write_document(
+        main,
+        mount,
+        &resolved,
+        &new_content,
+        None,
+        crate::documents::core::Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?;
     let line_number = get_line_number(&new_content, insert_offset);
     let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
@@ -1678,126 +1683,9 @@ fn file_info(
     Value::Object(m)
 }
 
-#[cfg(test)]
-mod uploaded_blob_read_tests {
-    //! P4.D354 (bug 260): `doc_read_file`'s ENOENT fallback onto an uploaded
-    //! blob's text — its DEBUG line, and the silence legs (a document at the
-    //! path; a non-database mount; no converted blob).
-    use super::*;
-    use crate::db::Writer;
-    use crate::doc_edit::DocEditScope;
-    use crate::inventory::lint_scope::TitleLintScope;
-    use crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
-    use crate::services::mount_index::converters::RefusingTextExtractor;
-    use crate::services::mount_index::store_file::{
-        store_mount_file, AssetStorageMode, CollisionStrategy, StoreFileInput,
-    };
-    use crate::test_support::global_capture;
-
-    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
-    const MP: &str = "c3540000-0000-4000-8000-0000000000d1";
-
-    fn instance() -> (Writer, Writer, tempfile::TempDir) {
-        let dir = tempfile::tempdir().unwrap();
-        let data = dir.path().join("data");
-        std::fs::create_dir_all(&data).unwrap();
-        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
-        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
-        let mount = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
-        mount
-            .connection()
-            .execute(
-                "INSERT INTO doc_mount_points (id, name, mountType, createdAt, updatedAt) \
-                 VALUES (?1, 'Uploads', 'database', '2026-01-01T00:00:00.000Z', \
-                 '2026-01-01T00:00:00.000Z')",
-                [MP],
-            )
-            .unwrap();
-        (main, mount, dir)
-    }
-
-    fn upload(main: &Writer, mount: &Writer, path: &str, bytes: &[u8], extract: bool) {
-        let mut input = StoreFileInput::new(MP, path, bytes.to_vec());
-        input.treat_native_text_as_document = false;
-        input.extract_text = extract;
-        input.enqueue_embedding = false;
-        input.collision_strategy = CollisionStrategy::UniqueSuffix;
-        input.asset_storage = AssetStorageMode::Database;
-        store_mount_file(
-            main.connection(),
-            mount.connection(),
-            &input,
-            &RefusingTextExtractor,
-            &RefusingWebpTranscoder,
-        )
-        .unwrap();
-    }
-
-    fn resolved(rel: &str, mount_type: &str) -> ResolvedPath {
-        ResolvedPath {
-            absolute_path: String::new(),
-            scope: DocEditScope::DocumentStore,
-            mount_point_id: Some(MP.to_string()),
-            mount_point_name: Some("Uploads".to_string()),
-            mount_type: Some(mount_type.to_string()),
-            base_path: String::new(),
-            relative_path: rel.to_string(),
-        }
-    }
-
-    #[test]
-    fn an_uploaded_blob_is_read_when_no_document_is_there() {
-        global_capture::install();
-        let (main, mount, _dir) = instance();
-        upload(&main, &mount, "up/CHANGELOG.md", b"# Log\nline two", true);
-        let (doc, lines) = global_capture::capture(|| {
-            read_text_file_or_uploaded_blob(
-                mount.connection(),
-                &resolved("up/CHANGELOG.md", "database"),
-            )
-        });
-        let doc = doc.expect("the blob's text");
-        assert_eq!(doc.content, "# Log\nline two");
-        assert_eq!(doc.size, 14);
-        assert_eq!(
-            lines,
-            vec![format!(
-                "DEBUG quilltap::doc_edit doc_read_file: no document at path; reading the \
-                 uploaded blob's text mountPointId={MP} relativePath=up/CHANGELOG.md size=14"
-            )]
-        );
-    }
-
-    #[test]
-    fn the_fallback_is_silent_when_it_does_not_apply() {
-        global_capture::install();
-        let (main, mount, _dir) = instance();
-        // A document at the path: read directly, no line.
-        crate::db::database_store::write_database_document(
-            mount.connection(),
-            MP,
-            "docs/a.md",
-            "a document",
-            TitleLintScope::Unlinted {
-                main: main.connection(),
-            },
-        )
-        .unwrap();
-        let (doc, lines) = global_capture::capture(|| {
-            read_text_file_or_uploaded_blob(mount.connection(), &resolved("docs/a.md", "database"))
-        });
-        assert_eq!(doc.unwrap().content, "a document");
-        assert!(lines.is_empty(), "{lines:?}");
-
-        // An unextracted blob: the original ENOENT, no line.
-        upload(&main, &mount, "up/raw.md", b"raw", false);
-        let (doc, lines) = global_capture::capture(|| {
-            read_text_file_or_uploaded_blob(mount.connection(), &resolved("up/raw.md", "database"))
-        });
-        assert_eq!(
-            doc.unwrap_err(),
-            "ENOENT: database document not found at up/raw.md"
-        );
-        assert!(lines.is_empty(), "{lines:?}");
-    }
-}
+// P4.D380 (v4 `a3d53eae1`): `read_text_file_or_uploaded_blob` and its DEBUG
+// `doc_read_file: no document at path; reading the uploaded blob's text`
+// RETIRED with their unit tests (`uploaded_blob_read_tests`). The read is the
+// document core's `read_document` — which reads an uploaded native-text file's
+// own BYTES (an unextracted upload included), not its extracted text — pinned
+// in `documents::core::tests` and differentially in `doc_text` / `doc_blob`.

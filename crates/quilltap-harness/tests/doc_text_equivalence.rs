@@ -296,6 +296,7 @@ fn collapse_json_errors(v: &mut Value) {
 
 #[test]
 fn doc_text_matches_oracle() {
+    quilltap_core::test_support::global_capture::install(); // P4.D380
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DT") else {
         eprintln!("SKIP: set QT_ORACLE_DT to the oracle NDJSON (see header).");
         return;
@@ -352,13 +353,16 @@ fn doc_text_matches_oracle() {
     };
 
     for (i, op) in spec.ops.iter().enumerate() {
-        let result = execute_doc_edit_tool(
-            main.connection(),
-            mount.connection(),
-            &op.tool,
-            &op.args,
-            &ctx,
-        );
+        // P4.D380: the op under the global capture (the core's chokepoint DEBUG).
+        let (result, p4d380_lines) = quilltap_core::test_support::global_capture::capture(|| {
+            execute_doc_edit_tool(
+                main.connection(),
+                mount.connection(),
+                &op.tool,
+                &op.args,
+                &ctx,
+            )
+        });
         // Group 6: post the Librarian doc-save announcement over the held RW main
         // connection — the executor spine does this async after the write closure;
         // here (driving the sync handler directly) the sync sibling poster stands in.
@@ -374,6 +378,8 @@ fn doc_text_matches_oracle() {
             "tool": op.tool,
             "output": output,
             "formatted": formatted,
+            // P4.D380: the chokepoint proof (v4's awaited chain, R-2 (A)).
+            "afterWrite": quilltap_core::test_support::after_write_of(&p4d380_lines),
         });
         collapse_json_errors(&mut got);
         if WRITE_TOOLS.contains(&op.tool.as_str()) {

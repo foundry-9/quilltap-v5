@@ -230,6 +230,7 @@ fn iso_ts_len(b: &[u8]) -> Option<usize> {
 
 #[test]
 fn doc_blob_matches_oracle() {
+    quilltap_core::test_support::global_capture::install(); // P4.D380
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DBLOB") else {
         eprintln!("SKIP: set QT_ORACLE_DBLOB to the oracle NDJSON (see header).");
         return;
@@ -292,13 +293,16 @@ fn doc_blob_matches_oracle() {
     };
 
     for (i, op) in spec.ops.iter().enumerate() {
-        let result = execute_doc_edit_tool(
-            main.connection(),
-            mount.connection(),
-            &op.tool,
-            &op.args,
-            &ctx,
-        );
+        // P4.D380: the op under the global capture (the core's chokepoint DEBUG).
+        let (result, p4d380_lines) = quilltap_core::test_support::global_capture::capture(|| {
+            execute_doc_edit_tool(
+                main.connection(),
+                mount.connection(),
+                &op.tool,
+                &op.args,
+                &ctx,
+            )
+        });
         // W4.6c: post the Librarian blob-write / delete announcement over the held RW
         // main connection (the sync sibling of the executor's async post).
         if let Some(ann) = &result.pending_librarian_announcement {
@@ -312,9 +316,23 @@ fn doc_blob_matches_oracle() {
             "tool": op.tool,
             "output": output,
             "formatted": formatted,
+            // P4.D380: the chokepoint proof (v4's awaited chain, R-2 (A)).
+            "afterWrite": quilltap_core::test_support::after_write_of(&p4d380_lines),
         });
+        // === P4.D380 === the #134 rows read and edit an uploaded `.md`: its
+        // `mtime` is the upload's (or the edit's) wall-clock instant on each
+        // side — placeholdered in the result and in the formatted text, as
+        // the write families do; nothing else is touched.
+        let mut got = got;
+        let mut want_raw = oracle_ops[i].clone();
+        if op.name.starts_with("p4d380_") {
+            for v in [&mut got, &mut want_raw] {
+                p4d380_blank_mtime(v);
+            }
+        }
+        // === end P4.D380 ===
         let got = normalize(&got);
-        let want = normalize(&oracle_ops[i]);
+        let want = normalize(&want_raw);
 
         assert_eq!(
             got, want,
@@ -495,3 +513,32 @@ fn parse_oracle(text: &str) -> (Vec<Value>, Value) {
         dumps.expect("oracle missing dumps"),
     )
 }
+
+// === P4.D380 ===
+/// Blank every `mtime` number and every `mtime: <digits>` in a string (the #134
+/// rows' wall-clock instants).
+fn p4d380_blank_mtime(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            for (k, x) in o.iter_mut() {
+                if k == "mtime" && x.is_number() {
+                    *x = json!("<mtime>");
+                } else {
+                    p4d380_blank_mtime(x);
+                }
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(p4d380_blank_mtime),
+        Value::String(s) => {
+            if let Some(i) = s.find("mtime: ") {
+                let tail: String = s[i + 7..]
+                    .chars()
+                    .skip_while(|c| c.is_ascii_digit())
+                    .collect();
+                *s = format!("{}mtime: <mtime>{tail}", &s[..i]);
+            }
+        }
+        _ => {}
+    }
+}
+// === end P4.D380 ===

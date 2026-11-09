@@ -752,7 +752,11 @@ fn projects_routes_match_oracle() {
         let body = response_data(&r);
         check("mount_points_iota", &body, false, &mut failed);
         let keys: Vec<&String> = body.as_object().unwrap().keys().collect();
-        assert_eq!(keys, ["mountPoints", "officialMountPointId"], "v4's key order");
+        assert_eq!(
+            keys,
+            ["mountPoints", "officialMountPointId"],
+            "v4's key order"
+        );
         let official = body["officialMountPointId"].as_str().unwrap().to_string();
         let want = format!(
             "DEBUG quilltap_core::api::projects [Projects v1] Listed mount points for project projectId={IOTA} count=1 officialMountPointId={official}"

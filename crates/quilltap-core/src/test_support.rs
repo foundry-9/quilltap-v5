@@ -620,3 +620,27 @@ impl Drop for CannedRequiresApiKey {
         crate::services::api_key_service::set_canned_requires_api_key(self.previous.take());
     }
 }
+
+// === P4.D380 === (round ruling R-2 (A)): the document core's chokepoint proof.
+/// The `afterWrite` array a doc-tool differential compares per op: every
+/// `afterDocumentWrite: scheduling store refresh` DEBUG in `lines` (a
+/// [`global_capture`] capture of the op), as v4's oracle emits it —
+/// `[{mountPointId, relativePath}]`, in order. A write into a store with no
+/// `mountPointId` logs none (`[]` both sides).
+pub fn after_write_of(lines: &[String]) -> serde_json::Value {
+    const HEAD: &str =
+        "DEBUG quilltap::documents afterDocumentWrite: scheduling store refresh mountPointId=";
+    serde_json::Value::Array(
+        lines
+            .iter()
+            .filter_map(|l| l.strip_prefix(HEAD))
+            .map(|rest| {
+                let (mp, rel) = rest
+                    .split_once(" relativePath=")
+                    .expect("the chokepoint line carries relativePath");
+                serde_json::json!({ "mountPointId": mp, "relativePath": rel })
+            })
+            .collect(),
+    )
+}
+// === end P4.D380 ===

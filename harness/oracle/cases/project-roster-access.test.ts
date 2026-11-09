@@ -101,6 +101,49 @@ const ROOT_MESSAGES = new Set([
   'Character off project roster — project tier withheld',
 ]);
 
+
+// === P4.D380 === (v4 `a3d53eae1`, round ruling R-2 (A); C1's second re-aim):
+// the document core's `afterDocumentWrite` chain runs REAL and AWAITED. The
+// `@/lib/doc-edit` barrel's `reindexSingleFile` (the core's one import of it) is
+// a recorder that calls the real function and keeps its promise; before each op
+// is recorded the chain is drained (every pending promise settled, then a run of
+// macrotask turns for the `.then` hops, the dynamic `link-groups` import and the
+// `Promise.all`), and the op carries `afterWrite` — the chokepoint's DEBUG lines
+// (`afterDocumentWrite: scheduling store refresh` `{mountPointId,
+// relativePath}`) it logged. The embedding scheduler stays seamed (no job host
+// in the oracle).
+const P4D380_PENDING: Promise<unknown>[] = [];
+const P4D380_LINES: Array<{ message: string; fields: Record<string, unknown> }> = [];
+const P4D380_AFTER_WRITE = 'afterDocumentWrite: scheduling store refresh';
+async function p4d380Drain(): Promise<void> {
+  for (let round = 0; round < 3; round++) {
+    await Promise.allSettled(P4D380_PENDING.splice(0));
+    for (let i = 0; i < 25; i++) await new Promise((r) => setImmediate(r));
+  }
+}
+async function p4d380AfterWrite(): Promise<Array<{ mountPointId: unknown; relativePath: unknown }>> {
+  await p4d380Drain();
+  const out = P4D380_LINES.filter((l) => l.message === P4D380_AFTER_WRITE).map((l) => ({
+    mountPointId: l.fields.mountPointId,
+    relativePath: l.fields.relativePath,
+  }));
+  P4D380_LINES.length = 0;
+  return out;
+}
+/** Record every line the singleton logger writes (children share its transports). */
+async function p4d380Splice(): Promise<void> {
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { message: string; context?: Record<string, unknown> };
+      P4D380_LINES.push({ message: data.message, fields: data.context ?? {} });
+    },
+  });
+  P4D380_LINES.length = 0;
+}
+// === end P4.D380 ===
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(
@@ -186,7 +229,16 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/doc-edit', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/doc-edit'),
-    reindexSingleFile: () => new Promise<never>(() => {}),
+    // === P4.D380 === the real chain, recorded (see `p4d380Drain`).
+    reindexSingleFile: (...a: unknown[]) => {
+      const real = (jest.requireActual('@/lib/doc-edit') as {
+        reindexSingleFile: (...x: unknown[]) => Promise<unknown>;
+      }).reindexSingleFile;
+      const p = real(...a);
+      P4D380_PENDING.push(p);
+      return p;
+    },
+    // === end P4.D380 ===
   }));
   jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
     __esModule: true,
@@ -206,6 +258,11 @@ async function main(): Promise<void> {
     const recorder = (service: string | null): Record<string, unknown> => {
       const record = (level: string) => (message: string, bag?: Record<string, unknown>) => {
         const context = JSON.parse(JSON.stringify(bag ?? {}));
+        // === P4.D380 === the chokepoint's DEBUG (root logger), for `afterWrite`.
+        if (message === P4D380_AFTER_WRITE) {
+          P4D380_LINES.push({ message, fields: context as Record<string, unknown> });
+        }
+        // === end P4.D380 ===
         if (service === 'DocEdit:PathResolver') {
           logs.push({ src: 'resolver', level, message, context });
         } else if (!service && ROOT_MESSAGES.has(message)) {
@@ -415,11 +472,14 @@ async function main(): Promise<void> {
         default:
           throw new Error(`unknown op kind: ${op.kind}`);
       }
+      // P4.D380: drain the chain BEFORE taking the op's lines.
+      const afterWrite = sentinelize(await p4d380AfterWrite());
       opResults.push({
         name: op.name,
         kind: op.kind,
         result: sentinelize(result),
         logs: sentinelize(logs.splice(0)),
+        afterWrite,
       });
     }
     outLines.push(JSON.stringify({ case: 'project-roster-access', ops: opResults }));

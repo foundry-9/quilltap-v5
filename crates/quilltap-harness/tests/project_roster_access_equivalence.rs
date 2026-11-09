@@ -337,6 +337,46 @@ impl tracing::field::Visit for LineVisitor {
     }
 }
 
+// === P4.D380 === (round ruling R-2 (A)): the document core's chokepoint lines
+// (`afterDocumentWrite: scheduling store refresh`), collected by this file's
+// own capture layer (its thread-scoped subscriber outranks the global rig) —
+// each op's `afterWrite`, compared with v4's awaited chain.
+static P4D380_AFTER_WRITE: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+fn p4d380_record(event: &tracing::Event<'_>) {
+    if event.metadata().target() != "quilltap::documents" {
+        return;
+    }
+    struct V(String, Vec<(String, String)>);
+    impl tracing::field::Visit for V {
+        fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+            self.1.push((f.name().to_string(), v.to_string()));
+        }
+        fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+            if f.name() == "message" {
+                self.0 = format!("{v:?}");
+            } else {
+                // `%`-recorded fields arrive as `DisplayValue`, whose Debug is
+                // the bare text.
+                self.1.push((f.name().to_string(), format!("{v:?}")));
+            }
+        }
+    }
+    let mut v = V(String::new(), Vec::new());
+    event.record(&mut v);
+    if v.0 != "afterDocumentWrite: scheduling store refresh" {
+        return;
+    }
+    let get = |k: &str| v.1.iter().find(|(n, _)| n == k).map(|(_, x)| x.clone());
+    P4D380_AFTER_WRITE.lock().unwrap().push(json!({
+        "mountPointId": get("mountPointId"),
+        "relativePath": get("relativePath"),
+    }));
+}
+fn p4d380_take() -> Value {
+    Value::Array(std::mem::take(&mut *P4D380_AFTER_WRITE.lock().unwrap()))
+}
+// === end P4.D380 ===
+
 struct Capture(std::sync::Arc<std::sync::Mutex<Vec<Line>>>);
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
     fn on_event(
@@ -344,6 +384,7 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Capture {
         event: &tracing::Event<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
+        p4d380_record(event); // P4.D380
         let meta = event.metadata();
         let target = meta.target();
         let src = if target == RESOLVER_TARGET {
@@ -730,12 +771,14 @@ fn project_roster_access_matches_oracle() {
             "kind": op.kind,
             "result": result,
             "logs": lines_to_value(&got_lines),
+            "afterWrite": p4d380_take(), // P4.D380
         });
         let mut want = json!({
             "name": want_raw["name"],
             "kind": want_raw["kind"],
             "result": want_raw["result"],
             "logs": lines_to_value(&want_lines),
+            "afterWrite": want_raw["afterWrite"], // P4.D380
         });
         got = sentinelize(&got);
         placeholder_fs_times(&mut got);

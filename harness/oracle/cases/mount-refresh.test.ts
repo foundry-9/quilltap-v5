@@ -190,4 +190,86 @@ describe('mount-refresh oracle', () => {
     closeMountIndexSQLiteClient();
     rmSync(scratch, { recursive: true, force: true });
   });
+
+  // === P4.D380 === (v4 `a3d53eae1`, #133, round ruling R-2): a Document Mode
+  // save in a PROJECT chat whose project's official store is a DATABASE store
+  // (`scope: 'project'`) refreshes that store too — the chokepoint is gated on
+  // `mountPointId`, not `scope`. Chat B joins project Atelier by an in-case
+  // plant (both sides); `brief.md` lives in Atelier's official store.
+  it('emits the project-scope refresh row', async () => {
+    const here = dirname(fileURLToPath(new URL(`file://${__filename}`).href));
+    const spec = JSON.parse(
+      fs.readFileSync(join(here, '..', 'fixtures', 'documents-web.json'), 'utf8'),
+    ) as Spec;
+    const outPath = process.env.QT_ORACLE_OUT as string;
+    const scratch = mkdtempSync(join(tmpdir(), 'qt-mount-refresh-p-'));
+    mkdirSync(join(scratch, 'data'), { recursive: true });
+    const mainWork = join(scratch, 'main.db');
+    const mountWork = join(scratch, 'mount.db');
+    copyFileSync(process.env.QT_FIXTURE_DOC_MAIN as string, mainWork);
+    copyFileSync(process.env.QT_FIXTURE_DOC_MOUNT as string, mountWork);
+    {
+      const Database = require(
+        require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+      );
+      const conn = new Database(mainWork);
+      conn.pragma(`key = "x'${Buffer.from(spec.testPepperBase64, 'base64').toString('hex')}'"`);
+      conn.exec(P4D380_PROJECT_CHAT_PLANT);
+      conn.close();
+    }
+    process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
+    process.env.SQLITE_PATH = mainWork;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
+    process.env.QUILLTAP_DATA_DIR = scratch;
+    delete process.env.SQLITE_WAL_MODE;
+    process.env.LOG_LEVEL = 'error';
+
+    jest.resetModules();
+    applyMocks(spec);
+    const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+    const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
+      '@/lib/database/backends/sqlite/mount-index-client'
+    );
+    await initializeDatabase();
+    const chatActions = (await import('@/app/api/v1/chats/[id]/actions/documents')) as unknown as Record<
+      string,
+      (...a: unknown[]) => Promise<unknown>
+    >;
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const resp = (await chatActions.handleWriteDocument(
+      mockRequest('http://localhost/api/v1/chats/x', {
+        filePath: 'brief.md',
+        scope: 'project',
+        content: '# Brief\n\nA project-scope save must refresh its store.\n',
+      }),
+      P4D380_PROJECT_CHAT,
+      { repos: getRepositories() },
+    )) as { status: number; json: () => Promise<unknown> };
+    const status = resp.status;
+    const body = await resp.json();
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+    const midb = getRawMountIndexDatabase() as never as {
+      prepare: (s: string) => { all: () => unknown[] };
+    };
+    const tables: Record<string, unknown> = {};
+    for (const [name, sql] of Object.entries(DUMP)) {
+      tables[name] = midb.prepare(sql).all();
+    }
+    fs.appendFileSync(
+      outPath,
+      JSON.stringify({ name: 'p4d380_refresh_after_project_scope_write', status, body, tables }) + '\n',
+    );
+    await closeDatabase();
+    closeMountIndexSQLiteClient();
+    rmSync(scratch, { recursive: true, force: true });
+  });
+  // === end P4.D380 ===
 });
+
+// === P4.D380 ===
+const P4D380_PROJECT_CHAT = 'c1000000-0000-4000-8000-00000000000b';
+const P4D380_PROJECT_CHAT_PLANT =
+  "UPDATE chats SET projectId = 'b1000000-0000-4000-8000-000000000001' WHERE id = 'c1000000-0000-4000-8000-00000000000b'";
+// === end P4.D380 ===

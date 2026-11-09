@@ -790,6 +790,28 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(doc-edit): the doc tools through the document core — the one refresh, uploads, expected_mtime, moves follow, #137 (P4.D380, v4 a3d53eae1 / 30a3b4cb7)
+
+_Versions: core 0.0.1438._
+
+The `doc_*` tools now go through the document core (`624d0d25c`).
+
+- **Reads.** Every read site uses `read_document`: `doc_read_frontmatter` / `_heading`, the two update tools, `doc_str_replace`, `doc_insert_text`, `doc_write_file`'s pre-image, `doc_read_file` and `doc_copy_file`'s source. A character can read and edit an uploaded `.md` (#134). `doc_read_file`'s non-text branch shows only a `blob-text` answer, with `storedMimeType` or `application/octet-stream`. `read_text_file_or_uploaded_blob` and its DEBUG retire.
+- **Writes.** Every write site uses `write_document` with `Refresh::Now`. The chokepoint runs in the tool's own write closure (R-L1, `TOOL_REFRESH_IN_CLOSURE`), whatever the scope (#133). The standing doc-edit reindex deferral retires, filesystem sibling case included.
+- **`doc_write_file`** honours `expected_mtime` on a database store. v4 has since the baseline; the port ignored it.
+- **`doc_copy_file` / `doc_move_file` / `doc_delete_file`** run on `stat_document` / `rename_document` / `delete_document`, with v4's unified texts: `Source path is a folder, not a file:`, `Path is a folder, not a file: … Use doc_move_folder / doc_delete_folder …`. They log v4's INFO `Moved document` `{from, to, scope, mountType}` and `Deleted document` `{path, scope, mountType}`.
+- **Sweeps.** `doc_move_file` and both `doc_move_folder` branches sweep `chat_documents` with the same-store matcher (`logFields: {chatId}`). The module header's "verified no-ops" paragraph is replaced.
+- **Absent class (R-4).** `fs_stat_is_file`, which read `EACCES` as missing, retires.
+- **`doc_open_document` (#137).** An existing file's `mtime` is its own (the viewer's `updatedAt`, or the read), not a minted `now`. A blank document is created through `ensure_document`, so a database official store gets its document row and refresh. An existing one is refused `Failed to create blank document: <filePath> already exists`. The new document is recorded where it was made (`scope` = the target scope, the store name from the resolved store). v4's DEBUG `doc_open_document: created a blank document` is logged. The R-13 asymmetry (a typed `self` stored on a new blank) retires.
+
+The eight oracle seams move from P4.D361's inert `reindexSingleFile` to a recorder over the real function, with the chain drained before each op is recorded (R-L4): `doc_text`, `doc_fm`, `doc_fs`, `doc_ui`, `doc_enum`, `doc_blob`, `doc_opacity` and `project_roster_access`. Each op carries `afterWrite`, the chokepoint's DEBUG lines, compared on the v5 side through `test_support::after_write_of` (or each family's own capture layer). All eight are regenerated from the pin and green; doc_text has 15 non-empty arrays, doc_fm 2, doc_fs 1. New corpus rows:
+
+- `doc_text`: a stale `expected_mtime`.
+- `doc_blob`: an uploaded `.md` written as a blob, read, edited (the blob collected) and listed.
+- `doc_fs`: the two folder refusals on disk.
+
+`doc_ui`'s mtime mask is narrowed to the blank-create rows. `mount_refresh` gains `p4d380_refresh_after_project_scope_write`: a project-scope Document Mode save into a database official store. It was red on `REACH` code ("never refreshed its store's stats") and is green.
+
 #### 2026-11-09 — feat(projects): the project mount-points GET answers officialMountPointId (P4.D380, v4 c17033f04)
 
 _Versions: core 0.0.1437._

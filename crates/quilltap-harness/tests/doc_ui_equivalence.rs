@@ -204,8 +204,22 @@ fn iso_ts_len(b: &[u8]) -> Option<usize> {
 /// Replace the open op's minted integer `mtime` (top-level + nested under
 /// `result`) with a `"<mtime>"` placeholder — the minted ms is non-deterministic
 /// and not caught by the ISO normalizer. Only `doc_open_document` mints one.
+///
+/// P4.D380 (item 16): NARROWED to the blank-create rows (`isNew: true`). An
+/// existing file's open `mtime` is now the document's own (`readDocument`, or
+/// the viewer's `updatedAt`) on both sides — deterministic, so compared; v5
+/// had minted `now` for a database document (the lifted mask is red on the
+/// pre-P4.D380 port).
 fn placeholder_mtime(tool: &str, output: &mut Value) {
     if tool != "doc_open_document" {
+        return;
+    }
+    let is_new = output
+        .get("result")
+        .and_then(|r| r.get("isNew"))
+        .and_then(Value::as_bool)
+        == Some(true);
+    if !is_new {
         return;
     }
     if let Value::Object(o) = output {
@@ -222,6 +236,7 @@ fn placeholder_mtime(tool: &str, output: &mut Value) {
 
 #[test]
 fn doc_ui_matches_oracle() {
+    quilltap_core::test_support::global_capture::install(); // P4.D380
     let Ok(oracle_path) = std::env::var("QT_ORACLE_DUI") else {
         eprintln!("SKIP: set QT_ORACLE_DUI to the oracle NDJSON (see header).");
         return;
@@ -278,13 +293,16 @@ fn doc_ui_matches_oracle() {
     };
 
     for (i, op) in spec.ops.iter().enumerate() {
-        let result = execute_doc_edit_tool(
-            main.connection(),
-            mount.connection(),
-            &op.tool,
-            &op.args,
-            &ctx,
-        );
+        // P4.D380: the op under the global capture (the core's chokepoint DEBUG).
+        let (result, p4d380_lines) = quilltap_core::test_support::global_capture::capture(|| {
+            execute_doc_edit_tool(
+                main.connection(),
+                mount.connection(),
+                &op.tool,
+                &op.args,
+                &ctx,
+            )
+        });
         // W4.6c: post the Librarian open announcement over the held RW main
         // connection (the sync sibling of the executor's async post). Only
         // `doc_open_document` produces one.
@@ -300,6 +318,8 @@ fn doc_ui_matches_oracle() {
             "tool": op.tool,
             "output": output,
             "formatted": formatted,
+            // P4.D380: the chokepoint proof (v4's awaited chain, R-2 (A)).
+            "afterWrite": quilltap_core::test_support::after_write_of(&p4d380_lines),
         });
         let got = normalize(&got);
 

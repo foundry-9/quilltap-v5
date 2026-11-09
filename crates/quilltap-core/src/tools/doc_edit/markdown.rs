@@ -12,8 +12,7 @@ use super::shared::{
     apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
     assert_character_may_write, basename, build_read_resolution_context,
     build_write_resolution_context, is_text_file, librarian_scope_from, published_mount_point,
-    read_file_with_mtime, resolve_actor_origin, resolve_error_message, scope_from_str,
-    write_file_with_mtime_check, Addressing, DocEditToolContext,
+    resolve_actor_origin, resolve_error_message, scope_from_str, Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::doc_edit::markdown_parser::{
@@ -61,7 +60,9 @@ pub fn handle_read_frontmatter(
     }
 
     let uri = uri_for_resolved_path(mount, &resolved, None, None);
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
     let parsed = parse_frontmatter(&content);
 
     let Some(Value::Object(data)) = parsed.data else {
@@ -129,7 +130,9 @@ pub fn handle_update_frontmatter(
         )));
     }
 
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
     let updates: Map<String, Value> = args
         .get("updates")
         .and_then(Value::as_object)
@@ -137,8 +140,15 @@ pub fn handle_update_frontmatter(
         .unwrap_or_default();
     let replace_all = arg_bool(args, "replace_all").unwrap_or(false);
     let new_content = update_frontmatter_in_content(&content, &updates, replace_all);
-    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content, None)?;
-    // reindex: no-op seam.
+    let mtime = crate::documents::core::write_document(
+        main,
+        mount,
+        &resolved,
+        &new_content,
+        None,
+        crate::documents::core::Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?;
     let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
@@ -205,7 +215,9 @@ pub fn handle_read_heading(
     }
 
     let uri = uri_for_resolved_path(mount, &resolved, None, None);
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
 
     // v4 wraps this in a try/catch returning `{ success:false, error }` (no
     // formattedText) — NOT the dispatcher catch.
@@ -267,15 +279,24 @@ pub fn handle_update_heading(
         )));
     }
 
-    let content = read_file_with_mtime(mount, &resolved)?.content;
+    let content = crate::documents::core::read_document(mount, &resolved)
+        .map_err(|e| e.message())?
+        .content;
     let new_section = arg_str(args, "content").unwrap_or_default();
     let preserve = arg_bool(args, "preserve_subheadings") != Some(false);
 
     match find_heading_section(&content, &heading_arg, level_arg) {
         Ok(heading) => {
             let new_content = replace_heading_content(&content, &heading, &new_section, preserve);
-            let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content, None)?;
-            // reindex: no-op seam.
+            let mtime = crate::documents::core::write_document(
+                main,
+                mount,
+                &resolved,
+                &new_content,
+                None,
+                crate::documents::core::Refresh::Now { main, mount },
+            )
+            .map_err(|e| e.message())?;
             let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
             let display_title = basename(&path).to_string();
             let announcement = LibrarianWriteAnnouncement {

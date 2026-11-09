@@ -42,7 +42,6 @@ use super::DocEditToolResult;
 use crate::db::characters_read;
 use crate::db::chat_documents::{ChatDocumentsRepository, OpenChatDocument, OpenDocumentInput};
 use crate::db::chats::{ChatUpdate, ChatsRepository};
-use crate::db::database_store::database_document_exists;
 use crate::doc_edit::path_resolver::{resolve_doc_edit_path, PathResolutionContext};
 use crate::doc_edit::uri_producers::uri_for_resolved_path;
 use crate::doc_edit::DocEditScope;
@@ -141,10 +140,12 @@ pub fn handle_open_document(
     // v4: scope = (input.scope || 'project'); an unrecognized string is not
     // re-defaulted here (the cast is loose), but the corpus always passes a valid
     // scope or none — `scope_from_str(_, Project)` reproduces the `|| 'project'`.
-    let scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::Project);
-    // The enum → the raw string v4 stores/returns (`scope` in the output +
-    // `openDocument`'s scope column).
-    let scope_str = scope.as_str();
+    let requested_scope = scope_from_str(addressing.scope.as_deref(), DocEditScope::Project);
+    let scope = requested_scope;
+    // P4.D380 (#137): what the chat_documents row, the result and the
+    // announcement name — the scope the file actually lives in. For an existing
+    // file that is the one asked for; a new blank document picks its own.
+    let mut effective_scope = requested_scope;
     // v4: mode = input.mode || 'split'.
     let mode = arg_str(args, "mode").unwrap_or_else(|| "split".to_string());
 
@@ -201,27 +202,25 @@ pub fn handle_open_document(
         let store_name = published_mount_point(Some(&resolved), addressing.mount_point.as_deref());
         let doc_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
-        // Existence check + mtime. Database mount: existence via the store + a
-        // minted `Date.now()`. Filesystem mount: `fs.stat(...).mtimeMs` (a stat
-        // failure — missing file — becomes v4's caught `File not found`).
-        let mtime: i64 = if resolved.mount_type.as_deref() == Some("database") {
-            let exists = resolved.mount_point_id.as_deref().and_then(|mp_id| {
-                database_document_exists(mount, mp_id, &resolved.relative_path).ok()
-            });
-            if exists != Some(true) {
-                return Ok(DocEditToolResult::fail(format!(
-                    "File not found: {file_path}"
-                )));
-            }
-            crate::clock::now_unix_ms()
-        } else {
-            match std::fs::metadata(&resolved.absolute_path) {
-                Ok(meta) => super::shared::metadata_mtime_ms(&meta),
+        // P4.D380 (v4 `5efe53ea7` / `a3d53eae1`): "Open what the operator's
+        // Document Mode would open: a file it only views (an image, a PDF) by
+        // its view target, anything else — an uploaded text blob included — by
+        // reading it through the core." Any failure is v4's caught `File not
+        // found` (the minted `Date.now()` and the bare `fs.stat` retire).
+        let mtime: i64 = match crate::documents::core::view_target_for(mount, &resolved) {
+            Ok(Some(viewer)) => crate::episodic::js_date_parse_ms(&viewer.updated_at).unwrap_or(0),
+            Ok(None) => match crate::documents::core::read_document(mount, &resolved) {
+                Ok(r) => r.mtime_ms,
                 Err(_) => {
                     return Ok(DocEditToolResult::fail(format!(
                         "File not found: {file_path}"
                     )))
                 }
+            },
+            Err(_) => {
+                return Ok(DocEditToolResult::fail(format!(
+                    "File not found: {file_path}"
+                )))
             }
         };
 
@@ -267,7 +266,9 @@ pub fn handle_open_document(
             character_id: ctx.character_id.clone(),
             ..Default::default()
         };
-        let created = (|| -> Result<(String, i64), String> {
+        // (uri, mtime, the store name) — or a refusal string (outer `Ok(Err)`).
+        type Blank = Result<(String, i64, Option<String>), String>;
+        let created = (|| -> Result<Blank, String> {
             let resolved = resolve_doc_edit_path(
                 main,
                 mount,
@@ -277,21 +278,63 @@ pub fn handle_open_document(
                 ctx.files_dir.as_deref(),
             )
             .map_err(resolve_error_message)?;
-            // v4 inlines mkdir(dirname) + writeFile('') + stat here (regardless of
-            // mount type) — the shared fs writer does exactly that.
-            let mtime =
-                super::shared::write_fs_file_with_mtime_check(&resolved.absolute_path, "", None)?;
+            // P4.D380 (#137): "Create the blank file through the core's writer —
+            // a database store gets a document row and every store its refresh,
+            // never raw `fs`."
+            let mtime = match crate::documents::core::ensure_document(
+                main,
+                mount,
+                &resolved,
+                crate::documents::core::Refresh::Now { main, mount },
+            )
+            .map_err(|e| e.message())?
+            {
+                crate::documents::core::Ensured::Created(m) => m,
+                crate::documents::core::Ensured::Existing => {
+                    return Ok(Err(format!(
+                        "Failed to create blank document: {file_path} already exists"
+                    )))
+                }
+            };
             let doc_uri = uri_for_resolved_path(mount, &resolved, None, None);
-            Ok((doc_uri, mtime))
+            Ok(Ok((
+                doc_uri,
+                mtime,
+                published_mount_point(Some(&resolved), None),
+            )))
         })();
-        let (doc_uri, mtime) = match created {
-            Ok(v) => v,
+        let (doc_uri, mtime, store_name) = match created {
+            Ok(Ok(v)) => v,
+            Ok(Err(refusal)) => return Ok(DocEditToolResult::fail(refusal)),
             Err(msg) => {
                 return Ok(DocEditToolResult::fail(format!(
                     "Failed to create blank document: {msg}"
                 )))
             }
         };
+        // "Record where it was made, not where the call asked: the caller's
+        // scope and mount_point play no part in choosing the location (#137)."
+        // The R-13 asymmetry (a typed `self` stored on a new blank) RETIRES.
+        effective_scope = target_scope;
+        match store_name.as_deref() {
+            Some(mp) => tracing::debug!(
+                target: "quilltap::doc_edit",
+                chatId = %ctx.chat_id,
+                filePath = %file_path,
+                requestedScope = requested_scope.as_str(),
+                scope = effective_scope.as_str(),
+                mountPoint = %mp,
+                "doc_open_document: created a blank document"
+            ),
+            None => tracing::debug!(
+                target: "quilltap::doc_edit",
+                chatId = %ctx.chat_id,
+                filePath = %file_path,
+                requestedScope = requested_scope.as_str(),
+                scope = effective_scope.as_str(),
+                "doc_open_document: created a blank document"
+            ),
+        }
         // v4: displayTitle = input.title || 'Untitled document'.
         let display_title = title_arg.unwrap_or_else(|| "Untitled document".to_string());
         OpenResolution {
@@ -301,10 +344,7 @@ pub fn handle_open_document(
             is_new: true,
             hidden_from_characters: false,
             display_title,
-            // v4 reassigns `storeName` on the existing-file branch ONLY: a typed
-            // `self` on a NEW blank document is still stored and announced
-            // (R-13, v4's own asymmetry — pinned, never fixed here).
-            store_name: addressing.mount_point.clone(),
+            store_name,
         }
     };
 
@@ -327,7 +367,7 @@ pub fn handle_open_document(
                 &ctx.chat_id,
                 &OpenDocumentInput {
                     file_path: file_path.clone(),
-                    scope: scope_str.to_string(),
+                    scope: effective_scope.as_str().to_string(),
                     mount_point: store_name.clone(),
                     display_title: Some(display_title.clone()),
                 },
@@ -359,7 +399,10 @@ pub fn handle_open_document(
     result.insert("success".into(), Value::Bool(true));
     result.insert("filePath".into(), Value::String(file_path.clone()));
     result.insert("uri".into(), Value::String(doc_uri));
-    result.insert("scope".into(), Value::String(scope_str.to_string()));
+    result.insert(
+        "scope".into(),
+        Value::String(effective_scope.as_str().to_string()),
+    );
     if let Some(mp) = &store_name {
         result.insert("mountPoint".into(), Value::String(mp.clone()));
     }
@@ -392,7 +435,7 @@ pub fn handle_open_document(
         chat_id: ctx.chat_id.clone(),
         display_title: display_title.clone(),
         file_path: file_path.clone(),
-        scope: librarian_scope_from(scope),
+        scope: librarian_scope_from(effective_scope),
         mount_point: store_name.clone(),
         is_new,
         origin,

@@ -98,6 +98,49 @@ interface Spec {
   ops: Op[];
 }
 
+
+// === P4.D380 === (v4 `a3d53eae1`, round ruling R-2 (A); C1's second re-aim):
+// the document core's `afterDocumentWrite` chain runs REAL and AWAITED. The
+// `@/lib/doc-edit` barrel's `reindexSingleFile` (the core's one import of it) is
+// a recorder that calls the real function and keeps its promise; before each op
+// is recorded the chain is drained (every pending promise settled, then a run of
+// macrotask turns for the `.then` hops, the dynamic `link-groups` import and the
+// `Promise.all`), and the op carries `afterWrite` — the chokepoint's DEBUG lines
+// (`afterDocumentWrite: scheduling store refresh` `{mountPointId,
+// relativePath}`) it logged. The embedding scheduler stays seamed (no job host
+// in the oracle).
+const P4D380_PENDING: Promise<unknown>[] = [];
+const P4D380_LINES: Array<{ message: string; fields: Record<string, unknown> }> = [];
+const P4D380_AFTER_WRITE = 'afterDocumentWrite: scheduling store refresh';
+async function p4d380Drain(): Promise<void> {
+  for (let round = 0; round < 3; round++) {
+    await Promise.allSettled(P4D380_PENDING.splice(0));
+    for (let i = 0; i < 25; i++) await new Promise((r) => setImmediate(r));
+  }
+}
+async function p4d380AfterWrite(): Promise<Array<{ mountPointId: unknown; relativePath: unknown }>> {
+  await p4d380Drain();
+  const out = P4D380_LINES.filter((l) => l.message === P4D380_AFTER_WRITE).map((l) => ({
+    mountPointId: l.fields.mountPointId,
+    relativePath: l.fields.relativePath,
+  }));
+  P4D380_LINES.length = 0;
+  return out;
+}
+/** Record every line the singleton logger writes (children share its transports). */
+async function p4d380Splice(): Promise<void> {
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { message: string; context?: Record<string, unknown> };
+      P4D380_LINES.push({ message: data.message, fields: data.context ?? {} });
+    },
+  });
+  P4D380_LINES.length = 0;
+}
+// === end P4.D380 ===
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(
@@ -121,7 +164,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D380: DEBUG passes the level gate (the chokepoint's line is a DEBUG).
+  process.env.LOG_LEVEL = 'debug';
 
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(
@@ -178,7 +222,16 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/doc-edit', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/doc-edit'),
-    reindexSingleFile: () => new Promise<never>(() => {}),
+    // === P4.D380 === the real chain, recorded (see `p4d380Drain`).
+    reindexSingleFile: (...a: unknown[]) => {
+      const real = (jest.requireActual('@/lib/doc-edit') as {
+        reindexSingleFile: (...x: unknown[]) => Promise<unknown>;
+      }).reindexSingleFile;
+      const p = real(...a);
+      P4D380_PENDING.push(p);
+      return p;
+    },
+    // === end P4.D380 ===
   }));
   // P4.D216: record the path resolver's log lines (the pool ops compare them).
   const logLines: Array<{ level: string; message: string; context: unknown }> = [];
@@ -226,6 +279,7 @@ async function main(): Promise<void> {
   const { flattenTierPool } = await import('@/lib/mount-index/tiered-mount-pool');
 
   await initializeDatabase();
+  await p4d380Splice(); // P4.D380
 
   const repos = getRepositories();
 
@@ -445,11 +499,12 @@ async function main(): Promise<void> {
 
       // P4.D216: a pool op carries the path resolver's lines; every other op
       // drops what it logged (the pre-existing ops were never log-compared).
+      const afterWrite = await p4d380AfterWrite(); // P4.D380 — drained first
       const lines = logLines.splice(0);
       opResults.push(
         actor === 'pool'
-          ? { name: op.name, kind: op.kind, actor, result, logs: lines }
-          : { name: op.name, kind: op.kind, actor, result },
+          ? { name: op.name, kind: op.kind, actor, result, logs: lines, afterWrite }
+          : { name: op.name, kind: op.kind, actor, result, afterWrite },
       );
     }
     outLines.push(JSON.stringify({ case: 'doc-opacity', ops: opResults }));

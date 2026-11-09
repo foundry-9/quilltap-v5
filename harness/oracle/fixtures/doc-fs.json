@@ -291,6 +291,27 @@
         "characterId": "c8000000-0000-4000-8000-00000000000a",
         "projectId": "d8000000-0000-4000-8000-000000000002"
       }
+    },
+    {
+      "name": "p4d380-general-move-folder-source",
+      "tool": "doc_move_file",
+      "args": {
+        "scope": "general",
+        "path": "sub",
+        "new_path": "sub2.md"
+      },
+      "ctx": {},
+      "$comment": "P4.D380 (a3d53eae1): statDocument says folder → v4's unified text (was `Source path is not a file:`)."
+    },
+    {
+      "name": "p4d380-general-delete-folder",
+      "tool": "doc_delete_file",
+      "args": {
+        "scope": "general",
+        "path": "sub"
+      },
+      "ctx": {},
+      "$comment": "P4.D380: deleteDocument → not-a-file (was `Path is not a file:`)."
     }
   ],
   "closedLegacyProjectId": "d8000000-0000-4000-8000-000000000004"

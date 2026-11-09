@@ -23,11 +23,18 @@
 //!   out via [`DocEditToolResult::pending_librarian_announcement`]
 //!   ([`super::PendingLibrarianAnnouncement`]); the executor posts them after the
 //!   closure returns (the G6 write-announcement precedent).
-//! - `triggerReindexIfNeeded` — skipped seam (the `chunkCount` it would bump is
-//!   pinned/excluded in the differential).
-//! - `syncChatDocumentsAfterFileMove` / `syncChatDocumentsAfterFolderMove` (the
-//!   `chat_documents` Document-Mode pointer sync) — skipped; the corpus seeds no
-//!   open `chat_documents` rows, so both are verified no-ops.
+//! - The store refresh (P4.D380, round ruling R-2): every write, copy and
+//!   disk move goes through the document core's ONE writer / mover, which runs
+//!   `after_document_write` in the tool's own write closure
+//!   (`Refresh::Now` — `TOOL_REFRESH_IN_CLOSURE`); the old
+//!   `triggerReindexIfNeeded` seam is gone.
+//! - The `chat_documents` sweeps (P4.D380, v4 `30a3b4cb7`): `doc_move_file` and
+//!   both `doc_move_folder` branches call the core's
+//!   `sweep_chat_documents_after_move` / `_after_folder_move`, so every open
+//!   copy of a moved file — in any chat, under any address that reaches the same
+//!   store — follows it. (These were "verified no-ops" while the corpus seeded no
+//!   open rows; v4's own sweep was a literal-address rename that the same-store
+//!   matcher replaced.)
 
 use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
@@ -37,9 +44,8 @@ use super::shared::{
     apply_qtap_uri, arg_str, assert_character_may_read, assert_character_may_write,
     assert_folder_has_no_write_protected_descendants, basename, build_read_resolution_context,
     build_write_resolution_context, document_hidden_from_characters, is_text_file,
-    librarian_scope_from, published_mount_point, read_file_with_mtime, resolve_actor_origin,
-    resolve_error_message, scope_from_str, store_error_message, write_file_with_mtime_check,
-    Addressing, DocEditToolContext,
+    librarian_scope_from, published_mount_point, resolve_actor_origin, resolve_error_message,
+    scope_from_str, store_error_message, Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::db::database_store::{self, database_document_exists, database_folder_exists};
@@ -133,109 +139,66 @@ pub fn handle_move_file(
         &resolved_source.relative_path,
     );
 
-    // Database-backed mount: route the move through the database-store module.
-    if resolved_source.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved_source.mount_point_id.as_deref() {
-            if !database_document_exists(mount, mp, &resolved_source.relative_path)
-                .map_err(|e| e.to_string())?
-            {
-                if database_folder_exists(mount, mp, &resolved_source.relative_path)
-                    .map_err(|e| e.to_string())?
-                {
-                    return Ok(DocEditToolResult::fail(format!(
-                        "Path is a folder, not a file: {path}. Use doc_move_folder to rename or move folders."
-                    )));
-                }
-                return Ok(DocEditToolResult::fail(format!(
-                    "Source file not found: {path}"
-                )));
-            }
-            // Case-only rename is legal: the case-insensitive existence check
-            // would find the source itself and report a bogus conflict.
-            let case_only_rename = resolved_source.relative_path != resolved_dest.relative_path
-                && resolved_source.relative_path.to_lowercase()
-                    == resolved_dest.relative_path.to_lowercase();
-            if !case_only_rename
-                && database_document_exists(mount, mp, &resolved_dest.relative_path)
-                    .map_err(|e| e.to_string())?
-            {
-                let np = new_path.clone().unwrap_or_default();
-                return Ok(DocEditToolResult::fail(format!(
-                    "Destination already exists: {np}. Move will not overwrite existing files."
-                )));
-            }
-            database_store::move_database_document(
-                mount,
-                mp,
-                &resolved_source.relative_path,
-                &resolved_dest.relative_path,
-                TitleLintScope::Unlinted { main },
-            )
-            .map_err(store_error_message)?;
-            // syncChatDocumentsAfterFileMove: no-op seam (see the module header).
-            let moved_uri = uri_for(mount, &resolved_dest);
-            let np = new_path.clone().unwrap_or_default();
-            let announcement = LibrarianMoveAnnouncement {
-                chat_id: ctx.chat_id.clone(),
-                old_display_title: basename(&path).to_string(),
-                new_display_title: basename(&np).to_string(),
-                old_uri: uri_for(mount, &resolved_source),
-                new_uri: moved_uri.clone(),
-                scope: librarian_scope_from(scope),
-                mount_point: published_mount_point(
-                    Some(&resolved_source),
-                    addressing.mount_point.as_deref(),
-                ),
-                origin: resolve_actor_origin(main, ctx),
-                is_folder: false,
-                hidden_from_characters,
-            };
-            return Ok(DocEditToolResult::ok(
-                json!({
-                    "success": true,
-                    "old_path": path,
-                    "new_path": np,
-                    "uri": moved_uri,
-                }),
-                format!("Moved: {path} → {np}"),
-            )
-            .with_librarian_announcement(announcement));
-        }
-    }
-
-    // Filesystem mount (v4 `file-management-handlers.ts:218-293`): stat the source,
-    // refuse to overwrite an existing dest, `mkdir -p` the parent, then `fs.rename`.
-    match fs_stat_is_file(&resolved_source.absolute_path) {
-        Some(true) => {}
-        Some(false) => {
-            return Ok(DocEditToolResult::fail(format!(
-                "Source path is not a file: {path}"
-            )))
-        }
-        None => {
+    // P4.D380 (v4 `a3d53eae1`): "The core checks the source and the
+    // destination, moves the link row or the file, and refreshes a moved file
+    // on disk."
+    use crate::documents::core::{rename_document, Refresh, RenameOutcome};
+    let np = new_path.clone().unwrap_or_default();
+    match rename_document(
+        main,
+        mount,
+        &resolved_source,
+        &resolved_dest,
+        Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?
+    {
+        RenameOutcome::Moved => {}
+        RenameOutcome::SourceMissing => {
             return Ok(DocEditToolResult::fail(format!(
                 "Source file not found: {path}"
             )))
         }
+        RenameOutcome::SourceNotAFile => {
+            return Ok(DocEditToolResult::fail(format!(
+            "Path is a folder, not a file: {path}. Use doc_move_folder to rename or move folders."
+        )))
+        }
+        RenameOutcome::DestinationTaken => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Destination already exists: {np}. Move will not overwrite existing files."
+            )))
+        }
     }
-    let np = new_path.clone().unwrap_or_default();
-    // Case-only rename: on a case-insensitive filesystem the dest probe would find
-    // the source itself, so skip it (v4 compares the two absolute paths directly).
-    let fs_case_only_rename = resolved_source.absolute_path != resolved_dest.absolute_path
-        && resolved_source.absolute_path.to_lowercase()
-            == resolved_dest.absolute_path.to_lowercase();
-    if !fs_case_only_rename && fs_path_exists(&resolved_dest.absolute_path) {
-        return Ok(DocEditToolResult::fail(format!(
-            "Destination already exists: {np}. Move will not overwrite existing files."
-        )));
-    }
-    if let Some(parent) = std::path::Path::new(&resolved_dest.absolute_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "mkdir", &e))?;
-    }
-    std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
-        .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
-    // syncChatDocumentsAfterFileMove + the document_store reindex: no-op seams.
+
+    // "Keep any chat's Document Mode pointer on the file, under the store name
+    // the rows were recorded with (never a caller's `self`, bug 256)." (v4
+    // `30a3b4cb7`.)
+    let published =
+        published_mount_point(Some(&resolved_source), addressing.mount_point.as_deref());
+    crate::documents::core::sweep_chat_documents_after_move(
+        main,
+        mount,
+        crate::documents::core::SweepStore {
+            scope: scope.as_str(),
+            mount_point: published.as_deref().map(Some),
+            mount_point_id: resolved_source.mount_point_id.as_deref(),
+        },
+        &path,
+        &np,
+        None,
+        Some(&ctx.chat_id),
+    );
+
+    tracing::info!(
+        target: "quilltap::doc_edit",
+        from = %path,
+        to = %np,
+        scope = scope.as_str(),
+        mountType = resolved_source.mount_type.as_deref(),
+        "Moved document"
+    );
+
     let moved_uri = uri_for(mount, &resolved_dest);
     let announcement = LibrarianMoveAnnouncement {
         chat_id: ctx.chat_id.clone(),
@@ -244,10 +207,7 @@ pub fn handle_move_file(
         old_uri: uri_for(mount, &resolved_source),
         new_uri: moved_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: published_mount_point(
-            Some(&resolved_source),
-            addressing.mount_point.as_deref(),
-        ),
+        mount_point: published,
         origin: resolve_actor_origin(main, ctx),
         is_folder: false,
         hidden_from_characters,
@@ -435,82 +395,49 @@ pub fn handle_copy_file(
     // Gate the destination by character_write (no-op when it doesn't exist yet).
     assert_character_may_write(mount, &resolved_dest, ctx)?;
 
-    // Verify source exists and is a file (not a folder).
-    if resolved_source.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved_source.mount_point_id.as_deref() {
-            if !database_document_exists(mount, mp, &resolved_source.relative_path)
-                .map_err(|e| e.to_string())?
-            {
-                if database_folder_exists(mount, mp, &resolved_source.relative_path)
-                    .map_err(|e| e.to_string())?
-                {
-                    return Ok(DocEditToolResult::fail(format!(
-                        "Source path is a folder, not a file: {source_path}."
-                    )));
-                }
-                return Ok(DocEditToolResult::fail(format!(
-                    "Source file not found: {source_path}"
-                )));
-            }
-        }
-    } else {
-        // Filesystem source (v4 `file-management-handlers.ts:434-443`).
-        match fs_stat_is_file(&resolved_source.absolute_path) {
-            Some(true) => {}
-            Some(false) => {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Source path is not a file: {source_path}"
-                )))
-            }
-            None => {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Source file not found: {source_path}"
-                )))
-            }
-        }
+    // P4.D380 (v4 `a3d53eae1`): the core's `statDocument` answers both checks.
+    // "The source must be a file (an upload counts — readDocument reads it)."
+    use crate::documents::core::{read_document, stat_document, write_document, DocKind, Refresh};
+    if stat_document(mount, &resolved_source).map_err(|e| e.message())? == Some(DocKind::Folder) {
+        return Ok(DocEditToolResult::fail(format!(
+            "Source path is a folder, not a file: {source_path}."
+        )));
     }
-
     // Refuse to overwrite — match doc_move_file semantics.
-    if resolved_dest.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved_dest.mount_point_id.as_deref() {
-            if database_document_exists(mount, mp, &resolved_dest.relative_path)
-                .map_err(|e| e.to_string())?
-            {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Destination already exists: {final_dest_rel}. Copy will not overwrite existing files; delete it first if you want to replace it."
-                )));
-            }
-            if database_folder_exists(mount, mp, &resolved_dest.relative_path)
-                .map_err(|e| e.to_string())?
-            {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Destination path {final_dest_rel} resolves to a folder, not a file location."
-                )));
-            }
+    match stat_document(mount, &resolved_dest).map_err(|e| e.message())? {
+        Some(DocKind::Folder) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Destination path {final_dest_rel} resolves to a folder, not a file location."
+            )))
         }
-    } else if !resolved_dest.absolute_path.is_empty() {
-        // Filesystem dest (v4 `file-management-handlers.ts:459-475`): a directory
-        // resolves to the folder error; any other existing entry is the overwrite
-        // refusal; a stat miss means the destination is free.
-        match fs_stat_is_dir(&resolved_dest.absolute_path) {
-            Some(true) => {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Destination path {final_dest_rel} resolves to a folder, not a file location."
-                )))
-            }
-            Some(false) => {
-                return Ok(DocEditToolResult::fail(format!(
-                    "Destination already exists: {final_dest_rel}. Copy will not overwrite existing files; delete it first if you want to replace it."
-                )))
-            }
-            None => {}
+        Some(DocKind::File) => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Destination already exists: {final_dest_rel}. Copy will not overwrite existing files; delete it first if you want to replace it."
+            )))
         }
+        None => {}
     }
 
-    // Read the source content, write the destination.
-    let content = read_file_with_mtime(mount, &resolved_source)?.content;
-    let mtime = write_file_with_mtime_check(main, mount, &resolved_dest, &content, None)?;
-    // triggerReindexIfNeeded: no-op seam (see the module header).
+    let content = match read_document(mount, &resolved_source) {
+        Ok(r) => r.content,
+        Err(e) if e.is_enoent() => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Source file not found: {source_path}"
+            )))
+        }
+        Err(e) => return Err(e.message()),
+    };
+    // "The core creates parent folders (disk) or folder rows (database), then
+    // refreshes the destination store."
+    let mtime = write_document(
+        main,
+        mount,
+        &resolved_dest,
+        &content,
+        None,
+        Refresh::Now { main, mount },
+    )
+    .map_err(|e| e.message())?;
 
     let copied_uri = uri_for(mount, &resolved_dest);
     let src_label = resolved_source
@@ -595,58 +522,30 @@ pub fn handle_delete_file(
         &resolved.relative_path,
     );
 
-    if resolved.mount_type.as_deref() == Some("database") {
-        if let Some(mp) = resolved.mount_point_id.as_deref() {
-            let deleted = database_store::delete_database_document(
-                mount,
-                mp,
-                &resolved.relative_path,
-                TitleLintScope::Unlinted { main },
-            )
-            .map_err(|e| e.to_string())?;
-            if !deleted {
-                if database_folder_exists(mount, mp, &resolved.relative_path)
-                    .map_err(|e| e.to_string())?
-                {
-                    return Ok(DocEditToolResult::fail(format!(
-                        "Path is a folder, not a file: {path}. Use doc_delete_folder to remove folders."
-                    )));
-                }
-                return Ok(DocEditToolResult::fail(format!("File not found: {path}")));
-            }
-            let deleted_uri = uri_for(mount, &resolved);
-            let announcement = LibrarianDeleteAnnouncement {
-                chat_id: ctx.chat_id.clone(),
-                display_title: basename(&path).to_string(),
-                file_path: path.clone(),
-                scope: librarian_scope_from(scope),
-                mount_point: published_mount_point(
-                    Some(&resolved),
-                    addressing.mount_point.as_deref(),
-                ),
-                origin: resolve_actor_origin(main, ctx),
-                hidden_from_characters,
-            };
-            return Ok(DocEditToolResult::ok(
-                json!({ "success": true, "path": path, "uri": deleted_uri }),
-                format!("Deleted file: {path}"),
-            )
-            .with_librarian_announcement(announcement));
+    // P4.D380 (v4 `a3d53eae1`): the core's `deleteDocument` — the database link
+    // (an upload included) or the disk file; `not-a-file` means a folder.
+    match crate::documents::core::delete_document(main, mount, &resolved)
+        .map_err(|e| e.message())?
+    {
+        crate::documents::core::DeleteOutcome::Deleted => {}
+        crate::documents::core::DeleteOutcome::NotFound => {
+            return Ok(DocEditToolResult::fail(format!("File not found: {path}")))
+        }
+        crate::documents::core::DeleteOutcome::NotAFile => {
+            return Ok(DocEditToolResult::fail(format!(
+                "Path is a folder, not a file: {path}. Use doc_delete_folder to remove folders."
+            )))
         }
     }
 
-    // Filesystem mount (v4 `file-management-handlers.ts:577-615`): stat, unlink.
-    match fs_stat_is_file(&resolved.absolute_path) {
-        Some(true) => {}
-        Some(false) => {
-            return Ok(DocEditToolResult::fail(format!(
-                "Path is not a file: {path}"
-            )))
-        }
-        None => return Ok(DocEditToolResult::fail(format!("File not found: {path}"))),
-    }
-    std::fs::remove_file(&resolved.absolute_path)
-        .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "unlink", &e))?;
+    tracing::info!(
+        target: "quilltap::doc_edit",
+        path = %path,
+        scope = scope.as_str(),
+        mountType = resolved.mount_type.as_deref(),
+        "Deleted document"
+    );
+
     let deleted_uri = uri_for(mount, &resolved);
     let announcement = LibrarianDeleteAnnouncement {
         chat_id: ctx.chat_id.clone(),
@@ -919,7 +818,25 @@ pub fn handle_move_folder(
                 TitleLintScope::Unlinted { main },
             ) {
                 Ok(()) => {
-                    // syncChatDocumentsAfterFolderMove: no-op seam (see module header).
+                    // v4 `30a3b4cb7`: every chat's Document Mode row under the folder follows,
+                    // matched by the store it reaches (the case-SENSITIVE prefix — R-6).
+                    crate::documents::core::sweep_chat_documents_after_folder_move(
+                        main,
+                        mount,
+                        crate::documents::core::SweepStore {
+                            scope: scope.as_str(),
+                            mount_point: published_mount_point(
+                                Some(&resolved_source),
+                                addressing.mount_point.as_deref(),
+                            )
+                            .as_deref()
+                            .map(Some),
+                            mount_point_id: resolved_source.mount_point_id.as_deref(),
+                        },
+                        &path,
+                        new_path.as_deref().unwrap_or_default(),
+                        Some(&ctx.chat_id),
+                    );
                     let moved_uri = uri_for(mount, &resolved_dest);
                     let np = new_path.clone().unwrap_or_default();
                     // v4's folder-move site passes NO `hiddenFromCharacters`
@@ -996,7 +913,25 @@ pub fn handle_move_folder(
     }
     std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
-    // syncChatDocumentsAfterFolderMove: no-op seam (see the module header).
+    // v4 `30a3b4cb7`: every chat's Document Mode row under the folder follows,
+    // matched by the store it reaches (the case-SENSITIVE prefix — R-6).
+    crate::documents::core::sweep_chat_documents_after_folder_move(
+        main,
+        mount,
+        crate::documents::core::SweepStore {
+            scope: scope.as_str(),
+            mount_point: published_mount_point(
+                Some(&resolved_source),
+                addressing.mount_point.as_deref(),
+            )
+            .as_deref()
+            .map(Some),
+            mount_point_id: resolved_source.mount_point_id.as_deref(),
+        },
+        &path,
+        new_path.as_deref().unwrap_or_default(),
+        Some(&ctx.chat_id),
+    );
     let moved_uri = uri_for(mount, &resolved_dest);
     // v4's folder-move site passes NO `hiddenFromCharacters` (→ falsy).
     let announcement = LibrarianMoveAnnouncement {
@@ -1030,11 +965,11 @@ pub fn handle_move_folder(
 // Filesystem helpers (v4 `fs.stat` / `fs.access` probes)
 // ============================================================================
 
-/// v4 `fs.stat(p).isFile()` — `Some(bool)` when the path exists (following
-/// symlinks), `None` when the stat fails (missing path).
-fn fs_stat_is_file(absolute_path: &str) -> Option<bool> {
-    std::fs::metadata(absolute_path).ok().map(|m| m.is_file())
-}
+// P4.D380 (R-4): `fs_stat_is_file` (`metadata().ok()` — an EACCES read as
+// "not found") RETIRED; the file sites probe through the core's
+// `stat_document` → `stat_resolved_file`. `fs_path_exists` stays for
+// `doc_move_folder`, whose filesystem branch v4 still probes with `fs.access`
+// (unchanged at the pin).
 
 /// v4 `fs.stat(p).isDirectory()` — `Some(bool)` on a hit, `None` on a stat miss.
 fn fs_stat_is_dir(absolute_path: &str) -> Option<bool> {

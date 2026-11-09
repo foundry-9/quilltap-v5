@@ -410,6 +410,7 @@ fn parse_oracle(text: &str) -> (Vec<Value>, Value) {
 
 #[test]
 fn doc_fs_matches_oracle() {
+    quilltap_core::test_support::global_capture::install(); // P4.D380
     let (Some(oracle_path), Some(fixture_main), Some(fixture_mount)) = (
         env_or_skip("QT_ORACLE_DFS"),
         env_or_skip("QT_FIXTURE_DFS_MAIN"),
@@ -483,7 +484,10 @@ fn doc_fs_matches_oracle() {
         };
         // The Librarian announcement is a documented seam — NOT posted (the oracle
         // mocks its poster to a no-op), so chat_messages stays untouched.
-        let result = execute_doc_edit_tool(main, mount, &op.tool, &op.args, &ctx);
+        // P4.D380: the op under the global capture (the core's chokepoint DEBUG).
+        let (result, p4d380_lines) = quilltap_core::test_support::global_capture::capture(|| {
+            execute_doc_edit_tool(main, mount, &op.tool, &op.args, &ctx)
+        });
         let formatted = format_doc_edit_results(&result);
         let output = serde_json::to_value(&result).expect("serialize result");
 
@@ -492,6 +496,8 @@ fn doc_fs_matches_oracle() {
             "tool": op.tool,
             "output": output,
             "formatted": formatted,
+            // P4.D380: the chokepoint proof (v4's awaited chain, R-2 (A)).
+            "afterWrite": quilltap_core::test_support::after_write_of(&p4d380_lines),
         });
         got = sentinelize(&got);
         placeholder_fs_times(&mut got);

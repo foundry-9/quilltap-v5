@@ -8,30 +8,25 @@
 //! precedent), so a handler both reads (`chats`/`characters` on main, the store on
 //! mount) and writes (the store on mount) on the same RW connections.
 //!
-//! ## Seamed side effects (documented no-ops, matching the oracle mocks)
+//! ## Side effects
 //!
 //! v4's handlers post Librarian announcements (`postLibrarian*` +
-//! `resolveActorOrigin` + `contentHiddenFromCharacters`) and fire a background
-//! re-index (`triggerReindexIfNeeded`). Both are fire-and-forget side effects that
-//! never appear in the tool result, so — like the wave-3 whisper-posting seams and
-//! the standing reindex deferral — the port omits them. Since P4.32 (the ruled
-//! reindex un-mock, 2026-08-04) the differential oracle seams the librarian
-//! writers, `triggerReindexIfNeeded`, and the embedding scheduler — `@/lib/doc-edit/reindex-file`
-//! runs REAL, so v4's own chunk-on-write executes in the oracle and the
-//! `chunkCount` it bumps is positively asserted (equal AND nonzero on pinned
-//! written paths) by the `doc_text`/`doc_fm` differentials, not excluded.
+//! `resolveActorOrigin` + `contentHiddenFromCharacters`); the port builds them
+//! inside the write closure and the executor posts them after it returns.
 //!
-//! **v4 `40319484` chained `reindexLinkGroupSiblings` onto that same
-//! `triggerReindexIfNeeded` promise** (`shared.ts:474`), so it inherits the seam.
-//! Where v4 actually gets the effect for a DATABASE-backed doc-edit write, v5
-//! gets it too: this file's write dispatch lands bytes through
-//! `database_store::write_database_document`, which runs the chunk pass AND the
-//! group pass itself (v4 calls it from both places; the pass is idempotent).
-//! **Loudly deferred:** for a FILESYSTEM/obsidian doc-edit write the seam is the
-//! only path in v4, and v5 has no reindex there at all — so a hard-linked
-//! filesystem sibling's chunk set is not rebuilt by a doc-edit tool write. That
-//! is the standing reindex deferral's blast radius growing by one case, not a new
-//! seam; it closes when the doc-edit reindex is ported.
+//! **The store refresh (P4.D380, round ruling R-2).** v4 `a3d53eae1` deleted
+//! `triggerReindexIfNeeded`: every tool write, copy and disk move goes through
+//! the document core (`crate::documents::core`), whose ONE
+//! `after_document_write` chokepoint — gated on `mountPointId`, whatever the
+//! scope (#133) — re-chunks the path, rebuilds its hard-linked siblings' chunk
+//! sets, enqueues embeddings and refreshes the store's stats. The tools run it
+//! synchronously inside their own write closure (`Refresh::Now`; the tool
+//! context carries no scheduler): `TOOL_REFRESH_IN_CLOSURE` (P4.D380 item 24)
+//! — same end state, same lines, a failure never fails the tool (v4's
+//! catch-warn); only the tool's latency differs from v4's fire-and-forget. The
+//! standing doc-edit reindex deferral RETIRES for every store — database AND
+//! filesystem / obsidian (the "loudly deferred" filesystem sibling case
+//! included).
 //!
 //! ## The host-filesystem branches (P4.6bg)
 //!
