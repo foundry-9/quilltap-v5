@@ -41,6 +41,7 @@ use std::collections::HashMap;
 use serde_json::{json, Map, Value};
 
 use crate::api::system_qtap::js_truthy;
+use crate::characters::kind::DEFAULT_CHARACTER_KIND;
 use crate::chat_activity::is_character_authored_message;
 use crate::cheap_llm::profile_params_value;
 use crate::clock::iso_from_unix_ms;
@@ -48,9 +49,9 @@ use crate::db::files::FilesRepository;
 use crate::db::runtime::Db;
 use crate::db::{connection_profiles, DbError};
 use crate::generators::field_semantics::{
-    CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE, FULL_FIELD_SEMANTICS,
-    GATED_COMPANION_TRUST_DISPOSITION, PHYSICAL_DESCRIPTION_SEMANTICS, PROMPT_SEMANTICS,
-    PROPERTIES_SEMANTICS, TRUST_SAFEGUARDS_DIRECTION,
+    generator_direction_for, CONVERSATIONAL_VOICE_DIRECTION, EXAMPLE_DIALOGUE_COVERAGE,
+    FULL_FIELD_SEMANTICS, GATED_COMPANION_TRUST_DISPOSITION, PHYSICAL_DESCRIPTION_SEMANTICS,
+    PROMPT_SEMANTICS, PROPERTIES_SEMANTICS, TRUST_SAFEGUARDS_DIRECTION,
 };
 use crate::generators::file_content::extract_file_content;
 use crate::generators::generated_items::{
@@ -206,7 +207,14 @@ pub fn first_message_prompt() -> String {
 /// [`GATED_COMPANION_TRUST_DISPOSITION`] (each after a blank line) and then the
 /// relationships sentence, joined to the gated paragraph by ONE `\n` — the same
 /// paragraph, unlike the External Prompt's `\n\n` (P4.D241).
+///
+/// Since v4 `3ae4cf582` (P4.D371) the kind's direction for
+/// [`DEFAULT_CHARACTER_KIND`] sits between the trust safeguards and the gated
+/// disposition (`\n\n` each side). Summon From Lore creates a new character,
+/// and a new character is a roleplay character; the operator can switch it to
+/// Assistant afterwards. The kind is never guessed from the source material.
 pub fn system_prompts_prompt() -> String {
+    let direction = generator_direction_for(DEFAULT_CHARACTER_KIND);
     format!(
         r#"{PROMPT_SEMANTICS}
 
@@ -226,6 +234,8 @@ The main prompt should capture the character's essence from the source material.
 {CONVERSATIONAL_VOICE_DIRECTION}
 
 {TRUST_SAFEGUARDS_DIRECTION}
+
+{direction}
 
 {GATED_COMPANION_TRUST_DISPOSITION}
 Use the relationships array in the Prior Analysis, where one is given, as evidence for that decision."#

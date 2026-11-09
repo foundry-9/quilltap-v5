@@ -10,6 +10,7 @@
 //! v4's case-insensitive regexes are lower-cased `contains`.
 
 use quilltap_core::characters::kind::CharacterKind;
+use quilltap_core::generators::ai_import::system_prompts_prompt;
 use quilltap_core::generators::external_prompt::build_meta_system_prompt;
 use quilltap_core::generators::field_semantics::{
     generator_direction_for, kind_drift_signal_for, ALL_EXPORTS, ASSISTANT_TASK_DIRECTION,
@@ -245,4 +246,13 @@ fn a_new_prompt_follows_the_kind() {
         get_new_system_prompts_suggestion_prompt(&analysis, CharacterKind::Assistant)
             .contains(ASSISTANT_TASK_DIRECTION)
     );
+}
+
+// ---- ai-import-system-prompts.test.ts (v4 3ae4cf582) ----------------------
+
+#[test]
+fn writes_a_summoned_character_as_a_roleplay_character_the_stakes_direction_never_the_task_one() {
+    let p = system_prompts_prompt();
+    assert!(p.contains(STAKES_AND_REACTION_DIRECTION));
+    assert!(!p.contains(ASSISTANT_TASK_DIRECTION));
 }

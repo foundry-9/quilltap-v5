@@ -195,6 +195,12 @@ _Versions: core 0.0.1430._
 
 P4.D370 unit A. `tools/native_tool_prompt.rs` is v4's `native-tool-prompt.ts` whole at the pin: `NATIVE_TOOL_RULES` (the six rules; rule 6 now tells the model to read the likeliest listed conversation before saying it doesn't recall), a private `preamble(ToolRulesVariant)`, and `build_native_tool_instructions(variant, has_tools)`. `pseudo_tool::build_native_tool_system_instructions` takes the variant. The Salon turn passes the responding character's `character_kind_policy(..).tool_rules` (roleplay hears `## Using tools`, assistant the MANDATORY preamble); Brahma, Help chat and the one-shot loop pass `Assistant`. The oracle case `pseudo-tool-prompts.ts` is re-aimed: its four native rows had silently recorded `"undefined\n\n1. …"` at the pin; it now emits both variants × `hasTools` true / false / default, both system rows, and a `native_tool_rules` row. The simple-JSON rows stay red for P4.D375.
 
+#### 2026-11-09 — P4.D371: Summon From Lore writes a new character for the default kind, and the AI-import version pin moves to 4.13.0-dev.8 (v4 3ae4cf582)
+
+_Versions: core 0.0.1433._
+
+`system_prompts_prompt()` now carries `generator_direction_for(DEFAULT_CHARACTER_KIND)` (the stakes direction) between the trust safeguards and the gated companion disposition, as v4's `SYSTEM_PROMPTS_PROMPT` does: a summoned character is a roleplay character, and the kind is never guessed from the source material. `ai_import_tier3`'s `V4_APP_VERSION` moves to `4.13.0-dev.8` (the round's pin; this lane regenerates the family). `kind_directions_order` gains v4's Summon From Lore kind title.
+
 #### 2026-11-09 — P4.D371: the Character Optimizer's system-prompt passes follow the character's kind (v4 3ae4cf582)
 
 _Versions: core 0.0.1432._
