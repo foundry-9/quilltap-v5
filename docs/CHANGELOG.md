@@ -571,6 +571,18 @@ _Versions: core 0.0.1429, web 0.0.257._
 
 The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
 
+#### 2026-11-09 — feat(storyteller): All at once runs on the server — the concurrent group in core, seated turns in the host (P4.D368 items 2–5)
+
+_Versions: core 0.0.1429, host 0.0.225._
+
+P4.D343 item 41 at the `624d0d25c` pin: Storyteller's `simultaneous` order no longer answers 422 `not_available: storyteller simultaneous`.
+
+- `RoundTurnRunner` takes `&self` (the group runs several turns over one runner).
+- `run_storyteller_round` ports v4 `runStorytellerRound` whole: the Simple / Lookup seats grouped by connection profile in first-seen order, each group through `run_with_cap` (at most `STORYTELLER_CONCURRENCY_PER_PROFILE = 4` in flight), every group at once; every concurrent turn sees an empty `spokenSince`; a concurrent yield is ignored; the stop is checked once after the group; the Act / Destroy tail runs after it with the shared depth counter and the speakers in completion order; the last outcome is the last turn to finish. Two cooperative yields reproduce v4's microtask order (the first wave starts, the first wave ends, then the second wave).
+- The host streams each concurrent turn through `BroadcastSink::seated(participantId)` and emits no `turnStart` / `turnComplete` hooks for it; the round's housekeeping reads the last turn to finish.
+- Records `CONCURRENT_TURN_FAILURE_CONTAINED`: a failing turn stays contained in v5, where v4's round rejects and is left `running`.
+- `plan_storyteller_run_equivalence` grows seven concurrent RUN rows (28 cases) against v4's real code; the `CONCURRENT_GROUP_IS_THE_HOSTS` carve is retired.
+
 #### 2026-11-08 — FRAMES: Salon kind-tagged stream frames rendered at the sink, gesture-only yields, handAsked (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._

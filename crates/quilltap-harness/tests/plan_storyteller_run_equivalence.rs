@@ -51,10 +51,16 @@
 //!   logger; v5's `cycle_order::log_cycle_order_persisted` logs it at DEBUG.
 //!   The oracle pins the message (and records none); this side drops v5's
 //!   line by name. The PERSIST itself compares through `chats`.
-//! - `CONCURRENT_GROUP_IS_THE_HOSTS` — v5's [`run_storyteller_round`] runs the
-//!   sequential part only (the per-profile semaphore and the concurrency are
-//!   the host's, item 31). Cases whose plan holds a concurrent turn are
-//!   compared on the PLAN only — the oracle runs none of them.
+//!
+//! ## The all-at-once group (P4.D368, item 4)
+//!
+//! The concurrent group runs IN CORE (`run_storyteller_round`'s per-profile
+//! `run_with_cap`, ruling R-1), so the `simultaneous` cases RUN on both sides:
+//! the canned turns resolve immediately, and the recorded `onTurnStart` /
+//! `onTurnEnd` order is v4's microtask order — the first wave of every
+//! profile starts before any turn ends, a fifth seat on one profile starts
+//! after the first wave's ends. The cap row
+//! (`simultaneous-cap-five-on-one-profile-plus-one`) pins that shape.
 //!
 //! Generate the fixture + oracle (Node 24, from the PINNED v4 worktree —
 //! §R.3 PIN REQUIRED):
@@ -70,6 +76,7 @@
 //!   QT_FIXTURE_PSR_MAIN=/tmp/qt-psr-main.db QT_FIXTURE_PSR_MOUNT=/tmp/qt-psr-mount.db \
 //!     cargo test -p quilltap-harness --test plan_storyteller_run_equivalence -- --nocapture
 
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -89,7 +96,7 @@ use serde_json::{json, Map, Value};
 
 const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 const TRIGGER: &str = "d6000000-0000-4000-8000-0000000000c2";
-const MIN_CASES: usize = 23;
+const MIN_CASES: usize = 28;
 
 const PINNED: &[&str] = &[
     "Storyteller run keeps the operator's order",
@@ -164,12 +171,14 @@ fn raw_rows(conn: &rusqlite::Connection, sql: &str, args: &[&str]) -> Vec<Value>
 }
 
 /// The canned `runTurn` + hooks (the oracle's `spec.outcomes` / `stopDuring`).
+/// The round runner takes `&self` (the all-at-once group runs several turns
+/// over one runner), so the recorders are `RefCell`s.
 struct Canned {
     outcomes: HashMap<String, Value>,
     stop_during: Option<String>,
-    stopped: bool,
-    calls: Vec<Value>,
-    events: Vec<Value>,
+    stopped: Cell<bool>,
+    calls: RefCell<Vec<Value>>,
+    events: RefCell<Vec<Value>>,
 }
 
 fn context_json(c: &StorytellerTurnContext) -> Value {
@@ -192,16 +201,16 @@ fn outcome_json(o: &StorytellerTurnOutcome) -> Value {
 
 impl RoundTurnRunner for Canned {
     async fn run_turn(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         context: StorytellerTurnContext,
     ) -> StorytellerTurnOutcome {
-        self.calls.push(json!({
+        self.calls.borrow_mut().push(json!({
             "participantId": turn.participant_id,
             "context": context_json(&context),
         }));
         if self.stop_during.as_deref() == Some(turn.participant_id.as_str()) {
-            self.stopped = true;
+            self.stopped.set(true);
         }
         let o = &self.outcomes[&turn.participant_id];
         StorytellerTurnOutcome {
@@ -211,21 +220,23 @@ impl RoundTurnRunner for Canned {
             has_scene_tracking: false,
         }
     }
-    fn on_turn_start(&mut self, turn: &StorytellerPlannedTurn, depth: usize) {
+    fn on_turn_start(&self, turn: &StorytellerPlannedTurn, depth: usize) {
         self.events
+            .borrow_mut()
             .push(json!(["start", turn.participant_id, depth]));
     }
     fn on_turn_end(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         depth: usize,
         outcome: &StorytellerTurnOutcome,
     ) {
         self.events
+            .borrow_mut()
             .push(json!(["end", turn.participant_id, depth, outcome.spoke]));
     }
     fn is_stopped(&self) -> bool {
-        self.stopped
+        self.stopped.get()
     }
 }
 
@@ -314,11 +325,7 @@ async fn run_case(db: &Db, i: usize, input: &Value, ts_for: &str) -> Value {
 
     let mut run = Value::Null;
     if let (Some((round, turns)), Some(spec)) = (planned, input.get("run")) {
-        assert!(
-            turns.iter().all(|t| !t.concurrent),
-            "case {i}: CONCURRENT_GROUP_IS_THE_HOSTS — the corpus runs no concurrent plan"
-        );
-        let mut canned = Canned {
+        let canned = Canned {
             outcomes: spec["outcomes"]
                 .as_object()
                 .expect("outcomes")
@@ -326,16 +333,16 @@ async fn run_case(db: &Db, i: usize, input: &Value, ts_for: &str) -> Value {
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect(),
             stop_during: spec["stopDuring"].as_str().map(str::to_string),
-            stopped: false,
-            calls: Vec::new(),
-            events: Vec::new(),
+            stopped: Cell::new(false),
+            calls: RefCell::new(Vec::new()),
+            events: RefCell::new(Vec::new()),
         };
-        let (ended, last) = run_storyteller_round(db, chat_id, &round, &turns, order, &mut canned)
+        let (ended, last) = run_storyteller_round(db, chat_id, &round, &turns, order, &canned)
             .await
             .unwrap_or_else(|e| panic!("case {i}: run: {e}"));
         run = json!({
-            "calls": canned.calls,
-            "events": canned.events,
+            "calls": canned.calls.into_inner(),
+            "events": canned.events.into_inner(),
             "ended": ended.as_str(),
             "lastOutcome": last.as_ref().map(outcome_json),
         });

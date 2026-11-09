@@ -19,7 +19,12 @@
  *      cycle: `resolveCycleOrder` DRAWS and PERSISTS one (the oracle stubs
  *      `Math.random` with the sequence the Rust side passes as
  *      `DrawSource::sequence`).
- *   4. The `storyteller_rounds` table through v4's REAL `ensureCollection`
+ *   4. Chat G (P4.D368) — seven LLM seats g1..g7: g1..g5 on ONE connection
+ *      profile, g6 and g7 on a second, NO stored cycle (its cases keep the
+ *      operator's order, so the rotation is never consulted) — the
+ *      all-at-once cap row (five seats on one profile: four in flight, the
+ *      fifth after a finish).
+ *   5. The `storyteller_rounds` table through v4's REAL `ensureCollection`
  *      (generateDDL's FK-LESS shape — a v5-provisioned instance's), so the
  *      oracle can plant a round naming a chat that does not exist (the 404
  *      gate).
@@ -59,6 +64,9 @@ const P_D = 'e6000000-0000-4000-8000-0000000000dd';
 const P_X = 'e6000000-0000-4000-8000-0000000000d1';
 const P_Y = 'e6000000-0000-4000-8000-0000000000d2';
 const P_Z = 'e6000000-0000-4000-8000-0000000000d3';
+const CHAT_G = 'c6000000-0000-4000-8000-00000000000e';
+const CHG = (n: number) => `a6000000-0000-4000-8000-00000000001${n}`;
+const P_G = (n: number) => `e6000000-0000-4000-8000-0000000000e${n}`;
 const M_C = 'd6000000-0000-4000-8000-0000000000c1';
 const M_OP = 'd6000000-0000-4000-8000-0000000000c2';
 
@@ -151,6 +159,16 @@ async function main(): Promise<void> {
     seat(P_Z, CH(7), 2, PROF_2, 0.3),
   ]);
 
+  await mkChat(CHAT_G, 'The Gallery', [
+    seat(P_G(1), CHG(1), 0, PROF_1),
+    seat(P_G(2), CHG(2), 1, PROF_1),
+    seat(P_G(3), CHG(3), 2, PROF_1),
+    seat(P_G(4), CHG(4), 3, PROF_1),
+    seat(P_G(5), CHG(5), 4, PROF_1),
+    seat(P_G(6), CHG(6), 5, PROF_2),
+    seat(P_G(7), CHG(7), 6, PROF_2),
+  ]);
+
   // c spoke, then the operator posted (c is the last speaker).
   await repos.chats.addMessage(CHAT_S, {
     type: 'message',
@@ -178,7 +196,7 @@ async function main(): Promise<void> {
 
   // v4's REAL patch-only writer; it stamps `updatedAt` with the live clock, so
   // re-pin it afterwards (byte-reproducible rebuilds).
-  for (const id of [CHAT_S, CHAT_D]) {
+  for (const id of [CHAT_S, CHAT_D, CHAT_G]) {
     if (!(await repos.chats.setTurnMode(id, 'storyteller' as never))) {
       throw new Error(`setTurnMode(${id}) wrote nothing`);
     }

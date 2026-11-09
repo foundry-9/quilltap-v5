@@ -5,8 +5,9 @@
 //!   post was recorded (S1's `storyteller_hold`); open a round, ask every
 //!   invited seat for a bid IN PARALLEL, stream each card as it lands, and hand
 //!   the board over after every bid is in or [`STORYTELLER_BOARD_TIMEOUT_MS`]
-//!   passes. The clock is the HOST's (ruling R-3 — `BOARD_TIMEOUT_HOST_CADENCE`:
-//!   the core holds the constants and no clock). Each bid runs on its own
+//!   passes. The clock is the HOST's (ruling R-3 — `BOARD_TIMEOUT_HOST_CADENCE`,
+//!   narrowed by P4.D368 to this 45 s timeout: the core holds the constant and
+//!   no clock; the all-at-once cap is core's `run_storyteller_round`). Each bid runs on its own
 //!   thread + current-thread runtime (the send's own bridge): a bid still out
 //!   at the timeout keeps running DETACHED and lands through `record_bid`, which
 //!   drops it once the round is no longer `open` — v4's late-bid behaviour.
@@ -16,8 +17,8 @@
 //!   id — through a discarding sink.
 //! - **The run endpoint** ([`StorytellerDriver::run`]): plan (the 400 / 404 /
 //!   409 refusals answer before any frame), then the round's speaking turns on
-//!   the chat's stream, `turnStart` / `turnComplete` around each, the round's
-//!   housekeeping ONCE, then ONE `chainComplete`.
+//!   the chat's stream, `turnStart` / `turnComplete` around each sequential
+//!   turn, the round's housekeeping ONCE, then ONE `chainComplete`.
 //!
 //! **`DRY_SCOPE_BY_GATES` (ruling R-1).** v4 runs a bid inside `runDry`, a
 //! repository proxy that discards EVERY write but the LLM log. v5 has no such
@@ -34,10 +35,30 @@
 //! `dry-scope.ts`) are not ported: `LogContext::storyteller_round_id` and the
 //! `is_bid` gates are the explicit threading.
 //!
-//! **Tier 1 is `sequential` only.** `order: "simultaneous"` (v4's all-at-once
-//! group — the per-profile `Semaphore(STORYTELLER_CONCURRENCY_PER_PROFILE)`
-//! and the tagged concurrent frames) answers the loud typed refusal
-//! `not_available: storyteller simultaneous` AFTER the plan's gates (item 44).
+//! **All at once (`order: "simultaneous"`, P4.D368 — P4.D343 item 41).** The
+//! concurrent group and its per-profile cap run in core's
+//! `run_storyteller_round` (v4 `runStorytellerRound` + `runWithCap`); this
+//! file supplies the turns. Every turn of the round runs on ONE task — the
+//! run's own thread's current-thread runtime, joined cooperatively (v4's one
+//! event loop; the turns' work is network-bound). A concurrent turn streams
+//! through [`BroadcastSink::seated`] (v4 `seatedFrameEncoder` — `seat:
+//! {participantId, concurrent: true}` LAST on every frame) and the hooks emit
+//! no `turnStart` / `turnComplete` for it. v4's `sharedStreamController`
+//! (a no-op `close()`) converges by construction: a v5 sink has no close. Each
+//! turn keeps its OWN `SubmissionLedger` where v4 shares one across the
+//! round: the ledger is read only by the shell's error frame, which a
+//! storyteller turn's failure never builds from it (it passes a default) —
+//! converged, unobservable.
+//!
+//! `CONCURRENT_TURN_FAILURE_CONTAINED` (ruling R-3 of P4.D368): a speaking turn
+//! that FAILS is caught per turn — ERROR `Storyteller speaking turn failed`, an
+//! error frame, an empty outcome — and the round goes on, closing `ran` with
+//! ONE `chainComplete`. Both ways: v4's concurrent `runTurn` throw rejects
+//! `Promise.all`, so `runStorytellerRound` rejects BEFORE `markClosed` — the
+//! round is left `running`, `openTurnStream`'s catch logs `Streaming error`
+//! and enqueues its unseated `Failed to generate response` frame, and no
+//! `chainComplete` follows (the board would stay busy until Stop). v5 keeps
+//! the other seats' turns and closes the round.
 //!
 //! `R-5 BID_ROWS_SKIP_AGGREGATES`: a bid's `llm_logs` row has no message and
 //! never reaches the finalizer, so it adds nothing to the chat's token
@@ -61,8 +82,7 @@ use quilltap_core::services::storyteller_rounds::{
     StorytellerTurnOutcome, STORYTELLER_BOARD_TIMEOUT_MS,
 };
 use quilltap_core::storyteller::types::{
-    StorytellerBid, StorytellerBidCallOutcome, StorytellerBidRequest, StorytellerOrder,
-    StorytellerTurnContext,
+    StorytellerBid, StorytellerBidCallOutcome, StorytellerBidRequest, StorytellerTurnContext,
 };
 
 /// The context builder's post-office writers for a storyteller call: the real
@@ -597,13 +617,13 @@ where
         let registration = turn_control::register_active_turn(&req.chat_id);
         let handle = registration.handle();
         let sink = BroadcastSink::frames(req.chat_id.clone(), self.events.clone()); // === P4.D366 (L8) ===
-        let mut runner = SpineRoundRunner {
+        let runner = SpineRoundRunner {
             spine: self,
             sink: &sink,
             chat_id: req.chat_id.clone(),
             round_id: round.id.clone(),
             handle: handle.clone(),
-            last_scene: None,
+            last_scene: std::cell::RefCell::new(None),
         };
         let (ended, _last) = rounds::run_storyteller_round(
             &self.db,
@@ -611,11 +631,12 @@ where
             &round,
             &turns,
             req.order,
-            &mut runner,
+            &runner,
         )
         .await
         .map_err(|e| core_error(ErrorKind::Internal, e.to_string()))?;
-        if let Some(profile_id) = runner.last_scene.clone() {
+        let last_scene = runner.last_scene.borrow().clone();
+        if let Some(profile_id) = last_scene {
             let cheap = self.cheap_llm_settings_present();
             if let Err(e) =
                 quilltap_core::services::message_finalizer::run_storyteller_round_housekeeping(
@@ -661,7 +682,12 @@ where
 }
 
 /// The round runner's turns over the spine (v4 `handleStorytellerRun`'s
-/// `runTurn` / `onTurnStart` / `onTurnEnd`).
+/// `runTurn` / `onTurnStart` / `onTurnEnd`). A concurrent (all-at-once) turn
+/// streams through `sink.seated(participantId)` — v4 `seatedFrameEncoder`, the
+/// seat LAST on every frame it emits — and gets no `turnStart` /
+/// `turnComplete` from the hooks (v4 `orchestrator.service.ts:364`, `:372`).
+/// The `turn_control` handle is shared by every turn, so a Stop reaches them
+/// all.
 struct SpineRoundRunner<'s, EMB, CMP, STR, PF>
 where
     EMB: EmbeddingProvider + Send + Sync + 'static,
@@ -674,9 +700,10 @@ where
     chat_id: String,
     round_id: String,
     handle: turn_control::TurnControlHandle,
-    /// The connection profile of the last turn that carried a scene-tracking
-    /// context (v4 `lastOutcome.sceneTrackingContext.connectionProfile`).
-    last_scene: Option<String>,
+    /// The connection profile of the last turn to FINISH, when it carried a
+    /// scene-tracking context (v4 `lastOutcome.sceneTrackingContext
+    /// .connectionProfile` — `lastOutcome` is the last turn to finish).
+    last_scene: std::cell::RefCell<Option<String>>,
 }
 
 impl<EMB, CMP, STR, PF> RoundTurnRunner for SpineRoundRunner<'_, EMB, CMP, STR, PF>
@@ -687,7 +714,7 @@ where
     PF: PricingFetch + Send + Sync + 'static,
 {
     async fn run_turn(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         context: StorytellerTurnContext,
     ) -> StorytellerTurnOutcome {
@@ -701,18 +728,39 @@ where
             storyteller_round_id: Some(self.round_id.clone()),
             ..Default::default()
         };
-        match self
-            .spine
-            .process_storyteller(
-                self.chat_id.clone(),
-                self.sink,
-                options,
-                log_context,
-                Some(self.handle.clone()),
-                false,
-            )
-            .await
-        {
+        // v4: `turn.concurrent ? seatedFrameEncoder(turn.participantId) :
+        // encoder` (and the shared controller, whose `close()` is a no-op — a
+        // v5 sink has no close, so that half converges by construction).
+        let seated = turn
+            .concurrent
+            .then(|| self.sink.seated(&turn.participant_id));
+        let result = match &seated {
+            Some(seated) => {
+                self.spine
+                    .process_storyteller(
+                        self.chat_id.clone(),
+                        seated,
+                        options,
+                        log_context,
+                        Some(self.handle.clone()),
+                        false,
+                    )
+                    .await
+            }
+            None => {
+                self.spine
+                    .process_storyteller(
+                        self.chat_id.clone(),
+                        self.sink,
+                        options,
+                        log_context,
+                        Some(self.handle.clone()),
+                        false,
+                    )
+                    .await
+            }
+        };
+        match result {
             Ok(result) => {
                 let outcome = StorytellerTurnOutcome {
                     spoke: result.has_content && !result.skipped,
@@ -720,7 +768,7 @@ where
                     message_id: (!result.message_id.is_empty()).then(|| result.message_id.clone()),
                     has_scene_tracking: result.scene_tracking_character_ids.is_some(),
                 };
-                self.last_scene = if outcome.has_scene_tracking {
+                *self.last_scene.borrow_mut() = if outcome.has_scene_tracking {
                     self.spine
                         .chat_connection_profile_id(&self.chat_id, &turn.participant_id)
                 } else {
@@ -742,13 +790,16 @@ where
                     &e.to_string(),
                     orchestrator::SubmissionLedger::default(),
                 );
-                self.last_scene = None;
+                *self.last_scene.borrow_mut() = None;
                 StorytellerTurnOutcome::default()
             }
         }
     }
 
-    fn on_turn_start(&mut self, turn: &StorytellerPlannedTurn, depth: usize) {
+    fn on_turn_start(&self, turn: &StorytellerPlannedTurn, depth: usize) {
+        if turn.concurrent {
+            return;
+        }
         self.sink.emit(ChatEvent::turn_start(TurnStartPayload {
             participant_id: turn.participant_id.clone(),
             character_name: turn.character_name.clone(),
@@ -757,11 +808,14 @@ where
     }
 
     fn on_turn_end(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         depth: usize,
         outcome: &StorytellerTurnOutcome,
     ) {
+        if turn.concurrent {
+            return;
+        }
         self.sink
             .emit(ChatEvent::turn_complete(TurnCompletePayload {
                 participant_id: turn.participant_id.clone(),
@@ -828,15 +882,6 @@ where
                             return;
                         }
                     };
-                    // Item 44: `simultaneous` is Tier 2 — refused loudly AFTER
-                    // the plan's gates, before any frame.
-                    if req.order == StorytellerOrder::Simultaneous {
-                        let _ = tx.send(Err(StorytellerDriverError::Core(core_error(
-                            ErrorKind::Unprocessable,
-                            "not_available: storyteller simultaneous",
-                        ))));
-                        return;
-                    }
                     let _ = tx.send(Ok(()));
                     if let Err(e) = state.run_planned_round(&req, round, turns).await {
                         emit_send_error_frame(

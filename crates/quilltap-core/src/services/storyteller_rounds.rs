@@ -48,7 +48,9 @@ const CONTEXT: &str = "storyteller.round";
 pub const STORYTELLER_BOARD_TIMEOUT_MS: u64 = 45_000;
 
 /// At most this many concurrent speaking turns per connection profile (v4
-/// `STORYTELLER_CONCURRENCY_PER_PROFILE`, D-open 2). The HOST owns the cap.
+/// `STORYTELLER_CONCURRENCY_PER_PROFILE`, D-open 2). The cap is applied by
+/// [`run_storyteller_round`] (v4 `runWithCap`); the host supplies truly
+/// concurrent turns.
 pub const STORYTELLER_CONCURRENCY_PER_PROFILE: usize = 4;
 
 /// v4 `StorytellerRoundError(message, status)` — a refusal the API answers as
@@ -632,17 +634,21 @@ pub fn turn_context_for(
 
 /// The hooks the round runner calls (v4 `runTurn` / `onTurnStart` /
 /// `onTurnEnd` / `isCurrentTurnStopped`). The host implements them over the
-/// orchestrator; the differential cans them.
+/// orchestrator; the differential cans them. Every method takes `&self`: the
+/// all-at-once group runs several turns at once over ONE runner (an
+/// implementer keeps its mutable state behind a `Cell` / `RefCell`). The
+/// futures need not be `Send` — the round runs on one current-thread task,
+/// v4's own event-loop model.
 #[allow(async_fn_in_trait)]
 pub trait RoundTurnRunner {
     async fn run_turn(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         context: StorytellerTurnContext,
     ) -> StorytellerTurnOutcome;
-    fn on_turn_start(&mut self, turn: &StorytellerPlannedTurn, depth: usize);
+    fn on_turn_start(&self, turn: &StorytellerPlannedTurn, depth: usize);
     fn on_turn_end(
-        &mut self,
+        &self,
         turn: &StorytellerPlannedTurn,
         depth: usize,
         outcome: &StorytellerTurnOutcome,
@@ -650,20 +656,57 @@ pub trait RoundTurnRunner {
     fn is_stopped(&self) -> bool;
 }
 
-/// v4 `runStorytellerRound` for a SEQUENTIAL selection (the all-at-once group
-/// is Tier 2 — refused before planning reaches here): mark the round running
-/// (INFO `Storyteller round running`), run each turn in order with the names
-/// of everyone who has spoken since, stop before a turn when the operator
-/// stopped, end on a yield; then close it `ran` (INFO `Storyteller round
-/// closed`). Returns the ending and the last outcome.
+/// One cooperative yield: `Pending` once (waking itself), then `Ready`. It
+/// stands where v4 `await`s an already-settled promise — one microtask tick —
+/// so the group's hooks fire in v4's order (`plan_storyteller_run_equivalence`
+/// row `simultaneous-cap-five-on-one-profile-plus-one`: every worker's first
+/// turn starts, then every first turn ends, then the second wave starts).
+/// `tokio::task::yield_now` needs the `rt` feature core does not enable.
+struct YieldOnce(bool);
+
+impl std::future::Future for YieldOnce {
+    type Output = ();
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        if self.0 {
+            std::task::Poll::Ready(())
+        } else {
+            self.0 = true;
+            cx.waker().wake_by_ref();
+            std::task::Poll::Pending
+        }
+    }
+}
+
+fn yield_once() -> YieldOnce {
+    YieldOnce(false)
+}
+
+/// v4 `runStorytellerRound`: mark the round running (INFO `Storyteller round
+/// running`); run the all-at-once group — the concurrent (Simple / Lookup)
+/// seats grouped by connection profile in first-seen order, each group
+/// through `run_with_cap(group, STORYTELLER_CONCURRENCY_PER_PROFILE)`, every
+/// group at once, every concurrent turn seeing `spokenSince = []`, a
+/// concurrent turn's yield ignored, the stop checked ONCE after the group;
+/// then, only when the group was not stopped, the sequential part in order
+/// (the stop checked before each turn, a yield ends the round) with the names
+/// of everyone who has spoken since — in COMPLETION order. One shared depth
+/// counter (`myDepth = ++depth`, assigned at START), one shared `spoken`
+/// list, and the last outcome is the last turn to FINISH. Then close it `ran`
+/// (INFO `Storyteller round closed`). Returns the ending and the last outcome.
 pub async fn run_storyteller_round<R: RoundTurnRunner>(
     db: &Db,
     chat_id: &str,
     round: &StorytellerRound,
     turns: &[StorytellerPlannedTurn],
     order: StorytellerOrder,
-    runner: &mut R,
+    runner: &R,
 ) -> Result<(RoundEnding, Option<StorytellerTurnOutcome>), DbError> {
+    use std::cell::{Cell, RefCell};
+    use std::collections::VecDeque;
+
     let selection = StorytellerSelection {
         participant_ids: turns.iter().map(|t| t.participant_id.clone()).collect(),
         order: Some(order),
@@ -688,35 +731,100 @@ pub async fn run_storyteller_round<R: RoundTurnRunner>(
         "Storyteller round running"
     );
 
-    let mut spoken: Vec<String> = Vec::new();
-    let mut last_outcome: Option<StorytellerTurnOutcome> = None;
+    // v4's closure-captured `spoken` / `lastOutcome` / `depth`.
+    let spoken: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let last_outcome: RefCell<Option<StorytellerTurnOutcome>> = RefCell::new(None);
+    let depth = Cell::new(0usize);
     let mut ended = RoundEnding::Ran;
-    // v4's shared depth counter (`myDepth = ++depth`), 1-based.
-    for (position, (index, turn)) in turns
-        .iter()
-        .enumerate()
-        .filter(|(_, t)| !t.concurrent)
-        .enumerate()
-    {
+
+    // v4 `runOne`: the depth and `onTurnStart` before the turn's first await.
+    let run_one = |index: usize, spoken_since: Vec<String>| {
+        let (spoken, last_outcome, depth) = (&spoken, &last_outcome, &depth);
+        async move {
+            let turn = &turns[index];
+            let my_depth = depth.get() + 1;
+            depth.set(my_depth);
+            runner.on_turn_start(turn, my_depth);
+            let outcome = runner
+                .run_turn(
+                    turn,
+                    turn_context_for(turns, index, &round.id, spoken_since),
+                )
+                .await;
+            // v4 `await`s `runTurn`'s promise: one tick before the end hook.
+            yield_once().await;
+            runner.on_turn_end(turn, my_depth, &outcome);
+            if outcome.spoke {
+                spoken.borrow_mut().push(turn.character_name.clone());
+            }
+            *last_outcome.borrow_mut() = Some(outcome.clone());
+            outcome
+        }
+    };
+
+    // The concurrent group (all at once): everyone sees the transcript as it
+    // stood at the operator's post; no one in the group answers another.
+    let concurrent: Vec<usize> = (0..turns.len()).filter(|&i| turns[i].concurrent).collect();
+    if !concurrent.is_empty() {
+        // `byProfile` — a Map, so FIRST-SEEN order.
+        let mut by_profile: Vec<(&str, VecDeque<usize>)> = Vec::new();
+        for &i in &concurrent {
+            let key = turns[i].profile_key.as_str();
+            match by_profile.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, q)) => q.push_back(i),
+                None => by_profile.push((key, VecDeque::from([i]))),
+            }
+        }
+        let queues: Vec<RefCell<VecDeque<usize>>> = by_profile
+            .into_iter()
+            .map(|(_, q)| RefCell::new(q))
+            .collect();
+        // v4 `runWithCap(group, cap, fn)`: `min(cap, n)` workers per group,
+        // each shifting the group's queue until it is empty; every group's
+        // workers at once.
+        let mut workers = Vec::new();
+        for queue in &queues {
+            let n = queue
+                .borrow()
+                .len()
+                .min(STORYTELLER_CONCURRENCY_PER_PROFILE);
+            for _ in 0..n {
+                let run_one = &run_one;
+                workers.push(async move {
+                    loop {
+                        let next = queue.borrow_mut().pop_front();
+                        let Some(index) = next else { break };
+                        run_one(index, Vec::new()).await;
+                        // The worker `await`s `fn(item)`: one more tick before
+                        // it shifts the next seat.
+                        yield_once().await;
+                    }
+                });
+            }
+        }
+        futures_util::future::join_all(workers).await;
         if runner.is_stopped() {
             ended = RoundEnding::Stopped;
-            break;
-        }
-        let my_depth = position + 1;
-        runner.on_turn_start(turn, my_depth);
-        let context = turn_context_for(turns, index, &round.id, spoken.clone());
-        let outcome = runner.run_turn(turn, context).await;
-        runner.on_turn_end(turn, my_depth, &outcome);
-        if outcome.spoke {
-            spoken.push(turn.character_name.clone());
-        }
-        let yielded = outcome.yielded;
-        last_outcome = Some(outcome);
-        if yielded {
-            ended = RoundEnding::Yielded;
-            break;
         }
     }
+
+    // The sequential part (in order, or the all-at-once Act / Destroy tail).
+    if ended == RoundEnding::Ran {
+        for index in (0..turns.len()).filter(|&i| !turns[i].concurrent) {
+            if runner.is_stopped() {
+                ended = RoundEnding::Stopped;
+                break;
+            }
+            let since = spoken.borrow().clone();
+            let outcome = run_one(index, since).await;
+            if outcome.yielded {
+                ended = RoundEnding::Yielded;
+                break;
+            }
+        }
+    }
+    let spoken = spoken.borrow().clone();
+    let last_outcome = last_outcome.borrow().clone();
 
     let id = round.id.clone();
     let sel = selection.clone();

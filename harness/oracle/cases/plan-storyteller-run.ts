@@ -36,6 +36,7 @@ const TEST_PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
 const TS = '2026-05-01T00:00:00.000Z';
 const CHAT_S = 'c6000000-0000-4000-8000-00000000000a';
 const CHAT_D = 'c6000000-0000-4000-8000-00000000000d';
+const CHAT_G = 'c6000000-0000-4000-8000-00000000000e';
 const CHAT_GONE = 'c6000000-0000-4000-8000-0000000000ff';
 const CH = (n: number) => `a6000000-0000-4000-8000-00000000000${n}`;
 const P_A = 'e6000000-0000-4000-8000-0000000000aa';
@@ -45,6 +46,9 @@ const P_D = 'e6000000-0000-4000-8000-0000000000dd';
 const P_X = 'e6000000-0000-4000-8000-0000000000d1';
 const P_Y = 'e6000000-0000-4000-8000-0000000000d2';
 const P_Z = 'e6000000-0000-4000-8000-0000000000d3';
+/** Chat G's seats (P4.D368): g1..g5 on one profile, g6 / g7 on another. */
+const P_G = (n: number) => `e6000000-0000-4000-8000-0000000000e${n}`;
+const CHG = (n: number) => `a6000000-0000-4000-8000-00000000001${n}`;
 /** Seats that left the room (a card on the round, no participant row). */
 const P_GONE1 = 'e6000000-0000-4000-8000-0000000000f1';
 const P_GONE2 = 'e6000000-0000-4000-8000-0000000000f2';
@@ -66,6 +70,9 @@ const NAMES: Record<string, [string, string]> = {
   [P_Z]: [CH(7), 'Zed'],
   [P_GONE1]: [CH(8), 'Gone One'],
   [P_GONE2]: [CH(9), 'Gone Two'],
+  ...Object.fromEntries(
+    ['Gil', 'Gus', 'Gem', 'Gia', 'Guy', 'Gwen', 'Gale'].map((n, i) => [P_G(i + 1), [CHG(i + 1), n]]),
+  ),
 };
 
 /** An answered card (v4 `cardFromOutcome`'s full shape). */
@@ -129,19 +136,23 @@ const CASES: Case[] = [
     run: { outcomes: { [P_Y]: spoke(M(3)), [P_X]: spoke(M(4)), [P_Z]: spoke(M(5)) } },
   },
   // 7d7e38d2f row 3: simultaneous + keepOrder over [c(act), d(lookup), a(act), b(simple)]
-  // → [d, b] concurrent, then the Act tail [c, a] in the operator's order. PLAN only
-  // (the concurrent group is the host's).
+  // → [d, b] concurrent, then the Act tail [c, a] in the operator's order.
+  // P4.D368 (b) `simultaneous-group-then-act-tail`: RUN — the group's depths
+  // 1..2, the tail's 3..4 (the shared counter), the tail's `spokenSince`
+  // carrying the concurrent speaker d and NOT the silent b.
   {
     name: 'simultaneous-keep-order-concurrent-first',
     round: { id: R(3), chatId: CHAT_S, status: 'open', bids: [bid(P_A, 'act'), bid(P_B, 'simple'), bid(P_C, 'act'), bid(P_D, 'lookup')] },
     plan: { chatId: CHAT_S, roundId: R(3), participantIds: [P_C, P_D, P_A, P_B], order: 'simultaneous', keepOrder: true },
+    run: { outcomes: { [P_D]: spoke(M(19)), [P_B]: SILENT, [P_C]: spoke(M(20)), [P_A]: spoke(M(21)) } },
   },
   // The same selection through the rotation (no keepOrder): concurrent first,
-  // the tail in rotation order.
+  // the tail in rotation order. P4.D368: RUN (b and d on different profiles).
   {
     name: 'simultaneous-rotation',
     round: { id: R(4), chatId: CHAT_S, status: 'open', bids: [bid(P_A, 'act'), bid(P_B, 'simple'), bid(P_C, 'act'), bid(P_D, 'lookup')] },
     plan: { chatId: CHAT_S, roundId: R(4), participantIds: [P_B, P_D, P_A, P_C], order: 'simultaneous' },
+    run: { outcomes: { [P_D]: spoke(M(22)), [P_B]: spoke(M(23)), [P_C]: spoke(M(24)), [P_A]: spoke(M(25)) } },
   },
   // Simultaneous with no Simple / Lookup seat: nothing concurrent, the whole
   // run is the sequential tail (Tier 1 runs it).
@@ -254,6 +265,52 @@ const CASES: Case[] = [
     name: 'refuse-chat-missing-keep-order',
     round: { id: R(22), chatId: CHAT_GONE, status: 'open', bids: [bid(P_A, 'simple')] },
     plan: { chatId: CHAT_GONE, roundId: R(22), participantIds: [P_A], order: 'sequential', keepOrder: true },
+  },
+  // ── P4.D368: the all-at-once RUN rows (item 4) ──
+  // (a) two Simple seats on ONE profile: both `spokenSince: []`, the second a
+  // `concurrentFollower`; both start before either ends.
+  {
+    name: 'simultaneous-two-simple-one-profile',
+    round: { id: R(23), chatId: CHAT_S, status: 'open', bids: simple3() },
+    plan: { chatId: CHAT_S, roundId: R(23), participantIds: [P_A, P_B], order: 'simultaneous', keepOrder: true },
+    run: { outcomes: { [P_A]: spoke(M(26)), [P_B]: spoke(M(27)) } },
+  },
+  // (c) the cap: five Simple seats on profile 1 + one on profile 2, then an
+  // Act tail — four of profile 1 start, then profile 2's, before any end; the
+  // fifth starts after a finish. The tail's `spokenSince` is COMPLETION order.
+  {
+    name: 'simultaneous-cap-five-on-one-profile-plus-one',
+    round: {
+      id: R(24),
+      chatId: CHAT_G,
+      status: 'open',
+      bids: [1, 2, 3, 4, 5, 6].map((n) => bid(P_G(n), 'simple')).concat([bid(P_G(7), 'act')]),
+    },
+    plan: { chatId: CHAT_G, roundId: R(24), participantIds: [1, 2, 3, 4, 5, 6, 7].map(P_G), order: 'simultaneous', keepOrder: true },
+    run: { outcomes: Object.fromEntries([1, 2, 3, 4, 5, 6, 7].map((n) => [P_G(n), spoke(M(27 + n))])) },
+  },
+  // (d) a concurrent seat YIELDS: ignored — the tail still runs, `ran`.
+  {
+    name: 'simultaneous-concurrent-yield-ignored',
+    round: { id: R(25), chatId: CHAT_S, status: 'open', bids: [bid(P_B, 'simple'), bid(P_C, 'act')] },
+    plan: { chatId: CHAT_S, roundId: R(25), participantIds: [P_B, P_C], order: 'simultaneous', keepOrder: true },
+    run: { outcomes: { [P_B]: { spoke: true, yielded: true, messageId: M(35) }, [P_C]: spoke(M(36)) } },
+  },
+  // (e) a stop DURING the group: every concurrent turn still runs (ONE check
+  // after the group), the tail does not, `stopped`.
+  {
+    name: 'simultaneous-stop-during-group',
+    round: { id: R(26), chatId: CHAT_S, status: 'open', bids: [bid(P_A, 'simple'), bid(P_B, 'simple'), bid(P_C, 'act')] },
+    plan: { chatId: CHAT_S, roundId: R(26), participantIds: [P_A, P_B, P_C], order: 'simultaneous', keepOrder: true },
+    run: { outcomes: { [P_A]: spoke(M(37)), [P_B]: spoke(M(38)), [P_C]: spoke(M(39)) }, stopDuring: P_A },
+  },
+  // (f) no tail: `lastOutcome` is the LAST turn to FINISH (g5, the cap's
+  // second wave), not the plan's last (g6).
+  {
+    name: 'simultaneous-last-outcome-is-last-finished',
+    round: { id: R(27), chatId: CHAT_G, status: 'open', bids: [1, 2, 3, 4, 5, 6].map((n) => bid(P_G(n), 'simple')) },
+    plan: { chatId: CHAT_G, roundId: R(27), participantIds: [1, 2, 3, 4, 5, 6].map(P_G), order: 'simultaneous', keepOrder: true },
+    run: { outcomes: Object.fromEntries([1, 2, 3, 4, 5, 6].map((n) => [P_G(n), spoke(M(39 + n))])) },
   },
 ];
 
