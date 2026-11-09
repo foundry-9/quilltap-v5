@@ -161,11 +161,10 @@ import { parseFrameValue } from '../../core/stream-frames';
 import {
   dismissedHandStatus,
   handStatusFromFloor,
-  isHandUp,
   lowerIfOnlyRaised,
   settleHandAtStreamEnd,
-  type RaisedHandStatus,
 } from '../../chat/raised-hand-status';
+import { isHandUp, type RaisedHandStatus } from '../../chat/raised-hand';
 import type { InterceptArgs } from '../../chat/impersonation-voice/impersonation-voice.state';
 import type { BreadcrumbCharacter, BreadcrumbStoryBackground } from '../../chat/conversation-breadcrumb';
 import { findConversationMatches, type ConversationSearchSource } from '../../chat/conversation-search';
@@ -237,19 +236,6 @@ import {
   bindAbsentMentions,
 } from '../../chat/absent-mentions/absent-mentions.api';
 import { isOffSceneMentionIntroduction } from '../../chat/absent-mentions/off-scene-kinds';
-
-// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds ComposerSend.establishedFact ===
-/** The composer's send, widened by the Deus Ex Machina flag P4.D385 adds (H1b). */
-type ComposerSendH1 = ComposerSend & { establishedFact?: true };
-// === end P4.D384 LANE-REMOVE (C4 H1) ===
-// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds InterceptArgs.establishedFact ===
-/** The impersonation-voice gate's arguments, widened by the fact flag (the gate never rehearses a fact). */
-type InterceptArgsH1 = InterceptArgs & { establishedFact?: boolean };
-// === end P4.D384 LANE-REMOVE (C4 H1) ===
-// === P4.D384 LANE-REMOVE (C4 H1): P4.D385 adds MessageDto.isEstablishedFact ===
-/** The optimistic bubble, widened by the ribbon flag P4.D385's `MessageDto` adds. */
-type MessageDtoH1 = MessageDto & { isEstablishedFact?: true };
-// === end P4.D384 LANE-REMOVE (C4 H1) ===
 
 /**
  * v4 `setImpersonatingParticipantIds(data.impersonatingParticipantIds || [])`
@@ -4014,7 +4000,7 @@ export class SalonConversation {
   // Send + streaming
   // -------------------------------------------------------------------------
 
-  protected send(payload: ComposerSendH1): void {
+  protected send(payload: ComposerSend): void {
     // === P4.D384 (C4 H1, v4 `SalonView.tsx:1943-1947`) ===
     // A fact must be words: an attachment-only established fact is refused
     // before anything is cleared, so the composer keeps the tray (and stays
@@ -4030,7 +4016,7 @@ export class SalonConversation {
     // purpose: an intercepted submit must leave the rolls in state, exactly as
     // v4's does by never reaching `sendMessage` at all. It receives the fact
     // flag (v4's shape — the gate never rehearses a fact).
-    const intercept: InterceptArgsH1 = {
+    const intercept: InterceptArgs = {
       text: payload.content,
       seat: this.rehearsalSeat(),
       seatTarget: this.rehearsalTarget(),
@@ -5153,7 +5139,7 @@ export class SalonConversation {
       speakingAsId,
       this.impersonatingIds(),
     );
-    const bubble: MessageDtoH1 = {
+    const bubble: MessageDto = {
       id: `temp-user-${Date.now()}`,
       role: 'USER',
       content: displayContent,

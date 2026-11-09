@@ -23,7 +23,7 @@ beforeAll(() => {
 
 import { CoreClient } from '../../core/core-client';
 import { coreStreamStub } from '../../core/core-client.testing';
-import type { RaisedHandStatus } from '../../chat/raised-hand-status';
+import type { RaisedHandStatus } from '../../chat/raised-hand';
 import { DocumentModeController } from '../../documents/document-mode';
 import { PageToolbarService } from '../../layout/page-toolbar.service';
 import { MessageList } from '../../chat/message-list';

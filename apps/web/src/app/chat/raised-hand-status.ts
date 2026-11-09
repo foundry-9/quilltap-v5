@@ -11,23 +11,12 @@
  * decline passes without a word, and the toast is gone.
  *
  * Pure: the Salon holds the `RaisedHandStatus | null` signal and applies these.
+ * The type and `isHandUp` are P4.D385's (`chat/raised-hand.ts`).
  *
  * @module chat/raised-hand-status
  */
 
-// === P4.D384 LANE-REMOVE (C4 H2): P4.D385's chat/raised-hand.ts owns this type; the unifier replaces this block with `import type { RaisedHandStatus } from './raised-hand'` ===
-export type RaisedHandStatus =
-  | { kind: 'raised' }
-  | { kind: 'asked'; characterName: string }
-  | { kind: 'yielded'; characterName: string }
-  | { kind: 'declined'; characterName: string }
-  | { kind: 'unasked' }
-// === end P4.D384 LANE-REMOVE (C4 H2) ===
-
-/** The hand is still up: raised, or being put to someone (v4 `isHandUp`). */
-export function isHandUp(status: RaisedHandStatus | null): boolean {
-  return status?.kind === 'raised' || status?.kind === 'asked';
-}
+import { isHandUp, type RaisedHandStatus } from './raised-hand';
 
 /**
  * The stream is over (v4 `settleHandAtStreamEnd`, applied in each stream's

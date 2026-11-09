@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import { isHandUp, type RaisedHandStatus } from './raised-hand';
 import {
   dismissedHandStatus,
   handStatusFromFloor,
-  isHandUp,
   lowerIfOnlyRaised,
   settleHandAtStreamEnd,
-  type RaisedHandStatus,
 } from './raised-hand-status';
 
 /** Every status, once — the machine's whole domain (plus `null`, no hand at all). */
@@ -20,9 +19,9 @@ const ALL: Array<RaisedHandStatus | null> = [
 ];
 
 describe('raised-hand status machine (v4 9eab8d2da)', () => {
-  it('the LANE-REMOVE stand-in carries exactly v4’s five kinds (a drifted stand-in fails here)', () => {
-    // If P4.D385's `chat/raised-hand.ts` type drifts from this one, the union
-    // swap makes this list stop type-checking or stop matching.
+  it('the shared type (chat/raised-hand.ts) carries exactly v4’s five kinds', () => {
+    // If `chat/raised-hand.ts`'s type drifts from v4's five kinds, this list
+    // stops type-checking or stops matching.
     const kinds: Array<RaisedHandStatus['kind']> = ['raised', 'asked', 'yielded', 'declined', 'unasked'];
     expect(ALL.filter((s) => s !== null).map((s) => s!.kind)).toEqual(kinds);
   });
