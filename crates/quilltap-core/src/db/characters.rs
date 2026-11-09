@@ -116,6 +116,8 @@ pub const MANAGED_FIELDS: &[&str] = &[
     "canChooseOutfit",
     "canDrawDiagrams",
     "diagramStyle",
+    // v4 `b09ca46bb` (`schema.ts:251`): the character kind lives in properties.json.
+    "kind",
     "physicalDescription",
     "systemPrompts",
     "scenarios",

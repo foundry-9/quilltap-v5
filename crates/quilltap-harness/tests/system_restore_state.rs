@@ -6176,7 +6176,8 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "properties.json",
             // P4.D349: the backfill writes v4's eight properties keys.
-            Some("{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}"),
+            // === P4.D369 === nine since v4 `b09ca46bb`: `kind` LAST.
+            Some("{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\",\n  \"kind\": \"roleplay\"\n}"),
         ),
         (
             "characters",

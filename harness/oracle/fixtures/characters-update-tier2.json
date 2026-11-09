@@ -38,6 +38,14 @@
     "     the empty-managed defaults on BOTH sides and rewrites the full bag (the",
     "     P4.D29 Epsilon arm for the character vault: absence legitimately seeds;",
     "     a fix that refused on absence would break provisioning). EQUAL.",
+    "  7-16. P4.D369 (v4 b09ca46bb, character kind) — two op kinds:",
+    "     plantProperties (raw bytes through the REAL writeDatabaseDocument) and",
+    "     snapshotProperties (the current properties.json CONTENT, compared",
+    "     byte-exact). (a) a LEGACY 8-key file + {talkativeness} writes nine keys",
+    "     ending kind: roleplay; (b) the same file with kind: assistant + {title}",
+    "     KEEPS assistant (the erasure hazard); (c) {kind: assistant}; (d)",
+    "     {kind: robot} straight through the repository (characterKindOrDefault",
+    "     writes roleplay).",
     "",
     "THE P4.22 DIVERGENCE ARMS (after the ops, in phases — dogfood finding #47):",
     "  plant:   plantedProperties ('{', the dogfood repro's exact bytes) is",
@@ -159,7 +167,17 @@
     { "kind": "deleteProperties" },
     {
       "patch": { "talkativeness": 0.9 }
-    }
+    },
+    {"kind": "plantProperties", "content": "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Eva\"\n  ],\n  \"title\": \"the scholar\",\n  \"firstMessage\": \"Well met.\",\n  \"talkativeness\": 0.7,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}"},
+    { "patch": { "talkativeness": 0.6 } },
+    { "kind": "snapshotProperties" },
+    {"kind": "plantProperties", "content": "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Eva\"\n  ],\n  \"title\": \"the scholar\",\n  \"firstMessage\": \"Well met.\",\n  \"talkativeness\": 0.7,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\",\n  \"kind\": \"assistant\"\n}"},
+    { "patch": { "title": "The Steward" } },
+    { "kind": "snapshotProperties" },
+    { "patch": { "kind": "assistant" } },
+    { "kind": "snapshotProperties" },
+    { "patch": { "kind": "robot" } },
+    { "kind": "snapshotProperties" }
   ],
   "plantedProperties": "{",
   "corruptPatch": { "title": "clobber probe" }

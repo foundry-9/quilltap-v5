@@ -331,8 +331,10 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
     let mut out = obj.clone();
 
     // properties.json → pronouns, aliases, title, firstMessage, talkativeness,
-    // canChooseOutfit, canDrawDiagrams, diagramStyle (v4 `read-overlay.ts:
-    // 170-180` spreads the two diagram keys after `canChooseOutfit`).
+    // canChooseOutfit, canDrawDiagrams, diagramStyle, kind (v4 `read-overlay.ts:
+    // 170-180` spreads the two diagram keys after `canChooseOutfit`, and `kind`
+    // after `diagramStyle` — `b09ca46bb`). Each key overwrites the materialized
+    // one in place, so it appears once.
     if let Some(parsed) = parse_vault_properties(props_raw) {
         let pv = serde_json::to_value(parsed).expect("serialize vault properties");
         for key in [
@@ -344,6 +346,7 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
             "canChooseOutfit",
             "canDrawDiagrams",
             "diagramStyle",
+            "kind",
         ] {
             if let Some(v) = pv.get(key) {
                 out.insert(key.to_string(), v.clone());

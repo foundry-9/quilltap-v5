@@ -38,6 +38,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
+use crate::characters::kind::{kind_or_default, CharacterKind};
 
 /// Build a stable, RFC-4122 **v8**-style UUID from a SHA-256 digest of `source`
 /// — v4 `stableUuidFromString` (`vault-overlay/parsers.ts:154`). v8 is the
@@ -103,7 +104,11 @@ pub struct Pronouns {
 /// `canDrawDiagrams` is the same STRICT optional-with-default `false`;
 /// `diagramStyle` is LENIENT — v4 preprocesses it through
 /// `diagramStyleOrDefault`, so any value reads as `handDrawn` unless it is
-/// exactly `clean` (v4 `6588972d5`).
+/// exactly `clean` (v4 `6588972d5`). `kind` (v4 `b09ca46bb`) is LENIENT for the
+/// same reason: absent (every vault written before kinds existed) or
+/// unrecognized reads as `roleplay` instead of failing the strict parse and
+/// hollowing every field this file owns — so every parse carries `kind` as its
+/// LAST key.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CharacterVaultProperties {
     pub pronouns: Option<Pronouns>,
@@ -118,6 +123,7 @@ pub struct CharacterVaultProperties {
     pub can_draw_diagrams: bool,
     #[serde(rename = "diagramStyle")]
     pub diagram_style: DiagramStyle,
+    pub kind: CharacterKind,
 }
 
 /// `physical-prompts.json`'s validated shape (v4 `CharacterVaultPhysicalPromptsSchema`).
@@ -219,6 +225,10 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
     // every managed field.
     let diagram_style = diagram_style_or_default(obj.get("diagramStyle"));
 
+    // kind (v4 `b09ca46bb`): `z.preprocess(characterKindOrDefault, …)` — LENIENT
+    // like `diagramStyle`, never fails the parse.
+    let kind = kind_or_default(obj.get("kind"));
+
     Some(CharacterVaultProperties {
         pronouns,
         aliases,
@@ -228,6 +238,7 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
         can_choose_outfit,
         can_draw_diagrams,
         diagram_style,
+        kind,
     })
 }
 
@@ -2558,6 +2569,50 @@ pub fn build_wardrobe_item_file(
 mod tests {
     use super::*;
     use crate::test_support::captured;
+
+    /// P4.D369 (v4 `b09ca46bb`, the overlay test's `properties.json —
+    /// character kind` describe): the lenient `kind` arm.
+    const KINDLESS: &str = r#"{"pronouns":null,"aliases":["Lamps"],"title":"The Lamplighter","firstMessage":null,"talkativeness":0.7,"canChooseOutfit":true,"canDrawDiagrams":true,"diagramStyle":"clean"}"#;
+
+    #[test]
+    fn parses_a_file_without_the_key_as_roleplay_hollowing_nothing() {
+        let p = parse_vault_properties(KINDLESS).expect("a kind-less file parses");
+        assert_eq!(p.kind, CharacterKind::Roleplay);
+        assert_eq!(p.aliases, vec!["Lamps".to_string()]);
+        assert_eq!(p.title.as_deref(), Some("The Lamplighter"));
+        assert_eq!(p.talkativeness, 0.7);
+        assert!(p.can_choose_outfit && p.can_draw_diagrams);
+        assert_eq!(p.diagram_style, DiagramStyle::Clean);
+        // `kind` serializes LAST.
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(
+            json.ends_with(r#""diagramStyle":"clean","kind":"roleplay"}"#),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn reads_an_unrecognized_kind_as_roleplay_instead_of_failing_the_parse() {
+        for bad in [
+            r#""robot""#,
+            "null",
+            "5",
+            r#""Assistant""#,
+            r#"" assistant""#,
+            "[]",
+        ] {
+            let raw = KINDLESS.replace("}", &format!(r#","kind":{bad}}}"#));
+            let p = parse_vault_properties(&raw)
+                .unwrap_or_else(|| panic!("{bad} must not fail the parse"));
+            assert_eq!(p.kind, CharacterKind::Roleplay, "{bad}");
+            assert_eq!(p.title.as_deref(), Some("The Lamplighter"), "{bad}");
+        }
+        let raw = KINDLESS.replace("}", r#","kind":"assistant"}"#);
+        assert_eq!(
+            parse_vault_properties(&raw).unwrap().kind,
+            CharacterKind::Assistant
+        );
+    }
 
     #[test]
     fn shape_is_a_v8_uuid() {

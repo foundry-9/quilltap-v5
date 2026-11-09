@@ -242,6 +242,19 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
         "diagramStyle".into(),
         Value::String(crate::characters::diagrams::DEFAULT_DIAGRAM_STYLE.to_string()),
     );
+    // v4 `b09ca46bb` (`character.types.ts:273`): `kind: z.enum(CHARACTER_KINDS)
+    // .default(DEFAULT_CHARACTER_KIND)`, declared right after `diagramStyle`. The
+    // fresh-only `characters."kind"` column is never read (every write strips it
+    // via MANAGED_FIELDS, so it stays at its `DEFAULT 'roleplay'`): materialized
+    // here, overlaid from `properties.json` for a vault-linked character.
+    obj.insert(
+        "kind".into(),
+        Value::String(
+            crate::characters::kind::DEFAULT_CHARACTER_KIND
+                .as_str()
+                .to_string(),
+        ),
+    );
 
     Ok(Value::Object(obj))
 }

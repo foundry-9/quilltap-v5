@@ -93,9 +93,9 @@ const TOP_LEVEL_FOLDERS: &[&str] = &[
 
 /// `JSON.stringify(PROPERTIES_JSON, null, 2)` — the default `properties.json`
 /// content (pronouns/aliases/title/firstMessage/talkativeness/canChooseOutfit/
-/// canDrawDiagrams/diagramStyle — eight keys since v4 `6588972d5`). FIXED bytes
+/// canDrawDiagrams/diagramStyle/kind — nine keys since v4 `b09ca46bb`). FIXED bytes
 /// (they feed the dedup sha); verified against the JS output in the unit tests.
-const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}";
+const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\",\n  \"kind\": \"roleplay\"\n}";
 
 /// `JSON.stringify(PHYSICAL_PROMPTS_JSON, null, 2)` — the default
 /// `physical-prompts.json` content. Note this is the **five-key** scaffold default
@@ -597,6 +597,7 @@ pub fn backfill_character_vault_managed_files(
             vault.can_choose_outfit.unwrap_or(false),
             vault.can_draw_diagrams.unwrap_or(false),
             crate::characters::diagrams::diagram_style_or_default(vault.diagram_style.as_ref()),
+            crate::characters::kind::kind_or_default(vault.kind.as_ref()),
         ),
     )];
     if let Some(metadata) = vault.metadata.as_ref().filter(|m| !m.is_null()) {
@@ -698,6 +699,7 @@ mod tests {
         can_draw_diagrams: bool,
         #[serde(rename = "diagramStyle")]
         diagram_style: crate::characters::diagrams::DiagramStyle,
+        kind: crate::characters::kind::CharacterKind,
     }
 
     #[derive(Serialize)]
@@ -720,6 +722,7 @@ mod tests {
             can_choose_outfit: false,
             can_draw_diagrams: false,
             diagram_style: crate::characters::diagrams::DiagramStyle::HandDrawn,
+            kind: crate::characters::kind::CharacterKind::Roleplay,
         })
         .unwrap();
         assert_eq!(pretty, PROPERTIES_JSON_DEFAULT);
@@ -901,7 +904,8 @@ mod backfill_tests {
                     0.7,
                     false,
                     false,
-                    crate::characters::diagrams::DiagramStyle::HandDrawn
+                    crate::characters::diagrams::DiagramStyle::HandDrawn,
+                    crate::characters::kind::CharacterKind::Roleplay
                 )
                 .as_str()
             )
@@ -948,7 +952,8 @@ mod backfill_tests {
                     0.5,
                     false,
                     false,
-                    crate::characters::diagrams::DiagramStyle::HandDrawn
+                    crate::characters::diagrams::DiagramStyle::HandDrawn,
+                    crate::characters::kind::CharacterKind::Roleplay
                 )
                 .as_str()
             )

@@ -260,7 +260,8 @@ fn characters_scaffold_tier2_matches_oracle() {
 
     // The three seeded JSON files carry the FIXED default content.
     let docs = rows("documents");
-    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}";
+    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\",\n  \"kind\": \"roleplay\"\n}";
+    // P4.D369 (v4 `b09ca46bb`): nine properties keys, `kind` LAST.
     // P4.D349 (v4 `6588972d5` / `b27e5089a`): eight properties keys, and the
     // physical default gains `humanoid: true` (still no `headAndShoulders`).
     let physical_default = "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null,\n  \"humanoid\": true\n}";

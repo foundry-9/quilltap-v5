@@ -18,7 +18,8 @@
 //!
 //!   - **markdown** (`identity`/`description`/`manifesto`/`personality`/
 //!     `exampleDialogues`): `None`/absent value → `""`.
-//!   - **properties** (`pronouns`/`aliases`/`title`/`firstMessage`/`talkativeness`):
+//!   - **properties** (`pronouns`/`aliases`/`title`/`firstMessage`/`talkativeness`/
+//!     `canChooseOutfit`/`canDrawDiagrams`/`diagramStyle`/`kind`):
 //!     read the current `properties.json` (parse; fall back to the empty-managed
 //!     default when GENUINELY ABSENT), overlay only the touched keys, rewrite. The
 //!     untouched keys are preserved — the RMW invariant. A `properties.json` that
@@ -66,6 +67,7 @@ use super::document_store_overlay::OverlayError;
 use super::vault_character_write::{render_physical_prompts_json, render_properties_json};
 use super::DbError;
 use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
+use crate::characters::kind::{kind_or_default, CharacterKind};
 use crate::vault_overlay::{
     build_scenario_file, build_system_prompt_file, parse_vault_physical_prompts,
     parse_vault_properties, sanitize_file_name, CharacterVaultPhysicalPrompts,
@@ -98,8 +100,8 @@ const MARKDOWN_FIELDS: &[(&str, &str)] = &[
     ("exampleDialogues", EXAMPLE_DIALOGUES_MD_PATH),
 ];
 
-/// The eight `properties.json` keys (in literal order — v4 `propsKeys`,
-/// `managed-fields.ts:422-425`, `6588972d5`).
+/// The nine `properties.json` keys (in literal order — v4 `propsKeys`,
+/// `managed-fields.ts:426-429`, `b09ca46bb`).
 const PROPERTY_KEYS: &[&str] = &[
     "pronouns",
     "aliases",
@@ -109,6 +111,7 @@ const PROPERTY_KEYS: &[&str] = &[
     "canChooseOutfit",
     "canDrawDiagrams",
     "diagramStyle",
+    "kind",
 ];
 
 /// Route the managed fields in `patch` to the character's vault and return the
@@ -238,6 +241,22 @@ pub fn apply_document_store_write_overlay(
                 "[VaultOverlay] Writing diagram settings to properties.json"
             );
         }
+        // v4 `b09ca46bb`: `'kind' in patch ? characterKindOrDefault(patch.kind) :
+        // current.kind` — a present `null` reads roleplay; an unrelated patch over
+        // a legacy (kind-less) file WRITES `roleplay` (the lenient read's
+        // default), and over an assistant file KEEPS `assistant`.
+        let kind = if patch.contains_key("kind") {
+            kind_or_default(patch.get("kind"))
+        } else {
+            current.kind
+        };
+        if touched.contains(&"kind") {
+            tracing::debug!(
+                characterId = %character_id,
+                kind = kind.as_str(),
+                "[VaultOverlay] Writing character kind to properties.json"
+            );
+        }
 
         let json = render_properties_json(
             pronouns.as_ref(),
@@ -248,6 +267,7 @@ pub fn apply_document_store_write_overlay(
             can_choose_outfit,
             can_draw_diagrams,
             diagram_style,
+            kind,
         );
         links.write_database_document(&mount_point_id, PROPERTIES_JSON_PATH, &json)?;
         for k in &touched {
@@ -654,6 +674,9 @@ fn empty_properties_default() -> CharacterVaultProperties {
         can_choose_outfit: false,
         can_draw_diagrams: false,
         diagram_style: DiagramStyle::HandDrawn,
+        // v4 seeds `characterKindOrDefault(character.kind)` from the RAW row, whose
+        // kind is always the default (every write strips it — MANAGED_FIELDS).
+        kind: CharacterKind::Roleplay,
     }
 }
 
@@ -970,5 +993,208 @@ mod p4d349_log_tests {
         assert!(l.contains(&format!("characterId={CHAR_A}")), "{l}");
         assert!(l.contains("canDrawDiagrams=true"), "{l}");
         assert!(l.contains("diagramStyle=handDrawn"), "{l}");
+    }
+}
+
+#[cfg(test)]
+mod p4d369_kind_tests {
+    //! P4.D369 (v4 `b09ca46bb`): the `kind` arm of the properties.json
+    //! read-modify-write — v4's overlay test's `properties.json — character
+    //! kind` describe — and the NEW `[VaultOverlay] Writing character kind to
+    //! properties.json` DEBUG (`managed-fields.ts:481-486`, `{characterId,
+    //! kind}`), capture-pinned with its silence leg. Fires on the caller thread.
+    use super::*;
+    use crate::db::Writer;
+    use crate::test_support::captured_with;
+    use serde_json::json;
+
+    const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR_A: &str = "a1000000-0000-4000-8000-0000000000a1";
+    const KIND_LINE: &str = "[VaultOverlay] Writing character kind to properties.json";
+    const DIAGRAM_LINE: &str = "[VaultOverlay] Writing diagram settings to properties.json";
+    /// A properties.json written before kinds existed (v4 `6588972d5`'s eight keys).
+    const LEGACY: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [\n    \"Lamps\"\n  ],\n  \"title\": \"The Lamplighter\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.7,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}";
+
+    fn open_pair(dir: &tempfile::TempDir) -> (Writer, Writer) {
+        let fx = |n: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../quilltap-web/tests/fixtures")
+                .join(n)
+        };
+        let main = dir.path().join("main.db");
+        let mount = dir.path().join("mount.db");
+        std::fs::copy(fx("subprompts-main.db"), &main).unwrap();
+        std::fs::copy(fx("subprompts-mount.db"), &mount).unwrap();
+        (
+            Writer::open_writable(&main, TEST_PEPPER).unwrap(),
+            Writer::open_writable(&mount, TEST_PEPPER).unwrap(),
+        )
+    }
+
+    fn patch(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    fn plant(mount: &Connection, mp: &str, content: &str) {
+        DocMountFileLinksRepository::new(mount)
+            .write_database_document(mp, PROPERTIES_JSON_PATH, content)
+            .unwrap();
+    }
+
+    fn props(mount: &Connection, mp: &str) -> String {
+        DocMountDocumentsRepository::new(mount)
+            .find_by_mount_point_and_path(mp, PROPERTIES_JSON_PATH)
+            .unwrap()
+            .unwrap()
+    }
+
+    fn update(main: &Writer, mount: &Writer, p: Value) -> Vec<String> {
+        captured_with(|| {
+            update_character(main.connection(), mount.connection(), CHAR_A, &patch(p)).unwrap()
+        })
+        .1
+    }
+
+    #[test]
+    fn an_unrelated_patch_over_a_legacy_file_writes_the_default_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let mp = read_vault_fk(main.connection(), CHAR_A).unwrap().unwrap();
+        plant(mount.connection(), &mp, LEGACY);
+
+        let lines = update(&main, &mount, json!({"talkativeness": 0.6}));
+        let want = LEGACY.replace("0.7", "0.6").replace(
+            "\"handDrawn\"\n}",
+            "\"handDrawn\",\n  \"kind\": \"roleplay\"\n}",
+        );
+        assert_eq!(props(mount.connection(), &mp), want, "nine keys, kind LAST");
+        assert!(
+            !lines.iter().any(|l| l.contains(KIND_LINE)),
+            "an untouched kind is silent: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn an_unrelated_patch_keeps_an_assistant_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let mp = read_vault_fk(main.connection(), CHAR_A).unwrap().unwrap();
+        let assistant = LEGACY.replace(
+            "\"handDrawn\"\n}",
+            "\"handDrawn\",\n  \"kind\": \"assistant\"\n}",
+        );
+        plant(mount.connection(), &mp, &assistant);
+
+        // The erasure hazard: before b09ca46bb every v5 write dropped the key.
+        for p in [
+            json!({"title": "The Steward"}),
+            json!({"talkativeness": 0.9}),
+        ] {
+            let lines = update(&main, &mount, p.clone());
+            assert!(
+                props(mount.connection(), &mp).ends_with("\"kind\": \"assistant\"\n}"),
+                "{p}: {}",
+                props(mount.connection(), &mp)
+            );
+            assert!(
+                !lines.iter().any(|l| l.contains(KIND_LINE)),
+                "{p} leaves kind untouched and is silent: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_kind_patch_writes_only_that_key_and_keeps_every_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let mp = read_vault_fk(main.connection(), CHAR_A).unwrap().unwrap();
+        plant(mount.connection(), &mp, LEGACY);
+        let slim_before: String = main
+            .connection()
+            .query_row(
+                "SELECT updatedAt FROM characters WHERE id = ?1",
+                [CHAR_A],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        let lines = update(&main, &mount, json!({"kind": "assistant"}));
+        let want = LEGACY.replace(
+            "\"handDrawn\"\n}",
+            "\"handDrawn\",\n  \"kind\": \"assistant\"\n}",
+        );
+        assert_eq!(props(mount.connection(), &mp), want);
+        let l = lines
+            .iter()
+            .find(|l| l.contains(KIND_LINE))
+            .unwrap_or_else(|| panic!("no kind line in {lines:?}"));
+        assert!(l.contains("DEBUG"), "{l}");
+        assert!(l.contains(&format!("characterId={CHAR_A}")), "{l}");
+        assert!(l.contains("kind=assistant"), "{l}");
+
+        // MANAGED_FIELDS strips it: a kind-only patch never reaches the slim row.
+        let slim_after: String = main
+            .connection()
+            .query_row(
+                "SELECT updatedAt FROM characters WHERE id = ?1",
+                [CHAR_A],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(slim_before, slim_after, "the slim row was not touched");
+
+        // A bad value through the repository reads roleplay (v4's
+        // `characterKindOrDefault(patch.kind)`), and so does a present null.
+        for bad in [json!("robot"), json!(null), json!("Assistant")] {
+            plant(mount.connection(), &mp, &want);
+            let lines = update(&main, &mount, json!({ "kind": bad }));
+            assert!(
+                props(mount.connection(), &mp).ends_with("\"kind\": \"roleplay\"\n}"),
+                "{bad}"
+            );
+            assert!(
+                lines
+                    .iter()
+                    .any(|l| l.contains(KIND_LINE) && l.contains("kind=roleplay")),
+                "{bad}: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_kind_line_follows_the_diagram_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let lines = update(
+            &main,
+            &mount,
+            json!({"diagramStyle": "clean", "kind": "assistant"}),
+        );
+        let d = lines
+            .iter()
+            .position(|l| l.contains(DIAGRAM_LINE))
+            .unwrap_or_else(|| panic!("no diagram line in {lines:?}"));
+        let k = lines
+            .iter()
+            .position(|l| l.contains(KIND_LINE))
+            .unwrap_or_else(|| panic!("no kind line in {lines:?}"));
+        assert!(d < k, "v4 logs the diagram line first: {lines:?}");
+        assert_eq!(
+            lines.iter().filter(|l| l.contains(KIND_LINE)).count(),
+            1,
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn an_absent_file_seeds_the_default_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let mp = read_vault_fk(main.connection(), CHAR_A).unwrap().unwrap();
+        DocMountFileLinksRepository::new(mount.connection())
+            .delete_database_document(&mp, PROPERTIES_JSON_PATH)
+            .unwrap();
+        update(&main, &mount, json!({"title": "Seeded"}));
+        assert!(props(mount.connection(), &mp).ends_with("\"kind\": \"roleplay\"\n}"));
     }
 }

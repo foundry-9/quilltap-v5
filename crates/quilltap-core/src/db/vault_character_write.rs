@@ -6,7 +6,9 @@
 //!
 //! It writes (in v4's exact order):
 //!   1. `properties.json` — `{ pronouns, aliases, title, firstMessage, talkativeness,
-//!      canChooseOutfit }` as `JSON.stringify(.,null,2)`.
+//!      canChooseOutfit, canDrawDiagrams, diagramStyle, kind }` as
+//!      `JSON.stringify(.,null,2)` (nine keys since v4 `b09ca46bb`; `kind` LAST,
+//!      through `characterKindOrDefault`).
 //!   2. `metadata.json` — the fact sheet, **only when `metadata != null`** (the
 //!      anti-clobber guard: `metadata` has no DB column, so a raw row's absent
 //!      metadata must not overwrite a real fact sheet with `{}`).
@@ -41,6 +43,7 @@ use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::DbError;
 use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
+use crate::characters::kind::{kind_or_default, CharacterKind};
 use crate::vault_overlay::{build_scenario_file, build_system_prompt_file, sanitize_file_name};
 
 use super::vault_wardrobe_write::{project_array_into_vault_folder, ProjectArrayOptions};
@@ -147,6 +150,14 @@ pub struct CharacterVaultWriteInput {
     /// `clean` writes `handDrawn`).
     #[serde(default)]
     pub diagram_style: Option<Value>,
+    /// The character kind, RAW (vault `properties.json`, rendered through v4's
+    /// lenient `characterKindOrDefault` on write — anything but `roleplay` /
+    /// `assistant` writes `roleplay`; v4 `b09ca46bb`). v4's
+    /// `readCharacterVaultManagedFields` also snapshots `kind`
+    /// (`managed-fields.ts:99`); v5 has no snapshot reader, so that line is
+    /// NO-COUNTERPART.
+    #[serde(default)]
+    pub kind: Option<Value>,
     /// The freeform fact sheet (`metadata.json`). Has NO DB column — a raw
     /// character row simply cannot carry it, so `None` (absent) means "no
     /// opinion", NOT "empty". The write is guarded on `!= null` (see
@@ -213,9 +224,10 @@ fn serialize_js_number<S: Serializer>(value: &f64, s: S) -> Result<S::Ok, S::Err
 
 /// `properties.json` shape — keys in v4's literal order; every key is always
 /// emitted (`null` when absent), never skipped. `canChooseOutfit`,
-/// `canDrawDiagrams` and `diagramStyle` close the object (v4's write defaults
-/// `?? false` / `?? false` / `diagramStyleOrDefault`), matching v4's key order —
-/// EIGHT keys since `6588972d5`.
+/// `canDrawDiagrams`, `diagramStyle` and `kind` close the object (v4's write
+/// defaults `?? false` / `?? false` / `diagramStyleOrDefault` /
+/// `characterKindOrDefault`), matching v4's key order — NINE keys since
+/// `b09ca46bb`.
 #[derive(Serialize)]
 struct PropertiesJson<'a> {
     pronouns: Option<&'a Pronouns>,
@@ -231,6 +243,7 @@ struct PropertiesJson<'a> {
     can_draw_diagrams: bool,
     #[serde(rename = "diagramStyle")]
     diagram_style: DiagramStyle,
+    kind: CharacterKind,
 }
 
 /// `physical-prompts.json` shape — v4 `renderPhysicalPromptsJson`. Six keys,
@@ -253,7 +266,7 @@ struct PhysicalPromptsJson<'a> {
 /// `PropertiesJson` shape (literal key order) + the `talkativeness` js-number rule,
 /// so the bytes match the unconditional create-time writer's. `pub` for
 /// [`super::vault_character_update`].
-#[allow(clippy::too_many_arguments)] // one parameter per properties.json key (v4's eight)
+#[allow(clippy::too_many_arguments)] // one parameter per properties.json key (v4's nine)
 pub fn render_properties_json(
     pronouns: Option<&Pronouns>,
     aliases: &[String],
@@ -263,6 +276,7 @@ pub fn render_properties_json(
     can_choose_outfit: bool,
     can_draw_diagrams: bool,
     diagram_style: DiagramStyle,
+    kind: CharacterKind,
 ) -> String {
     let props = PropertiesJson {
         pronouns,
@@ -273,6 +287,7 @@ pub fn render_properties_json(
         can_choose_outfit,
         can_draw_diagrams,
         diagram_style,
+        kind,
     };
     serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible")
 }
@@ -310,7 +325,7 @@ pub fn write_character_vault_managed_fields(
 ) -> Result<WriteResult, DbError> {
     let mut result = WriteResult::default();
 
-    // 1. properties.json (pretty JSON; all eight keys always present).
+    // 1. properties.json (pretty JSON; all nine keys always present).
     let props = PropertiesJson {
         pronouns: character.pronouns.as_ref(),
         aliases: &character.aliases,
@@ -320,6 +335,9 @@ pub fn write_character_vault_managed_fields(
         can_choose_outfit: character.can_choose_outfit.unwrap_or(false),
         can_draw_diagrams: character.can_draw_diagrams.unwrap_or(false),
         diagram_style: diagram_style_or_default(character.diagram_style.as_ref()),
+        // v4 `managed-fields.ts:238`: `kind: characterKindOrDefault(character.kind)`,
+        // written LAST.
+        kind: kind_or_default(character.kind.as_ref()),
     };
     let props_json =
         serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible");
@@ -455,11 +473,12 @@ mod tests {
             can_choose_outfit: input.can_choose_outfit.unwrap_or(false),
             can_draw_diagrams: input.can_draw_diagrams.unwrap_or(false),
             diagram_style: diagram_style_or_default(input.diagram_style.as_ref()),
+            kind: kind_or_default(input.kind.as_ref()),
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
         assert_eq!(
             json,
-            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}"
+            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\",\n  \"kind\": \"roleplay\"\n}"
         );
     }
 
@@ -475,6 +494,7 @@ mod tests {
             can_choose_outfit: false,
             can_draw_diagrams: false,
             diagram_style: DiagramStyle::HandDrawn,
+            kind: CharacterKind::Roleplay,
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
         // `canChooseOutfit` follows `talkativeness`, so the line ends with a comma.

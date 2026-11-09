@@ -49,8 +49,10 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind?: 'update' | 'deleteProperties';
+  kind?: 'update' | 'deleteProperties' | 'plantProperties' | 'snapshotProperties';
   patch?: Record<string, unknown>;
+  /** plantProperties: the raw bytes written through the REAL writeDatabaseDocument. */
+  content?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -113,17 +115,35 @@ async function main(): Promise<void> {
   const mountPointId = fkRow[0]?.mp;
   if (!mountPointId) throw new Error('fixture character has no vault FK');
 
-  // Phase 1: the ops under test.
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('mount-index DB handle unavailable (degraded open?)');
+  const currentProperties = (): string | null => {
+    const row = midb
+      .prepare(
+        `SELECT d.content AS content FROM doc_mount_file_links l
+          JOIN doc_mount_documents d ON d.fileId = l.fileId
+         WHERE l.mountPointId = ? AND l.relativePath = 'properties.json'`
+      )
+      .get(mountPointId) as { content: string } | undefined;
+    return row ? row.content : null;
+  };
+
+  // Phase 1: the ops under test. P4.D369 (v4 `b09ca46bb`) adds two op kinds:
+  // `plantProperties` (raw bytes through the REAL writeDatabaseDocument) and
+  // `snapshotProperties` (the current properties.json CONTENT, compared
+  // byte-exact by the harness — the character-kind erasure arm).
+  const snapshots: Array<string | null> = [];
   for (const op of spec.ops) {
     if (op.kind === 'deleteProperties') {
       await deleteDatabaseDocument(mountPointId, 'properties.json');
+    } else if (op.kind === 'plantProperties') {
+      await writeDatabaseDocument(mountPointId, 'properties.json', op.content as string);
+    } else if (op.kind === 'snapshotProperties') {
+      snapshots.push(currentProperties());
     } else {
       await repos.characters.update(characterId, op.patch as never);
     }
   }
-
-  const midb = getRawMountIndexDatabase();
-  if (!midb) throw new Error('mount-index DB handle unavailable (degraded open?)');
 
   const dumpMountTable = (table: string, orderBy: string) => {
     const columns = (
@@ -171,14 +191,7 @@ async function main(): Promise<void> {
   } catch (err) {
     message = err instanceof Error ? err.message : String(err);
   }
-  const propsRow = midb
-    .prepare(
-      `SELECT d.content AS content FROM doc_mount_file_links l
-        JOIN doc_mount_documents d ON d.fileId = l.fileId
-       WHERE l.mountPointId = ? AND l.relativePath = 'properties.json'`
-    )
-    .get(mountPointId) as { content: string } | undefined;
-  const finalProperties = propsRow ? propsRow.content : null;
+  const finalProperties = currentProperties();
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
@@ -186,6 +199,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     JSON.stringify({
       case: 'characters-update-tier2',
+      snapshots,
       afterOps,
       postPlant,
       corrupt: { message, finalProperties },

@@ -83,13 +83,19 @@ struct Spec {
 }
 
 /// An op: `kind` absent/`"update"` → apply `patch`; `"deleteProperties"` →
-/// remove the vault's `properties.json` (the genuine-absence arm).
+/// remove the vault's `properties.json` (the genuine-absence arm);
+/// `"plantProperties"` → write `content` through the REAL
+/// `write_database_document`; `"snapshotProperties"` → record the current
+/// `properties.json` CONTENT (compared byte-exact — P4.D369, the character-kind
+/// erasure arm).
 #[derive(Deserialize)]
 struct Op {
     #[serde(default)]
     kind: Option<String>,
     #[serde(default)]
     patch: Option<Map<String, Value>>,
+    #[serde(default)]
+    content: Option<String>,
 }
 
 struct TableSpec {
@@ -344,8 +350,21 @@ fn characters_update_tier2_matches_oracle() {
         .expect("read baked character id + vault FK");
 
     // Phase 1: the ops under test.
+    let mut snapshots: Vec<Option<String>> = Vec::new();
     for (i, op) in spec.ops.iter().enumerate() {
         match op.kind.as_deref() {
+            Some("plantProperties") => {
+                let content = op
+                    .content
+                    .as_deref()
+                    .unwrap_or_else(|| panic!("op {i}: plantProperties without content"));
+                DocMountFileLinksRepository::new(mount.connection())
+                    .write_database_document(&mount_point_id, "properties.json", content)
+                    .unwrap_or_else(|e| panic!("op {i} plantProperties: {e}"));
+            }
+            Some("snapshotProperties") => {
+                snapshots.push(read_properties_content(&mount, &mount_point_id));
+            }
             Some("deleteProperties") => {
                 DocMountFileLinksRepository::new(mount.connection())
                     .delete_database_document(&mount_point_id, "properties.json")
@@ -361,6 +380,28 @@ fn characters_update_tier2_matches_oracle() {
             }
             Some(other) => panic!("op {i}: unknown kind {other}"),
         }
+    }
+    // The properties.json snapshots, BYTE-exact (the raw content strings, never
+    // a parsed `Map ==`, which is key-order blind).
+    let want_snapshots: Vec<Option<String>> = oracle["snapshots"]
+        .as_array()
+        .unwrap_or_else(|| panic!("oracle missing snapshots (regenerate it)"))
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect();
+    assert_eq!(
+        snapshots.len(),
+        want_snapshots.len(),
+        "snapshot count diverged (v5 {} / v4 {})",
+        snapshots.len(),
+        want_snapshots.len()
+    );
+    assert!(!snapshots.is_empty(), "no properties.json snapshots taken");
+    for (i, (got, want)) in snapshots.iter().zip(&want_snapshots).enumerate() {
+        assert_eq!(
+            got, want,
+            "properties.json snapshot {i} diverged\n  rust:   {got:?}\n  oracle: {want:?}"
+        );
     }
     diff_snapshot(
         "afterOps",

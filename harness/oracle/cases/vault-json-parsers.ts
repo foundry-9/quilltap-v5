@@ -201,6 +201,15 @@ propsCase('p-can-draw-true', J({ ...baseProps, canDrawDiagrams: true, diagramSty
 propsCase('p-can-draw-string-true', J({ ...baseProps, canDrawDiagrams: 'true' }));
 propsCase('p-can-draw-null', J({ ...baseProps, canDrawDiagrams: null }));
 
+// P4.D369 (v4 `b09ca46bb`): `kind` is LENIENT through `characterKindOrDefault`
+// — anything but exactly `roleplay` / `assistant` reads `roleplay`, never fails
+// the parse (an absent key is every row above: they all gain `kind: roleplay`).
+propsCase('p-kind-assistant', J({ ...baseProps, kind: 'assistant' }));
+propsCase('p-kind-robot', J({ ...baseProps, kind: 'robot' }));
+propsCase('p-kind-null', J({ ...baseProps, kind: null }));
+propsCase('p-kind-number', J({ ...baseProps, kind: 5 }));
+propsCase('p-kind-mixed-case', J({ ...baseProps, kind: 'Assistant' }));
+
 // ── parseVaultPhysicalPrompts ──────────────────────────────────────────────
 physCase(
   'ph-full',
