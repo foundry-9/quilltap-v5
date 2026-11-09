@@ -1,0 +1,7 @@
+// P4.D369 evasion fixture — a `match` on the raw field with a kind-literal arm.
+pub fn preamble(character: &Value) -> &'static str {
+    match character["kind"].as_str() {
+        Some("assistant") => ASSISTANT_RULES,
+        _ => ROLEPLAY_RULES,
+    }
+}

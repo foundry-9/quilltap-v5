@@ -1,0 +1,5 @@
+// P4.D369 evasion fixture — `matches!` over the raw field, which the `==`
+// arm alone would not see.
+pub fn is_helper(character: &Value) -> bool {
+    matches!(character.get("kind").and_then(Value::as_str), Some("assistant"))
+}

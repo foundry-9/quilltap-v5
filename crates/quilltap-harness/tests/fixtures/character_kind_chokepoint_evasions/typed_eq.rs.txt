@@ -1,0 +1,5 @@
+// P4.D369 evasion fixture — a typed comparison: the enum compared outside
+// kind.rs instead of branching on a `KindPolicy` field.
+pub fn wants_final_response(character: &Value) -> bool {
+    resolve_character_kind(Some(character)) == CharacterKind::Assistant
+}

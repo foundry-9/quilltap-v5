@@ -1,0 +1,5 @@
+// P4.D369 evasion fixture — a hand comparison of the raw `kind` field against
+// a kind literal (v4's `character.kind === 'assistant'`).
+pub fn is_helper(character: &Value) -> bool {
+    character.get("kind").and_then(Value::as_str) == Some("assistant")
+}

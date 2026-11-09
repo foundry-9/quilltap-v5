@@ -1,0 +1,8 @@
+// P4.D369 evasion fixture — a `match` on the enum outside kind.rs: a third
+// kind would land here as a silent fallthrough instead of in kind.rs alone.
+pub fn direction(kind: CharacterKind) -> &'static str {
+    match kind {
+        CharacterKind::Assistant => TASK,
+        _ => STAKES,
+    }
+}
