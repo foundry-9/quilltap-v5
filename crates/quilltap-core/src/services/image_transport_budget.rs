@@ -615,46 +615,12 @@ pub fn plan_image_transport<M: AttachmentBearingMessage>(
     messages: &[M],
     policy: &ImageTransportPolicy,
 ) -> Vec<Vec<Option<TransportVerdict>>> {
-    struct Located {
-        mi: usize,
-        ai: usize,
-        rank: u8,
-        created_at: i64,
-        cost: usize,
-    }
-
     let mut grid: Vec<Vec<Option<TransportVerdict>>> = messages
         .iter()
         .map(|m| vec![None; m.attachments().len()])
         .collect();
-    let mut receivable_images: Vec<Located> = Vec::new();
-
-    for (mi, message) in messages.iter().enumerate() {
-        for (ai, attachment) in message.attachments().iter().enumerate() {
-            let Some(mime) = loaded_mime(attachment) else {
-                continue;
-            };
-            if !policy.can_receive(mime) {
-                grid[mi][ai] = Some(TransportVerdict::Capability);
-            } else if mime.starts_with("image/") {
-                let tag = read_tag(attachment);
-                receivable_images.push(Located {
-                    mi,
-                    ai,
-                    rank: tag.map_or(UNTAGGED_RANK, |t| t.origin.rank()),
-                    created_at: tag.map_or(0, |t| t.created_at),
-                    cost: base64_bytes(attachment),
-                });
-            } else {
-                grid[mi][ai] = Some(TransportVerdict::Keep);
-            }
-        }
-    }
-
-    receivable_images.sort_by(|a, b| {
-        a.rank
-            .cmp(&b.rank)
-            .then_with(|| b.created_at.cmp(&a.created_at))
+    let receivable_images = rank_receivable_images(messages, policy, |mi, ai, verdict| {
+        grid[mi][ai] = Some(verdict);
     });
 
     let mut kept: i64 = 0;
@@ -679,6 +645,56 @@ pub fn plan_image_transport<M: AttachmentBearingMessage>(
     grid
 }
 
+/// One receivable image in the ranked walk: its position, rank keys and cost.
+struct RankedImage {
+    mi: usize,
+    ai: usize,
+    rank: u8,
+    created_at: i64,
+    cost: usize,
+}
+
+/// The ONE collection + ranking both [`plan_image_transport`] and
+/// [`ranked_image_positions`] read — v4 `rankImages` over the receivable
+/// images. Every other loaded attachment's verdict (`Capability` when the
+/// profile cannot receive it, `Keep` for a receivable non-image) is handed to
+/// `other` as it is met; an entry that is not a loaded attachment is skipped.
+/// The sort is STABLE, so array order is the last key.
+fn rank_receivable_images<M: AttachmentBearingMessage>(
+    messages: &[M],
+    policy: &ImageTransportPolicy,
+    mut other: impl FnMut(usize, usize, TransportVerdict),
+) -> Vec<RankedImage> {
+    let mut receivable_images: Vec<RankedImage> = Vec::new();
+    for (mi, message) in messages.iter().enumerate() {
+        for (ai, attachment) in message.attachments().iter().enumerate() {
+            let Some(mime) = loaded_mime(attachment) else {
+                continue;
+            };
+            if !policy.can_receive(mime) {
+                other(mi, ai, TransportVerdict::Capability);
+            } else if mime.starts_with("image/") {
+                let tag = read_tag(attachment);
+                receivable_images.push(RankedImage {
+                    mi,
+                    ai,
+                    rank: tag.map_or(UNTAGGED_RANK, |t| t.origin.rank()),
+                    created_at: tag.map_or(0, |t| t.created_at),
+                    cost: base64_bytes(attachment),
+                });
+            } else {
+                other(mi, ai, TransportVerdict::Keep);
+            }
+        }
+    }
+    receivable_images.sort_by(|a, b| {
+        a.rank
+            .cmp(&b.rank)
+            .then_with(|| b.created_at.cmp(&a.created_at))
+    });
+    receivable_images
+}
+
 /// The order of `plan_image_transport`'s ranked walk, as `(message, attachment)`
 /// positions — v4 `rankImages` projected for the tier-1 differential. Only
 /// receivable images are ranked.
@@ -686,25 +702,10 @@ pub fn ranked_image_positions<M: AttachmentBearingMessage>(
     messages: &[M],
     policy: &ImageTransportPolicy,
 ) -> Vec<(usize, usize)> {
-    let mut located: Vec<(usize, usize, u8, i64)> = Vec::new();
-    for (mi, message) in messages.iter().enumerate() {
-        for (ai, attachment) in message.attachments().iter().enumerate() {
-            let Some(mime) = loaded_mime(attachment) else {
-                continue;
-            };
-            if policy.can_receive(mime) && mime.starts_with("image/") {
-                let tag = read_tag(attachment);
-                located.push((
-                    mi,
-                    ai,
-                    tag.map_or(UNTAGGED_RANK, |t| t.origin.rank()),
-                    tag.map_or(0, |t| t.created_at),
-                ));
-            }
-        }
-    }
-    located.sort_by(|a, b| a.2.cmp(&b.2).then_with(|| b.3.cmp(&a.3)));
-    located.into_iter().map(|(mi, ai, _, _)| (mi, ai)).collect()
+    rank_receivable_images(messages, policy, |_, _, _| {})
+        .into_iter()
+        .map(|img| (img.mi, img.ai))
+        .collect()
 }
 
 fn entry_for(
