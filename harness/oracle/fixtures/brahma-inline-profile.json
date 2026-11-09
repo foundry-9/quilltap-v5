@@ -1,0 +1,55 @@
+{
+  "$comment": "P4.D374 (v4 c539c82e0) — resolveInlineBrahmaConnectionProfile's three-step chain (project → global → default). The builder bakes the users / profiles / projects / chats below through v4's REAL repositories; each case writes (or deletes) instance_settings['brahmaConsole'] and resolves for (userId, chatId). Ids are SEEDED (RFC uuids) so both sides read the same rows.",
+  "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+  "provider": "ANTHROPIC",
+  "modelName": "claude-inline-fixture-model",
+  "users": {
+    "main": "b1000000-0000-4000-8000-000000000001",
+    "other": "b1000000-0000-4000-8000-000000000002",
+    "bare": "b1000000-0000-4000-8000-000000000003"
+  },
+  "profiles": [
+    { "id": "b2000000-0000-4000-8000-000000000001", "user": "main", "name": "Main Default", "isDefault": true },
+    { "id": "b2000000-0000-4000-8000-000000000002", "user": "main", "name": "Project Inline", "isDefault": false },
+    { "id": "b2000000-0000-4000-8000-000000000003", "user": "main", "name": "Global Inline", "isDefault": false },
+    { "id": "b2000000-0000-4000-8000-000000000004", "user": "other", "name": "Somebody Else", "isDefault": true }
+  ],
+  "missingProfileId": "b2000000-0000-4000-8000-0000000000ff",
+  "projects": [
+    { "label": "set", "name": "Inline Set", "brahmaConnectionProfileId": "b2000000-0000-4000-8000-000000000002" },
+    { "label": "stale", "name": "Inline Stale", "brahmaConnectionProfileId": "b2000000-0000-4000-8000-0000000000ff" },
+    { "label": "foreign", "name": "Inline Foreign", "brahmaConnectionProfileId": "b2000000-0000-4000-8000-000000000004" },
+    { "label": "null", "name": "Inline Null", "brahmaConnectionProfileId": null },
+    { "label": "absent", "name": "Inline Absent" },
+    { "label": "broken", "name": "Inline Broken", "brahmaConnectionProfileId": "b2000000-0000-4000-8000-000000000002", "corruptProperties": "{ not json" }
+  ],
+  "chats": [
+    { "id": "b3000000-0000-4000-8000-000000000001", "user": "main", "project": "set" },
+    { "id": "b3000000-0000-4000-8000-000000000002", "user": "main", "project": "stale" },
+    { "id": "b3000000-0000-4000-8000-000000000003", "user": "main", "project": "foreign" },
+    { "id": "b3000000-0000-4000-8000-000000000004", "user": "main", "project": "null" },
+    { "id": "b3000000-0000-4000-8000-000000000005", "user": "main", "project": "absent" },
+    { "id": "b3000000-0000-4000-8000-000000000006", "user": "main", "project": "broken" },
+    { "id": "b3000000-0000-4000-8000-000000000007", "user": "main", "project": null },
+    { "id": "b3000000-0000-4000-8000-000000000008", "user": "bare", "project": null }
+  ],
+  "cases": [
+    { "name": "project_used", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000001", "setting": null },
+    { "name": "project_used_over_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000001", "setting": "{\"maxAgentTurns\":50,\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "project_stale_then_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000002", "setting": "{\"maxAgentTurns\":50,\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "project_stale_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000002", "setting": null },
+    { "name": "project_foreign_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000003", "setting": null },
+    { "name": "project_null_then_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000004", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "project_absent_then_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000005", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "project_read_failure_then_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000006", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "no_project_global", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": "{\"maxAgentTurns\":120,\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "no_project_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": null },
+    { "name": "global_stale_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-0000000000ff\"}" },
+    { "name": "global_foreign_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000004\"}" },
+    { "name": "global_null_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": "{\"maxAgentTurns\":50,\"inlineConnectionProfileId\":null}" },
+    { "name": "global_invalid_setting_then_default", "user": "main", "chatId": "b3000000-0000-4000-8000-000000000007", "setting": "{\"maxAgentTurns\":50,\"inlineConnectionProfileId\":\"nope\"}" },
+    { "name": "missing_chat_then_global", "user": "main", "chatId": "b3000000-0000-4000-8000-0000000000aa", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" },
+    { "name": "no_default_profile", "user": "bare", "chatId": "b3000000-0000-4000-8000-000000000008", "setting": null },
+    { "name": "no_default_profile_global_foreign", "user": "bare", "chatId": "b3000000-0000-4000-8000-000000000008", "setting": "{\"inlineConnectionProfileId\":\"b2000000-0000-4000-8000-000000000003\"}" }
+  ]
+}

@@ -40,6 +40,9 @@
 //! resolver seam is needed (both differential sides read the same fixture; the
 //! plaintext key value never reaches the diffed surface — the stream is canned).
 
+// === P4.D374 === v4 `c539c82e0`: the inline `@Brahma` profile chain.
+pub mod inline_profile;
+// === /P4.D374 ===
 pub mod orchestrator;
 pub mod prompt_text;
 pub mod turn_budget;
@@ -188,9 +191,15 @@ where
     TR: ToolRunner,
     TD: ToolCallDetector,
 {
-    // 1. Profile (model): the user's default — no per-chat console profile from a
-    //    Salon.
-    let Some(profile) = resolve_brahma_connection_profile(deps.db, user_id, None) else {
+    // === P4.D374 === v4 `c539c82e0` (`one-shot.service.ts:70-75`):
+    // 1. Profile (model): project override → global inline setting → the user's
+    //    default. The standalone Console's per-chat picker does not apply here.
+    //    `None` only when no step resolves (see `inline_profile`'s module doc:
+    //    every read on the chain is a v4 fallback, so nothing propagates).
+    let Some(profile) =
+        inline_profile::resolve_inline_brahma_connection_profile(deps.db, user_id, chat_id)
+    else {
+        // === /P4.D374 ===
         tracing::debug!(chatId = %chat_id, "No connection profile resolvable for Brahma query");
         return fail("no-profile");
     };

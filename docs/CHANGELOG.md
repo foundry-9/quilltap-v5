@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(brahma): inline @Brahma resolves its profile project → global → default with v4's lines (P4.D374)
+
+_Versions: core 0.0.1437._
+
+P4.D374 Tier 1 item 16. New `services/brahma_console/inline_profile.rs` ports v4's `resolveInlineBrahmaConnectionProfile`: the chat's project profile, then the instance-wide `inlineConnectionProfileId`, then the user's default. Each configured profile must exist and belong to the user, or v4's WARN `Inline Brahma connection profile no longer exists; falling through` logs. The three DEBUG lines name the step that answered, and the default step logs `profileId: null` when there is none. `run_brahma_query` (inline `@Brahma` from a Salon) uses it for step 1; the standalone console keeps `resolve_brahma_connection_profile`. Measured at the pin: every read here is a v4 fallback read, so nothing propagates (the order's L-6 premise does not hold) and a failed default read lands in the unchanged `no-profile` arm. The chat-read and settings-read WARNs are ported but unreachable. New tier-2 family `brahma_inline_profile_equivalence` (17 cases, through v4's real resolver).
+
 #### 2026-11-08 — feat(backup): restore remaps the Brahma connection profile ids — project field and brahmaConsole setting; .qtap reconcile the project field (P4.D374)
 
 _Versions: core 0.0.1436._
