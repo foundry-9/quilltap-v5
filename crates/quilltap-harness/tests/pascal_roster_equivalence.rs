@@ -18,8 +18,15 @@
 //! compared by its `is not valid JSON:` prefix; every other reason (the schema
 //! sentence, the duplicate-name sentence) is byte-exact.
 //!
-//! Generate the oracle output (v4 @ d68638b4, Node 24; /tmp mirror, jest ignores
-//! `.claude/`):
+//! P4.D379: at the `624d0d25c` pin the roster walks the pool through v4's shared
+//! `orderMounts` (`0c47f4539`) — a same-tier tie goes to the EARLIER mount in the
+//! pool (not the lexicographically smaller id), and a mount listed in two tiers
+//! is dealt once, at the nearer. `same-tier-tie-order-zzz-aaa` flipped from
+//! `aaa` to `zzz` by design; `mount-in-two-tiers` and
+//! `same-tier-three-groups-unsorted` pin the dedup and the pool order.
+//!
+//! Generate the oracle output (v4 @ the `624d0d25c` pin, Node 24; /tmp mirror,
+//! jest ignores `.claude/`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 //!   TMPO=/tmp/qt-pascal-discovery-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
@@ -34,8 +41,8 @@
 
 use quilltap_core::db::tiered_mount_pool::{MountTier, TieredMountPool};
 use quilltap_core::pascal::roster::{
-    is_root_tool_file, load_definitions, resolve_roster_from_pool, CustomToolRoster,
-    DiscoveredCustomTool, ToolFileContent,
+    is_root_of_tools_folder, is_tool_definition_path, load_definitions, resolve_roster_from_pool,
+    CustomToolRoster, DiscoveredCustomTool, ToolFileContent,
 };
 // P4.D329: the roster's lazy bag.
 use quilltap_core::pascal::bench_inventory::{mock_inventory_context, parse_mock_inventory};
@@ -172,7 +179,11 @@ fn pascal_roster_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
-    let mut saw_is_root_reject = false;
+    // P4.D379: v4 `fd165fce0` split the old combined filter in two — the ROOT
+    // test inside the shared listing (a nested file, a folder entry) and the
+    // definition SUFFIX test after it (a `.md`). Both must be exercised.
+    let mut saw_root_reject = false;
+    let mut saw_suffix_reject = false;
     let mut saw_lazy_read = false;
     let mut saw_progress_gate = false;
     let mut saw_bag_lines = 0usize;
@@ -262,8 +273,9 @@ fn pascal_roster_matches_oracle() {
                         return (Vec::new(), Vec::new());
                     }
                     let mount_name = format!("store-{mount_point_id}");
-                    // Mirror `list_tool_files_from_database`: drop folders + non-root
-                    // files, so `is_root_tool_file` is exercised over the raw listing.
+                    // Mirror v4's `loadToolsFromMount` over `listToolsFolderFiles`: drop
+                    // folders + non-root files (the listing), then non-definition
+                    // names (the suffix filter), over the raw listing.
                     let files: Vec<(String, ToolFileContent)> = spec["files"]
                         .as_array()
                         .unwrap()
@@ -271,11 +283,15 @@ fn pascal_roster_matches_oracle() {
                         .filter(|f| {
                             let rel = f["relativePath"].as_str().unwrap();
                             let is_folder = f["kind"].as_str() == Some("folder");
-                            let ok = !is_folder && is_root_tool_file(rel);
-                            if !ok {
-                                saw_is_root_reject = true;
+                            if is_folder || !is_root_of_tools_folder(rel) {
+                                saw_root_reject = true;
+                                return false;
                             }
-                            ok
+                            if !is_tool_definition_path(rel) {
+                                saw_suffix_reject = true;
+                                return false;
+                            }
+                            true
                         })
                         .map(|f| {
                             (
@@ -450,8 +466,9 @@ fn pascal_roster_matches_oracle() {
         "the withheld DEBUG went uncompared ({withheld_lines_compared} lines, {anyof_withheld_lines} any-of)"
     );
     assert!(
-        saw_is_root_reject,
-        "no case exercised is_root_tool_file rejection"
+        saw_root_reject && saw_suffix_reject,
+        "the root-of-Tools rejection ({saw_root_reject}) and the definition-suffix \
+         rejection ({saw_suffix_reject}) must both be exercised"
     );
     assert!(
         saw_lazy_read,
@@ -463,9 +480,11 @@ fn pascal_roster_matches_oracle() {
          invoker sheet (P4.D169)"
     );
     // Spot-check the predicate directly.
-    assert!(is_root_tool_file("Tools/x.tool.json"));
-    assert!(!is_root_tool_file("Tools/sub/x.tool.json"));
-    assert!(!is_root_tool_file("Tools/notes.md"));
+    assert!(is_root_of_tools_folder("Tools/x.tool.json"));
+    assert!(!is_root_of_tools_folder("Tools/sub/x.tool.json"));
+    assert!(is_root_of_tools_folder("Tools/notes.md"));
+    assert!(!is_tool_definition_path("Tools/notes.md"));
+    assert!(is_tool_definition_path("Tools/X.TOOL.JSON"));
     let _ = DiscoveredCustomTool {
         // touch the type so a field rename can't silently drift the test
         definition: quilltap_core::pascal::custom_tool_types::safe_parse(&json!({

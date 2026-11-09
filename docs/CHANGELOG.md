@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — refactor(pascal): one Tools/ listing, and the roster walks REACH's order_mounts (P4.D379 item 2, v4 fd165fce0 + 0c47f4539)
+
+_Versions: core 0.0.1431._
+
+`pascal/roster.rs` ports v4's split of the old combined filter: NEW `is_root_of_tools_folder` (the root test without the suffix), `is_tool_definition_path` (the case-insensitive `.tool.json` test), and `list_tools_folder_files`, the one `Tools/` listing definitions and presets share (database stores filter folders and nested paths; disk stores list every regular file; ENOENT / ENOTDIR and a missing base path stay an empty store; errors carry v4's message text). `load_tools_from_mount_with_unread` lists through it and filters the suffix after. `is_root_tool_file` and `list_tool_files_from_disk` are removed. `ordered_mounts` is now public and delegates to `db::reach::order_mounts`, so a same-tier tie goes to the earlier mount in the pool instead of the smaller id, and a mount in two tiers is walked once; the local `TIER_ORDER` is removed. `pascal_roster_equivalence` regenerated from the pin: `same-tier-tie-order-zzz-aaa` flips to `zzz` by design, and two scenarios are added (`mount-in-two-tiers`, `same-tier-three-groups-unsorted`).
+
 #### 2026-11-09 — feat(pascal): the custom-tool preset naming contract as a Rust twin (P4.D379 item 1, v4 fd165fce0)
 
 _Versions: core 0.0.1430._

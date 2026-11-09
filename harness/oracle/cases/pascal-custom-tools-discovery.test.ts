@@ -29,12 +29,18 @@
  * it moved none of their recorded bytes. (The real storage dispatch below this
  * stub is the subject of `pascal-definition-reader`, over a real store.)
  *
- * Run (v4 @ ff12f491, Node 24; cp to a /tmp mirror, jest ignores .claude/):
+ * P4.D379 (v4 `0c47f4539` at the `624d0d25c` pin): the roster walks the pool
+ * through `reach.ts`'s `orderMounts` — pool order inside a tier (no id sort) and
+ * one `seen` dedup across tiers. `mount-in-two-tiers` and
+ * `same-tier-three-groups-unsorted` pin both.
+ *
+ * Run (v4 @ the `624d0d25c` pin, Node 24; cp to a /tmp mirror, jest ignores
+ * .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-pascal-discovery-oracle
  *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
  *   cp "$V5W/harness/oracle/cases/pascal-custom-tools-discovery.test.ts" "$TMPO/cases/"
- *   cd /private/tmp/qt-v4-pin-p4d30-ff12f491
+ *   cd ~/source/quilltap-server     # (the pin: /tmp/qt-v4-pin-p4d379-624d0d25c)
  *   QT_ORACLE_OUT=/tmp/oracle-pascal-discovery.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- pascal-custom-tools-discovery
@@ -406,6 +412,27 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSp
       zzz: { enabled: true, files: [file('Tools/unlock.tool.json', tool('unlock', { description: 'from zzz' }))] },
     },
   },
+  // === P4.D379: orderMounts (v4 0c47f4539) ===
+  {
+    // A mount the pool lists in TWO tiers is dealt once, at the nearer.
+    id: 'mount-in-two-tiers',
+    pool: { groupMountPointIds: ['m'], projectMountPointIds: ['m', 'p'] },
+    mounts: {
+      m: { enabled: true, files: [file('Tools/unlock.tool.json', tool('unlock', { description: 'from m' }))] },
+      p: { enabled: true, files: [file('Tools/unlock.tool.json', tool('unlock', { description: 'from p' })), file('Tools/listen.tool.json', tool('listen'))] },
+    },
+  },
+  {
+    // Three same-tier group stores in non-sorted pool order: the first wins.
+    id: 'same-tier-three-groups-unsorted',
+    pool: { groupMountPointIds: ['gm', 'gz', 'ga'] },
+    mounts: {
+      ga: { enabled: true, files: [file('Tools/unlock.tool.json', tool('unlock', { description: 'from ga' })), file('Tools/cast.tool.json', tool('cast', { description: 'from ga' }))] },
+      gm: { enabled: true, files: [file('Tools/unlock.tool.json', tool('unlock', { description: 'from gm' }))] },
+      gz: { enabled: true, files: [file('Tools/cast.tool.json', tool('cast', { description: 'from gz' }))] },
+    },
+  },
+  // === end P4.D379 ===
   {
     id: 'metadata-definition-loads',
     pool: { projectMountPointIds: ['m1'] },

@@ -30,6 +30,9 @@ use rusqlite::Connection;
 use serde_json::{Map, Value};
 
 use crate::db::database_store::{list_database_files, DbStoreErrorCode};
+// === P4.D379 ===
+use crate::db::reach::order_mounts;
+// === end P4.D379 ===
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::tiered_mount_pool::{
     // === P4.D376 ===
@@ -57,18 +60,6 @@ use super::inventory_subjects::gate_names_inventory;
 use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
 use crate::inventory::refs::InventoryContext;
 use crate::progressions::flatten_progressions;
-
-/// Tier precedence, nearest first. A nearer tier shadows a farther one.
-///
-/// There is deliberately no `participant` tier: a tool in a character's vault
-/// is that character's alone, and sharing a room with them does not deal it to
-/// anybody else. Shared tools belong in a group, project, or General store.
-const TIER_ORDER: [MountTier; 4] = [
-    MountTier::Character,
-    MountTier::Group,
-    MountTier::Project,
-    MountTier::Global,
-];
 
 /// A definition found in a store, with the provenance shadowing and `pascalMeta`
 /// both depend on.
@@ -290,19 +281,27 @@ pub enum ToolFileContent {
     ReadError(String),
 }
 
-/// True for a root-level `*.tool.json`.
+// === P4.D379 ===
+/// True for a file directly inside `Tools/` (v4 `isRootOfToolsFolder`,
+/// `fd165fce0` — the old `isRootToolFile` minus its suffix test).
 ///
 /// `list_database_files({ folder })` filters by PREFIX, so it happily returns
-/// `Tools/nested/deep/x.tool.json`. Definitions are a flat root-level
-/// convention; a nested file is somebody's archive, not a live tool.
-pub fn is_root_tool_file(relative_path: &str) -> bool {
-    if !relative_path.to_lowercase().ends_with(TOOL_FILE_SUFFIX) {
-        return false;
-    }
+/// `Tools/nested/deep/x.tool.json`. Definitions and presets are a flat
+/// root-level convention; a nested file is somebody's archive, not a live one.
+pub fn is_root_of_tools_folder(relative_path: &str) -> bool {
     // v4 `relativePath.slice(TOOLS_FOLDER.length + 1)` — the part after `Tools/`.
     let rest = relative_path.get(TOOLS_FOLDER.len() + 1..).unwrap_or("");
     !rest.is_empty() && !rest.contains('/')
 }
+
+/// True for a definition file name (v4's `p.toLowerCase().endsWith(
+/// TOOL_FILE_SUFFIX)` filter in `loadToolsFromMount`, run AFTER the shared
+/// listing). The suffix test is case-insensitive; the preset suffix, by
+/// contrast, is not (`super::tool_presets`).
+pub fn is_tool_definition_path(relative_path: &str) -> bool {
+    relative_path.to_lowercase().ends_with(TOOL_FILE_SUFFIX)
+}
+// === end P4.D379 ===
 
 /// A definition file's text, judged exactly as load time judges it (v4
 /// `ToolDefinitionValidation`).
@@ -437,7 +436,7 @@ pub fn validate_tool_definition_text(
 /// that file name under a leading `Tools/` (case-insensitive). Anything that
 /// would land outside the top level of `Tools/` — another folder, a nested
 /// path, an empty stem — is `None`: definitions are a flat root-level
-/// convention (see [`is_root_tool_file`]). The stem's own case is preserved.
+/// convention (see [`is_root_of_tools_folder`]). The stem's own case is preserved.
 pub fn tool_definition_path_for(file: &str) -> Option<String> {
     let name = js_trim(file).replace('\\', "/");
     let mut name: &str = &name;
@@ -572,32 +571,27 @@ pub fn load_definitions_with_unread(
     (found, errors, unread)
 }
 
-/// Bucket the pool into (tier, mount id) pairs in precedence order.
-fn ordered_mounts(pool: &TieredMountPool) -> Vec<(MountTier, String)> {
-    let by_tier = |tier: MountTier| -> Vec<String> {
-        let mut ids = match tier {
-            MountTier::Character => pool.character_mount_point_id.iter().cloned().collect(),
-            // Never resolved for custom tools (see TIER_ORDER); present only
-            // because the match is keyed by every MountTier.
-            MountTier::Participant => Vec::new(),
-            MountTier::Group => pool.group_mount_point_ids.clone(),
-            MountTier::Project => pool.project_mount_point_ids.clone(),
-            MountTier::Global => pool.global_mount_point_id.iter().cloned().collect(),
-        };
-        // Same-tier collisions resolve by mount id, lexicographically — arbitrary
-        // but stable, so a roster never flickers between two equally-close stores.
-        ids.sort();
-        ids
-    };
-
-    let mut ordered = Vec::new();
-    for tier in TIER_ORDER {
-        for mount_point_id in by_tier(tier) {
-            ordered.push((tier, mount_point_id));
-        }
-    }
-    ordered
+// === P4.D379 ===
+/// The pool as (tier, mount id) pairs in precedence order — the shared
+/// [`order_mounts`] (v4 `orderedMounts` = `orderMounts(pool)`, `0c47f4539`), so a
+/// same-tier collision is settled the way every reach walk settles it: the
+/// earlier mount wins (membership order for groups, the official store first
+/// for the project), with one `seen` dedup across tiers. (v5 used to sort each
+/// tier's ids lexicographically; v4 removed that sort.)
+///
+/// Public so run presets walk the stores in exactly the order definitions do
+/// (`super::tool_preset_pool`) — one precedence, not two copies of it.
+///
+/// There is deliberately no `participant` tier: a tool in a character's vault
+/// is that character's alone, and sharing a room with them does not deal it to
+/// anybody else. Shared tools belong in a group, project, or General store.
+pub fn ordered_mounts(pool: &TieredMountPool) -> Vec<(MountTier, String)> {
+    order_mounts(pool, false)
+        .into_iter()
+        .map(|m| (m.tier, m.mount_point_id))
+        .collect()
 }
+// === end P4.D379 ===
 
 /// The invoking character's fact sheet, for the availability gates (v4
 /// `loadInvokerMetadata`).
@@ -839,41 +833,17 @@ pub fn load_tools_from_mount_with_unread(
         )
     };
     // === end P4.D328 ===
-    let paths: Vec<String> = if row.mount_type == "database" {
-        match list_database_files(mount, mount_point_id, Some(TOOLS_FOLDER)) {
-            Ok(entries) => entries
-                .into_iter()
-                .filter(|e| e.kind != "folder" && is_root_tool_file(&e.relative_path))
-                .map(|e| e.relative_path)
-                .collect(),
-            Err(e) => return listing_failed(crate::db::fallback::error_text(&e)),
-        }
-    } else {
-        // v4 calls `listToolFilesFromDisk(mount.basePath)`; a null basePath makes
-        // its `path.join` throw, which the same try/catch turns into an empty
-        // mount. Model that directly rather than joining onto "".
-        match row.base_path.as_deref() {
-            Some(base) => match list_tool_files_from_disk(base) {
-                Ok(p) => p,
-                // v4 reports Node's own `fs` message (`EACCES: permission
-                // denied, scandir '<base>/Tools'`).
-                Err(e) => {
-                    return listing_failed(
-                        crate::services::mount_index::sync::walk_disk::node_error_message(
-                            &e,
-                            "scandir",
-                            &std::path::Path::new(base).join(TOOLS_FOLDER),
-                        ),
-                    )
-                }
-            },
-            // P4.D328: NOT an `unread` entry. The column is `TEXT`, read `''` →
-            // `None`; v4 joins `''` onto `Tools` (a relative path), whose
-            // `readdir` answers ENOENT → `[]` — an empty mount, no listing
-            // failure.
-            None => return empty,
-        }
+    // === P4.D379 ===
+    // v4 `fd165fce0`: the ONE `Tools/` listing shared with the preset walk, then
+    // the definition suffix filter.
+    let paths: Vec<String> = match list_tools_folder_files(mount, &row) {
+        Ok(paths) => paths
+            .into_iter()
+            .filter(|p| is_tool_definition_path(p))
+            .collect(),
+        Err(message) => return listing_failed(message),
     };
+    // === end P4.D379 ===
 
     let files: Vec<(String, ToolFileContent)> = paths
         .into_iter()
@@ -934,32 +904,70 @@ fn read_tool_file(
     }
 }
 
-/// List `Tools/*.tool.json` in an on-disk store (filesystem or obsidian).
+// === P4.D379 ===
+/// Every file directly inside a store's `Tools/` folder, as store-relative paths
+/// (v4 `listToolsFolderFiles`, `fd165fce0`). The one listing shared by
+/// definition discovery (`*.tool.json`) and the preset walk (`*.settings.json`,
+/// `super::tool_preset_pool`), so both read a store's folder the same way.
 ///
-/// A missing `Tools/` folder is the normal case — it is a lazy convention, never
-/// scaffolded — so ENOENT/ENOTDIR yield `[]` rather than an error.
-fn list_tool_files_from_disk(base_path: &str) -> std::io::Result<Vec<String>> {
-    let folder = std::path::Path::new(base_path).join(TOOLS_FOLDER);
+/// A missing `Tools/` folder is the normal case — it is a lazy convention like
+/// Suparṇā's `Mail/`, never scaffolded — so an on-disk ENOENT / ENOTDIR yields
+/// `[]` rather than an error. Anything else is an `Err` carrying v4's
+/// `getErrorMessage` text (the bare database-store message; Node's own `fs`
+/// message for a disk store, `EACCES: permission denied, scandir
+/// '<base>/Tools'`), and the caller records the store as unread.
+///
+/// The listing is deliberately NOT routed through the mount index for on-disk
+/// stores: `Tools/` is enumerated live off the disk, because edits inside a
+/// mount don't reliably touch the index.
+pub fn list_tools_folder_files(
+    mount: &Connection,
+    row: &MountServiceInfo,
+) -> Result<Vec<String>, String> {
+    if row.mount_type == "database" {
+        return match list_database_files(mount, &row.id, Some(TOOLS_FOLDER)) {
+            Ok(entries) => Ok(entries
+                .into_iter()
+                .filter(|e| e.kind != "folder" && is_root_of_tools_folder(&e.relative_path))
+                .map(|e| e.relative_path)
+                .collect()),
+            Err(e) => Err(crate::db::fallback::error_text(&e)),
+        };
+    }
+
+    // On-disk store (filesystem or obsidian). P4.D328: a `None` base path is NOT
+    // a listing failure. The column is `TEXT`, read `''` → `None`; v4 joins `''`
+    // onto `Tools` (a relative path), whose `readdir` answers ENOENT → `[]` — an
+    // empty store.
+    let Some(base) = row.base_path.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let folder = std::path::Path::new(base).join(TOOLS_FOLDER);
     let entries = match std::fs::read_dir(&folder) {
         Ok(e) => e,
         Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => return Ok(Vec::new()),
         // ENOTDIR surfaces as `Other`/`NotADirectory` depending on platform; v4
         // treats both as "no folder".
         Err(e) if e.raw_os_error() == Some(20) => return Ok(Vec::new()),
-        Err(e) => return Err(e),
+        Err(e) => {
+            return Err(
+                crate::services::mount_index::sync::walk_disk::node_error_message(
+                    &e, "scandir", &folder,
+                ),
+            )
+        }
     };
 
     let mut out = Vec::new();
     for entry in entries.flatten() {
         if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if name.to_lowercase().ends_with(TOOL_FILE_SUFFIX) {
-                out.push(format!("{TOOLS_FOLDER}/{name}"));
-            }
+            out.push(format!("{TOOLS_FOLDER}/{name}"));
         }
     }
     Ok(out)
 }
+// === end P4.D379 ===
 
 /// Every definition in every enabled store — the Workbench library (v4
 /// `CustomToolLibrary`).
@@ -1141,13 +1149,16 @@ mod preset_isolation_tests {
     #[test]
     fn a_preset_file_is_never_a_tool_definition() {
         // The shape the run dialog writes, and the two adjacent shapes.
-        assert!(!is_root_tool_file(
+        // P4.D379: v4's composition — the root test, then the suffix filter.
+        let is_definition = |p: &str| is_root_of_tools_folder(p) && is_tool_definition_path(p);
+        assert!(!is_definition("Tools/coin_toss.hard-mode.settings.json"));
+        assert!(!is_definition("Tools/coin_toss.settings.json"));
+        assert!(!is_definition("Tools/coin_toss.tool.settings.json"));
+        // …while the definition itself still is, and a preset IS in the folder.
+        assert!(is_definition("Tools/coin_toss.tool.json"));
+        assert!(is_root_of_tools_folder(
             "Tools/coin_toss.hard-mode.settings.json"
         ));
-        assert!(!is_root_tool_file("Tools/coin_toss.settings.json"));
-        assert!(!is_root_tool_file("Tools/coin_toss.tool.settings.json"));
-        // …while the definition itself still is.
-        assert!(is_root_tool_file("Tools/coin_toss.tool.json"));
     }
 }
 
