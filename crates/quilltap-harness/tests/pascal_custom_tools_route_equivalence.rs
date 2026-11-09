@@ -26,8 +26,28 @@
 //! rolls against an EMPTY sheet even though the roster's gate already answered
 //! from the perspective's vault tier.
 //!
-//! Generate the oracle (v4 @ e8a49597, Node 24 — mirror to /tmp; jest ignores
-//! `.claude/`):
+//! P4.D379 (v4 `fd165fce0` at the `624d0d25c` pin): the `presets-*` GET rows
+//! drive `?action=presets` (`chat_custom_tool_presets`) over IN-CASE plants the
+//! oracle RECORDS per row and this side replays before opening the copy: `sql`
+//! (raw, on a keyed writer), `diskStore` (a scratch filesystem store + its rows;
+//! `toolsMode: 0` → `chmod 000 Tools/`, restored on drop) and `doc` (through
+//! the REAL `write_database_document`). The query string is read with the
+//! web edge's FIRST-value rule (the edge's own arm is pinned in `quilltap-web`'s
+//! `query_param_semantics_equivalence`, which also pins `presets-unknown-
+//! action`'s envelope against v5 — here that row's v4 bytes are compared with
+//! the same literal). These rows compare the body as BYTES (key order
+//! included). Two normalisations, both recorded: the disk store's scratch path
+//! is `<BASE>` on both sides, and jest prefixes Node's fs error text with
+//! `Error: ` (memory note `oracle-second-zone-needs-tsx`) — real Node's
+//! `getErrorMessage` answers `EACCES: …` bare, as v5 does, so the prefix is
+//! stripped from v4's side.
+//!
+//! The `run-oracle-consult-resolved` case needs `connection_profiles.
+//! maxImagesPerRequest` on v4's side at the pin (P4.D362's column); the oracle
+//! applies v4's own migration DDL to that case's copy.
+//!
+//! Generate the oracle (v4 @ the `624d0d25c` pin, Node 24 — mirror to /tmp;
+//! jest ignores `.claude/`):
 //!   cd ~/source/quilltap-server
 //!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures $M/lib
 //!   cp <V5W>/harness/oracle/lib/v4-migrations.ts $M/lib/
@@ -47,6 +67,11 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::custom_tools::{chat_custom_tool_run, chat_custom_tools_list};
+// === P4.D379 ===
+use quilltap_core::api::custom_tools::chat_custom_tool_presets;
+use quilltap_core::db::database_store::{list_database_files, write_database_document};
+use quilltap_core::inventory::lint_scope::TitleLintScope;
+// === end P4.D379 ===
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::connection_profiles::{CpCreate, CreateOptions};
 use quilltap_core::db::dump_table_json_conn;
@@ -99,8 +124,145 @@ fn fixtures_dir() -> PathBuf {
 /// (the `Db` field drops first).
 struct ScratchDb {
     db: Db,
+    // === P4.D379 ===
+    /// The planted filesystem store's base path (masked to `<BASE>`).
+    disk_base: PathBuf,
+    /// `chmod 000` directories, restored before the scratch is removed.
+    locked: Vec<PathBuf>,
+    // === end P4.D379 ===
     _dir: tempfile::TempDir,
 }
+
+// === P4.D379 ===
+impl Drop for ScratchDb {
+    fn drop(&mut self) {
+        use std::os::unix::fs::PermissionsExt;
+        for dir in &self.locked {
+            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+}
+
+/// Replay one oracle row's recorded plants on the case's copies BEFORE they
+/// are opened — the oracle's order: the raw ones (`sql`, `diskStore`), then
+/// the `doc`s. Every plant self-checks.
+fn apply_plants(
+    plants: &Value,
+    main: &std::path::Path,
+    mount: &std::path::Path,
+    disk_base: &std::path::Path,
+) -> Vec<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let Some(plants) = plants.as_array() else {
+        return Vec::new();
+    };
+    let main_w = Writer::open_writable(main, PEPPER).expect("open main for plants");
+    let mount_w = Writer::open_writable(mount, PEPPER).expect("open mount for plants");
+    let mut locked = Vec::new();
+    for pl in plants.iter().filter(|p| p["kind"] != "doc") {
+        match pl["kind"].as_str().unwrap() {
+            "sql" => {
+                let conn = if pl["db"] == "main" {
+                    main_w.connection()
+                } else {
+                    mount_w.connection()
+                };
+                let params: Vec<String> = pl["params"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().expect("string plant params").to_string())
+                    .collect();
+                let changes = conn
+                    .execute(
+                        pl["sql"].as_str().unwrap(),
+                        rusqlite::params_from_iter(params.iter()),
+                    )
+                    .expect("sql plant");
+                assert_eq!(changes, 1, "plant changed {changes} rows: {pl}");
+            }
+            "diskStore" => {
+                let tools = disk_base.join("Tools");
+                std::fs::create_dir_all(&tools).unwrap();
+                for f in pl["files"].as_array().unwrap() {
+                    let f = f.as_str().unwrap();
+                    // v4 `JSON.stringify({ preset: f }, null, 2)`.
+                    let text = serde_json::to_string_pretty(&json!({ "preset": f })).unwrap();
+                    std::fs::write(disk_base.join(f), text).unwrap();
+                }
+                let id = pl["mountPointId"].as_str().unwrap();
+                let base = disk_base.to_str().unwrap();
+                let conn = mount_w.connection();
+                conn.execute(
+                    r#"INSERT INTO "doc_mount_points" ("id","name","basePath","mountType","storeType","includePatterns","enabled","createdAt","updatedAt") VALUES (?1,?2,?3,'filesystem','documents','[]',1,'2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z')"#,
+                    rusqlite::params![id, pl["name"].as_str().unwrap(), base],
+                )
+                .unwrap();
+                conn.execute(
+                    r#"INSERT INTO "project_doc_mount_links" ("id","projectId","mountPointId","createdAt","updatedAt") VALUES (?1,?2,?3,'2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z')"#,
+                    rusqlite::params![
+                        format!("{}11", &id[..id.len() - 2]),
+                        pl["projectId"].as_str().unwrap(),
+                        id
+                    ],
+                )
+                .unwrap();
+                let back: String = conn
+                    .query_row(
+                        r#"SELECT "basePath" FROM "doc_mount_points" WHERE "id" = ?1"#,
+                        [id],
+                        |r| r.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(back, base, "disk store plant did not read back");
+                if let Some(mode) = pl["toolsMode"].as_u64() {
+                    std::fs::set_permissions(&tools, std::fs::Permissions::from_mode(mode as u32))
+                        .unwrap();
+                    locked.push(tools);
+                }
+            }
+            other => panic!("unknown plant kind {other}"),
+        }
+    }
+    for d in plants.iter().filter(|p| p["kind"] == "doc") {
+        let mp = d["mountPointId"].as_str().unwrap();
+        let rel = d["relativePath"].as_str().unwrap();
+        write_database_document(
+            mount_w.connection(),
+            mp,
+            rel,
+            d["content"].as_str().unwrap(),
+            // A `Tools/` path is never title-lint-claimed.
+            TitleLintScope::Linted,
+        )
+        .expect("doc plant");
+        let listed = list_database_files(mount_w.connection(), mp, Some("Tools")).unwrap();
+        assert!(
+            listed.iter().any(|e| e.relative_path == rel),
+            "doc plant did not list back: {mp}/{rel}"
+        );
+    }
+    locked
+}
+
+/// The web edge's FIRST-value read of one query key (`query::first`).
+fn query_first(query: &str, key: &str) -> Option<String> {
+    query
+        .trim_start_matches('?')
+        .split('&')
+        .filter(|kv| !kv.is_empty())
+        .map(|kv| kv.split_once('=').unwrap_or((kv, "")))
+        .find(|(k, _)| *k == key)
+        .map(|(_, v)| v.to_string())
+}
+
+/// v4's side of a presets row, normalised: jest's `Error: ` prefix on Node's
+/// fs text is stripped (see the header).
+fn strip_jest_fs_prefix(v: &Value) -> Value {
+    let re = regex::Regex::new(r"Error: (E[A-Z]+: )").unwrap();
+    serde_json::from_str(&re.replace_all(&serde_json::to_string(v).unwrap(), "$1")).unwrap()
+}
+// === end P4.D379 ===
 
 impl std::ops::Deref for ScratchDb {
     type Target = Db;
@@ -109,7 +271,7 @@ impl std::ops::Deref for ScratchDb {
     }
 }
 
-fn open(case: &str, profile: bool) -> ScratchDb {
+fn open(case: &str, profile: bool, plants: &Value) -> ScratchDb {
     let scratch = tempfile::Builder::new()
         .prefix(&format!("qt-pascal-route-{case}-"))
         .tempdir()
@@ -125,6 +287,10 @@ fn open(case: &str, profile: bool) -> ScratchDb {
     if profile {
         insert_consult_profile(&main);
     }
+    // === P4.D379 ===
+    let disk_base = scratch.path().join("disk-store");
+    let locked = apply_plants(plants, &main, &mount, &disk_base);
+    // === end P4.D379 ===
     let db = Db::open(
         DbPaths {
             main,
@@ -134,7 +300,12 @@ fn open(case: &str, profile: bool) -> ScratchDb {
         PEPPER,
     )
     .expect("open db");
-    ScratchDb { db, _dir: scratch }
+    ScratchDb {
+        db,
+        disk_base,
+        locked,
+        _dir: scratch,
+    }
 }
 
 /// The one profile a `profile: true` case inserts — field-for-field the
@@ -256,6 +427,8 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
 fn status_body(resp: Response) -> (u16, Value) {
     match resp {
         Response::CustomToolsList(v) | Response::CustomToolRun(v) => (200, v),
+        // === P4.D379 ===
+        Response::CustomToolPresets(v) => (200, v),
         Response::Error(e) => {
             let status = match e.kind {
                 ErrorKind::BadRequest => 400,
@@ -481,13 +654,19 @@ fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
 }
 
 /// P4.D305: the run-path lines this family pins (the oracle's `PINNED_MESSAGES`).
-const PINNED_MESSAGES: [&str; 6] = [
+const PINNED_MESSAGES: [&str; 10] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
     "Custom tool run refused",
     "Custom tool dealt",
     "Manual custom-tool run named an unknown tool",
     "Manual custom-tool run refused",
     "[Pascal] Manual custom-tool run completed",
+    // === P4.D379 ===
+    "Preset listing failed for store",
+    "Tool presets resolved",
+    "Custom-tool presets listed for the operator",
+    "Custom-tool perspective dropped — character unreadable",
+    // === end P4.D379 ===
 ];
 
 /// The system rows' raw `chat_messages` objects (v5's dump).
@@ -540,7 +719,7 @@ async fn custom_tools_route_matches_oracle() {
     }
 
     // (name, chat id, POST body or None for GET, profile-bearing)
-    let cases: Vec<(&str, &str, Option<Value>, bool)> = vec![
+    let mut cases: Vec<(&str, &str, Option<Value>, bool)> = vec![
         ("list", CHAT, None, false),
         (
             "run-coin-as-a",
@@ -884,6 +1063,34 @@ async fn custom_tools_route_matches_oracle() {
             false,
         ),
     ];
+    // === P4.D379: the `?action=presets` GET rows (query + plants ride the row) ===
+    const UNKNOWN_CHAT: &str = "c1000000-0000-4000-8000-0000000000ff";
+    for (name, chat) in [
+        ("presets-shadowed", CHAT),
+        ("presets-filtered", CHAT),
+        ("presets-unread", CHAT),
+        ("presets-disk-store", CHAT),
+        ("presets-disabled-store", CHAT),
+        ("presets-unknown-tool", CHAT),
+        ("presets-bad-tool", CHAT),
+        ("presets-missing-tool", CHAT),
+        ("presets-empty-tool", CHAT),
+        ("presets-bad-tool-missing-chat", UNKNOWN_CHAT),
+        ("presets-missing-chat", UNKNOWN_CHAT),
+        ("presets-as-b", CHAT),
+        ("presets-as-stranger", CHAT),
+        ("presets-empty-as", CHAT_LLM_LED),
+        ("presets-no-character", CHAT_SOLO),
+        ("presets-no-character-stranger", CHAT_SOLO),
+        ("presets-duplicate-keys", CHAT),
+        ("presets-unknown-action", CHAT),
+        ("presets-broken-vault-perspective", CHAT_SOLO),
+    ] {
+        cases.push((name, chat, None, false));
+    }
+    let mut presets_rows = 0usize;
+    let mut presets_unread_rows = 0usize;
+    // === end P4.D379 ===
 
     // Declared on BOTH sides, so a case added to the oracle and forgotten here
     // would pass silently on a smaller set.
@@ -922,11 +1129,39 @@ async fn custom_tools_route_matches_oracle() {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("oracle missing case '{name}'"));
-        let db = open(name, *profile);
+        let db = open(name, *profile, &want["plants"]);
 
         let ((status, resp_body, sys), lines) =
             quilltap_core::test_support::global_capture::capture_async(async {
                 match body {
+                    // === P4.D379: `?action=presets`, read with the edge's first-value rule ===
+                    None if want.get("query").is_some() => {
+                        let query = want["query"].as_str().unwrap();
+                        match query_first(query, "action").as_deref() {
+                            Some("presets") => {
+                                let (s, b) = status_body(chat_custom_tool_presets(
+                                    &db,
+                                    USER,
+                                    chat,
+                                    query_first(query, "tool").as_deref(),
+                                    query_first(query, "asCharacterId").as_deref(),
+                                ));
+                                (s, b, Vec::new())
+                            }
+                            // An unknown action never reaches the core: the edge
+                            // answers it, and `query_param_semantics_equivalence`
+                            // pins v5's edge against this SAME literal.
+                            _ => (
+                                400,
+                                json!({
+                                    "error": "Unknown action: foo",
+                                    "availableActions": ["interventions", "presets"]
+                                }),
+                                Vec::new(),
+                            ),
+                        }
+                    }
+                    // === end P4.D379 ===
                     None => {
                         let (s, b) =
                             status_body(chat_custom_tools_list(&db, USER, chat, case_now_ms(want)));
@@ -987,11 +1222,29 @@ async fn custom_tools_route_matches_oracle() {
             want["status"].as_u64().unwrap(),
             "case '{name}' status"
         );
-        soft_eq!(
-            canon(&resp_body),
-            canon(&drop_zod_details(name, &want["body"])),
-            "case '{name}' body"
-        );
+        // P4.D379: a presets row is compared as masked BYTES below instead.
+        if !name.starts_with("presets-") {
+            soft_eq!(
+                canon(&resp_body),
+                canon(&drop_zod_details(name, &want["body"])),
+                "case '{name}' body"
+            );
+        }
+        // === P4.D379: the presets rows compare BYTES (key order included) ===
+        if name.starts_with("presets-") {
+            let mask = |t: String| t.replace(db.disk_base.to_str().unwrap(), "<BASE>");
+            let got_text = mask(serde_json::to_string(&resp_body).unwrap());
+            let want_text = serde_json::to_string(&strip_jest_fs_prefix(&want["body"])).unwrap();
+            soft_eq!(got_text, want_text, "case '{name}' body bytes");
+            presets_rows += 1;
+            if want["body"]["unread"]
+                .as_array()
+                .is_some_and(|u| !u.is_empty())
+            {
+                presets_unread_rows += 1;
+            }
+        }
+        // === end P4.D379 ===
         soft_eq!(
             canon(&Value::Array(sys)),
             canon(&Value::Array(oracle_system_rows(want))),
@@ -1035,13 +1288,18 @@ async fn custom_tools_route_matches_oracle() {
             "case '{name}' pascalMeta bytes"
         );
         // P4.D305: v4's pinned run-path lines against v5's capture.
-        let want_lines: Vec<String> = want["logs"]
+        let want_lines: Vec<String> = strip_jest_fs_prefix(&want["logs"])
             .as_array()
             .unwrap_or_else(|| panic!("case '{name}' oracle row has no `logs`"))
             .iter()
             .map(|l| common::v4_log_as_capture_line("quilltap::pascal", l))
             .collect();
-        let got_lines = common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES);
+        // P4.D379: the planted disk store's path is `<BASE>` on both sides.
+        let got_lines: Vec<String> =
+            common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES)
+                .into_iter()
+                .map(|l| l.replace(db.disk_base.to_str().unwrap(), "<BASE>"))
+                .collect();
         if !want_lines.is_empty() {
             logged_rows += 1;
         }
@@ -1054,6 +1312,13 @@ async fn custom_tools_route_matches_oracle() {
         failures.len()
     );
     assert!(logged_rows > 0, "no case carried a pinned log line");
+    // === P4.D379 ===
+    assert_eq!(presets_rows, 19, "the presets rows went uncompared");
+    assert!(
+        presets_unread_rows >= 1,
+        "no presets row reported an unread store"
+    );
+    // === end P4.D379 ===
 
     assert_eq!(checked, cases.len());
     assert!(

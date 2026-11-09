@@ -90,10 +90,16 @@ struct Perspective {
 /// The chat's character participants, each with its vault mount (v4
 /// `loadPerspectives`). A character whose vault is unreachable is DROPPED rather
 /// than fatal — one broken vault must not take the whole popup down.
+///
+/// P4.D379: the drop logs v4's WARN `Custom-tool perspective dropped —
+/// character unreadable` (`route.ts:159-164`, present since the baseline and
+/// missing in v5 until now); a character that is simply absent (`Ok(None)`)
+/// stays silent, as v4's `if (!character) continue` does.
 fn load_perspectives(
     main: &rusqlite::Connection,
     mount: &rusqlite::Connection,
     chat: &Value,
+    chat_id: &str,
 ) -> Vec<Perspective> {
     let mut perspectives = Vec::new();
     let participants = chat
@@ -109,7 +115,23 @@ fn load_perspectives(
             continue;
         };
         // findById → null (skip) or a broken vault / read error (dropped).
-        if let Ok(Some(character)) = characters_read::find_by_id(main, mount, character_id) {
+        // === P4.D379 ===
+        let found = match characters_read::find_by_id(main, mount, character_id) {
+            Ok(found) => found,
+            Err(error) => {
+                tracing::warn!(
+                    target: "quilltap::pascal",
+                    context = HANDLER,
+                    chatId = chat_id,
+                    characterId = character_id,
+                    error = %crate::db::fallback::error_text(&error),
+                    "Custom-tool perspective dropped — character unreadable",
+                );
+                None
+            }
+        };
+        // === end P4.D379 ===
+        if let Some(character) = found {
             let metadata = character
                 .get("metadata")
                 .and_then(Value::as_object)
@@ -389,7 +411,7 @@ pub fn chat_custom_tools_list(
             let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
                 return Ok(None);
             };
-            let perspectives = load_perspectives(main, mount, &chat);
+            let perspectives = load_perspectives(main, mount, &chat, chat_id);
             if perspectives.is_empty() {
                 return Ok(Some(json!({ "tools": [], "errors": [] })));
             }
@@ -588,7 +610,7 @@ pub fn chat_custom_tool_presets(
             let Some(chat) = chats_read::find_by_id(main, chat_id)? else {
                 return Ok(Outcome::NoChat);
             };
-            let perspectives = load_perspectives(main, mount, &chat);
+            let perspectives = load_perspectives(main, mount, &chat, chat_id);
             // The same choice POST makes, so the presets listed are the ones the
             // run they fill in will be made from.
             let perspective = match as_character_id {
@@ -791,7 +813,7 @@ pub async fn chat_custom_tool_run(
             let Some(chat) = chats_read::find_by_id(main, &chat_id_owned)? else {
                 return Ok(RunPrep::NoChat);
             };
-            let perspectives = load_perspectives(main, mount, &chat);
+            let perspectives = load_perspectives(main, mount, &chat, &chat_id_owned);
             if perspectives.is_empty() {
                 return Ok(RunPrep::NoPerspectives);
             }

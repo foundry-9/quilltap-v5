@@ -21,6 +21,20 @@
  * first in stored order, so the new preference and the old `sightings[0]` agree
  * on every row.
  *
+ * P4.D379 (v4 `fd165fce0` at the `624d0d25c` pin): the `presets-*` GET rows drive
+ * `?action=presets` over IN-CASE plants (ruling P-1 — the committed pair is
+ * shared by four families, so it is never rebuilt for this). Each row RECORDS
+ * its plants, and the Rust side replays them byte-for-byte:
+ *   - `sql` — a raw statement on a keyed connection to the case's copy, BEFORE
+ *     `initializeDatabase()` (memory note `jest-oracle-in-case-plants`);
+ *   - `diskStore` — a filesystem store: a scratch directory `<BASE>` holding
+ *     `Tools/<files>`, its `doc_mount_points` row and its owner link, planted
+ *     raw before init; `toolsMode: 0` chmods `Tools/` to 000 (restored in a
+ *     `finally`). `<BASE>` is masked back into every body and log line;
+ *   - `doc` — a database-store document through v4's REAL
+ *     `writeDatabaseDocument`, after init.
+ * Every plant SELF-CHECKS (memory note `tier-r-vacuous-equal-rows`).
+ *
  * Run (Node 24, from the v4 checkout — mirror the case file to /tmp; jest
  * ignores `.claude/`):
  *   QT_FIXTURE_PASCAL_MAIN=<v5>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
@@ -56,6 +70,65 @@ const CHAR_B = 'a1000000-0000-4000-8000-00000000000b';
 /** P4.D35: the group tier the store dump reads back. */
 const GROUP = 'a2000000-0000-4000-8000-0000000000aa';
 const CHAR_C = 'a1000000-0000-4000-8000-00000000000c';
+// === P4.D379 ===
+/** Spode — the fixture's BROKEN vault (`properties.json` link deleted). */
+const CHAR_D = 'a1000000-0000-4000-8000-00000000000d';
+/** A character id that is in no chat. */
+const STRANGER = 'a1000000-0000-4000-8000-0000000000ff';
+const UNKNOWN_CHAT = 'c1000000-0000-4000-8000-0000000000ff';
+/** The fixture's stores, MEASURED from the committed pair (P4.D379 lane record). */
+const VAULT_A = 'f22f5571-e962-41c3-94e8-051185b33016';
+const VAULT_B = '55db253f-ca9e-4426-ad33-94b3ee5299a0';
+const GROUP_STORE = 'f6b09c65-bd2b-4f7f-8d80-bf984e303c5c';
+const PROJECT_STORE = '35b077a1-b95f-405b-adb0-cdc881444d93';
+const GENERAL_STORE = '93000000-0000-4000-8000-0000000000aa';
+const PROJECT = 'a3000000-0000-4000-8000-0000000000aa';
+const DISK_STORE = '9d000000-0000-4000-8000-0000000000d1';
+
+type Plant =
+  | { kind: 'sql'; db: 'main' | 'mount'; sql: string; params: unknown[] }
+  | {
+      kind: 'diskStore';
+      mountPointId: string;
+      name: string;
+      /** `project_doc_mount_links` owner. */
+      projectId: string;
+      files: string[];
+      /** `0` → `chmod 000 Tools/`. */
+      toolsMode?: number;
+    }
+  | { kind: 'doc'; mountPointId: string; relativePath: string; content: string };
+
+const presetDoc = (mountPointId: string, relativePath: string): Plant => ({
+  kind: 'doc',
+  mountPointId,
+  relativePath,
+  content: JSON.stringify({ preset: relativePath }, null, 2),
+});
+const participantsSql = (chatId: string, participants: Array<[string, string, string]>): Plant => ({
+  kind: 'sql',
+  db: 'main',
+  sql: 'UPDATE "chats" SET "participants" = ? WHERE "id" = ?',
+  params: [
+    JSON.stringify(
+      participants.map(([id, characterId, controlledBy]) => ({
+        id,
+        type: 'CHARACTER',
+        characterId,
+        controlledBy,
+        connectionProfileId: null,
+        displayOrder: 0,
+        isActive: true,
+        status: 'active',
+        hasHistoryAccess: false,
+        createdAt: '2026-04-01T00:00:00.000Z',
+        updatedAt: '2026-04-01T00:00:00.000Z',
+      })),
+    ),
+    chatId,
+  ],
+});
+// === end P4.D379 ===
 
 interface CaseSpec {
   name: string;
@@ -77,6 +150,12 @@ interface CaseSpec {
    * side takes (no case reads the wall clock).
    */
   nowMs?: number;
+  // === P4.D379 ===
+  /** Appended to the GET URL (`?action=presets&…`). */
+  query?: string;
+  /** In-case plants, recorded in the row (see the header). */
+  plants?: Plant[];
+  // === end P4.D379 ===
 }
 
 /**
@@ -90,6 +169,12 @@ const PINNED_MESSAGES = new Set([
   'Manual custom-tool run named an unknown tool',
   'Manual custom-tool run refused',
   '[Pascal] Manual custom-tool run completed',
+  // === P4.D379 ===
+  'Preset listing failed for store',
+  'Tool presets resolved',
+  'Custom-tool presets listed for the operator',
+  'Custom-tool perspective dropped — character unreadable',
+  // === end P4.D379 ===
 ]);
 
 /** See `CaseSpec.nowMs`. 2026-08-29T12:00:00Z, the fixture's spans' anchor. */
@@ -241,6 +326,20 @@ async function runCase(
       }),
     };
   });
+  // === P4.D379 === At the `624d0d25c` pin the profile repository's strip
+  // (`544c7ab1e`) calls `acceptsSamplingParameters`, which v4's own
+  // `jest.setup.ts:228` mock of provider-validation does not carry, so the
+  // `profile: true` case's create threw and killed the whole run (P4.D362's
+  // recorded finding). The setup's three mocks plus the REAL function; the
+  // consult profile's `parameters` is `{}`, so nothing is stripped either way.
+  jest.doMock('@/lib/plugins/provider-validation', () => ({
+    __esModule: true,
+    validateProviderConfig: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+    acceptsApiKey: jest.fn(() => true),
+    requiresApiKey: jest.fn(() => true),
+    acceptsSamplingParameters: jest.requireActual('@/lib/plugins/provider-validation').acceptsSamplingParameters,
+  }));
+  // === end P4.D379 ===
   jest.doMock('@/lib/services/api-key.service', () => {
     const actual = jest.requireActual('@/lib/services/api-key.service');
     return {
@@ -305,6 +404,64 @@ async function runCase(
   // A fresh llm-logs DB per case for the un-mocked logLLMCall (P4.6bd).
   process.env.SQLITE_LLM_LOGS_PATH = join(work, 'llm-logs.db');
 
+  // === P4.D379: the pre-init plants (raw, on a keyed connection) ===
+  const diskBase = join(work, 'disk-store');
+  const lockedDirs: string[] = [];
+  const pre = (c.plants ?? []).filter((pl) => pl.kind !== 'doc');
+  // At the pin the profile repository writes `maxImagesPerRequest`, a column
+  // v4 adds at boot (`add-profile-max-images-per-request-v1`, `INTEGER DEFAULT
+  // 4`) and the committed pair predates. jest's `initializeDatabase` runs no
+  // migrations, so the `profile: true` case's create failed and killed the run.
+  // v4's own DDL, on that case's copy only (the column is P4.D362's; v5's side
+  // of the row is the union's).
+  if (c.profile) {
+    pre.unshift({
+      kind: 'sql',
+      db: 'main',
+      sql: 'ALTER TABLE "connection_profiles" ADD COLUMN "maxImagesPerRequest" INTEGER DEFAULT 4',
+      params: [],
+    });
+  }
+  if (pre.length > 0) {
+    const Driver = jest.requireActual(cipherDriverPath);
+    const keyHex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+    const openKeyed = (file: string) => {
+      const conn = new Driver(file);
+      conn.pragma(`key = "x'${keyHex}'"`);
+      return conn;
+    };
+    const conns = { main: openKeyed(mainWork), mount: openKeyed(mountWork) };
+    try {
+      for (const pl of pre) {
+        if (pl.kind === 'sql') {
+          const changes = conns[pl.db].prepare(pl.sql).run(...pl.params).changes;
+          if (!pl.sql.startsWith('ALTER') && changes !== 1) throw new Error(`plant changed ${changes} rows: ${pl.sql}`);
+        } else if (pl.kind === 'diskStore') {
+          mkdirSync(join(diskBase, 'Tools'), { recursive: true });
+          for (const f of pl.files) fs.writeFileSync(join(diskBase, f), JSON.stringify({ preset: f }, null, 2));
+          conns.mount
+            .prepare(
+              'INSERT INTO "doc_mount_points" ("id","name","basePath","mountType","storeType","includePatterns","enabled","createdAt","updatedAt") VALUES (?,?,?,?,?,?,?,?,?)',
+            )
+            .run(pl.mountPointId, pl.name, diskBase, 'filesystem', 'documents', '[]', 1, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+          conns.mount
+            .prepare('INSERT INTO "project_doc_mount_links" ("id","projectId","mountPointId","createdAt","updatedAt") VALUES (?,?,?,?,?)')
+            .run(`${pl.mountPointId.slice(0, -2)}11`, pl.projectId, pl.mountPointId, '2026-10-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z');
+          const back = conns.mount.prepare('SELECT "basePath" FROM "doc_mount_points" WHERE "id" = ?').get(pl.mountPointId) as { basePath: string } | undefined;
+          if (back?.basePath !== diskBase) throw new Error('disk store plant did not read back');
+          if (pl.toolsMode !== undefined) {
+            fs.chmodSync(join(diskBase, 'Tools'), pl.toolsMode);
+            lockedDirs.push(join(diskBase, 'Tools'));
+          }
+        }
+      }
+    } finally {
+      conns.main.close();
+      conns.mount.close();
+    }
+  }
+  // === end P4.D379 ===
+
   // P4.D305: v4's log lines, through the singleton logger's shared transports
   // (memory note `v4-oracle-job-host-and-log-capture` §2).
   process.env.LOG_LEVEL = 'debug';
@@ -331,6 +488,22 @@ async function runCase(
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite');
 
   await initializeDatabase();
+
+  // === P4.D379: database-store documents through v4's REAL writer ===
+  {
+    const docs = (c.plants ?? []).filter((pl) => pl.kind === 'doc') as Array<Extract<Plant, { kind: 'doc' }>>;
+    if (docs.length > 0) {
+      const { writeDatabaseDocument, listDatabaseFiles } = await import('@/lib/mount-index/database-store');
+      for (const d of docs) {
+        await writeDatabaseDocument(d.mountPointId, d.relativePath, d.content);
+        const listed = await listDatabaseFiles(d.mountPointId, { folder: 'Tools' });
+        if (!listed.some((e: { relativePath: string }) => e.relativePath === d.relativePath)) {
+          throw new Error(`doc plant did not list back: ${d.mountPointId}/${d.relativePath}`);
+        }
+      }
+    }
+  }
+  // === end P4.D379 ===
 
   if (c.profile) {
     const { ConnectionProfilesRepository } = await import(
@@ -363,7 +536,7 @@ async function runCase(
     try {
       if (c.method === 'GET') {
         const { GET } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
-        response = (await GET(mockRequest(base) as never, params as never)) as never;
+        response = (await GET(mockRequest(`${base}${c.query ?? ''}`) as never, params as never)) as never;
       } else {
         const { POST } = await import('@/app/api/v1/chats/[id]/custom-tools/route');
         response = (await POST(
@@ -375,7 +548,11 @@ async function runCase(
       Date.now = realNow;
     }
     const status = response.status;
-    const body = await response.json();
+    // === P4.D379: the disk store's scratch path differs per side — mask it ===
+    const mask = <T,>(v: T): T => JSON.parse(JSON.stringify(v).split(diskBase).join('<BASE>'));
+    const body = mask(await response.json());
+    for (let i = 0; i < logs.length; i += 1) logs[i] = mask(logs[i]);
+    // === end P4.D379 ===
 
     // Let the fire-and-forget logLLMCall settle before dumping (the
     // oracle-fire-and-forget-tail rule: stray promises poison the NEXT case).
@@ -439,6 +616,10 @@ async function runCase(
 
     return {
       name: c.name,
+      // === P4.D379 ===
+      ...(c.query === undefined ? {} : { query: c.query }),
+      ...(c.plants === undefined ? {} : { plants: c.plants }),
+      // === end P4.D379 ===
       // P4.D169: recorded so the Rust side takes its clock FROM the row rather
       // than from a constant the two sides would have to keep in step by hand.
       ...(c.nowMs === undefined ? {} : { nowMs: c.nowMs }),
@@ -451,6 +632,8 @@ async function runCase(
       llmLogs,
     };
   } finally {
+    // === P4.D379 === restore a chmod 000 before the scratch is removed.
+    for (const dir of lockedDirs) fs.chmodSync(dir, 0o755);
     await closeDatabase();
     closeMountIndexSQLiteClient();
     closeLLMLogsSQLiteClient();
@@ -649,6 +832,123 @@ async function main(): Promise<void> {
     { name: 'list-trigger-room', method: 'GET', chat: CHAT_TRIGGERS },
     { name: 'run-announced-dresser-as-a', method: 'POST', chat: CHAT_TRIGGERS, body: { tool: 'announced_dresser', asCharacterId: CHAR_A } },
     { name: 'run-announced-dresser-no-character', method: 'POST', chat: CHAT_TRIGGERS, body: { tool: 'announced_dresser' } },
+
+    // ---- P4.D379 (v4 `fd165fce0`): GET ?action=presets ---------------------
+    // === P4.D379 ===
+    // v4's own shape on REAL stores: vault A, the group store, the project's
+    // official store and General, nearest first; two shadows.
+    {
+      name: 'presets-shadowed',
+      method: 'GET',
+      query: '?action=presets&tool=coin',
+      plants: [
+        presetDoc(VAULT_A, 'Tools/coin.aggressive.settings.json'),
+        presetDoc(GROUP_STORE, 'Tools/coin.aggressive.settings.json'),
+        presetDoc(GROUP_STORE, 'Tools/coin.careful.settings.json'),
+        presetDoc(PROJECT_STORE, 'Tools/coin.quiet.settings.json'),
+        presetDoc(GENERAL_STORE, 'Tools/coin.careful.settings.json'),
+        presetDoc(GENERAL_STORE, 'Tools/coin.house.settings.json'),
+      ],
+    },
+    // Only `fine` parses as one of coin's presets.
+    {
+      name: 'presets-filtered',
+      method: 'GET',
+      query: '?action=presets&tool=coin',
+      plants: [
+        presetDoc(VAULT_A, 'Tools/lockpick.x.settings.json'),
+        presetDoc(VAULT_A, 'Tools/old/coin.y.settings.json'),
+        presetDoc(VAULT_A, 'Tools/coin.Bad Name.settings.json'),
+        presetDoc(VAULT_A, 'Tools/coin.settings.json'),
+        presetDoc(VAULT_A, 'Tools/coin.fine.settings.json'),
+      ],
+    },
+    // A filesystem store linked to the project whose `Tools/` will not list
+    // (EACCES): the `unread` entry, the WARN, and the store still in `stores`.
+    {
+      name: 'presets-unread',
+      method: 'GET',
+      query: '?action=presets&tool=coin',
+      plants: [
+        { kind: 'diskStore', mountPointId: DISK_STORE, name: 'Locked Drawer', projectId: PROJECT, files: ['Tools/coin.hidden.settings.json'], toolsMode: 0 },
+        presetDoc(GENERAL_STORE, 'Tools/coin.house.settings.json'),
+      ],
+    },
+    // The same filesystem store, readable: a disk store's presets list too.
+    {
+      name: 'presets-disk-store',
+      method: 'GET',
+      query: '?action=presets&tool=coin',
+      plants: [
+        { kind: 'diskStore', mountPointId: DISK_STORE, name: 'Open Drawer', projectId: PROJECT, files: ['Tools/coin.drawer.settings.json', 'Tools/coin.tool.json'] },
+        presetDoc(GENERAL_STORE, 'Tools/coin.drawer.settings.json'),
+      ],
+    },
+    // A disabled store on the walk (REACH's `enabled: require`): absent from
+    // `stores` AND `presets`.
+    {
+      name: 'presets-disabled-store',
+      method: 'GET',
+      query: '?action=presets&tool=coin',
+      plants: [
+        { kind: 'sql', db: 'mount', sql: 'UPDATE "doc_mount_points" SET "enabled" = 0 WHERE "id" = ?', params: [GROUP_STORE] },
+        presetDoc(GROUP_STORE, 'Tools/coin.gone.settings.json'),
+        presetDoc(GENERAL_STORE, 'Tools/coin.house.settings.json'),
+      ],
+    },
+    // The tool need not exist.
+    { name: 'presets-unknown-tool', method: 'GET', query: '?action=presets&tool=nosuchtool' },
+    // The first 400, three ways.
+    { name: 'presets-bad-tool', method: 'GET', query: '?action=presets&tool=Coin' },
+    { name: 'presets-missing-tool', method: 'GET', query: '?action=presets' },
+    { name: 'presets-empty-tool', method: 'GET', query: '?action=presets&tool=' },
+    // The tool is checked BEFORE the chat: 400, not 404.
+    { name: 'presets-bad-tool-missing-chat', method: 'GET', chat: UNKNOWN_CHAT, query: '?action=presets&tool=Coin' },
+    { name: 'presets-missing-chat', method: 'GET', chat: UNKNOWN_CHAT, query: '?action=presets&tool=coin' },
+    // B's walk: B's vault, no group tier.
+    {
+      name: 'presets-as-b',
+      method: 'GET',
+      query: `?action=presets&tool=coin&asCharacterId=${CHAR_B}`,
+      plants: [
+        presetDoc(VAULT_A, 'Tools/coin.mine.settings.json'),
+        presetDoc(VAULT_B, 'Tools/coin.mine.settings.json'),
+        presetDoc(GROUP_STORE, 'Tools/coin.table.settings.json'),
+      ],
+    },
+    { name: 'presets-as-stranger', method: 'GET', query: `?action=presets&tool=coin&asCharacterId=${STRANGER}` },
+    // An EMPTY asCharacterId is v4's falsy branch: the operator's own character
+    // (B, in the LLM-led room), exactly like an absent one.
+    {
+      name: 'presets-empty-as',
+      method: 'GET',
+      chat: CHAT_LLM_LED,
+      query: '?action=presets&tool=coin&asCharacterId=',
+      plants: [presetDoc(VAULT_A, 'Tools/coin.mine.settings.json'), presetDoc(VAULT_B, 'Tools/coin.mine.settings.json')],
+    },
+    // A chat with no character participant (planted).
+    { name: 'presets-no-character', method: 'GET', chat: CHAT_SOLO, query: '?action=presets&tool=coin', plants: [participantsSql(CHAT_SOLO, [])] },
+    {
+      name: 'presets-no-character-stranger',
+      method: 'GET',
+      chat: CHAT_SOLO,
+      query: `?action=presets&tool=coin&asCharacterId=${STRANGER}`,
+      plants: [participantsSql(CHAT_SOLO, [])],
+    },
+    // `searchParams.get` reads the FIRST of a repeated key.
+    { name: 'presets-duplicate-keys', method: 'GET', query: '?action=presets&tool=coin&tool=Bad' },
+    // The unknown-action envelope lists v4's two GET actions, in order.
+    { name: 'presets-unknown-action', method: 'GET', query: '?action=foo' },
+    // P4.D379 Tier 2: CHAR_D's broken vault — the perspective is DROPPED with
+    // v4's WARN, and the walk runs as A.
+    {
+      name: 'presets-broken-vault-perspective',
+      method: 'GET',
+      chat: CHAT_SOLO,
+      query: '?action=presets&tool=coin',
+      plants: [participantsSql(CHAT_SOLO, [['e5000000-0000-4000-8000-00000000000d', CHAR_D, 'llm'], ['e5000000-0000-4000-8000-00000000000a', CHAR_A, 'llm']])],
+    },
+    // === end P4.D379 ===
   ];
 
   const out = fs.createWriteStream(outPath);

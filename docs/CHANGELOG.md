@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — test(pascal): the presets route differential, plus the perspective-dropped WARN (P4.D379 items 6 + 9, v4 fd165fce0)
+
+_Versions: core 0.0.1434._
+
+`pascal_custom_tools_route_equivalence` is regenerated from the `624d0d25c` pin with 19 `?action=presets` rows over in-case plants that the oracle records and the Rust side replays (raw SQL, a scratch filesystem store with an optional `chmod 000 Tools/`, and database documents through the real writers), byte-comparing each body: shadows on real vault / group / project / General stores, the name filter, an unreadable disk store in `unread` with its WARN, a readable disk store, a disabled store left out, an unknown tool, the three 400 sentences and their order against the 404, `asCharacterId` for another character and for a stranger, an empty `asCharacterId` read as absent, a chat with no character, a repeated `tool` key, and the unknown-action envelope. The family pins the three preset lines. Also ported (item 9): `load_perspectives` logs v4's WARN `Custom-tool perspective dropped — character unreadable` when a character's read fails (an absent character stays silent), witnessed by a planted broken-vault participant. The oracle now mocks `acceptsSamplingParameters` and adds v4's `maxImagesPerRequest` column to the profile case's copy; both were pre-existing breaks at the pin that stopped the regen.
+
 #### 2026-11-09 — feat(web): GET custom-tools ?action=presets at the edge (P4.D379 item 5, v4 fd165fce0)
 
 _Versions: web 0.0.257._
