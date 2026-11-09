@@ -200433,3 +200433,178 @@ REAIM REMOVED the `sse-0`…`sse-6` rows (its record). Nothing in `storyteller_p
 As the order lists (Salon send / continue / nudge / chain; swipe + "Try uncensored"; raise a hand → `handAsked`, a gesture yield logging `inferredFromGesture: true`; a forced Salon send failure → `kind:"error"` with the two flags vs Brahma's three-key bag; Help / Brahma / Scenario Builder unchanged).
 
 **Versions at close:** core 0.0.1429, host 0.0.224, web 0.0.257 (cli 0.0.38, tauri 0.0.9, sys 0.1.0, SPA 0.5.971 unchanged; harness frozen 0.0.1110).
+
+## P4.D368 — Storyteller "All at once" (P4.D343 item 41) + item 29's import refusals + the board re-enable + the `d4ddeb943` rider (pin `624d0d25c`) — LANE CLOSE
+
+**Branch** `claude/p4-d368-simultaneous-1469ee` (worktree `.claude/worktrees/p4-d368-simultaneous-1469ee`). The session started in an app-made worktree already sitting on `FRAMES` `1fd8481ce` (P4.D366's Tier-1 commit, confirmed against its status header on `claude/p4.d366-salon-stream-frames-0f49c7`); no move was needed. The order's suggested branch name differs; the worktree is the app's.
+
+**Commits:**
+- `eea94212a` — items 2–5: `RoundTurnRunner` takes `&self`; the concurrent group in core `run_storyteller_round`; the host seats concurrent turns and skips the hooks for them; the 422 refusal is removed; `plan_storyteller_run_equivalence` grows seven concurrent RUN rows (core 0.0.1429, host 0.0.225).
+- `f86ec13a5` — items 5–8 and 15: the follower gate; a storyteller turn yields once after its transcript load; each turn's future is boxed; the NEW tier-3 `storyteller_simultaneous_tier3_equivalence` (core 0.0.1430, host 0.0.226).
+- `89f4ed023` — items 9–10: the board's **All at once** button re-enabled with v4's rule and title; e2e beat (K) un-skipped and gated on `P4D384_FRAMES_SPA_LANDED` (SPA 0.5.972).
+- `a4e053fad` — items 13–14: the `d4ddeb943` rider (avatar-job reuse is PENDING-only) and the `[CharacterAvatar]` lines' camelCase keys (core 0.0.1431).
+- `475d0f69e` — items 11–12: item 29's `.qtap` import refusals and the accepted-bid write shape (core 0.0.1432).
+- the lane-close docs commit (this record and the order's status header).
+
+### Probe and pin
+- **§R.2 observation (2026-11-08 23:42 CST):** v4 moved, `main` at `88c9cc81d` with 30 commits past `624d0d25c` (the 4.12.2 release and later); `bugfix` at `d67c70a51`; the tree clean on `main`. Recorded, not acted on (§R.2).
+- **The pin:** `/tmp/qt-v4-pin-p4d368-624d0d25c`, HEAD `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`, `package.json` `4.13.0-dev.8`. `npm ci --offline` succeeded, then `npm rebuild better-sqlite3`. Versions: better-sqlite3 13.0.3, openai 7.47.0, `@openrouter/sdk` 1.5.34, zod 4.6.7, mermaid 12.3.0. The floor install (`.claude/pin-plugin-sdks.sh`) printed: CLI driver 13.0.3 / SQLite 3.53.4 / cipher chacha20; openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3. The pin was never swept during the lane.
+
+### Item 3 — the concurrent group in core (R-1 stands)
+- `run_storyteller_round` ports `round.service.ts:350-441` whole:
+  - one shared depth counter, one `spoken` list and one `last_outcome`;
+  - the concurrent seats grouped by `profile_key` in first-seen order, each group through a literal `run_with_cap` (`min(4, n)` workers popping a shared queue);
+  - every group's workers joined with ONE `futures_util::future::join_all` (no new dependency; `Cargo.lock` moved only on version lines);
+  - `spokenSince = []` for every concurrent turn; a concurrent yield ignored; ONE stop check after the group; the tail only when `ended == Ran`.
+- **The start-burst shape that matched v4: NOT the eager prologue.** The match is TWO cooperative yields (`YieldOnce`, a `Pending`-once future that wakes itself; core has no tokio `rt`):
+  - one after `run_turn` resolves and before `on_turn_end` (v4 awaiting `runTurn`'s promise);
+  - one after `run_one` returns and before the worker shifts its next seat (the worker awaiting `fn(item)`).
+
+  With `join_all` polling its futures in order, every first-wave turn starts, then every first-wave turn ends, and only then does the second wave start.
+- **v4's event order on row (c)**, `simultaneous-cap-five-on-one-profile-plus-one` (g1–g5 on profile 1, g6 on profile 2, g7 Act): `start g1 d1, start g2 d2, start g3 d3, start g4 d4, start g6 d5, end g1, end g2, end g3, end g4, end g6, start g5 d6, end g5, start g7 d7, end g7`. g7's `spokenSince` is `[Gil, Gus, Gem, Gia, Gwen, Guy]`, which is COMPLETION order.
+- **Item 4 (f) is observable:** `simultaneous-last-outcome-is-last-finished` gives `lastOutcome` = g5 (the second wave), while the plan's last seat is g6.
+- **Red-first** (the carve's assert removed in the grown test, against the unmodified `FRAMES` core): 28 cases, **14 mismatches**, all on the 7 concurrent rows (`run` + `LOGS`). **Green:** 28 / 0.
+
+### Item 5 — the host; the concurrency measurement (R-2 stands)
+- **Cooperative single-task concurrency works.** The v5-only `concurrent_turns_interleave_and_every_frame_is_seated` test streams with 150 ms between chunks; the two seats' content frames INTERLEAVE (both seats stream before either finishes). Every concurrent frame ends with `,"seat":{"participantId":…,"concurrent":true}}`, and the tail's frames carry no seat.
+- **No blocking point serialises the group.** The DB reads are synchronous but short, and the provider streams arrive on channels.
+- **The model was kept; two things had to change:**
+  - **The stack.** Several `process_message` futures held inline in one `join_all` overflowed the run thread's stack in a debug build (SIGABRT). Each turn's future is now `Box::pin`ned in `SpineRoundRunner::run_turn`.
+  - **The transcript load.** v5's load → cadence-post segment had no await, so the leader posted Prospero's briefing before the follower loaded the transcript. The follower's count moved off 5 and it skipped its whisper; the tail's count moved too. Measured red on the tier-3 `main` row: Prospero refresh logged 1× where v4 logs 3×.
+    - **Fix:** ONE cooperative yield right after a storyteller turn's transcript load (`orchestrator.rs`, the second fenced P4.D368 hunk, by `existing_messages`). Every first-wave seat now loads the transcript as it stood at the operator's post, which is v4's interleaving and its own comment ("everyone sees the transcript as it stood at the operator's post").
+    - A sequential storyteller turn's yield is a no-op.
+    - **This widens R-4** (see H-R10a).
+- **The shared `SubmissionLedger`: converged, unobservable.** v4 shares one across the round. v5 keeps one per turn, but a storyteller turn's failure emits the shell frame from a DEFAULT ledger, and nothing else reads it.
+- **`sharedStreamController`: converged by construction.** A v5 sink has no `close`.
+
+### Items 6–7 — the tier-3 family (NEW)
+- **The family:** `storyteller_simultaneous_tier3_equivalence`. v4's REAL `handleStorytellerRun` vs v5's REAL host `ChatSpine`, on a minted fixture trio built by the NEW `build-storyteller-simultaneous-fixture.ts`: Ada and Bram (Simple, profile A), Cora (Act, profile B), a project with a description, five planted messages (on the cadence), and three OPEN rounds.
+  - **The oracle:** NEW `storyteller-simultaneous-tier3.test.ts`. Only the provider, embeddings, the pricing cache, the API-key lookups and the job processor are mocked; every Salon subsystem runs real on both sides.
+  - **The canned streams are keyed BY SEAT,** not by prompt bytes: prompt bytes are `orchestrator_tier3`'s job, and the real host spine's prompts cannot be frozen byte for byte. Recorded in the header.
+- **Compared:**
+  - the frames PARTITIONED BY SEAT (byte for byte, `messageId` masked);
+  - the round's NEW `chat_messages` rows, sorted;
+  - the round row (`chosenAt` masked);
+  - the `Storyteller round running` / `closed` lines (`spoke` as a set) and the `[TurnPreparation] Prospero context refresh due` lines.
+- **Two named normalisations:**
+  - `UNPORTED_PRE_SEND_STATUSES`: v4's `loading_tools` / `compressing` / `budget_check` / `assembling_context` status stages, which v5's orchestrator does not emit. A standing gap that `orchestrator_tier3`'s `shared_status_stage` already filters; dropped on both sides.
+  - `CONCURRENT_DONE_TURN_IS_SCHEDULING`: a SEATED `done.turn` depends on which seat finished first; masked on seated frames only. The tail's `turn` is compared.
+- **Frames per seat (v4, `main`):** Ada 16, Bram 16, unseated 20.
+  - The unseated frames are Cora's hook `turnStart` (depth 3), her own turn's frames, her `turnComplete` and ONE `chainComplete {reason:"user_turn", nextSpeakerId:null, chainDepth:3}`.
+  - A concurrent seat's own `turnStart` (chainDepth 0) carries its seat.
+- **Prospero (item 8's differential):** exactly ONE public announcement for the group (the follower Bram posts none), plus the tail's own cadence announcement (Cora's count is 10), and a whisper per seat. The row asserts 2 public announcements on v4's side.
+- **Red-first:**
+  - the 422 before any frame is the `FRAMES` state the order recorded (the run refused; not re-measured: the refusal was deleted in `eea94212a` before this family existed);
+  - with the follower gate disabled (`&& false`): **4 mismatches** (`main` frames / messages / logs, `stop` messages);
+  - with the transcript yield absent (the run before the yield landed): `main` and `stop` messages and logs red. The follower's whisper was missing and the tail's cadence briefing too (one Prospero refresh logged where v4 logs three).
+- **Green:** 3 rows / 0 mismatches, stable 3 / 3 with default test threading.
+- **Item 7, measured: v4 THROWS out of the round.**
+  - Bram's provider error rejects `Promise.all`; the round is left `running`.
+  - `Streaming error` is logged, the UNSEATED `{kind:"error", message:"Failed to generate response", …}` frame is the stream's LAST, and no `chainComplete` follows.
+  - Ada's `done` never arrives: the stream closes after her content.
+  - Bram's partial is preserved with v4's OOC note.
+- **The R-3 ruling applies:** `CONCURRENT_TURN_FAILURE_CONTAINED`, a named both-ways carve in `storyteller_spine.rs`'s module doc and in the family's `failure` row. That row asserts v4's measured shape AND v5's contained shape: the round closes `ran`, Cora's tail runs, ONE `chainComplete user_turn`. It compares Ada's seated prefix and the `running` line.
+- **v4 filing CANDIDATE (draft only, NOT filed — R-Z; the human's go-ahead first):** "Storyteller All at once: a concurrent turn's provider failure rejects `runStorytellerRound` before `markClosed`. The round stays `running` (the board can never open another), the other seats' streams are cut mid-turn, and no `chainComplete` is sent, so the Salon stays busy until Stop. Repro: two Simple bids all at once, one seat's provider erroring mid-stream."
+- **Not compared:** `llm_logs`. v4's run writes no `llm_logs` table into the minted llm-logs partition (the oracle reads `no such table`), so there is nothing to compare the round id against. This family does NOT discharge P4.D343 item 32 (Tier 3 item 16).
+
+### Item 8 — the follower gate
+- **Two fenced P4.D368 hunks in `orchestrator.rs`:**
+  - the transcript yield, right after `let mut existing_messages = …` (`:1701-1713`);
+  - the gate on the public announcement (`:1850-1858`), carrying v4's comment. The whisper is unchanged.
+- `grep -c concurrent_follower orchestrator.rs` → 1.
+- The nearest sibling fence is P4.D366's `handAsked` hunk (`:1790`): 60 lines above the gate, 77 below the yield.
+- The unit leg is the tier-3 `main` row: the follower posts its whisper and no announcement, and the leader posts both. No separate core unit test was added; the orchestrator has no cadence harness short of the real spine.
+
+### Items 9–10 — the SPA
+- The board: v4's rule, title and `onRun('simultaneous')`. **The human's 2026-11-04 ruling "Storyteller All at once is disabled until P4.D343 item 41 lands" RETIRES with `89f4ed023`.**
+- **The spec:** red-first 3 failed / 15 passed (old board); green 18 / 18. The "always disabled" case became "one bid chosen is disabled and dispatches nothing". jsdom's synthetic `dispatchEvent` reaches a disabled button's listener, so that case now uses `click()`, which a disabled control swallows.
+- **SPA gate:** lint clean; `npm test` 633 files / 15,562 tests; `npm run build` clean.
+- **e2e:** beat (K) is no longer skipped by name. It is strengthened (two `qt-streaming-message` at once, `before + 2` replies, the summary, exactly two speaking-turn calls through a new `plan.turnCalls` counter) and gated on `P4D384_FRAMES_SPA_LANDED = false`. **H-K.**
+  - The file ran by itself: **9 passed / 2 skipped (11.2 m)**; (I) skips itself and (K) skips by the gate.
+  - The run used DEBUG bins built at the lane tip. The cloned `target/release` bins dated from 2026-10-28 (before the storyteller server existed) and were deleted from the lane's target.
+  - (K) was **not run live on the lane:** no scratch union with P4.D384's reducer was built.
+
+### Items 11–12 — item 29
+- **The chat half:** `chat_storyteller_column_issues`, between `sillyTavernMetadata` and `scenarioSource` (declaration order). v4's measured bytes:
+  - `turnMode: "bogus"` / `7` → `invalid_value` `["rotation","storyteller"]` (a number included);
+  - `storytellerInviteFilter: null` / `"yes"` → `invalid_type` `expected boolean, received null|string`;
+  - `Turn Ok` imports;
+  - the refusal rides P4.124 / P4.167's path (the three ERRORs + `Failed to import chat "<title>": <ZodError>`).
+- **The message half:** `storyteller_bid_parsed`, between the serde decode and `add_message`. v4's bytes: ONE `invalid_union` carrying three option lists:
+  - the bid's issues: `"x"` → `invalid_type` object; `{roundId}` → `tier` `invalid_value` + `plan` `invalid_type` undefined; `tier: "epic"` → `invalid_value`; `toolsNamed: "a"` → `invalid_type` array;
+  - the context-summary option: the `type` literal + `context`;
+  - the system option: the `type` literal + `systemEventType` + `description`.
+
+  v4's rethrowing `safeQuery` ERROR `Failed to add message to chat {chatId, error, strictFailures:true}` precedes the WARN `Failed to import chat message` and the warning. v5 logs it through the existing home `db::fallback::log_chat_message_add_create_wrap_failure`, with a capture pin + silence leg (`storyteller_bid_import_tests`).
+- **The accepted bid's stored text, both sides:** `{"roundId":"r","tier":"act","plan":"p","toolsNamed":[]}`; the `null` bid stays NULL.
+- **Tier 3 item 18 (`STORYTELLER_BID_UNION_ISSUES_PARTIAL`) did NOT fire.** The union twin covers every reachable row: the twin runs only on a row the typed decode accepted; a row whose other `MessageEventSchema` fields are also bad keeps v5's decode text (pre-existing, recorded in the fn doc).
+- **`system_import_state`:**
+  - two arms, `execute_storyteller_chat_refusals` and `execute_storyteller_message_refusals`, plus non-vacuity lists;
+  - the `ran` count 94 → **96** (a UNION number: siblings add arms);
+  - both sides' repository-line lists gain `Failed to add message to chat` and `Failed to import chat message`. The first message-refusal arm exposed a prefix collision: v5's WARN matched the `Failed to import chat` entry;
+  - the ERROR is in the strict lines;
+  - its minted `chatId` is masked on that line.
+- **Red-first** (HEAD's `entities.rs`, the profile vacuity guard relaxed in a scratch run only): both arms red, through the repository lines (12 vs 16), the result body, the chats rows and the messages rows. **Green:** both arms clean.
+- ⚠ **The family stays RED on this branch for a SIBLING-owned reason.** `execute_overwrite_all` imports 0 connection profiles at the pin (v4's `jest.setup` provider-validation mock lacks `acceptsSamplingParameters`, so every profile create throws), so its vacuity guard panics. This is P4.D362's finding and fix (its lane note); `FRAMES` does not carry it. Every non-storyteller red was IDENTICAL between the red and green runs. Green on the union.
+
+### Items 13–14 — the rider + camelCase (R-6 stands)
+- `enqueue_character_avatar_generation` reuses only a PENDING job (v4 `d4ddeb943`'s comment carried); the two INFO lines log `chatId` / `characterId` / `existingJobId` / `jobId`.
+- **`chat_cast_routes_equivalence`:**
+  - row (d2) `add_dedup_processing_job_mints_new` is added to v4's oracle (planted through v4's REAL `repos.backgroundJobs.update`) and to the Rust side; v4 measured one PENDING + one PROCESSING row;
+  - NEW `a_processing_job_is_not_reused_a_fresh_one_is_enqueued`;
+  - the `ENQUEUED` / `REUSED` assertions moved to the camelCase keys, with snake-key silence legs;
+  - the jobs dump breaks ties by `status` on both sides.
+  - **Red-first 4** (d2 + three log tests); **green 12 / 12**.
+- **The audit:** no other assertion of the old keys on these two lines (the remaining `job_id=` hits are different lines).
+- **Measured green with the rider:** `wardrobe_tools_avatar_trigger_equivalence` (3 / 3) and `avatar_job_tier3_equivalence` (2 / 2), regenerated by hand from the pin under `/tmp/p4d368/`.
+
+### Green by name (regenerated from the pin, every path under `/tmp/p4d368/`)
+- `plan_storyteller_run_equivalence` 1 / 1 (28 cases);
+- `storyteller_simultaneous_tier3_equivalence` 2 / 2;
+- `chat_cast_routes_equivalence` 12 / 12;
+- `wardrobe_tools_avatar_trigger_equivalence` 3 / 3;
+- `avatar_job_tier3_equivalence` 2 / 2;
+- `chat_turn_mode_routes_equivalence` 1 / 1.
+- `qtap_import_equivalence` is RED on one `doc_mount_file_links.plainTextLength` (274 vs 296, a prompt-template document). This is P4.D373's (the pin's prompt catalogue), already listed in P4.D362's lane note as a workspace red at SCHEMA; not this lane's.
+- `system_import_state`: above.
+- `storyteller_rounds_tier2` and `storyteller_pure_equivalence` were not regenerated (their code is unmoved; neither is driven by the run loop). Left to the union's §S.2 sweep.
+
+### Gate
+- **fmt / clippy:** `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets -D warnings` is clean both plain and with `--features quilltap-core/native-transport` (after `npm run build`).
+- **`cargo test --workspace --no-fail-fast`** with the lane's env block (every path under `/tmp/p4d368/`; `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin; full log `/tmp/p4d368/workspace-gate.log`): **902 binaries / 6,031 passed / 15 failed / 3 ignored, zero SKIP.** Every failure is sibling-owned, in 11 targets; none is this lane's:
+  - `cli_differential` (P4.D365, the `db integrity` help);
+  - `builtin_prompt_templates_guard` and `qtap_import_equivalence` (P4.D373, the pin's prompt catalogue / `plainTextLength`);
+  - `provider_sdk_version_guard` (P4.D364);
+  - `qtap_schema_embed_guard` (P4.D362's export-schema re-vendor, §R.10 (o));
+  - `system_import_state` (P4.D362's provider-validation mock fix, H-SIS);
+  - `spelling_guard` (the base's, fixed on main);
+  - `chat_send_smoke`, `chat_send_submission_ledger`, `message_retry_uncensored_dispatch_wire`, `message_swipe_stream_dispatch_wire`: the frames-dialect wire assertions P4.D366 re-pointed in `a19761cf9`, after `FRAMES` (on its branch, not this base).
+- **The lane's families by name in the gate:** `plan_storyteller_run` 1 / 1, `storyteller_simultaneous_tier3` 2 / 2, `chat_cast_routes` 12 / 12, `wardrobe_tools_avatar_trigger` 3 / 3, `avatar_job_tier3` 2 / 2, `chat_turn_mode_routes` 1 / 1, `realtime_publish_sites_guard` 1 / 1, `import_warning_text_guard` 6 / 6, `stream_frames_chokepoint` 3 / 3, host lib 148 / 148; the core unit `storyteller_bid_import_tests` green.
+- **Source guards:** `not_available: storyteller simultaneous` → 0; `CONCURRENT_GROUP_IS_THE_HOSTS` → 0; `still being rehearsed` → 0; `concurrent_follower` in `orchestrator.rs` → 1. `Cargo.lock` moved only on the core / host version lines.
+- **SPA:** lint clean; `npm test` 633 / 15,562; `npm run build` clean. Playwright BY FILE: `salon-storyteller-flow.spec.ts` 9 passed / 2 skipped, (K) skipped by its gate.
+
+### HANDOFFs
+- **H-K** — the unifier flips `P4D384_FRAMES_SPA_LANDED` to `true` in `e2e/salon-storyteller-flow.spec.ts` and runs the file by itself on the union (§S.9).
+- **H-STATUS** — the unifier updates P4.D343's and P4.D344's status headers (item 41, item 29 and the All-at-once bullets DONE) and retires the ledger's held `b15fe9404` row (§S.6).
+- **H-R10a** — §R.10 (a) gains this lane's region in `orchestrator.rs`: TWO fenced hunks, the follower gate (R-4) AND the transcript yield after the load (the R-4 widening above; no other lane owns that region).
+- **H-SIS** — `system_import_state` goes green only once P4.D362's provider-validation mock fix is on the same tree. Re-run it on the union; the `ran` count sums the lanes' arms.
+- No C3 gap: every C3 name (`BroadcastSink::seated`, `Event::chat_in`) was present on `FRAMES` as P4.D366's note spells it.
+
+### Retired ruling
+- The human's 2026-11-04 ruling "Storyteller All at once is disabled until P4.D343 item 41 lands", by its own condition (`89f4ed023`).
+
+### Tier 3 records
+- **Item 16:** P4.D343 item 32's sequential `storyteller_round_tier3` rows and the other P4.D343 tier-3 / routes / roster rows are NOT this round's (R-Z); this family does not discharge item 32.
+- **Item 17:** `sharedStreamController` and the shared ledger are converged (above).
+- **Item 18:** did not fire.
+- **Item 19:** the filing candidate is drafted above, not filed.
+
+**Versions at close:** core 0.0.1432, host 0.0.226, SPA 0.5.972; web 0.0.256, cli 0.0.38, tauri 0.0.9, sys 0.1.0 and harness 0.0.1110 unchanged.
+
+**💸 For the owed dogfood pass (§S.8):**
+- 💸 A Storyteller round **All at once** with two Simple bids and one Act bid, on the Friday copy: two concurrent bubbles stream, both keep their text after `done`, the Act turn follows, and the summary reads `Last round: …, … (all at once)`.
+- On a cadence count, only ONE Prospero public context announcement appears for the group.
+- Stop during the group lets the group finish and skips the tail.
+- 💸 A five-seat group on one profile: four stream at once, and the fifth starts when one finishes.
+- A `.qtap` import of a chat with `"turnMode": "bogus"`: the chat is refused with v4's ZodError (no spend).
+- An outfit change while a portrait job is PROCESSING queues a SECOND job.

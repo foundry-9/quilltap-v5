@@ -571,6 +571,12 @@ _Versions: core 0.0.1429, web 0.0.257._
 
 The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
 
+#### 2026-11-09 — docs(porting): P4.D368 lane close — status header and lane record
+
+_No crate versions bumped._
+
+The P4.D368 status header becomes LANE COMPLETE, and the lane record (probe, red-first counts, measurements, gate, HANDOFFs) is appended to `status-log.md`.
+
 #### 2026-11-09 — fix(import): .qtap import refuses a bad turnMode / storytellerInviteFilter / storytellerBid with v4's ZodError, and stores an accepted bid as v4 parses it (P4.D368 items 11–12)
 
 _Versions: core 0.0.1432._
