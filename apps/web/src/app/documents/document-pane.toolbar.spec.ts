@@ -10,6 +10,7 @@ import type { NarrationDelimiters, TemplateDelimiter } from '../core/core-contra
 import { DocumentPane } from './document-pane';
 import type { ActiveDocument } from './document-api';
 import type { OpenDocEntry } from './document-mode';
+import { tooltipContentOf } from '../../testing/tooltip-content';
 
 /**
  * The Document-Mode pane's formatting toolbar (P4.9L2) — v4
@@ -185,7 +186,7 @@ describe('DocumentPane — the formatting toolbar', () => {
     expect(buttons.map((b) => b.textContent!.trim())).toEqual(
       NO_NARRATION.buttons.map((b) => b.label),
     );
-    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(
+    expect(buttons.map((b) => tooltipContentOf(fixture, b))).toEqual(
       NO_NARRATION.buttons.map((b) => b.title),
     );
   });

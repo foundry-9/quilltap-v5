@@ -24,6 +24,7 @@ beforeAll(() => {
 import { CoreClient } from '../../core/core-client';
 import { coreStreamStub } from '../../core/core-client.testing';
 import type { RaisedHandStatus } from '../../chat/raised-hand';
+import { tooltipContentOf } from '../../../testing/tooltip-content';
 import { DocumentModeController } from '../../documents/document-mode';
 import { PageToolbarService } from '../../layout/page-toolbar.service';
 import { MessageList } from '../../chat/message-list';
@@ -2993,7 +2994,7 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
 
     const dismiss = alert.querySelector<HTMLButtonElement>('button[aria-label="Dismiss notice"]')!;
     expect(dismiss).not.toBeNull();
-    expect(dismiss.getAttribute('title')).toBe('Dismiss');
+    expect(tooltipContentOf(fixture, dismiss)).toBe('Dismiss');
     dismiss.click();
     fixture.detectChanges();
     expect(notice(fixture)).toBeNull();

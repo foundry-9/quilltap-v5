@@ -273,6 +273,9 @@ describe('InventoryControlDialogInner', () => {
     const backdrop = el.querySelector('qt-modal > .qt-dialog-overlay') as HTMLElement;
     backdrop.click();
     expect(closes).toBe(0);
+    // The editor's `qtDialogFocus` moves focus in one frame later (v4
+    // `useDialogFocus`); until then the card beneath owns the Escape.
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     fixture.detectChanges();
     expect(el.querySelector('qt-inventory-item-editor')).toBeNull();
