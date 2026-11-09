@@ -198756,3 +198756,161 @@ None moved: core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38, tauri 0.0.9, S
 ### 15. Regen recipes (oracles this lane authored: none new)
 
 Recipes are the three canonical headers, run by hand with every output under `/tmp/p4.d382/` (not committed): help-tree (`TMPO=/tmp/p4.d382/help-tree-oracle`, `QT_ORACLE_OUT=/tmp/p4.d382/oracle-help-tree.ndjson`, `cd $PIN`), help-section-size (`npx tsx harness/oracle/cases/help-section-size.ts > /tmp/p4.d382/oracle-help-section-size.ndjson`, `cd $PIN`), help-ensure (twelve `build-help-ensure-fixture.ts` scenarios into `/tmp/p4.d382/qt-ensure`, then the jest oracle). No fixture changed, so no other oracle is invalidated.
+
+## P4.D362 — the `624d0d25c` SCHEMA keystone: D23 moves 22 / 23 + the two fresh-only columns, three ensures as ONE chain, the column plumbing, the export dumps (lane `claude/p4-d362-schema-7ce895`, pin `624d0d25c`, 2026-11-08) — LANE RECORD (Tier 1 → `SCHEMA` `4e3a1584e`)
+
+**Start.** The session started in the app-made worktree `.claude/worktrees/p4-d362-schema-7ce895` on branch `claude/p4-d362-schema-7ce895`, with HEAD = `REAIM` `0eaa5d4fb`. This was confirmed against the status header of P4.D361's lane branch `claude/p4-d361-reaim-583925`, which records the REAIM sha as `0eaa5d4fb`, so no move was needed. The target was cloned from main (`cp -cR`), and the SPA got `npm ci` + build so the native-transport clippy could run. The disk-full pause (Driftcheck, 2026-11-08) and a machine reboot fell mid-lane. The worktree, the `/tmp/p4d362` scratch and the pin worktree all survived.
+
+**§R.2 probe (2026-11-07 23:38 CST).**
+- v4 `main` is 27 commits past the pin (HEAD `b941280d5`, "feat: Turns mode for the Salon; Paused renamed Manual"), and the tree is CLEAN.
+- `bugfix` is at `d67c70a51` ("bugfix: started 4.12.2 bug branch").
+- The pin `624d0d25c` has package `4.13.0-dev.8`.
+- `npm ci --offline` passed in the lane-unique pin worktree `/tmp/qt-v4-pin-p4.d362-624d0d25c` on the first try.
+- Versions under the pin: better-sqlite3 13.0.3, openai 7.47.0, @openrouter/sdk 1.5.34, zod 4.6.7, mermaid 12.3.0.
+- `.claude/pin-plugin-sdks.sh` floor install OK.
+- No regen ran against unrecorded drift. Every regen ran from the pin.
+
+**Red-first (item 1, at `REAIM`, oracles from the pin).** Six families were RED:
+- `provisioning_equivalence` (1d): EXACTLY four `main` statements differ — `characters`, `chat_messages`, `connection_profiles`, `projects`. This is the D23 tripwire firing as designed. (1b): a real v4 first boot carries the new columns and v5's provision did not.
+- `providers_listing_equivalence`: ANTHROPIC `capabilities` lacked `samplingParameters`.
+- `system_export_equivalence`: 7 stream lines. Six are `character.kind` (P4.D369) and one is the profile cap (this lane).
+- `qtap_schema_embed_guard`: the embedded schema (115,274 B) differs from the pin's.
+- `qtap_import_equivalence`: `plainTextLength` on the `Prompts/*.md` links. This is NOT this lane's: it is the built-in prompt catalogue (P4.D373).
+- `system_backup_equivalence`: 26 diffs = 13 cases × (`characters.json` `kind` [P4.D369] + `connection-profiles.json` `maxImagesPerRequest` [this lane]).
+
+Twelve families were GREEN, each a corpus gap that later got rows:
+- `zero_migrations_rerun` (`PIN_624` not yet in the narrowed runner);
+- `connection_profiles_tier2`;
+- `profile_routes`;
+- `connection_profile_legacy_fields`;
+- `qtap_schema_validate`;
+- `chat_continuation_tier2`;
+- `sampling_params`;
+- `chats_messages_read`;
+- `chats_messages_tier2`;
+- `system_restore`;
+- `migration_index_backfill`;
+- `thinking_prefill_heal`.
+
+The `chats_messages_read` unit tripwire went red after the re-dump only, as designed. The vintage mirror (`restore_vintage_state`) had 4 reds without the P4.D362 block:
+- `a_pre_49_archive…`
+- `no_restore_phase_names…`
+- `the_wear_ledger…`
+- `the_4_11_chat_settings…`
+
+They were green after it.
+
+**The re-dump (item 2).**
+- `fresh_schema.json` moved EXACTLY the four predicted statements at the predicted positions:
+  - `chat_messages."isEstablishedFact" TEXT`, between `isSilentMessage` and `systemSender`;
+  - `connection_profiles."maxImagesPerRequest" INTEGER DEFAULT 4`, between `supportsImageUpload` and `tags`;
+  - `characters."kind" TEXT DEFAULT 'roleplay'`;
+  - `projects."brahmaConnectionProfileId" TEXT`.
+- `chat_settings_seed.json` is `cmp`-identical.
+- `migration_indexes.json`: 0 findings. Only `source.v4Commit` AND `source.v4Version` moved (`4.12.0-dev.0` → `4.13.0-dev.8` — the order expected the commit only).
+- Real v4 first boot at the pin (`tsx server.ts`): health 200 after poll 8. The three migrations ran: the strip with `examined 0`, `isEstablishedFact` added, and `maxImagesPerRequest` added with `backfilled 0`. Table counts: `sqlite_master` main 191 / mountIndex 47 / llmLogs 15. The dumper reported zero findings.
+- `schema-key-order.json` was re-dumped, and the character length pin moves 49 → 50. The order's `:202` cite is the `chat` kind; the character pin is `:262`.
+- `qtap-export.schema.json` was re-vendored WHOLE: 117,110 B, md5 `43817a725eba85bd74aa8ce94da00804`.
+- `provisioning_equivalence` (1b): `kind` / `brahmaConnectionProfileId` are generateDDL-only, and a real v4 boot's slim cutover rows lack them. They were added to the existing `TABLE_COLUMN_ASYMMETRY` characters / projects rows (the `canDrawDiagrams` precedent).
+- Item 14 census: `the_fresh_only_columns_are_named_by_no_v5_sql` is green. The only reds the fresh-only columns caused are the export / backup / import `kind` rows, named for P4.D369 (H2).
+
+**Two-shape storage (items 4 / 5, measured both sides).**
+- R-5: a migrated-shape `isEstablishedFact` (INTEGER affinity) stores `1` / `0`. A fresh-shape one (`TEXT`) stores `'1.0'` / `'0.0'`. NULL means absent.
+- R-L7: v4's `findById` / `findAll` on a NULL `maxImagesPerRequest` cell answer `4` (NULL hydrates to undefined, then the Zod default).
+- ⚠ FINDING (a v4 bug candidate, DRAFT ONLY — not filed; filing waits for the human's go-ahead): v4's SQLite hydrator reads a fresh-shape TEXT `'0.0'` as `true` (`Boolean('0.0')`), for BOTH `isEstablishedFact` and `isSilentMessage`. So on a generateDDL-fresh instance, an explicit `false` flag reads back `true`. v5's old `put_is_silent` compared numerically and answered `false`. It is CONVERGED in `put_zero_one_flag` (Text → `!is_empty`, Blob → true). The corpus pins it: `chats-messages-read-tier2.json` row `…362f0` reads `true` on both sides.
+
+**The ensures (items 3–6).**
+- The strip heal is STAMPED. Its `migrations_state` row message is `Examined {n} Anthropic profile(s); removed sampling parameters from {m}`, and it logs v4's own INFO / DEBUG / ERROR with v4's `context` literal (no `-v1`).
+- The two column ensures are UNSTAMPED and column-gated.
+- ONE chain, `db::schema_4_12_repair::run_4_12_ensures` (strip → established fact → max images), is called by the host (`quilltap-host/src/host.rs:2390-2425`, the fenced P4.D362 block immediately before `TEMPLATE_SEED_AFTER_ENSURES`), by the vintage mirror boot, by `zero_migrations_rerun_equivalence::run_chain`, and by the test twin.
+- The two v5 boot INFOs are `Made room in the transcript for established fact` and `Set each connection profile's image allowance`.
+- Zero-rerun: the build ran 27 migrations. The `-unstamped` twins re-run the span five plus the strip (planted twin `Examined 1 … from 0`, fresh twins `0 / 0`): `STRIP_STAMP_RED_FIRST`.
+- The host-boot family `host_boot_p4d362_schema_4_12` (3 tests) is green.
+
+**Plumbing (items 7–12).**
+- R-L1's tolerant reads: `message_select_columns` substitutes `NULL AS isEstablishedFact` on a pre-column table (unit `a_pre_column_table_reads_with_the_key_absent`). The profile SELECT puts a tolerant `maxImagesPerRequest` between `CP_COLUMNS_TAIL` and `CP_COLUMNS_TAIL_AFTER_MAX_IMAGES`. Unit pins: `established_fact_is_emitted_right_after_is_silent_message`, the 48-column tripwire, and the three new `connection_profiles` tests.
+- R-L1 note: an explicit `null` `isEstablishedFact` is NOT bound; v4 would name the column with NULL. The difference is unobservable on read (NULL means absent).
+- The repository strip is called from `create` and `update` on the caller's thread (`Registry::built_in()`), with v4's DEBUG `Stripped sampling parameters the provider does not accept`.
+- The import / restore refusal bytes for the five bad caps (`0`, `51`, `4.5`, `"6"`, `null`) are v4's ZodError text, measured in `system_import_state` `execute_p4d362_carriers`. The pretty JSON has `too_small` / `too_big` / `invalid_type int` / `invalid_type number` ×2.
+- The route arms: create (absent / null → 4, else `parseMaxImagesPerRequest`, else 400 `maxImagesPerRequest must be a whole number from 1 to 50`); PUT (only when present; `null` → 400). The family is `settings_routes_equivalence` (`cases/settings-routes.test.ts`), NOT `profile_routes`, which is the USER profile — the order's item 12 cite was wrong.
+
+**Corpus rows added after `SCHEMA`.**
+- **The message flag:**
+  - `chats-messages-read-tier2.json`: two rows, `true` and an explicit `false` that reads back true.
+  - `chats-messages-tier2.json`: two rows; v4 stores `'1.0'` / `'0.0'`.
+  - `chat-continuation-tier2.json`: one flagged source row, carried.
+  - All green from the pin.
+- **The import carriers (`system_import_state`):**
+  - The 4.12 plant runs on every copy, both sides (`plant412Columns` / `ensure_4_12_columns_on`).
+  - `execute_p4d362_carriers`: a capless profile → 4; an Anthropic profile stripped to `{"max_tokens":512}` with cap 8; five bad caps named-and-skipped; two flagged messages stored `1` / `0`.
+  - A Rust non-vacuity pin guards the case. It is green against v4.
+  - `system_restore`: green (the archives' capless profiles restore as 4).
+  - `services/quilltap_import/entities.rs` needed NO hunk (the flag rides serde).
+- **The routes:** fourteen `cp_` rows on settings-routes, all matching v4 byte for byte.
+
+**⚠ FINDING (instrument, every jest oracle that creates a profile).** At the pin, v4's `jest.setup.ts:228` mocks `@/lib/plugins/provider-validation` with three functions and NO `acceptsSamplingParameters`. So under the setup mock, EVERY profile create threw `(0 , _providervalidation.acceptsSamplingParameters) is not a function`.
+- In `system_import_state`, `execute_overwrite_all` imported 0 profiles; the P4.70 vacuity guard caught it.
+- The pascal custom-tools / run-custom regens failed outright.
+- The fix, fenced in each case: keep the setup's three mocks and add the REAL function. In `system-import-execute` it runs over a registry holding the real Anthropic plugin, registered the runtime way.
+- Recorded in the shared notes for sibling lanes.
+
+**Mutation proofs (item 1).** Each was applied, run, restored with `git checkout`, and recorded red:
+- M1 established-fact ensure gate inverted → `chat_messages_established_fact_ensure_equivalence` RED.
+- M2 max-images ensure gate inverted → `connection_profiles_max_images_ensure_equivalence` RED.
+- M3 strip heal without `ledger_has` → `anthropic_sampling_strip_heal_equivalence` RED (the already-stamped mode). `zero_migrations_rerun_equivalence` stays GREEN under M3: it runs v5's chain once per mode, so the skip is unobservable there (the order expected the zero-rerun `after-v5` mode to red too — recorded, not a gap in the heal's proof).
+- M4 `upper("provider") IN` → `"provider" IN` → strip-heal family RED (the lowercase `anthropic` row).
+- M5 `removed` in blob order → `sampling_params_equivalence` RED (the `{top_p, temperature}` row).
+- M6 update re-writes the blob only when `removed` is non-empty → `connection_profiles_tier2_equivalence` RED (the provider-only identity row).
+- M7 `resolve_max_images_per_request` truncating a fraction → RED, but only after the new `fraction-six` (`6.5`) row. The existing `4.5` row truncates to the default 4, an equivalent-mutant trap. M7b, accepting the string `"6"`, → RED. The baseline M0 is green.
+- M8 `isEstablishedFact` emitted last → unit `established_fact_is_emitted_right_after_is_silent_message` RED.
+- M9 the strip moved out of the repository (`if true || …`) → `system_import_state` RED (the import carriers' Anthropic row).
+
+**Item 15 (R-L3 ripple), from the pin.**
+- GREEN unchanged: `api_keys_tier2`, `chat_rebuild_summary`, `create_wrap_lines`, `title_update_tier3`, `cheap_llm_fallback`, `fallback_engine`, `vision_request_tier3`, `pascal_workbench_route`.
+- Fixed here: `pascal_custom_tools_route` and `pascal_run_custom_handler` (the jest mock, plus a ONE-TIME up-front plant of the committed `pascal-run-custom-*` pair through the cipher driver; a per-case plant cost the first case `gated-hit` its captured log lines; the Rust side runs `ensure_4_12_columns_on` before its profile insert). Both green.
+- `external_prompt_tier3`: planted per case, with its recipe copying `lib/v4-migrations.ts`. It now regenerates, and is RED on generator prompt / context-budget text (`safe limit ~1000 tokens`) → P4.D371.
+- Named for their owners, regenerated and red on non-cap drift:
+  - `file_attachment_tier3`: image `transport` provenance → P4.D367;
+  - `orchestrator_tier3`: kind-tagged stream frames → P4.D366.
+- Grep list of oracle sources that write profiles:
+  - Planted (this lane): `system-import-execute`, `external-prompt-tier3`, `pascal-custom-tools-route`, `pascal-run-custom-handler`, `connection-profiles-tier2` (plugin registration), `zero-rerun`.
+  - Fresh-at-pin builders (no plant needed): every `fixtures/build-*.ts` hit (`build-settings-fixture.ts`, `build-connection-profiles-fixture.ts`, `build-system-data-fixture.ts`, …).
+  - Green as-is: `api-keys`, `chat-rebuild-summary`, `create-wrap-lines`, `title-update-tier3`, `thinking-prefill-heal`, `migration-index-backfill`, `settings-routes`, `pascal-workbench-route`, `anthropic-sampling-strip-heal`.
+  - `system-backup`: its 13 `kind` reds are P4.D369's.
+
+**HANDOFFs.**
+- H1 → P4.D364:
+  - the generator (`gen-provider-manifests.mjs`) must emit `capabilities.samplingParameters`;
+  - the fenced `samplingParameters` spread in `cases/providers-listing.ts` is P4.D364's file to keep or fold;
+  - the Anthropic thinking `helpText` red in `providers_listing` is P4.D364's.
+- H2 → P4.D369 / P4.D374: the `kind` (and Brahma key) carrier reds:
+  - `system_export` 6 rows;
+  - `system_backup` 13 `characters.json` rows;
+  - `system_import_state` 8 vault `properties.json` rows (`execute_wardrobe_folders`, `execute_legacy_folds`).
+- H3 → P4.D363: append the reindex ensure at the END of `run_4_12_ensures`; the host block is `host.rs:2390-2425`; on the oracle side, `PIN_624_MIGRATIONS` (reindex left OUT) and `plant412Columns(mainPath, pepper)`; zero-rerun expects 27.
+
+**Tier 2.**
+- Item 16: no Almanack page, v4 or v5, enumerates profile keys — nothing to do.
+- Item 17: SKIPPED — the dogfood-waits ruling (2026-11-04). No copy was taken.
+
+**NO-PORT (recorded once).**
+- v4's ensure-migration INFO / ERROR texts, result messages and prettify labels for the two column migrations (§R.5 — v5 logs its own ONE boot INFO per add).
+- The strip heal's `reportProgress` bar.
+
+**Workspace reds at close that are not P4.D362's:**
+- `spelling_guard` (base; main `a11fbe767`);
+- `provider_sdk_version_guard` + `providers_listing` (P4.D364);
+- `builtin_prompt_templates_guard` (P4.D373 — 22 prompts at the pin);
+- `cli_differential` `db help` (P4.D365's integrity text).
+
+**Versions at close:** core 0.0.1428, host 0.0.224; harness frozen 0.0.1110.
+
+**Commits:**
+- `4e3a1584e` SCHEMA;
+- `5da68694b` Status;
+- `d15d893b5` changelog;
+- `57a39acb3` carrier rows;
+- `d6919e41c` settings rows;
+- `9024789a2` ripple;
+- `59f621808` mutation proofs;
+- then the close commit.

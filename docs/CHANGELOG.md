@@ -24,6 +24,21 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — docs(porting): P4.D362 LANE COMPLETE — the lane record and Status
+
+_Docs-only change._
+
+The P4.D362 lane record is appended to `status-log.md`. It covers:
+- the red-first counts;
+- the re-dump deltas;
+- the two-shape storage measurements and the `'0.0'` → true finding;
+- the eleven mutation proofs;
+- the item-15 ripple by family;
+- the jest provider-validation mock finding;
+- the H1–H3 handoffs.
+
+The order's Status moves to LANE COMPLETE with `SCHEMA` `4e3a1584e`.
+
 #### 2026-11-08 — P4.D362: the item-1 mutation proofs, plus a `6.5` cap row
 
 _No crate versions bumped._
