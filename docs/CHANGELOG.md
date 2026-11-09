@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — test(documents): the core's unit fixture creates its store through the repository (P4.D380)
+
+_Versions: core 0.0.1439._
+
+`documents/core/tests.rs` (an out-of-line test file, which the source-census lexer reads as production) inserted its `doc_mount_points` row raw. `doc_mount_points_name_writers_census` caught it in the lane gate. The fixture now creates the store through `DocMountPointsRepository::create`, behind the name gate. Test-only.
+
 #### 2026-11-09 — test(harness): the document core's census rows and the documents_routes recipe stages its plants (P4.D380)
 
 _No crate versions bumped._

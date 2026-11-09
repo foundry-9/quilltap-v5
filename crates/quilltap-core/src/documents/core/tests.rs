@@ -30,13 +30,33 @@ fn instance() -> (Writer, Writer, tempfile::TempDir) {
     crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
     let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
     let mount = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
-    mount
-        .connection()
-        .execute(
-            "INSERT INTO doc_mount_points (id, name, mountType, createdAt, updatedAt) \
-             VALUES (?1, 'Store', 'database', '2026-01-01T00:00:00.000Z', \
-             '2026-01-01T00:00:00.000Z')",
-            [MP],
+    // Through the repository (the store-name census: names are one
+    // case-insensitive namespace, never inserted raw).
+    use crate::db::doc_mount_points::{CreateOptions, DmpCreate, DocMountPointsRepository};
+    DocMountPointsRepository::new(mount.connection())
+        .create(
+            &DmpCreate {
+                name: "Store".into(),
+                base_path: String::new(),
+                mount_type: "database".into(),
+                store_type: "documents".into(),
+                include_patterns: vec![],
+                exclude_patterns: vec![],
+                enabled: true,
+                last_scanned_at: None,
+                scan_status: "idle".into(),
+                last_scan_error: None,
+                conversion_status: "idle".into(),
+                conversion_error: None,
+                file_count: 0.0,
+                chunk_count: 0.0,
+                total_size_bytes: 0.0,
+            },
+            &CreateOptions {
+                id: MP.into(),
+                created_at: "2026-01-01T00:00:00.000Z".into(),
+                updated_at: "2026-01-01T00:00:00.000Z".into(),
+            },
         )
         .unwrap();
     (main, mount, dir)
