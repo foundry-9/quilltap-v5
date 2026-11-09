@@ -163,6 +163,22 @@ const informInWindow: Raw[] = [
 ];
 emit('window_start', 'inform-in-window|2', { messages: informInWindow, windowCount: 2 }, verbatimWindowStart(informInWindow, 2));
 emit('window_start', 'empty|3', { messages: [], windowCount: 3 }, verbatimWindowStart([], 3));
+// === P4.D372 (v4 `db6190b44`) === an ordinary fact counted at the baseline
+// too (a seat line is a USER row; a Host fact an ASSISTANT row with text);
+// the ONE count move is a machine fact whose body is only tool markup —
+// `stripToolArtifacts` emptied it at the baseline, and the fact arm now keeps
+// it (framed, before the strip).
+const deusWindow: Array<Raw & { isEstablishedFact?: boolean }> = [
+  { role: 'USER', content: 'a' },
+  { role: 'ASSISTANT', content: '[Tool call made]', systemSender: 'host', systemKind: 'established-fact' },
+  { role: 'USER', content: 'The bridge fell.', isEstablishedFact: true },
+  { role: 'ASSISTANT', content: 'The river rose above the mill.', systemSender: 'host', systemKind: 'established-fact' },
+  { role: 'ASSISTANT', content: 'b, an ordinary reply' },
+];
+for (const n of [1, 2, 3, 4, 5]) {
+  emit('window_start', `deus|${n}`, { messages: deusWindow, windowCount: n }, verbatimWindowStart(deusWindow, n));
+}
+// === /P4.D372 ===
 
 // ---- effectiveWindowSize ----
 const eff: Array<[string, number | undefined, number, number | undefined]> = [

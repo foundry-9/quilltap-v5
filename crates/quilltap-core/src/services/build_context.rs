@@ -397,6 +397,17 @@ pub struct ExistingMessage {
     /// `toVisibleConversationMessage`, `d68c1af88`). Like `system_kind`, `None`
     /// on the production path (the record-only strip has run).
     pub system_sender: Option<String>,
+    // === P4.D372 ===
+    /// `isEstablishedFact`, carried like `system_kind` / `system_sender` so a
+    /// caller that reaches the estimator with raw rows frames a fact as v4's
+    /// `toVisibleConversationMessage` does. MEASURED `None` on the production
+    /// path, as in v4: `buildMessageContext` hands `buildContext`
+    /// `existingMessages: conversationMessages` (`context-builder.service.ts:
+    /// 1193`) — role + content only, the fact ALREADY framed by the context
+    /// pass — so neither side's estimator sees the flag, and both count the
+    /// framed body.
+    pub is_established_fact: Option<bool>,
+    // === /P4.D372 ===
 }
 
 /// v4's `TimestampConfig` subset buildContext reads (mode / autoPrepend), plus
@@ -2117,6 +2128,7 @@ where
             system_kind: m.system_kind.clone(),
             // === end P4.D205 ===
             system_sender: m.system_sender.clone(),
+            is_established_fact: m.is_established_fact, // P4.D372
         })
         .collect();
     let visible_conversation = extract_visible_conversation(&existing_raw);

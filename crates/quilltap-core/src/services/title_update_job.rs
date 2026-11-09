@@ -264,21 +264,11 @@ where
         .map_err(|e| e.to_string())?;
     let raw: Vec<crate::chat_tasks::RawMessage> = all_messages
         .iter()
-        .map(|m| crate::chat_tasks::RawMessage {
-            type_: m.get("type").and_then(Value::as_str).map(str::to_string),
-            role: m.get("role").and_then(Value::as_str).map(str::to_string),
-            content: m.get("content").and_then(Value::as_str).map(str::to_string),
-            // === P4.D205 (v4 `e7d77bb60`) — required-field spill ===
-            system_kind: m
-                .get("systemKind")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            // === end P4.D205 ===
-            // === P4.D347 (v4 `d68c1af88`) — the off-scene rule reads it ===
-            system_sender: m
-                .get("systemSender")
-                .and_then(Value::as_str)
-                .map(str::to_string),
+        .map(|m| {
+            // === P4.D372 === R-L1: the ONE raw-row read (it carries
+            // `isEstablishedFact` with `systemKind` / `systemSender`).
+            crate::chat_tasks::RawMessage::from_event(m)
+            // === /P4.D372 ===
         })
         .collect();
     let visible = crate::chat_tasks::extract_visible_conversation(&raw);

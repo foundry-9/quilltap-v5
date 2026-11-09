@@ -41,7 +41,7 @@ for (const [id, content] of stripCases) {
 }
 
 // ---- extractVisibleConversation -------------------------------------------
-type RawMsg = { type?: string; role?: string; content?: string; systemKind?: string | null };
+type RawMsg = { type?: string; role?: string; content?: string; systemKind?: string | null; systemSender?: string | null; isEstablishedFact?: unknown };
 const visibleCases: Array<[string, RawMsg[]]> = [
   ['basic', [
     { role: 'USER', content: 'Hi' },
@@ -88,6 +88,37 @@ const visibleCases: Array<[string, RawMsg[]]> = [
   ['other-staff-kinds-kept', [
     { type: 'message', role: 'ASSISTANT', content: 'The Host welcomes Beatrice to the salon.', systemKind: 'add' },
   ]],
+  // === P4.D372 (v4 `db6190b44`) === established facts, framed in the plain
+  // voice; a machine fact becomes a USER line.
+  ['deus-seat-line', [
+    { type: 'message', role: 'USER', content: 'The bridge to Ashford collapsed.', isEstablishedFact: true },
+  ]],
+  ['deus-machine-fact-becomes-user', [
+    { type: 'message', role: 'ASSISTANT', content: 'The river has risen above the old mill.', systemSender: 'host', systemKind: 'established-fact' },
+  ]],
+  ['deus-both-flags-is-a-machine-fact', [
+    { type: 'message', role: 'ASSISTANT', content: 'Both flags at once.', isEstablishedFact: true, systemSender: 'host', systemKind: 'established-fact' },
+  ]],
+  ['deus-machine-fact-tool-markup-only-kept', [
+    { type: 'message', role: 'ASSISTANT', content: '[Tool call made]', systemSender: 'host', systemKind: 'established-fact' },
+  ]],
+  ['deus-inform-kind-with-flag-skipped', [
+    { type: 'message', role: 'ASSISTANT', content: 'An inform record.', isEstablishedFact: true, systemKind: 'inform' },
+  ]],
+  ['deus-non-bool-flag-is-plain', [
+    { type: 'message', role: 'USER', content: 'numeric flag', isEstablishedFact: 1 },
+    { type: 'message', role: 'USER', content: 'string flag', isEstablishedFact: 'true' },
+  ]],
+  ['deus-flag-with-staff-sender-is-plain', [
+    { type: 'message', role: 'ASSISTANT', content: 'A flagged Aurora line that is long enough to survive.', isEstablishedFact: true, systemSender: 'aurora' },
+  ]],
+  ['deus-empty-content-skipped', [
+    { type: 'message', role: 'USER', content: '', isEstablishedFact: true },
+  ]],
+  ['deus-already-framed-not-stacked', [
+    { type: 'message', role: 'USER', content: '(Established fact: what follows is true in this story and known to everyone; it needs no verification.)\n\nOnce.', isEstablishedFact: true },
+  ]],
+  // === /P4.D372 ===
 ];
 for (const [id, messages] of visibleCases) {
   rows.push({ kind: 'visible', id, messages, out: extractVisibleConversation(messages) });

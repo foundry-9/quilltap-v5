@@ -1520,6 +1520,10 @@ where
             // === end P4.D205 ===
             // Likewise `None`: a Host "spoken of" card is record-only (P4.D347).
             system_sender: None,
+            // === P4.D372 === `None`, as v4's `conversationMessages` carries no
+            // flag: the fact is already framed in `content` (the pass above).
+            is_established_fact: None,
+            // === /P4.D372 ===
         })
         .collect();
     build_input.messages_with_participants = if is_multi { mwp } else { None };

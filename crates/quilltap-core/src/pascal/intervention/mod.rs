@@ -153,6 +153,7 @@ mod union_leak_tests {
                 content: Some(FINAL_CONTENT.into()),
                 system_kind: Some("custom-tool-result".into()),
                 system_sender: Some("pascal".into()),
+                ..Default::default()
             },
         ];
         let text = format!("{:?}", extract_visible_conversation(&rows));

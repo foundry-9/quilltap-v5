@@ -1381,21 +1381,11 @@ fn write_story_file(
 fn extract_recent_messages(events: &[Value], last_n: usize) -> Vec<ChatMessage> {
     let raw: Vec<crate::chat_tasks::RawMessage> = events
         .iter()
-        .map(|e| crate::chat_tasks::RawMessage {
-            type_: e.get("type").and_then(Value::as_str).map(str::to_string),
-            role: e.get("role").and_then(Value::as_str).map(str::to_string),
-            content: e.get("content").and_then(Value::as_str).map(str::to_string),
-            // === P4.D205 (v4 `e7d77bb60`) — required-field spill ===
-            system_kind: e
-                .get("systemKind")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            // === end P4.D205 ===
-            // === P4.D347 (v4 `d68c1af88`) — the off-scene rule reads it ===
-            system_sender: e
-                .get("systemSender")
-                .and_then(Value::as_str)
-                .map(str::to_string),
+        .map(|e| {
+            // === P4.D372 === R-L1: the ONE raw-row read (it carries
+            // `isEstablishedFact` with `systemKind` / `systemSender`).
+            crate::chat_tasks::RawMessage::from_event(e)
+            // === /P4.D372 ===
         })
         .collect();
     let visible = crate::chat_tasks::extract_visible_conversation(&raw);

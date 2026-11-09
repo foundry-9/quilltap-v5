@@ -172,13 +172,8 @@ fn rust_out(kind: &str, input: &Value) -> Value {
                 .as_array()
                 .unwrap()
                 .iter()
-                .map(|m| RawMessage {
-                    type_: s(m, "type"),
-                    role: s(m, "role"),
-                    content: s(m, "content"),
-                    system_kind: s(m, "systemKind"),
-                    system_sender: s(m, "systemSender"),
-                })
+                // P4.D372: the ONE raw-row read (R-L1).
+                .map(RawMessage::from_event)
                 .collect();
             json!(verbatim_window_start(
                 &rows,

@@ -251,6 +251,14 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: to_visible_conversation_message frames facts; ONE RawMessage::from_event (P4.D372 item 7, R-L1)
+
+_Versions: core 0.0.1433._
+
+`to_visible_conversation_message` gains v4's established-fact arm. It runs after the empty-content skip and before the role switch, and turns either kind into a `user` line in the plain frame. A machine fact never reaches `strip_tool_artifacts`. `RawMessage` gains `is_established_fact` (strict bool) and ONE `RawMessage::from_event(&Value)`. The four raw-row sites (`orchestrator.rs` compression cache, `chat_admin.rs`, `story_background_job.rs`, `title_update_job.rs`) call it in place of hand-kept field spills. A new `raw_message_sites_census` pins the production literals at two (five before): `from_event` itself and the typed `ExistingMessage` arm. `ExistingMessage` carries the flag, measured `None` in production as in v4, because v4's `buildContext` gets the already-framed `conversationMessages`.
+
+`chat_tasks_equivalence` gains nine fact cases and now reads rows through `from_event`. `turn_history_equivalence` gains a `deus` window. The survey's correction holds: only `deus|4` moves (v4 1, unported v5 0). That is the tool-markup-only machine fact, which now counts. Both were red first by name.
+
 #### 2026-11-09 — deus: the context frame pass + mwp mark, the history-access / presence exemptions, the in-scene rehearsal (P4.D372 items 4, 5, 12)
 
 _Versions: core 0.0.1432._

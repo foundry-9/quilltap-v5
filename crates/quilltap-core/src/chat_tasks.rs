@@ -74,7 +74,41 @@ pub struct RawMessage {
     /// never conversation (v4 `VisibleConversationCandidate.systemSender`).
     pub system_sender: Option<String>,
     // === end P4.D347 ===
+    // === P4.D372 (v4 `db6190b44`) ===
+    /// `isEstablishedFact` — `Some(b)` only for a JSON boolean (v4's strict
+    /// `=== true` seat-line predicate). Read by the established-fact arm of
+    /// [`to_visible_conversation_message`].
+    pub is_established_fact: Option<bool>,
+    // === end P4.D372 ===
 }
+
+// === P4.D372 ===
+impl RawMessage {
+    /// The ONE read of a raw `ChatEvent` row into this shape (R-L1): v4's
+    /// cheap-LLM callers pass RAW rows (`getMessages`), so every field the
+    /// visibility rule reads — `type`, `role`, `content`, `systemKind`,
+    /// `systemSender`, `isEstablishedFact` — must survive to it. Each hand-kept
+    /// per-site spill is how such a field went missing before (P4.D205,
+    /// P4.D347); every `Value` construction site calls this instead.
+    pub fn from_event(v: &serde_json::Value) -> Self {
+        let s = |k: &str| {
+            v.get(k)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        RawMessage {
+            type_: s("type"),
+            role: s("role"),
+            content: s("content"),
+            system_kind: s("systemKind"),
+            system_sender: s("systemSender"),
+            is_established_fact: v
+                .get("isEstablishedFact")
+                .and_then(serde_json::Value::as_bool),
+        }
+    }
+}
+// === end P4.D372 ===
 
 /// Extract only the visible user/assistant conversational messages from a
 /// message-like array — the standard filter for cheap LLM tasks: one
@@ -137,6 +171,26 @@ pub fn to_visible_conversation_message(m: &RawMessage) -> Option<ChatMessage> {
         Some(c) if !c.is_empty() => c,
         _ => return None,
     };
+    // === P4.D372 (v4 `db6190b44`, `chat-tasks.ts:286-288`) ===
+    // Established facts, framed in the plain voice — always, because this
+    // output can return into an opaque character's prompt as system block 3.
+    // A machine fact is an input to the scene, so it becomes a user line
+    // (and is never run through `strip_tool_artifacts`).
+    if let Some(framed) = crate::established_fact::framed_established_fact_body(
+        &crate::established_fact::EstablishedFactFields {
+            is_established_fact: m.is_established_fact,
+            system_sender: m.system_sender.as_deref(),
+            system_kind: m.system_kind.as_deref(),
+        },
+        Some(content),
+        crate::established_fact::EstablishedFactVoice::Plain,
+    ) {
+        return Some(ChatMessage {
+            role: "user".to_string(),
+            content: framed,
+        });
+    }
+    // === end P4.D372 ===
     // Only USER / ASSISTANT roles (case-insensitive).
     let role = m.role.as_deref().unwrap_or("").to_uppercase();
     if role == "USER" {
