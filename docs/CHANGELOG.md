@@ -1293,6 +1293,25 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the document-store browser — row, read-only viewers (native PDF object, .docx 422 fallback), links / description / destination dialogs, on the shared folder-browser shell (P4.D387; v4 c34986421)
+
+_Versions: SPA 0.5.978._
+
+P4.D387 commit 5 (items 8–12, plus Tier 3 items 26–27).
+- **`qt-document-row`** — v4 `DocumentRow`: the kind icons, the `ACTION_LABELS`, an image thumbnail on the raw leg, and in-place rename (Enter / blur submit; Escape reverts and stops propagation, so it never closes a host dialog). It also carries the `Hard-linked` / `Conversion failed` / `Converting` chips, size, modified date, the select checkbox, and `qt-item-action-menu`, which is disabled in select mode.
+- **`qt-document-viewer` + `qt-document-viewer-modal`** — v4 `DocumentViewer`:
+  - image;
+  - **PDF through a native `<object type="application/pdf">`** on the raw leg, with the download prompt as its fallback (`NATIVE_PDF_VIEWER`, SPA ruling R10; v4 uses `pdfjs-dist`, and v5 adds no PDF dependency);
+  - Markdown / text through the utf-8 read as the file preview's `<pre>` + Copy (the standing rich-text deferral);
+  - `.docx` through `sanitizeDocxHtml`. The server's 422 `not_available` renders the metadata + `Download File` fallback (`DOCX_RENDER_HTML_REFUSED`, SPA arm, R-E), and any other failure shows v4's error line;
+  - the unsupported fallback.
+
+  `downloadDocument` keeps v4's `The file would not download` toast.
+- **`qt-document-links-dialog`**, **`qt-document-description-dialog`** (the draft is a `linkedSignal` per file) and **`qt-document-destination-dialog`** — the latter sits over `BROWSER`'s `DestinationPickerDialog` and carries the store `<select>` in its container slot, v4's eligibility, the default destination and `NOTES`.
+- **`qt-document-store-browser`** — v4 `DocumentStoreBrowser` on `qt-folder-browser-shell`, with every v4 text and toast: the search box, the count line, select-mode Move… / Copy… / Delete, `Upload here`, folder Move to… / Copy to…, the recursive folder delete with its "the N files inside it" confirmation, and the Workbench action (a workspace tab, else `/custom-tools`). It adds `pickMode` + `pickFile`, a `footer` template that receives the current folder (ruling L-4), and `opensStores` + `openStore`.
+
+`document-store-browser.spec.ts` translates v4's seven `document-store-browser.test.tsx` cases. Row, viewer and dialog specs pin the rest.
+
 #### 2026-11-08 — feat(spa): the document-store data layer — v4 query keys, the store source with settle-after-write, and the per-store mountPoints realtime arm (P4.D387; v4 c34986421)
 
 _Versions: SPA 0.5.977._
