@@ -544,6 +544,15 @@ pub enum Request {
         /// TOOL messages before the user message.
         #[serde(default)]
         pending_tool_results: Vec<PendingToolResult>,
+        // === P4.D372 ===
+        /// v4 `isEstablishedFact` (`db6190b44`, `z.boolean().optional()`): post
+        /// this line as established fact — true in the story, known to
+        /// everyone. Public only, and it needs words (the two refines). A
+        /// continue send ignores it (v4's `continueMessageSchema` has no such
+        /// key). A non-boolean 400s at the decode (`dispatch_wrong_type_census`).
+        #[serde(default)]
+        is_established_fact: Option<bool>,
+        // === /P4.D372 ===
     },
     /// Create a chat and run the full seed sequence (v4 `POST /api/v1/chats` →
     /// `handleCreate`). The dispatch payload's create fields (everything but

@@ -381,6 +381,12 @@ pub struct SendMessageOptions {
     /// messages before the user message (v4 orchestrator.service.ts:601–624). Only
     /// applied on a normal (non-continue) send.
     pub pending_tool_results: Vec<PendingToolResult>,
+    // === P4.D372 ===
+    /// v4 `options.isEstablishedFact` (`db6190b44`): the operator's line is
+    /// posted as established fact — the row's flag (both `record_operator_post`
+    /// callers) and the posting turn's framed `newUserMessage`.
+    pub is_established_fact: bool,
+    // === /P4.D372 ===
     /// Autonomous-room flag (bypasses the all-LLM pause in the chain).
     pub never_pause_for_user: bool,
     /// Autonomous-room flag (chain enqueues the next turn as a separate job).
@@ -1002,6 +1008,7 @@ where
             attached_files: &attached_files,
             pending_tool_results: &options.pending_tool_results,
             target_participant_ids: None,
+            is_established_fact: options.is_established_fact, // P4.D372
             poster: super::operator_post::Poster {
                 participant: poster_participant,
                 participant_id: Some(&poster_id),
@@ -1922,6 +1929,7 @@ where
                 attached_files: &file_processing.attached_files,
                 pending_tool_results: &input.options.pending_tool_results,
                 target_participant_ids: input.options.target_participant_ids.as_deref(),
+                is_established_fact: input.options.is_established_fact, // P4.D372
                 poster: super::operator_post::Poster {
                     participant: resolution.user_participant.as_ref(),
                     participant_id: user_participant_id.as_deref(),
@@ -1971,9 +1979,23 @@ where
     let final_user_message = if is_continue_mode {
         None
     } else {
+        // === P4.D372 === an established fact reaches the model framed, exactly
+        // as the stored row will read from history on every later turn (v4
+        // `options.isEstablishedFact && content ? frameEstablishedFact(…) :
+        // content` — `content` truthy is non-empty).
+        let body = if input.options.is_established_fact && !content.is_empty() {
+            crate::established_fact::frame_established_fact(
+                &content,
+                crate::established_fact::EstablishedFactKind::Seat,
+                crate::established_fact::EstablishedFactVoice::Plain,
+            )
+        } else {
+            content.clone()
+        };
+        // === /P4.D372 ===
         Some(match &file_processing.message_content_prefix {
-            Some(prefix) => format!("{prefix}{content}"),
-            None => content.clone(),
+            Some(prefix) => format!("{prefix}{body}"),
+            None => body,
         })
     };
 

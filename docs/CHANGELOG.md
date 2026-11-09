@@ -251,6 +251,24 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the send flag + two refines, the operator post's flag and lines, the framed posting turn (P4.D372 items 13, 14, 27, 28)
+
+_Versions: core 0.0.1437, host 0.0.225._
+
+**The request.** `Request::ChatSend` gains `is_established_fact: Option<bool>` (last, `#[serde(default)]`). NEW `api::chat_send::chat_send_refine` ports `sendMessageSchema`'s `superRefine` in v4's order (whispered → needs words → content/files/tools). Every trim is `js_trim`, and the existing content arm converges on U+FEFF (R-L6). The engine answers the first issue's message: the NAMED divergence `SEND_REFINE_ISSUE_LIST`. A continue send ignores the flag. `ChatSendRequest` → `SendMessageOptions.is_established_fact` (the host's `spine.rs` mapping is `unwrap_or(false)`).
+
+**The post.** `record_operator_post` writes `isEstablishedFact: true` LAST on the USER row only when set; absent means NULL. The `[OperatorPost] User message persisted` DEBUG gains its third key `isEstablishedFact` on EVERY post, and the INFO `[OperatorPost] Operator line posted as established fact` fires only when set. Both callers thread the flag: the main post and the turn-hold pause.
+
+**The turn.** The posting turn's `final_user_message` is the seat-framed body (v4's `content` truthiness).
+
+**Tests:**
+- NEW tier-1 `send_message_schema_equivalence` runs v4's REAL schema over 288 rows. v5's one message equals v4's first issue on every row, and the 35 multi-issue rows are pinned. Red-first: a Rust `trim` mutant makes 40 rows diverge.
+- Engine unit rows, and an operator-post unit test (row key, both lines, silence leg).
+- `dispatch_wrong_type_census` gains the `ChatSend.is_established_fact` row; it was red without it.
+- `orchestrator_tier3` gains `deus_send_seat_line` / `deus_send_on_paused_chat` (appended last) plus the INFO in its spine capture.
+
+**Recorded red.** That family is red on this branch for sibling prompt drift: P4.D370's tool rule, P4.D373's `GROUP_SCENE_DISCIPLINE` and anchor, P4.D375's search rule. A full-miss dump shows v5's posting-turn request matches v4's in the framed body, the reminder and the closing echo.
+
 #### 2026-11-09 — deus: the since-you-last-spoke reminder, a trailing section after inform (P4.D372 item 6)
 
 _Versions: core 0.0.1436._

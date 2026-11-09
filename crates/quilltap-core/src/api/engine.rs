@@ -2148,19 +2148,28 @@ impl CoreEngine {
                 file_ids,
                 nudge,
                 pending_tool_results,
+                is_established_fact,
             } => {
-                // v4 `sendMessageSchema` superRefine: a normal (non-continue) send
-                // with blank content, no files, and no tool results is rejected.
-                if !continue_mode
-                    && content.trim().is_empty()
-                    && file_ids.is_empty()
-                    && pending_tool_results.is_empty()
-                {
-                    return Response::error(
-                        ErrorKind::BadRequest,
-                        "Message must have content, attached files, or tool results",
-                    );
+                // === P4.D372 === v4 `sendMessageSchema` superRefine (the two
+                // established-fact refines, then the content arm), on a normal
+                // (non-continue) send; the FIRST issue's message is the 400 body
+                // (`SEND_REFINE_ISSUE_LIST`, see `chat_send_refine`).
+                if !continue_mode {
+                    if let Some(message) = super::chat_send::chat_send_refine(
+                        &content,
+                        target_participant_ids.as_deref(),
+                        &file_ids,
+                        &pending_tool_results,
+                        is_established_fact,
+                    ) {
+                        return Response::error(ErrorKind::BadRequest, message);
+                    }
                 }
+                // v4 `buildSendMessageOptions`: `parsed.isEstablishedFact ||
+                // undefined`; `buildContinueMessageOptions` never forwards it.
+                let is_established_fact =
+                    (!continue_mode && is_established_fact == Some(true)).then_some(true);
+                // === /P4.D372 ===
                 self.chat_send(ChatSendRequest {
                     chat_id,
                     content,
@@ -2171,6 +2180,7 @@ impl CoreEngine {
                     file_ids,
                     nudge,
                     pending_tool_results,
+                    is_established_fact,
                 })
                 .await
             }
@@ -8384,6 +8394,7 @@ mod tests {
                 file_ids: vec![],
                 nudge: None,
                 pending_tool_results: vec![],
+                is_established_fact: None,
             })
             .await
         {
@@ -8417,6 +8428,7 @@ mod tests {
                 file_ids: vec![],
                 nudge: None,
                 pending_tool_results: vec![],
+                is_established_fact: None,
             })
             .await
         {
@@ -8442,6 +8454,7 @@ mod tests {
                 file_ids: vec![],
                 nudge: Some(true),
                 pending_tool_results: vec![],
+                is_established_fact: None,
             })
             .await
         {
@@ -8452,6 +8465,71 @@ mod tests {
             other => panic!("unexpected: {other:?}"),
         }
     }
+
+    // === P4.D372 ===
+    /// v4 `sendMessageSchema`'s two established-fact refines at the dispatch
+    /// boundary (the FIRST issue's message is the 400 body —
+    /// `SEND_REFINE_ISSUE_LIST`), and a continue send that IGNORES the flag (v4
+    /// parses `continueMessageSchema`, which has no such key).
+    #[tokio::test]
+    async fn chat_send_established_fact_refines() {
+        let base = make_instance();
+        let engine = CoreEngine::boot(
+            config(&base, Some(PEPPER)),
+            Box::new(NoopAssembler),
+            Arc::new(EmptyInstances),
+        )
+        .unwrap();
+        let send = |content: &str, targets: Option<Vec<String>>, cont: bool| Request::ChatSend {
+            chat_id: "c1".into(),
+            content: content.into(),
+            continue_mode: cont,
+            responding_participant_id: None,
+            target_participant_ids: targets,
+            speaking_as_participant_id: None,
+            file_ids: vec![],
+            nudge: None,
+            pending_tool_results: vec![],
+            is_established_fact: Some(true),
+        };
+        for (req, want) in [
+            (
+                send("The bridge fell.", Some(vec!["p".into()]), false),
+                "An established fact is public; it cannot be whispered",
+            ),
+            // Both issues apply; the whisper is first in v4's order.
+            (
+                send("  ", Some(vec!["p".into()]), false),
+                "An established fact is public; it cannot be whispered",
+            ),
+            (send("  ", None, false), "An established fact needs words"),
+            // U+FEFF is JS whitespace (`String.prototype.trim`).
+            (
+                send("\u{feff}", Some(vec![]), false),
+                "An established fact needs words",
+            ),
+        ] {
+            match engine.dispatch(req).await {
+                Response::Error(e) => {
+                    assert_eq!(e.kind, ErrorKind::BadRequest);
+                    assert_eq!(e.message, want);
+                }
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+        // A public fact with words passes the gate (→ the not-assembled refusal).
+        // A continue send ignores the flag even with a whisper and no words.
+        for req in [
+            send("The bridge fell.", Some(vec![]), false),
+            send("", Some(vec!["p".into()]), true),
+        ] {
+            match engine.dispatch(req).await {
+                Response::Error(e) => assert_eq!(e.message, "chat dispatch not assembled"),
+                other => panic!("unexpected: {other:?}"),
+            }
+        }
+    }
+    // === /P4.D372 ===
 
     #[tokio::test]
     async fn passphrase_vault_boots_locked_and_unlocks() {

@@ -35,7 +35,51 @@ pub struct ChatSendRequest {
     pub nudge: Option<bool>,
     /// v4 `pendingToolResults` — pre-inserted as TOOL messages by the spine.
     pub pending_tool_results: Vec<PendingToolResult>,
+    /// P4.D372: v4's `parsed.isEstablishedFact || undefined` — `Some(true)` or
+    /// `None` (never forwarded on a continue send).
+    pub is_established_fact: Option<bool>,
 }
+
+// === P4.D372 ===
+/// v4 `sendMessageSchema`'s `superRefine` (`orchestrator.service.ts:132-158`,
+/// `db6190b44`), in its order: when the line is an established fact, (1) a
+/// whisper → `An established fact is public; it cannot be whispered`, (2)
+/// blank content → `An established fact needs words`; then (3) blank content
+/// with no files and no tool results → `Message must have content, attached
+/// files, or tool results`. Every `.trim()` is JS's ([`crate::jsstr::js_trim`]
+/// — U+FEFF and the Unicode space separators trim; Rust's `str::trim` keeps
+/// U+FEFF).
+///
+/// Zod collects EVERY issue and v4's route renders them all
+/// (`{error: 'Validation error', details: […]}`); v5's `ChatSend` arm answers
+/// the FIRST issue's message as its 400 body — the standing P4.6a shape,
+/// extended in v4's precedence. NAMED divergence `SEND_REFINE_ISSUE_LIST`,
+/// pinned both ways by `send_message_schema_equivalence` against v4's REAL
+/// schema; it retires if a later order renders Zod issue bodies at the
+/// dispatch edge. A continue send never reaches it (v4 parses
+/// `continueMessageSchema` instead).
+pub fn chat_send_refine(
+    content: &str,
+    target_participant_ids: Option<&[String]>,
+    file_ids: &[String],
+    pending_tool_results: &[PendingToolResult],
+    is_established_fact: Option<bool>,
+) -> Option<&'static str> {
+    let blank = crate::jsstr::js_trim(content).is_empty();
+    if is_established_fact == Some(true) {
+        if target_participant_ids.is_some_and(|t| !t.is_empty()) {
+            return Some("An established fact is public; it cannot be whispered");
+        }
+        if blank {
+            return Some("An established fact needs words");
+        }
+    }
+    if blank && file_ids.is_empty() && pending_tool_results.is_empty() {
+        return Some("Message must have content, attached files, or tool results");
+    }
+    None
+}
+// === /P4.D372 ===
 
 /// The boxed future a [`ChatSendDriver`] returns (dyn-compatibility — RPITIT
 /// is not dyn-compatible, and the engine stores the driver type-erased).

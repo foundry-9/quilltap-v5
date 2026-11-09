@@ -142,6 +142,9 @@ interface CallSpec {
   fileIds?: string[];
   /** P4.D348 (v4 `036b32a78`, bug 258): whisper targets — one reply, no chain. */
   targetParticipantIds?: string[];
+  /** P4.D372 (v4 `db6190b44`): post the line as established fact. Absent on
+   *  every other call, so the option is `undefined` as in production. */
+  isEstablishedFact?: boolean;
   /** P4.D186 (v4 bug 137): `options.neverPauseForUser` — the autonomous-room
    *  opt-out the hold predicate consults. `undefined` on every other call, so
    *  the key is absent exactly as it is in production. */
@@ -854,6 +857,8 @@ async function main(): Promise<void> {
     '[ImageTransport] Describing an over-budget image failed; omitting it with a note',
     'Persisted-description probe failed; treating the image as not describable',
     // === /P4.D367 ===
+    // P4.D372 (v4 `db6190b44`).
+    '[OperatorPost] Operator line posted as established fact',
   ]);
   let spineLines: Array<Record<string, unknown>> = [];
   {
@@ -1141,6 +1146,7 @@ async function main(): Promise<void> {
         fileIds: call.fileIds,
         neverPauseForUser: call.neverPauseForUser,
         ...(call.targetParticipantIds ? { targetParticipantIds: call.targetParticipantIds } : {}),
+        ...(call.isEstablishedFact ? { isEstablishedFact: call.isEstablishedFact } : {}), // P4.D372
       } as never);
       // Drain the ReadableStream.
       const reader = stream.getReader();

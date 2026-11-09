@@ -217,6 +217,9 @@ struct CallW {
     /// "nothing to add" offer.
     #[serde(default)]
     nudge: Option<bool>,
+    /// P4.D372 (v4 `db6190b44`): post the line as established fact.
+    #[serde(default)]
+    is_established_fact: bool,
     /// P4.6c: user-initiated tool results pre-inserted as TOOL messages before
     /// the user message (orchestrator.service.ts:601–624).
     #[serde(default)]
@@ -2338,6 +2341,7 @@ fn orchestrator_tier3_matches_oracle() {
         // does): the targets ride the initial turn, and a whisper's chain is
         // single-turn.
         let call_targets = call.target_participant_ids.clone();
+        let call_is_fact = call.is_established_fact; // P4.D372
         let call_is_whisper = quilltap_core::services::whisper_send::is_operator_whisper_send(
             call.continue_mode,
             call_targets.as_deref(),
@@ -2391,6 +2395,9 @@ fn orchestrator_tier3_matches_oracle() {
                     } else {
                         call_targets.clone()
                     },
+                    // P4.D372: the established-fact flag rides the INITIAL turn
+                    // (a chained turn is a continue — no post, no new message).
+                    is_established_fact: !continue_mode && call_is_fact,
                     ..Default::default()
                 },
                 clock: ProcessClock {
@@ -3123,7 +3130,7 @@ fn orchestrator_tier3_matches_oracle() {
                 spine_mask(&line)
             })
             .collect();
-        const SPINE_TAGS: [&str; 15] = [
+        const SPINE_TAGS: [&str; 16] = [
             // === P4.D367 ===
             "[ImageTransport] Images over the request budget were described or omitted",
             "[ImageTransport] Transport report",
@@ -3141,6 +3148,8 @@ fn orchestrator_tier3_matches_oracle() {
             "[TurnPreparation] Prospero context refresh due",
             "Failed to read project store links; doc tools withheld",
             "Recording an LLM stream that ended without a terminal chunk",
+            // P4.D372 (v4 `db6190b44`).
+            "[OperatorPost] Operator line posted as established fact",
         ];
         let got_spine: Vec<String> = initial_logs[&call.name]
             .iter()

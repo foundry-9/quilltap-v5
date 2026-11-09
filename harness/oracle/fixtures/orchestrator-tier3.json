@@ -4884,6 +4884,30 @@
     "kind": "assistant"
    },
    "_comment": "P4.D370 Tier 2 item 13: Friday planted as an ASSISTANT, Agent Mode OFF — the MANDATORY preamble, no agent block. UNION-GATED on P4.D369's read overlay."
+  },
+  {
+   "name": "deus_send_seat_line",
+   "kind": "chain",
+   "chatId": "e3000003-0000-4000-8000-000000000003",
+   "content": "The bridge to Ashford collapsed in the night.",
+   "continueMode": false,
+   "streamLabel": "deus_send_seat_line",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "isEstablishedFact": true,
+   "_comment": "P4.D372 (v4 db6190b44): a line posted as established fact — the stored USER row carries isEstablishedFact (REAL 1.0), the request's last user message is the seat-framed body, the DEBUG's third key reads true and the INFO fires. Appended LAST (R-L3)."
+  },
+  {
+   "name": "deus_send_on_paused_chat",
+   "kind": "single",
+   "chatId": "c2620002-0000-4000-8000-000000000262",
+   "content": "The tide tables were rewritten after the storm.",
+   "continueMode": false,
+   "streamLabel": "deus_send_on_paused_chat",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "isEstablishedFact": true,
+   "_comment": "P4.D372 (v4 db6190b44): the held post (turn-holds) writes the flag too; no turn runs."
   }
  ],
  "streams": {
@@ -7222,7 +7246,23 @@
      }
     }
    ]
-  ]
+  ],
+  "deus_send_seat_line": [
+   [
+    {
+     "content": "Then we take the ferry, and quickly."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 5,
+      "totalTokens": 15
+     }
+    }
+   ]
+  ],
+  "deus_send_on_paused_chat": []
  },
  "detection": {
   "failover_native_call": [

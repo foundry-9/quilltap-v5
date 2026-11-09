@@ -406,6 +406,21 @@ const CENSUS: &[Row] = &[
             "mode Zod strips the key silently"
         ),
     },
+    // === P4.D372 ===
+    Row {
+        variant: "ChatSend",
+        field: "is_established_fact",
+        rust_type: "Option<bool>",
+        v4: V4::BodyParse,
+        note: concat!(
+            "`chats/[id]/messages/route.ts:48`; `orchestrator.service.ts:132` ",
+            "`sendMessageSchema.isEstablishedFact: z.boolean().optional()` → the ",
+            "middleware's `Validation error` — but only in NON-continue mode; in ",
+            "continue mode `continueMessageSchema` strips the key silently (P4.D372 ",
+            "Tier 3 item 28: recorded, not fixed)"
+        ),
+    },
+    // === /P4.D372 ===
     Row {
         variant: "CharacterList",
         field: "archived",

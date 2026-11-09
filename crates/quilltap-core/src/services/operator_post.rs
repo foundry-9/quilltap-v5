@@ -123,6 +123,9 @@ where
     pub attached_files: &'a [AttachedFile],
     pub pending_tool_results: &'a [PendingToolResult],
     pub target_participant_ids: Option<&'a [String]>,
+    /// P4.D372 (v4 `db6190b44`): the line is posted as established fact — the
+    /// USER row carries `isEstablishedFact: true` (absent otherwise → NULL).
+    pub is_established_fact: bool,
     pub poster: Poster<'a>,
     /// The turn's in-memory context; what the answering character must hear is
     /// pushed onto it.
@@ -239,6 +242,7 @@ where
         attached_files,
         pending_tool_results,
         target_participant_ids,
+        is_established_fact,
         poster,
         context,
         ledger,
@@ -269,7 +273,7 @@ where
         let id = uuid::Uuid::new_v4().to_string();
         // v4 writes `participantId` and `targetParticipantIds: … || null`
         // ALWAYS (R-4) — an absent key and `null` both store SQL NULL.
-        let msg = json!({
+        let mut msg = json!({
             "id": id,
             "type": "message",
             "role": "USER",
@@ -279,6 +283,11 @@ where
             "participantId": poster.participant_id,
             "targetParticipantIds": target_participant_ids,
         });
+        // P4.D372: v4's `...(isEstablishedFact ? { isEstablishedFact: true } : {})`
+        // — the LAST key, only when set.
+        if is_established_fact {
+            msg["isEstablishedFact"] = json!(true);
+        }
         add_message(db, chat_id, &msg).await?;
         ledger.set(SubmissionLedger {
             user_message_persisted: true,
@@ -288,8 +297,17 @@ where
             target: TARGET,
             chatId = %chat_id,
             userMessageId = %id,
+            isEstablishedFact = is_established_fact,
             "[OperatorPost] User message persisted",
         );
+        if is_established_fact {
+            tracing::info!(
+                target: TARGET,
+                chatId = %chat_id,
+                userMessageId = %id,
+                "[OperatorPost] Operator line posted as established fact",
+            );
+        }
 
         link_attachments(db, chat_id, attached_files, &id).await;
         announce_image_uploads(db, chat_id, attached_files).await;
@@ -562,3 +580,152 @@ async fn announce_image_uploads(db: &Db, chat_id: &str, attached_files: &[Attach
     )
     .await;
 }
+
+// === P4.D372 ===
+#[cfg(test)]
+mod established_fact_post_tests {
+    use super::*;
+    use crate::services::carina_runner::{
+        CarinaResult, CarinaRunError, ProsperoCarinaErrorArgs, RunCarinaQueryOptions,
+    };
+
+    struct NoQuery;
+    impl RunCarinaQuery for NoQuery {
+        #[allow(clippy::manual_async_fn)]
+        fn run(
+            &mut self,
+            _o: RunCarinaQueryOptions,
+        ) -> impl std::future::Future<Output = Result<CarinaResult, CarinaRunError>> + Send
+        {
+            async { Err(CarinaRunError("unused".into())) }
+        }
+    }
+    struct NoProspero;
+    impl PostProsperoCarinaError for NoProspero {
+        fn post(&mut self, _args: ProsperoCarinaErrorArgs) -> Result<(), CarinaRunError> {
+            Ok(())
+        }
+    }
+    struct NoBytes;
+    impl crate::pascal::dice::RandomBytes for NoBytes {
+        fn random_bytes(&mut self, n: usize) -> Vec<u8> {
+            vec![0; n]
+        }
+    }
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c3720000-0000-4000-8000-000000000001";
+
+    /// v4 `recordOperatorPost` (`db6190b44`): the row's `isEstablishedFact`
+    /// key LAST and only when set; the DEBUG's third key on EVERY post; the
+    /// INFO only when set (its silence leg on the plain post).
+    #[test]
+    fn the_flag_rides_the_row_and_the_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Deus",
+            "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        rt.block_on(db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        }))
+        .unwrap();
+
+        let post = |content: &str, fact: bool, now_ms: i64| {
+            let ledger = Cell::new(SubmissionLedger::default());
+            let sink = super::super::chat_events::DiscardSink;
+            let mut context = Vec::new();
+            let mut bytes = NoBytes;
+            crate::test_support::captured_with(|| {
+                rt.block_on(record_operator_post::<_, NoQuery, NoProspero>(
+                    &db,
+                    OperatorPostParams {
+                        chat_id: CHAT,
+                        user_id: crate::api::SINGLE_USER_ID,
+                        project_id: None,
+                        chat_settings: None,
+                        content,
+                        file_ids: &[],
+                        attached_files: &[],
+                        pending_tool_results: &[],
+                        target_participant_ids: None,
+                        is_established_fact: fact,
+                        poster: Poster {
+                            participant: None,
+                            participant_id: None,
+                        },
+                        context: &mut context,
+                        ledger: &ledger,
+                        sink: &sink,
+                        now_ms,
+                        rng_bytes: &mut bytes,
+                        consult: None,
+                        carina: None,
+                        status_character: None,
+                        turn_control: None,
+                    },
+                ))
+                .unwrap()
+            })
+        };
+        let (fact, fact_lines) = post("The bridge fell.", true, 1_777_000_000_000);
+        let (plain, plain_lines) = post("Nothing special.", false, 1_777_000_001_000);
+        let fid = fact.user_message_id.unwrap();
+        let pid = plain.user_message_id.unwrap();
+        let persisted = |lines: &[String], id: &str, flag: bool| {
+            let want = format!(
+                "[OperatorPost] User message persisted chatId={CHAT} userMessageId={id} isEstablishedFact={flag}"
+            );
+            assert_eq!(
+                lines.iter().filter(|l| l.ends_with(&want)).count(),
+                1,
+                "{lines:#?}"
+            );
+        };
+        persisted(&fact_lines, &fid, true);
+        persisted(&plain_lines, &pid, false);
+        let info = format!(
+            "INFO quilltap::operator_post [OperatorPost] Operator line posted as established fact chatId={CHAT} userMessageId={fid}"
+        );
+        assert!(fact_lines.contains(&info), "{fact_lines:#?}");
+        assert!(
+            !plain_lines
+                .iter()
+                .any(|l| l.contains("posted as established fact")),
+            "silence leg: {plain_lines:#?}"
+        );
+        let rows = db
+            .read_main(|c| crate::db::chats_messages_read::get_messages(c, CHAT))
+            .unwrap();
+        let row = |id: &str| rows.iter().find(|r| r["id"] == id).unwrap().clone();
+        assert_eq!(row(&fid)["isEstablishedFact"], json!(true));
+        assert!(
+            row(&pid).get("isEstablishedFact").is_none(),
+            "absent → NULL"
+        );
+    }
+}
+// === /P4.D372 ===

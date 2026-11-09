@@ -1643,6 +1643,9 @@ where
                 speaking_as_participant_id: req.speaking_as_participant_id.clone(),
                 file_ids: req.file_ids.clone(),
                 nudge: req.nudge,
+                // === P4.D372 === v4's `parsed.isEstablishedFact || undefined`.
+                is_established_fact: req.is_established_fact.unwrap_or(false),
+                // === /P4.D372 ===
                 pending_tool_results: req
                     .pending_tool_results
                     .iter()
