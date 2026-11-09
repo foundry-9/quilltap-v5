@@ -2216,7 +2216,12 @@ where
                 request_full_context: compression_enabled,
                 disabled_tools: Some(&effective_disabled_tools),
                 disabled_tool_groups: &disabled_tool_groups,
-                agent_mode_enabled,
+                // === P4.D370 === (v4 `orchestrator.service.ts:689`
+                // `offerSubmitFinalResponse`: `submit_final_response` is the
+                // research flavour's alone — `build_tools` itself is unchanged)
+                agent_mode_enabled: agent_mode.enabled
+                    && agent_mode.flavor == crate::characters::kind::AgentModeFlavor::Research,
+                // === P4.D370 ===
                 is_multi_character,
                 help_tools_enabled,
                 can_dress_themselves,
@@ -2876,6 +2881,16 @@ where
             Some(_) => formatted_messages.insert(0, agent_mode_message),
             None => formatted_messages.push(agent_mode_message),
         }
+        // === P4.D370 === (v4 `orchestrator.service.ts:864-869`, after the
+        // insert; v4's keys in v4's order)
+        tracing::info!(
+            chatId = %chat_id,
+            maxTurns = agent_mode.max_turns,
+            enabledSource = agent_mode.enabled_source.as_str(),
+            flavor = agent_mode.flavor.as_str(),
+            "Injected agent mode instructions"
+        );
+        // === P4.D370 ===
     }
 
     sink.emit(ChatEvent::status(StatusPayload {

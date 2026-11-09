@@ -547,6 +547,11 @@ pub struct BuildToolsInput<'a> {
     /// (`a8214b253` retired the legacy "no tools" skip).
     pub disabled_tools: Option<&'a [String]>,
     pub disabled_tool_groups: &'a [String],
+    // === P4.D370 ===
+    /// Offer `submit_final_response` (v4 kept `buildTools`' parameter name;
+    /// since `96156566b` the Salon caller passes `offerSubmitFinalResponse` —
+    /// agent mode ON and the research flavour, `turn-tools.service.ts:83-87`).
+    // === P4.D370 ===
     pub agent_mode_enabled: bool,
     pub is_multi_character: bool,
     pub help_tools_enabled: bool,

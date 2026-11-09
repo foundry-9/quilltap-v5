@@ -1652,6 +1652,9 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_llm_logs: Option<Vec<Value>> = None;
     // P4.114: v4's `Injected tool change notification` INFO lines, per case.
     let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
+    // === P4.D370 === v4's two Salon agent-mode INFO lines, per case.
+    let mut want_agent_mode: HashMap<String, Vec<Value>> = HashMap::new();
+    // === P4.D370 ===
     // P4.162: v4's two `Consumed informs …` DEBUG lines per case.
     let mut want_inform_consume: HashMap<String, Vec<Value>> = HashMap::new();
     let mut want_turn_end: HashMap<String, Vec<Value>> = HashMap::new();
@@ -1740,6 +1743,17 @@ fn orchestrator_tier3_matches_oracle() {
                 want_tables.insert(table, parsed.rest);
             }
             "llmlogs" => want_llm_logs = Some(common::oracle_llm_logs(&parsed.rest)),
+            // === P4.D370 ===
+            "agentModeLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("agentModeLog carries `lines`");
+                want_agent_mode.insert(parsed.call.clone().unwrap(), lines);
+            }
+            // === P4.D370 ===
             "toolChangeLog" => {
                 let lines = parsed
                     .rest
@@ -3367,6 +3381,79 @@ fn orchestrator_tier3_matches_oracle() {
         usize::from(ran("tool_settings_changed")),
         "exactly one corpus case (tool_settings_changed) fires the tool-change INFO"
     );
+
+    // === P4.D370 ===
+    // --- v4 `96156566b`: the Salon's two agent-mode INFO lines, in ORDER ---
+    // `[AgentMode] Resolved agent mode` (`agent-mode-resolver.service.ts:95-98`,
+    // target `quilltap::agent_mode`) fires once per turn the spine resolves;
+    // `Injected agent mode instructions` (`orchestrator.service.ts:864-869`)
+    // only when the block is spliced. Keys are compared by BYTES, in v4's order
+    // (the rendered line). The silence leg: an agent-mode-OFF turn carries a
+    // `Resolved … enabled=false` line and NO `Injected …` line, both sides.
+    assert_eq!(
+        want_agent_mode.len(),
+        spec.calls.len(),
+        "every case must record its agentModeLog row (regenerate from THIS tree's oracle case)"
+    );
+    let mut injected_fired = 0usize;
+    let mut silent_off_turns = 0usize;
+    for call in &spec.calls {
+        let want: Vec<String> = want_agent_mode[&call.name]
+            .iter()
+            .map(|l| {
+                let message = l["message"].as_str().unwrap_or_default();
+                let target = if message == "[AgentMode] Resolved agent mode" {
+                    "quilltap::agent_mode"
+                } else {
+                    "quilltap_core::services::orchestrator"
+                };
+                let mut line = format!("INFO {target} {message}");
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    match v {
+                        Value::String(s) => line.push_str(&format!(" {k}={s}")),
+                        other => line.push_str(&format!(" {k}={other}")),
+                    }
+                }
+                line
+            })
+            .collect();
+        let got: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| {
+                l.contains("[AgentMode] Resolved agent mode")
+                    || l.contains("Injected agent mode instructions")
+            })
+            .cloned()
+            .collect();
+        if got != want {
+            eprintln!(
+                "[{}] AGENT-MODE LINES MISMATCH:\n  GOT : {got:#?}\n  WANT: {want:#?}",
+                call.name
+            );
+        }
+        assert_eq!(got, want, "{}: the agent-mode INFO lines", call.name);
+        injected_fired += want
+            .iter()
+            .filter(|l| l.contains("Injected agent mode instructions"))
+            .count();
+        if !want.is_empty()
+            && want.iter().all(|l| {
+                l.contains("enabled=false") && !l.contains("Injected agent mode instructions")
+            })
+        {
+            silent_off_turns += 1;
+        }
+    }
+    assert!(
+        injected_fired > 0,
+        "the corpus's agent-mode-ON cases must fire the injected INFO"
+    );
+    assert!(
+        silent_off_turns > 0,
+        "the agent-mode-OFF cases are the injected INFO's silence leg"
+    );
+    // === P4.D370 ===
 
     // --- P4.174 (B.1): the turn-end wardrobe drain's DEBUG, at TURN level ---
     // v4 `outfit-change-effects.ts` `scheduleWardrobeAnnouncement` logs

@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — feat(salon): the Salon slate offers submit_final_response to the research flavour only; the injected-instructions INFO (v4 96156566b)
+
+_Versions: core 0.0.1433._
+
+P4.D370 unit D. The Salon turn passes `agent_mode.enabled && flavor == Research` as `ToolBuildInput.agent_mode_enabled` (v4's `offerSubmitFinalResponse`; `build_tools` itself is unchanged and the field gains a doc comment), so a roleplay character in Agent Mode no longer sees `submit_final_response`. v4's `Injected agent mode instructions` INFO (`chatId`, `maxTurns`, `enabledSource`, `flavor`) is logged after the agent-mode block is spliced. `cases/orchestrator-tier3.test.ts` records v4's two agent-mode lines per call as a new `agentModeLog` record, and `orchestrator_tier3_equivalence` compares them in order by bytes, with every agent-mode-OFF call as the injected line's silence leg.
+
 #### 2026-11-09 — feat(tool-loop): submit_final_response is the research flavour's alone; the force-final INFO (v4 96156566b)
 
 _Versions: core 0.0.1432._

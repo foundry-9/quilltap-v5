@@ -874,6 +874,9 @@ async function main(): Promise<void> {
   // (singleton and children alike, before the level check) — the
   // `chats-messages-ops-tier2` recipe. Per case, message + context verbatim.
   let toolChangeLines: Array<Record<string, unknown>> = [];
+  // === P4.D370 ===
+  let agentModeLines: Array<Record<string, unknown>> = [];
+  // === P4.D370 ===
   {
     const { Logger } = await import('@/lib/logger');
     const original = Logger.prototype.info;
@@ -886,6 +889,12 @@ async function main(): Promise<void> {
       if (message === 'Injected tool change notification') {
         toolChangeLines.push({ level: 'info', message, context: context ?? null });
       }
+      // === P4.D370 === v4 `96156566b`'s two Salon agent-mode INFO lines (the
+      // resolver's, then the splice's), message + context verbatim, per call.
+      if (message === '[AgentMode] Resolved agent mode' || message === 'Injected agent mode instructions') {
+        agentModeLines.push({ level: 'info', message, context: JSON.parse(JSON.stringify(context ?? {})) });
+      }
+      // === P4.D370 ===
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
   }
@@ -1151,6 +1160,9 @@ async function main(): Promise<void> {
     interruptLines = [];
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events, threw }));
     lines.push(JSON.stringify({ kind: 'toolChangeLog', call: call.name, lines: toolChangeLines }));
+    // === P4.D370 ===
+    lines.push(JSON.stringify({ kind: 'agentModeLog', call: call.name, lines: agentModeLines }));
+    // === P4.D370 ===
     lines.push(
       JSON.stringify({ kind: 'informConsumeLog', call: call.name, lines: informConsumeLines }),
     );
@@ -1160,6 +1172,7 @@ async function main(): Promise<void> {
     // Brahma consult, every chained turn).
     lines.push(JSON.stringify({ kind: 'streamKeys', call: call.name, keys: currentStreamKeys }));
     toolChangeLines = [];
+    agentModeLines = []; // === P4.D370 ===
     informConsumeLines = [];
     turnEndLines = [];
 
