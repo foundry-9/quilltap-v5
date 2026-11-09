@@ -1172,6 +1172,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             operator_surface: ctx.operator_surface,
             mount_pool: ctx.mount_pool.clone(),
             memory_zone_fallback: crate::host_zone::zone_name(&self.display_zone).to_string(),
+            // P4.D375: the chat the search runs in (left out of the census; an
+            // empty id excludes nothing, as v4's `''` does).
+            chat_id: Some(ctx.chat_id.clone()),
         };
         let out = search::execute_search_scriptorium(
             &self.db,
@@ -1182,21 +1185,32 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         )
         .await;
         if out.success {
-            // v4: `success && results ? format : error || 'No results found'`.
+            // v4: `success && results ? format(results, { query, windowCensus })
+            // : error || 'No results found'` (P4.D375 — the executor's opts).
             let formatted = out
                 .results
                 .as_ref()
-                .map(|r| search::format_search_scriptorium_results(r))
+                .map(|r| {
+                    search::format_search_scriptorium_results(
+                        r,
+                        Some(&search::FormatOptions {
+                            query: &out.query,
+                            window_census: out.window_census.as_ref(),
+                        }),
+                    )
+                })
                 .unwrap_or_else(|| "No results found".to_string());
-            ok(
-                "search",
-                json!({
-                    "formattedText": formatted,
-                    "results": out.results,
-                    "totalFound": out.total_found,
-                    "query": out.query,
-                }),
-            )
+            let mut result = json!({
+                "formattedText": formatted,
+                "results": out.results,
+                "totalFound": out.total_found,
+                "query": out.query,
+            });
+            // `...(windowCensus ? { windowCensus } : {})` — absent, not null.
+            if let Some(census) = &out.window_census {
+                result["windowCensus"] = serde_json::to_value(census).unwrap_or(Value::Null);
+            }
+            ok("search", result)
         } else {
             fail("search", out.error.unwrap_or_default())
         }

@@ -84,11 +84,14 @@ async function main(): Promise<void> {
     asCharB?: boolean;
     /** P4.D268: SQL planted on this case's fresh copy (one statement each). */
     plantSql?: string[];
+    /** P4.D375: the chat the search runs in (left out of the window census). */
+    chatId?: string;
   };
   /** P4.D268: v4's REAL `memoryArchivedLabel` over one memory shape. */
   type LabelCase = { label: string; tool: 'archived_label'; memory: Record<string, unknown> };
-  /** P4.D268: v4's REAL `formatSearchScriptoriumResults` over given results. */
-  type FormatCase = { label: string; tool: 'format'; results: unknown[] };
+  /** P4.D268: v4's REAL `formatSearchScriptoriumResults` over given results
+   * (P4.D375: with the executor's `opts` when given). */
+  type FormatCase = { label: string; tool: 'format'; results: unknown[]; opts?: Record<string, unknown> };
   /** P4.D216: `executeToolCallWithContext` itself — the pool/operator refusal. */
   type ExecutorCase = {
     label: string;
@@ -96,6 +99,8 @@ async function main(): Promise<void> {
     args: unknown;
     operatorSurface?: boolean;
     pool?: boolean;
+    /** P4.D375: record the formatted text + the windowCensus key too. */
+    p4d375?: boolean;
   };
   type Case = HelpCase | SearchCase | ExecutorCase | LabelCase | FormatCase;
 
@@ -171,6 +176,8 @@ async function main(): Promise<void> {
     { label: 'p4d268_search_archived_labels', tool: 'search', args: { query: 'recall the star navigation notes', sources: ['memories'] }, plantSql: ["INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000401', 'c8000000-0000-4000-8000-00000000000a', 'Ada once steered by a sextant reading, since folded into a digest.', 'Old sextant shard.', '[]', '[]', 0.7, 'AUTO', 1, '[]', 0.7, 'semantic', '[]', 'cold', 'd2680000-0000-4000-8000-000000000403', '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "UPDATE memories SET embedding = (SELECT embedding FROM memories WHERE id = 'b1000000-0000-4000-8000-000000000001') WHERE id = 'd2680000-0000-4000-8000-000000000401'", "INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000402', 'c8000000-0000-4000-8000-00000000000a', 'Ada sketched a star chart that was later archived.', 'Archived star chart.', '[]', '[]', 0.6, 'AUTO', 1, '[]', 0.6, 'semantic', '[]', 'cold', NULL, '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "UPDATE memories SET embedding = (SELECT embedding FROM memories WHERE id = 'b1000000-0000-4000-8000-000000000001') WHERE id = 'd2680000-0000-4000-8000-000000000402'"] },
     // The stamp covers only the memories that survive the cross-source cut.
     { label: 'p4d268_search_limit_cuts_a_memory', tool: 'search', args: { query: 'guide to celestial mechanics', limit: 2 }, plantSql: ["INSERT INTO memories (id, characterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, createdAt, updatedAt) VALUES ('d2680000-0000-4000-8000-000000000404', 'c8000000-0000-4000-8000-00000000000a', 'Ada studied celestial mechanics by lamplight.', 'Celestial mechanics study.', '[]', '[]', 0.9, 'AUTO', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[]', '2025-12-01T00:00:00.000Z', '2025-12-01T00:00:00.000Z')", "UPDATE memories SET embedding = X'00000000000000000000003F0000000000000000000000000000000000000000' WHERE id = 'd2680000-0000-4000-8000-000000000404'"] },
+    // ── P4.D375 (v4 4.12.1 `6121f59b9`; append-only) ──
+    ...(p4d375Cases(spec as never) as never[]),
   ];
 
   for (const c of cases) {
@@ -188,6 +195,8 @@ async function main(): Promise<void> {
     delete process.env.SQLITE_WAL_MODE;
     process.env.LOG_LEVEL = 'error';
 
+    // P4.D375: every embedding call this case made (the skip arm makes none).
+    const embedCalls: string[] = [];
     jest.resetModules();
     jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
     jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
@@ -201,6 +210,7 @@ async function main(): Promise<void> {
         __esModule: true,
         ...actual,
         generateEmbeddingForUser: async (text: string) => {
+          embedCalls.push(text);
           if (spec.cannedFailures.includes(text)) {
             throw new EmbeddingError(`canned failure for input (${text.length} chars)`);
           }
@@ -290,8 +300,11 @@ async function main(): Promise<void> {
     } else if (c.tool === 'format') {
       const { formatSearchScriptoriumResults } = await import('@/lib/tools/handlers/search-scriptorium-handler');
       resultJson = '';
-      formatted = formatSearchScriptoriumResults((c as FormatCase).results as never);
-      extra = { results: (c as FormatCase).results };
+      const fc = c as FormatCase;
+      formatted = fc.opts
+        ? formatSearchScriptoriumResults(fc.results as never, fc.opts as never)
+        : formatSearchScriptoriumResults(fc.results as never);
+      extra = { results: fc.results, ...(fc.opts ? { opts: fc.opts } : {}) };
     } else if (c.tool === 'help_search') {
       // HelpSearch is a module singleton caching docs; reset it per case so it
       // reloads from THIS fresh DB copy.
@@ -330,6 +343,12 @@ async function main(): Promise<void> {
       resultJson = JSON.stringify({ toolName: r.toolName, success: r.success, error: r.error ?? null });
       formatted = '';
       extra = { refusals };
+      if (ec.p4d375) {
+        // P4.D375 (v4 `tool-executor.ts:1016-1037`): the formatted text with
+        // the executor's opts, and the result JSON's spread census key.
+        resultJson = JSON.stringify(r.result);
+        extra.ctx = { operatorSurface: !!ec.operatorSurface, args: ec.args };
+      }
     } else {
       const { executeSearchScriptoriumTool, formatSearchScriptoriumResults } = await import(
         '@/lib/tools/handlers/search-scriptorium-handler'
@@ -342,6 +361,7 @@ async function main(): Promise<void> {
       };
       if (!sc.noCharacter) context.characterId = sc.asCharB ? spec.charBId : spec.charAId;
       if (sc.operatorSurface) context.operatorSurface = true;
+      if (sc.chatId) context.chatId = sc.chatId;
       // P4.D216: the pool cases carry NO project (the Scenario Builder shape).
       if (sc.pool) {
         context.mountPool = await buildPool();
@@ -350,11 +370,28 @@ async function main(): Promise<void> {
       logLines.splice(0);
       const out = await executeSearchScriptoriumTool(c.args, context);
       resultJson = JSON.stringify(out);
-      formatted = formatSearchScriptoriumResults(out.results ?? []);
+      // P4.D375: formatted THE EXECUTOR'S WAY (`tool-executor.ts:1025` — the
+      // query and the window census), and the no-opts call kept as a second
+      // comparand (both of v4's call shapes pinned, L-3).
+      formatted = formatSearchScriptoriumResults(out.results ?? [], {
+        query: out.query,
+        windowCensus: (out as { windowCensus?: never }).windowCensus,
+      });
       // P4.114: EVERY search case records the handler's lines (the pool cases
       // since P4.D216) — so the per-call INFO `Search scriptorium completed` is
       // compared on each success and its absence on each early return.
-      extra = { logs: logLines.splice(0) };
+      extra = { logs: logLines.splice(0), formattedNoOpts: formatSearchScriptoriumResults(out.results ?? []) };
+      if (sc.label.startsWith('p4d375_')) {
+        extra.ctx = {
+          args: sc.args,
+          operatorSurface: !!sc.operatorSurface,
+          noCharacter: !!sc.noCharacter,
+          wrongUser: !!sc.wrongUser,
+          pool: !!sc.pool,
+          chatId: sc.chatId ?? null,
+        };
+        extra.embedCalls = embedCalls.length;
+      }
       // P4.D268: v4's stamp is un-awaited — let it land, then record it.
       await new Promise((resolve) => setImmediate(resolve));
       extra.accessLog = accessLog;
@@ -378,3 +415,88 @@ async function main(): Promise<void> {
 test('search-tools search+help oracle', async () => {
   await main();
 });
+
+/**
+ * P4.D375 (v4 4.12.1 `6121f59b9`): the dated search's rows. The chat spans
+ * ride `plantSql` (clones of chat A — the Rust side replays the SAME SQL):
+ * a chat retitled after the window whose last message is inside it, one whose
+ * `lastMessageAt` is NULL (its `updatedAt` decides), and a dozen in-window
+ * chats for the census overflow.
+ */
+function p4d375Cases(spec: { chatAId: string; generalMountPointId?: string }): Array<Record<string, unknown> & { label: string; tool: string }> {
+  const A = spec.chatAId;
+  const cid = (n: number) => `d3750000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const q = (v: string | null) => (v === null ? 'NULL' : `'${v.replace(/'/g, "''")}'`);
+  const clone = (id: string, title: string, createdAt: string, updatedAt: string, lastMessageAt: string | null): string[] => [
+    `CREATE TEMP TABLE p4d375_clone AS SELECT * FROM chats WHERE id = '${A}'`,
+    `UPDATE p4d375_clone SET id = ${q(id)}, title = ${q(title)}, createdAt = ${q(createdAt)}, updatedAt = ${q(updatedAt)}, lastMessageAt = ${q(lastMessageAt)}`,
+    'INSERT INTO chats SELECT * FROM p4d375_clone',
+    'DROP TABLE p4d375_clone',
+  ];
+  const spans = [
+    // Retitled long after the window; its last message is inside it.
+    ...clone(cid(1), 'The ledger, retitled', '2025-06-03T10:00:00.000Z', '2026-01-01T09:00:00.000Z', '2025-06-03T11:00:00.000Z'),
+    // No lastMessageAt: updatedAt (inside the window) ends the span.
+    ...clone(cid(2), '', '2025-06-04T10:00:00.000Z', '2025-06-05T10:00:00.000Z', null),
+    // Ended before the window: out, however recently it was touched.
+    ...clone(cid(3), 'Before the window', '2025-04-01T10:00:00.000Z', '2025-06-20T10:00:00.000Z', '2025-04-02T10:00:00.000Z'),
+  ];
+  const many: string[] = [];
+  for (let i = 0; i < 12; i++) {
+    const day = String(10 + i).padStart(2, '0');
+    many.push(...clone(cid(100 + i), `Crowded day ${i}`, `2025-06-${day}T10:00:00.000Z`, `2025-06-${day}T11:00:00.000Z`, `2025-06-${day}T11:00:00.000Z`));
+  }
+  const LEDGER = 'what did we say about the ledger';
+  const STARS = 'recall the star navigation notes';
+  const census = (over: Record<string, unknown>) => ({
+    since: '2025-06-01',
+    until: '2025-06-30',
+    memoryCount: 3,
+    conversations: [
+      { id: 'c1', title: 'The ledger', firstMessageAt: '2025-06-01T10:00:00.000Z', lastMessageAt: '2025-06-02T10:00:00.000Z', date: '2025-06-01' },
+      { id: 'c2', title: 'Untitled', firstMessageAt: '2025-06-03T10:00:00.000Z', lastMessageAt: null, date: '2025-06-03' },
+    ],
+    moreConversations: 0,
+    ...over,
+  });
+  const memoryHit = { content: 'Ada kept the ledger.', sourceType: 'memory', relevanceScore: 0.8, metadata: { memoryId: 'm1', summary: 's', importance: 0.5 } };
+  return [
+    // ---- the handler ----
+    { label: 'p4d375_search_dated_defaulted', tool: 'search', args: { query: LEDGER, since: '2025-05-01', until: '2025-07-01' }, plantSql: spans },
+    { label: 'p4d375_search_dated_operator', tool: 'search', args: { query: LEDGER, since: '2025-05-01', until: '2025-07-01' }, operatorSurface: true, noCharacter: true, plantSql: spans },
+    { label: 'p4d375_search_dated_pool', tool: 'search', args: { query: 'guide to celestial mechanics', since: '2025-05-01', until: '2025-07-01' }, pool: true, noCharacter: true },
+    { label: 'p4d375_search_dated_empty_sources', tool: 'search', args: { query: LEDGER, sources: [], since: '2025-05-01', until: '2025-07-01' } },
+    { label: 'p4d375_search_narrow_10d', tool: 'search', args: { query: LEDGER, sources: ['conversations'], since: '2025-05-28', until: '2025-06-06' } },
+    { label: 'p4d375_search_wide_31d', tool: 'search', args: { query: LEDGER, sources: ['conversations'], since: '2025-05-15', until: '2025-06-14' } },
+    { label: 'p4d375_search_no_window_chats_conv', tool: 'search', args: { query: LEDGER, sources: ['conversations'], since: '2024-01-01', until: '2024-01-05' } },
+    { label: 'p4d375_search_no_window_chats_dated', tool: 'search', args: { query: LEDGER, since: '2024-01-01', until: '2024-01-05' } },
+    { label: 'p4d375_search_chatid_excluded', tool: 'search', args: { query: LEDGER, since: '2025-05-01', until: '2025-07-01' }, chatId: A, plantSql: spans },
+    { label: 'p4d375_search_many_chats', tool: 'search', args: { query: LEDGER, sources: ['conversations'], since: '2025-06-01', until: '2025-06-30' }, plantSql: many },
+    { label: 'p4d375_search_census_not_owned', tool: 'search', args: { query: LEDGER, since: '2025-05-01', until: '2025-07-01' }, wrongUser: true },
+    { label: 'p4d375_search_memories_no_chats', tool: 'search', args: { query: 'unrelated query that matches nothing', sources: ['memories'], since: '2025-12-01', until: '2025-12-31' } },
+    { label: 'p4d375_search_since_only', tool: 'search', args: { query: STARS, sources: ['memories'], since: '2025-12-20' } },
+    { label: 'p4d375_search_until_only_empty', tool: 'search', args: { query: STARS, until: '2020-06-01' } },
+    { label: 'p4d375_search_same_day', tool: 'search', args: { query: STARS, since: '2020-03-03', until: '2020-03-03T23:00:00.000Z' } },
+    // ---- the formatter (tier 1): the six empty texts, the footer, overflow ----
+    { label: 'p4d375_format_no_census_query', tool: 'format', results: [], opts: { query: 'the lighthouse' } },
+    { label: 'p4d375_format_no_census_no_query', tool: 'format', results: [] },
+    { label: 'p4d375_format_null_count_no_conversations', tool: 'format', results: [], opts: { query: 'x', windowCensus: census({ memoryCount: null, conversations: [] }) } },
+    { label: 'p4d375_format_zero_count_no_conversations', tool: 'format', results: [], opts: { query: 'x', windowCensus: census({ memoryCount: 0, conversations: [] }) } },
+    { label: 'p4d375_format_conversations', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({}) } },
+    { label: 'p4d375_format_conversations_one_memory', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({ memoryCount: 1, moreConversations: 4 }) } },
+    { label: 'p4d375_format_conversations_null_count', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({ memoryCount: null }) } },
+    { label: 'p4d375_format_zero_count_with_conversations', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({ memoryCount: 0 }) } },
+    { label: 'p4d375_format_memories_no_conversations', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({ memoryCount: 5, conversations: [] }) } },
+    { label: 'p4d375_format_overflow_only_empty', tool: 'format', results: [], opts: { query: 'the ledger', windowCensus: census({ conversations: [], moreConversations: 3 }) } },
+    { label: 'p4d375_format_since_only', tool: 'format', results: [], opts: { query: 'q', windowCensus: census({ until: null }) } },
+    { label: 'p4d375_format_until_only', tool: 'format', results: [], opts: { query: 'q', windowCensus: census({ since: null }) } },
+    { label: 'p4d375_format_same_day', tool: 'format', results: [], opts: { query: 'q', windowCensus: census({ since: '2025-12-01', until: '2025-12-01T23:00:00Z' }) } },
+    { label: 'p4d375_format_footer', tool: 'format', results: [memoryHit], opts: { query: 'the ledger', windowCensus: census({ moreConversations: 2 }) } },
+    { label: 'p4d375_format_footer_null_count', tool: 'format', results: [memoryHit], opts: { query: 'the ledger', windowCensus: census({ memoryCount: null }) } },
+    { label: 'p4d375_format_footer_overflow_only', tool: 'format', results: [memoryHit], opts: { query: 'the ledger', windowCensus: census({ conversations: [], moreConversations: 3 }) } },
+    { label: 'p4d375_format_results_no_census', tool: 'format', results: [memoryHit], opts: { query: 'the ledger' } },
+    // ---- the executor: the formatted text + the census key ----
+    { label: 'executor_p4d375_operator_dated', tool: 'executor', args: { query: LEDGER, since: '2025-05-01', until: '2025-07-01' }, operatorSurface: true, p4d375: true },
+    { label: 'executor_p4d375_operator_undated', tool: 'executor', args: { query: LEDGER, sources: ['conversations'] }, operatorSurface: true, p4d375: true },
+  ];
+}

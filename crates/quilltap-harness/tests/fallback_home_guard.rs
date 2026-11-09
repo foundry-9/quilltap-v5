@@ -215,6 +215,10 @@ const HOME_MESSAGES: &[&str] = &[
     "Error reading all log entries",
     "Error deleting all log entries",
     // === end P4.D355 ===
+    // === P4.D375 (v4 4.12.1 `6121f59b9`) — `findIdsInEventWindow`'s
+    // fallback (`memories.repository.ts:1063-1102`) ===
+    "Error finding memories in event window",
+    // === end P4.D375 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

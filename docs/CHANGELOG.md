@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — feat(tools): the search tool's window-first dated search — dated default sources, window census, window-scoped conversation search, honest-empty texts on every empty search, the census footer, the executor's opts (v4 6121f59b9)
+
+_Versions: core 0.0.1432._
+
+P4.D375 C3. The `search` handler at v4 4.12.1: a dated search with no explicit `sources` searches memories + conversations (conversations alone on the operator surface; a pre-built pool keeps its own default; an explicit `sources: []` is not defaulted). The window's chats are read once through `services::chat_window` and scope the conversation search (`chat_ids`); with none, the chunk search is skipped with no embedding call. A window of at most 14 days lowers the conversation floor to 0. The owned character's memories in the window are counted (all tiers). The output gains `windowCensus` (`since, until, memoryCount, conversations[≤10], moreConversations`; the current chat left out); the INFO gains `defaultedSources` and, dated, `windowCensus`. Three new DEBUG lines: `Memories in search window`, `No conversations in search window; chunk search skipped`, `Window conversation search`. The old post-hoc chat-span filter is gone. `format_search_scriptorium_results` takes v4's `opts` (query + census): every empty search now answers one of v4's honest-empty texts (`No relevant results found.` no longer exists in v4), and a result list with a census that lists conversations gains the footer. The executor passes `chat_id` and the opts, and spreads `windowCensus` into its result. `search_tools_equivalence` regenerated and grown: every search row formats the executor's way plus a no-opts comparand, 15 dated rows driven from the oracle's own context (embedding calls counted), 17 formatter rows, 2 executor rows.
+
 #### 2026-11-09 — feat(scriptorium): which chats fall in a time window — services::chat_window, the conversation search's chat_ids scope, unsummarized chats in the retrospective mini-recap (v4 6121f59b9)
 
 _Versions: core 0.0.1431._

@@ -22,7 +22,7 @@
 //! isolates each case on a fresh fixture copy so the stamp never contaminates a
 //! later case.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use crate::db::conversation_search::{search_conversation_chunks, ConversationSearchOptions};
@@ -48,6 +48,10 @@ use crate::services::recall::search::{
     search_memories as search_character_memories, RecallSearchOptions, SearchMemoriesOptions,
 };
 use crate::tools::llm_number::llm_number;
+// === P4.D375 ===
+use crate::services::chat_window::find_chats_in_window;
+use crate::services::recall::score::is_narrow_tool_window;
+// === end P4.D375 ===
 
 use super::help_search::truncate_utf16;
 
@@ -70,11 +74,16 @@ pub struct SearchContext {
     /// instance names no timezone (v4's env / system rungs of
     /// `refreshMemoryTimeZone`); read only when `since` / `until` is given.
     pub memory_zone_fallback: String,
+    // === P4.D375 ===
+    /// The chat the search runs in — left out of the window census (v4
+    /// `chatId`, 4.12.1).
+    pub chat_id: Option<String>,
+    // === end P4.D375 ===
 }
 
 /// v4 `SearchScriptoriumToolOutput` — `{ success, results?, error?, totalFound,
-/// query }`. `results` is pre-built as v4-exact `Value`s (per-source metadata order
-/// + JS-number score rendering).
+/// query, windowCensus? }`. `results` is pre-built as v4-exact `Value`s
+/// (per-source metadata order + JS-number score rendering).
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct SearchOutput {
     pub success: bool,
@@ -85,6 +94,10 @@ pub struct SearchOutput {
     #[serde(rename = "totalFound")]
     pub total_found: i64,
     pub query: String,
+    /// P4.D375: the period's census, on a dated search that read memories or
+    /// conversations (v4's spread — absent, not `null`, otherwise).
+    #[serde(rename = "windowCensus", skip_serializing_if = "Option::is_none")]
+    pub window_census: Option<SearchWindowCensus>,
 }
 
 impl SearchOutput {
@@ -95,6 +108,7 @@ impl SearchOutput {
             error: Some(error.into()),
             total_found: 0,
             query: query.into(),
+            window_census: None,
         }
     }
 }
@@ -217,19 +231,16 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     }
 
     let query = args.get("query").and_then(Value::as_str).unwrap_or("");
-    let sources: Vec<String> = match args.get("sources").and_then(Value::as_array) {
-        Some(arr) => arr
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect(),
-        None => vec![
-            "memories".into(),
-            "conversations".into(),
-            "documents".into(),
-            "knowledge".into(),
-        ],
-    };
+    // === P4.D375 === `parsed.sources` (an explicit array, even empty, is
+    // `Some`; the destructured default is gone — v4 4.12.1).
+    let parsed_sources: Option<Vec<String>> =
+        args.get("sources").and_then(Value::as_array).map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        });
+    // === end P4.D375 ===
     let scope = args.get("scope").and_then(Value::as_str).unwrap_or("all");
     // The reads go through the same seam: v4's Zod parse REPLACES the value, so
     // a quoted "5" reaches the handler as the number 5 — reading the raw arg
@@ -288,6 +299,31 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         None
     };
 
+    // === P4.D375 ===
+    // A dated search with no explicit sources leaves documents out: they carry
+    // no dates, and would crowd dated hits out of the cross-source cut. The
+    // Scenario Builder (pre-built pool) keeps its own default; the operator
+    // surface has no memories, so its dated default is conversations alone.
+    let dated = since.is_some() || until.is_some();
+    let defaulted_sources = parsed_sources.is_none() && dated && context.mount_pool.is_none();
+    let sources: Vec<String> = match parsed_sources {
+        Some(s) => s,
+        None if defaulted_sources => {
+            if context.operator_surface {
+                vec!["conversations".into()]
+            } else {
+                vec!["memories".into(), "conversations".into()]
+            }
+        }
+        None => vec![
+            "memories".into(),
+            "conversations".into(),
+            "documents".into(),
+            "knowledge".into(),
+        ],
+    };
+    // === end P4.D375 ===
+
     // Operator surface (Brahma Console): no character, no memories — and a
     // pre-built pool overrides it (v4 `d1c06cd9d`: `!!operatorSurface &&
     // !mountPool`; the executor refuses the two together, so this only matters
@@ -304,6 +340,36 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     let search_conversations = sources.iter().any(|s| s == "conversations") && !prebuilt;
     let search_documents = sources.iter().any(|s| s == "documents");
     let search_knowledge = sources.iter().any(|s| s == "knowledge");
+
+    // === P4.D375 ===
+    // Window-first: the period's conversations, read once, scope the chunk
+    // search and feed the census. A narrow window is its own relevance filter.
+    // The current chat is NOT excluded here (the census leaves it out).
+    let narrow_window = is_narrow_tool_window(time_window.as_ref());
+    let window_chats: Option<Vec<Value>> = match &time_window {
+        Some(w) if search_memories || search_conversations => {
+            let character = if operator_wide {
+                None
+            } else {
+                context.character_id.as_deref()
+            };
+            Some(
+                db.read_main(|c| {
+                    Ok(find_chats_in_window(
+                        c,
+                        character,
+                        &context.user_id,
+                        w,
+                        None,
+                    ))
+                })
+                .unwrap_or_default(),
+            )
+        }
+        _ => None,
+    };
+    let mut window_memory_count: Option<i64> = None;
+    // === end P4.D375 ===
 
     // Build the URI resolver (always) + the tri-tier pool / operator ids (only when
     // a document/knowledge source is requested). Any DB error here → outer failure.
@@ -347,7 +413,33 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                     })
                     .unwrap_or(false)
                 });
-            if let Ok(true) = owned {
+            // === P4.D375 === Census: every memory dated in the window,
+            // whatever the query or aboutCharacter matched (all tiers — the tool
+            // sees the archive). Inside v4's one try/catch: a read that fails
+            // (strict scope only — the fallback answers `[]`) skips the branch.
+            let census_ok = match (&owned, &time_window) {
+                (Ok(true), Some(w)) => {
+                    let (cid2, w2) = (cid.clone(), w.clone());
+                    match db.read_main(move |c| {
+                        crate::db::memories_read::find_ids_in_event_window(c, &cid2, &w2, false)
+                    }) {
+                        Ok(ids) => {
+                            window_memory_count = Some(ids.len() as i64);
+                            tracing::debug!(
+                                characterId = %cid,
+                                count = ids.len(),
+                                narrowWindow = narrow_window,
+                                "Memories in search window"
+                            );
+                            true
+                        }
+                        Err(_) => false,
+                    }
+                }
+                _ => true,
+            };
+            // === end P4.D375 ===
+            if let (Ok(true), true) = (owned, census_ok) {
                 // Optional about-character filter: resolve the name (or alias)
                 // to a character id among the user's characters. An
                 // unresolvable name returns NO memory hits rather than
@@ -421,80 +513,48 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
     }
 
     // --- Conversations -----------------------------------------------------
-    if search_conversations {
+    // === P4.D375 === The window's chats only, scored whole; within a narrow
+    // window every chunk is eligible however loosely it matches. With a window
+    // and no chats in it, the chunk search is skipped (no embedding call).
+    // v4's post-hoc `spanByChat` filter is gone (4.12.1).
+    let window_chat_ids: Option<std::collections::HashSet<String>> =
+        window_chats.as_ref().map(|chats| {
+            chats
+                .iter()
+                .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+                .collect()
+        });
+    if search_conversations && window_chat_ids.as_ref().is_some_and(|ids| ids.is_empty()) {
+        tracing::debug!(
+            characterId = context.character_id.as_deref(),
+            "No conversations in search window; chunk search skipped"
+        );
+    } else if search_conversations {
         if let Ok(emb) = embed(provider, query, context).await {
             let opts = ConversationSearchOptions {
                 character_id: context.character_id.clone(),
                 user_id: Some(context.user_id.clone()),
                 limit: Some(limit),
-                min_score: Some(0.3),
+                min_score: Some(if narrow_window { 0.0 } else { 0.3 }),
                 query: Some(query.to_string()),
                 apply_literal_phrase_boost: true,
-                chat_ids: None,
+                chat_ids: window_chat_ids.clone(),
             };
             if let Ok(convs) = db.read_main(|c| search_conversation_chunks(c, &emb, &opts)) {
-                // Time filter (episodic recall): keep conversations whose
-                // lifespan overlaps the window (chat createdAt..updatedAt).
-                // Resolved per distinct chat — the hit list is already capped
-                // at `limit` (v4's `spanByChat` cache; an unparsable/missing
-                // chat drops its hits).
-                let filtered: Vec<_> = if let Some(win) = &time_window {
-                    // v4 `Date.parse` — NaN bounds make every overlap
-                    // comparison false (nothing survives), which NaN-propagating
-                    // f64 comparisons reproduce exactly.
-                    let from = crate::episodic::event_time_ms(Some(&win.from)).unwrap_or(f64::NAN);
-                    let to = crate::episodic::event_time_ms(Some(&win.to)).unwrap_or(f64::NAN);
-                    let mut span_by_chat: std::collections::HashMap<String, Option<(f64, f64)>> =
-                        std::collections::HashMap::new();
-                    for cr in &convs {
-                        if span_by_chat.contains_key(&cr.chat_id) {
-                            continue;
-                        }
-                        let chat_id = cr.chat_id.clone();
-                        let span = db
-                            .read_main(|c| crate::db::chats_read::find_by_id(c, &chat_id))
-                            .ok()
-                            .flatten()
-                            .map(|chat| {
-                                let created = chat
-                                    .get("createdAt")
-                                    .and_then(Value::as_str)
-                                    .and_then(|s| crate::episodic::event_time_ms(Some(s)))
-                                    .unwrap_or(f64::NAN);
-                                // `updatedAt ?? createdAt` before the parse.
-                                let end_iso = chat
-                                    .get("updatedAt")
-                                    .and_then(Value::as_str)
-                                    .or_else(|| chat.get("createdAt").and_then(Value::as_str));
-                                let end = end_iso
-                                    .and_then(|s| crate::episodic::event_time_ms(Some(s)))
-                                    .unwrap_or(f64::NAN);
-                                (created, end)
-                            });
-                        span_by_chat.insert(cr.chat_id.clone(), span);
-                    }
-                    convs
-                        .into_iter()
-                        .filter(|cr| {
-                            let Some(Some((start, end))) = span_by_chat.get(&cr.chat_id) else {
-                                return false;
-                            };
-                            if !start.is_finite() {
-                                return false;
-                            }
-                            let end = if end.is_finite() { *end } else { *start };
-                            *start <= to && end >= from
-                        })
-                        .collect()
-                } else {
-                    convs
-                };
-                for cr in filtered {
+                if let Some(ids) = &window_chat_ids {
+                    tracing::debug!(
+                        windowChats = ids.len(),
+                        hits = convs.len(),
+                        "Window conversation search"
+                    );
+                }
+                for cr in convs {
                     results.push((cr.score, conversation_result(&cr)));
                 }
             }
         }
     }
+    // === end P4.D375 ===
 
     // --- Documents (deferred until after knowledge dedup) ------------------
     let mut document_rows = Vec::new();
@@ -606,6 +666,28 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         crate::services::recall::deliver::stamp_accessed(db, cid, &returned).await;
     }
 
+    // === P4.D375 ===
+    let window_census = window_chats.as_ref().map(|chats| {
+        build_window_census(
+            chats,
+            since,
+            until,
+            window_memory_count,
+            context.chat_id.as_deref(),
+            memory_time_zone.as_deref(),
+        )
+    });
+    // `windowCensus: {memoryCount, conversations: listed + more}` — an object,
+    // so the `…Json` file-layer convention.
+    let window_census_json = window_census.as_ref().map(|c| {
+        serde_json::json!({
+            "memoryCount": c.memory_count,
+            "conversations": c.conversations.len() as i64 + c.more_conversations,
+        })
+        .to_string()
+    });
+    // === end P4.D375 ===
+
     // v4 `search-scriptorium-handler.ts:522` — the per-call INFO, after the sort
     // + slice, counting the LIMITED results; fields in v4's order (P4.114).
     let count = |pred: &dyn Fn(&Value) -> bool| results.iter().filter(|r| pred(r)).count();
@@ -618,6 +700,8 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         userId = context.user_id.as_str(),
         query = crate::jsstr::utf16_truncate(query, 100).as_str(),
         scope,
+        defaultedSources = defaulted_sources,
+        windowCensusJson = window_census_json.as_ref().map(tracing::field::display),
         totalFound = results.len(),
         memorySources = count(&of_source("memory")),
         conversationSources = count(&of_source("conversation")),
@@ -636,6 +720,7 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
         results: Some(results),
         error: None,
         query: query.to_string(),
+        window_census,
     }
 }
 
@@ -976,21 +1061,258 @@ fn document_result(dr: &DocumentSearchResult, uri: &str) -> Value {
     result_value(&content, "document", dr.score, md)
 }
 
-/// v4 `formatSearchScriptoriumResults`. Operates on the built result `Value`s.
-pub fn format_search_scriptorium_results(results: &[Value]) -> String {
+// === P4.D375 === the window census + the honest-empty formatter (v4 4.12.1
+// `6121f59b9`, `search-scriptorium-handler.ts:600-766`, `search-scriptorium-
+// tool.ts:132-168`).
+
+/// How many of the window's conversations the census lists by name (v4
+/// `CENSUS_MAX_CONVERSATIONS`).
+const CENSUS_MAX_CONVERSATIONS: usize = 10;
+
+/// v4 `SearchWindowCensus` — key order as declared (`since, until,
+/// memoryCount, conversations, moreConversations`). `memoryCount` is `null`
+/// when no memory count was taken (no owned character, the operator surface).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchWindowCensus {
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub memory_count: Option<i64>,
+    pub conversations: Vec<WindowCensusConversation>,
+    pub more_conversations: i64,
+}
+
+/// One listed conversation of a [`SearchWindowCensus`] (`id, title,
+/// firstMessageAt, lastMessageAt, date`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowCensusConversation {
+    pub id: String,
+    pub title: String,
+    pub first_message_at: String,
+    pub last_message_at: Option<String>,
+    pub date: String,
+}
+
+/// v4 `buildWindowCensus` — the window census from the period's chats (newest
+/// first): the current chat left out, the first ten listed, the rest counted.
+/// A chat's `date` is its `createdAt` on the memory calendar (`zonedDateStamp`)
+/// or, with no zone, the UTC date (`toISOString().slice(0, 10)` — reachable
+/// only through a direct call: the handler always has a zone when it has a
+/// window); an unparseable `createdAt` is sliced as given.
+pub fn build_window_census(
+    window_chats: &[Value],
+    since: Option<&str>,
+    until: Option<&str>,
+    memory_count: Option<i64>,
+    exclude_chat_id: Option<&str>,
+    time_zone: Option<&str>,
+) -> SearchWindowCensus {
+    let local_date = |iso: &str| -> String {
+        let ms = crate::memory_scoring::date_ms(iso);
+        if !ms.is_finite() {
+            return crate::jsstr::utf16_truncate(iso, 10);
+        }
+        match time_zone.filter(|tz| !tz.is_empty()) {
+            Some(tz) => crate::memory_time::calendar::zoned_date_stamp(ms, tz),
+            None => crate::memory_time::calendar::js_iso_string(ms)
+                .map(|s| crate::jsstr::utf16_truncate(&s, 10))
+                .unwrap_or_default(),
+        }
+    };
+    let others: Vec<&Value> = window_chats
+        .iter()
+        .filter(|c| c.get("id").and_then(Value::as_str) != exclude_chat_id)
+        .collect();
+    let conversations = others
+        .iter()
+        .take(CENSUS_MAX_CONVERSATIONS)
+        .map(|c| {
+            let created = c.get("createdAt").and_then(Value::as_str).unwrap_or("");
+            WindowCensusConversation {
+                id: c
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                title: c
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or("Untitled")
+                    .to_string(),
+                first_message_at: created.to_string(),
+                last_message_at: c
+                    .get("lastMessageAt")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
+                date: local_date(created),
+            }
+        })
+        .collect();
+    SearchWindowCensus {
+        since: since.map(str::to_string),
+        until: until.map(str::to_string),
+        memory_count,
+        conversations,
+        more_conversations: others.len().saturating_sub(CENSUS_MAX_CONVERSATIONS) as i64,
+    }
+}
+
+/// v4 `censusDate` — a bound as the caller gave it, shown as a calendar date.
+fn census_date(bound: Option<&str>, fallback: &str) -> String {
+    match bound.filter(|b| !b.is_empty()) {
+        Some(b) => crate::jsstr::utf16_truncate(b, 10),
+        None => fallback.to_string(),
+    }
+}
+
+/// v4 `censusPeriod` — "between X and Y" for a census window, in plain words.
+fn census_period(census: &SearchWindowCensus) -> String {
+    let since = census.since.as_deref().filter(|s| !s.is_empty());
+    let until = census.until.as_deref().filter(|s| !s.is_empty());
+    match (since, until) {
+        (Some(s), Some(u)) => {
+            if crate::jsstr::utf16_truncate(s, 10) == crate::jsstr::utf16_truncate(u, 10) {
+                format!("on {}", census_date(since, ""))
+            } else {
+                format!(
+                    "between {} and {}",
+                    census_date(since, ""),
+                    census_date(until, "")
+                )
+            }
+        }
+        (Some(_), None) => format!("between {} and today", census_date(since, "")),
+        _ => format!("up to {}", census_date(until, "today")),
+    }
+}
+
+/// v4 `censusConversationLines` — one line each, with the overflow.
+fn census_conversation_lines(census: &SearchWindowCensus) -> Vec<String> {
+    let mut lines: Vec<String> = census
+        .conversations
+        .iter()
+        .map(|c| format!("- {} ({}) \u{2014} `{}`", c.title, c.date, c.id))
+        .collect();
+    if census.more_conversations > 0 {
+        lines.push(format!("- \u{2026}and {} more", census.more_conversations));
+    }
+    lines
+}
+
+/// v4 `formatEmptySearch` — what an empty search means, given the window
+/// census (or none). Every empty search answers one of these: v4 4.12.1
+/// deleted `No relevant results found.` (B.6).
+fn format_empty_search(query: Option<&str>, census: Option<&SearchWindowCensus>) -> String {
+    let quoted = match query.filter(|q| !q.is_empty()) {
+        Some(q) => format!("\"{q}\""),
+        None => "your search".to_string(),
+    };
+    let Some(census) = census else {
+        return format!(
+            "Nothing matched {quoted}. An empty search is not proof that nothing happened: try other words, or pass since/until if you are asking about a particular time."
+        );
+    };
+    let period = census_period(census);
+    let memories = census.memory_count.unwrap_or(0);
+    let has_conversations = !census.conversations.is_empty() || census.more_conversations > 0;
+    if memories == 0 && !has_conversations {
+        return match census.memory_count {
+            None => format!("There are no conversations {period}."),
+            Some(_) => format!(
+                "You hold no memories dated {period}, and took part in no conversations in that period."
+            ),
+        };
+    }
+    let mut lines = vec![format!(
+        "Nothing matched {quoted} \u{2014} but that is not the same as having no record of the period."
+    )];
+    let memory_clause = census.memory_count.map(|_| {
+        format!(
+            "you hold {memories} {}",
+            if memories == 1 { "memory" } else { "memories" }
+        )
+    });
+    let conversation_clause = if census.memory_count.is_none() {
+        "these conversations took place"
+    } else {
+        "you took part in these conversations"
+    };
+    // `period.charAt(0).toUpperCase() + period.slice(1)` — the period always
+    // opens with ASCII `o` / `b` / `u`.
+    let head = {
+        let mut chars = period.chars();
+        match chars.next() {
+            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            None => String::new(),
+        }
+    };
+    if has_conversations {
+        lines.push(format!(
+            "{head} {}{conversation_clause}:",
+            memory_clause
+                .as_ref()
+                .map(|m| format!("{m}, and "))
+                .unwrap_or_default()
+        ));
+        lines.extend(census_conversation_lines(census));
+        lines.push("Read one with read_conversation, or search again with broader words. The date range already narrows the search; the query does not need to name the time.".to_string());
+    } else {
+        lines.push(format!("{head} {}.", memory_clause.unwrap_or_default()));
+        lines.push("Search again with broader words. The date range already narrows the search; the query does not need to name the time.".to_string());
+    }
+    lines.join("\n")
+}
+
+/// The executor's `opts` for [`format_search_scriptorium_results`] (v4 `{
+/// query, windowCensus? }`).
+pub struct FormatOptions<'a> {
+    pub query: &'a str,
+    pub window_census: Option<&'a SearchWindowCensus>,
+}
+// === end P4.D375 ===
+
+/// v4 `formatSearchScriptoriumResults(results, opts?)`. Operates on the built
+/// result `Value`s. With `opts.window_census`, a result list gains a footer
+/// naming the period's conversations, and an empty result says whether
+/// nothing matched the words or nothing happened in the period. Without opts,
+/// results print unchanged — and an empty list still answers the honest-empty
+/// text (`Nothing matched your search. …`; v4 4.12.1 deleted `No relevant
+/// results found.`).
+pub fn format_search_scriptorium_results(
+    results: &[Value],
+    opts: Option<&FormatOptions>,
+) -> String {
     if results.is_empty() {
-        return "No relevant results found.".to_string();
+        return format_empty_search(opts.map(|o| o.query), opts.and_then(|o| o.window_census));
     }
     let formatted: Vec<String> = results
         .iter()
         .enumerate()
         .map(|(index, result)| format_one(index, result))
         .collect();
-    format!(
+    let body = format!(
         "Found {} results:\n\n{}",
         results.len(),
         formatted.join("\n\n")
-    )
+    );
+    // P4.D375: the footer — only when the census LISTS a conversation (the
+    // overflow alone does not trigger it).
+    let Some(census) = opts
+        .and_then(|o| o.window_census)
+        .filter(|c| !c.conversations.is_empty())
+    else {
+        return body;
+    };
+    let mut footer = vec![if census.memory_count.is_none() {
+        "Conversations during this period:".to_string()
+    } else {
+        "Conversations you took part in during this period:".to_string()
+    }];
+    footer.extend(census_conversation_lines(census));
+    footer.push("Read any of them with read_conversation.".to_string());
+    format!("{body}\n\n{}", footer.join("\n"))
 }
 
 fn format_one(index: usize, result: &Value) -> String {
@@ -1204,6 +1526,7 @@ mod tests {
             operator_surface: false,
             mount_pool: None,
             memory_zone_fallback: "UTC".to_string(),
+            chat_id: None,
         };
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -1238,3 +1561,128 @@ mod tests {
         );
     }
 }
+
+// === P4.D375 ===
+#[cfg(test)]
+mod p4d375_format_tests {
+    //! v4 4.12.1's honest-empty texts and the census footer (B.3-B.5); the
+    //! differential is `search_tools_equivalence`'s `p4d375_format_*` rows.
+    use super::*;
+
+    fn census(memory_count: Option<i64>, n: usize, more: i64) -> SearchWindowCensus {
+        SearchWindowCensus {
+            since: Some("2025-06-01".into()),
+            until: Some("2025-06-30".into()),
+            memory_count,
+            conversations: (0..n)
+                .map(|i| WindowCensusConversation {
+                    id: format!("c{i}"),
+                    title: format!("Chat {i}"),
+                    first_message_at: "2025-06-02T10:00:00.000Z".into(),
+                    last_message_at: None,
+                    date: "2025-06-02".into(),
+                })
+                .collect(),
+            more_conversations: more,
+        }
+    }
+
+    fn fmt(results: &[Value], query: &str, c: Option<&SearchWindowCensus>) -> String {
+        format_search_scriptorium_results(
+            results,
+            Some(&FormatOptions {
+                query,
+                window_census: c,
+            }),
+        )
+    }
+
+    #[test]
+    fn the_six_empty_texts() {
+        assert_eq!(
+            format_search_scriptorium_results(&[], None),
+            "Nothing matched your search. An empty search is not proof that nothing happened: try other words, or pass since/until if you are asking about a particular time."
+        );
+        assert!(fmt(&[], "q", None).starts_with("Nothing matched \"q\". An empty search"));
+        assert_eq!(
+            fmt(&[], "q", Some(&census(None, 0, 0))),
+            "There are no conversations between 2025-06-01 and 2025-06-30."
+        );
+        assert_eq!(
+            fmt(&[], "q", Some(&census(Some(0), 0, 0))),
+            "You hold no memories dated between 2025-06-01 and 2025-06-30, and took part in no conversations in that period."
+        );
+        let four = fmt(&[], "q", Some(&census(Some(0), 1, 2)));
+        assert_eq!(
+            four,
+            "Nothing matched \"q\" \u{2014} but that is not the same as having no record of the period.\nBetween 2025-06-01 and 2025-06-30 you hold 0 memories, and you took part in these conversations:\n- Chat 0 (2025-06-02) \u{2014} `c0`\n- \u{2026}and 2 more\nRead one with read_conversation, or search again with broader words. The date range already narrows the search; the query does not need to name the time."
+        );
+        assert!(fmt(&[], "q", Some(&census(None, 1, 0)))
+            .contains("\nBetween 2025-06-01 and 2025-06-30 these conversations took place:\n"));
+        assert!(fmt(&[], "q", Some(&census(Some(1), 0, 0)))
+            .ends_with("Between 2025-06-01 and 2025-06-30 you hold 1 memory.\nSearch again with broader words. The date range already narrows the search; the query does not need to name the time."));
+    }
+
+    #[test]
+    fn periods_and_the_footer() {
+        let mut same = census(None, 0, 0);
+        same.since = Some("2025-12-01".into());
+        same.until = Some("2025-12-01T23:00:00Z".into());
+        assert_eq!(
+            fmt(&[], "q", Some(&same)),
+            "There are no conversations on 2025-12-01."
+        );
+        let mut since_only = census(None, 0, 0);
+        since_only.until = None;
+        assert_eq!(
+            fmt(&[], "q", Some(&since_only)),
+            "There are no conversations between 2025-06-01 and today."
+        );
+        let mut until_only = census(None, 0, 0);
+        until_only.since = None;
+        assert_eq!(
+            fmt(&[], "q", Some(&until_only)),
+            "There are no conversations up to 2025-06-30."
+        );
+
+        let hit = serde_json::json!({"content": "x", "sourceType": "document", "relevanceScore": 0.5, "metadata": {}});
+        let body = format_search_scriptorium_results(std::slice::from_ref(&hit), None);
+        assert!(fmt(std::slice::from_ref(&hit), "q", Some(&census(Some(2), 1, 0)))
+            .ends_with("\n\nConversations you took part in during this period:\n- Chat 0 (2025-06-02) \u{2014} `c0`\nRead any of them with read_conversation."));
+        assert!(
+            fmt(std::slice::from_ref(&hit), "q", Some(&census(None, 1, 0)))
+                .contains("\n\nConversations during this period:\n")
+        );
+        // The overflow alone triggers no footer.
+        assert_eq!(
+            fmt(std::slice::from_ref(&hit), "q", Some(&census(None, 0, 3))),
+            body
+        );
+    }
+
+    #[test]
+    fn the_census_utc_arm_and_the_exclusion() {
+        let chats = vec![
+            serde_json::json!({"id": "a", "title": "", "createdAt": "2025-06-02T23:30:00.000Z"}),
+            serde_json::json!({"id": "b", "title": "B", "createdAt": "nope", "lastMessageAt": "2025-06-03T00:00:00.000Z"}),
+        ];
+        let c = build_window_census(&chats, Some("2025-06-01"), None, None, Some("zzz"), None);
+        assert_eq!(c.conversations[0].title, "Untitled");
+        assert_eq!(c.conversations[0].date, "2025-06-02");
+        assert_eq!(c.conversations[1].date, "nope");
+        let c = build_window_census(
+            &chats,
+            None,
+            None,
+            Some(1),
+            Some("a"),
+            Some("America/Chicago"),
+        );
+        assert_eq!(c.conversations.len(), 1);
+        assert_eq!(
+            serde_json::to_string(&c).unwrap(),
+            r#"{"since":null,"until":null,"memoryCount":1,"conversations":[{"id":"b","title":"B","firstMessageAt":"nope","lastMessageAt":"2025-06-03T00:00:00.000Z","date":"nope"}],"moreConversations":0}"#
+        );
+    }
+}
+// === end P4.D375 ===

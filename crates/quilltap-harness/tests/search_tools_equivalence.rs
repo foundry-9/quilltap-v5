@@ -63,7 +63,8 @@ use quilltap_core::tools::request_full_context::{
     execute_request_full_context, format_request_full_context,
 };
 use quilltap_core::tools::search::{
-    execute_search_scriptorium, format_search_scriptorium_results, SearchContext,
+    execute_search_scriptorium, format_search_scriptorium_results, FormatOptions, SearchContext,
+    SearchWindowCensus,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -129,6 +130,18 @@ struct OracleRow {
     /// P4.D268: a `format` case's results.
     #[serde(default)]
     results: Option<Value>,
+    /// P4.D375: the search formatted WITHOUT opts (v4's second call shape).
+    #[serde(default, rename = "formattedNoOpts")]
+    formatted_no_opts: Option<String>,
+    /// P4.D375: a `p4d375_*` row's context (the Rust side builds it from here).
+    #[serde(default)]
+    ctx: Option<Value>,
+    /// P4.D375: how many embedding calls the case made.
+    #[serde(default, rename = "embedCalls")]
+    embed_calls: Option<usize>,
+    /// P4.D375: a `format` row's opts.
+    #[serde(default)]
+    opts: Option<Value>,
 }
 
 // ---------------------------------------------------------------------------
@@ -1020,11 +1033,22 @@ async fn run_search(
             // v4's jest forces `TZ=UTC`, the memory calendar's fallback when the
             // instance names no zone (bug 212's since / until days).
             memory_zone_fallback: "UTC".to_string(),
+            chat_id: None,
         };
         captured.lock().unwrap().clear();
         let out = execute_search_scriptorium(&db, &provider, &ctx, &c.args, spec.now_ms).await;
         let got_json = serde_json::to_string(&out).unwrap();
-        let got_fmt = format_search_scriptorium_results(out.results.as_deref().unwrap_or(&[]));
+        // P4.D375: formatted the executor's way (query + census), and the
+        // no-opts call as the second comparand (B.6 — `your search`).
+        let got_fmt = format_search_scriptorium_results(
+            out.results.as_deref().unwrap_or(&[]),
+            Some(&FormatOptions {
+                query: &out.query,
+                window_census: out.window_census.as_ref(),
+            }),
+        );
+        let got_fmt_no_opts =
+            format_search_scriptorium_results(out.results.as_deref().unwrap_or(&[]), None);
 
         let want = oracle
             .get(c.label)
@@ -1037,6 +1061,12 @@ async fn run_search(
         assert_eq!(
             got_fmt, want.formatted,
             "formatted diverged for {}",
+            c.label
+        );
+        assert_eq!(
+            Some(&got_fmt_no_opts),
+            want.formatted_no_opts.as_ref(),
+            "formattedNoOpts diverged for {}",
             c.label
         );
         // The handler's lines, compared WHOLE on every search case (P4.114; the
@@ -1168,7 +1198,7 @@ async fn run_search(
         .and_then(|v| v.as_array().cloned())
         .unwrap();
     assert_eq!(
-        format_search_scriptorium_results(&results),
+        format_search_scriptorium_results(&results, None),
         fmt.formatted,
         "the archived header diverged"
     );
@@ -1259,6 +1289,246 @@ async fn run_search(
         drop(db);
         cleanup(&main_work, &mount_work);
     }
+
+    // ---- P4.D375 (v4 4.12.1 `6121f59b9`): the dated search, the honest-empty
+    // texts and the census footer, the executor's census key. Rows are driven
+    // from the oracle's own `ctx` (no transcribed case list). ----
+    p4d375_rows(spec, oracle, main_fixture, mount_fixture, &captured).await;
+}
+
+/// An embedding provider that counts its calls (the skip arm's "no embedding
+/// call" is a comparand).
+struct CountingProvider {
+    inner: CannedEmbeddingProvider,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl quilltap_core::model::embedding::EmbeddingProvider for CountingProvider {
+    fn generate_embedding_for_user(
+        &self,
+        text: &str,
+        user_id: &str,
+        profile_id: Option<&str>,
+        opts: quilltap_core::model::embedding::EmbeddingCallOptions,
+    ) -> impl std::future::Future<
+        Output = Result<
+            quilltap_core::model::embedding::EmbeddingResult,
+            quilltap_core::model::embedding::EmbeddingError,
+        >,
+    > + Send {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner
+            .generate_embedding_for_user(text, user_id, profile_id, opts)
+    }
+}
+
+async fn p4d375_rows(
+    spec: &Spec,
+    oracle: &HashMap<String, OracleRow>,
+    main_fixture: &str,
+    mount_fixture: &str,
+    captured: &std::sync::Arc<std::sync::Mutex<Vec<(String, Line)>>>,
+) {
+    let mut failures: Vec<String> = Vec::new();
+    let mut labels: Vec<&String> = oracle.keys().collect();
+    labels.sort();
+    let (mut searches, mut formats, mut executors, mut skips, mut censuses) = (0, 0, 0, 0, 0);
+    for label in labels {
+        let row = &oracle[label];
+        if label.starts_with("p4d375_format_") {
+            let results: Vec<Value> = row
+                .results
+                .clone()
+                .and_then(|v| v.as_array().cloned())
+                .unwrap();
+            let census: Option<SearchWindowCensus> = row
+                .opts
+                .as_ref()
+                .and_then(|o| o.get("windowCensus"))
+                .map(|c| serde_json::from_value(c.clone()).unwrap());
+            let query = row
+                .opts
+                .as_ref()
+                .and_then(|o| o.get("query"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let opts = FormatOptions {
+                query,
+                window_census: census.as_ref(),
+            };
+            let got =
+                format_search_scriptorium_results(&results, row.opts.is_some().then_some(&opts));
+            if got != row.formatted {
+                failures.push(format!(
+                    "{label}: formatted\n  v5 {got:?}\n  v4 {:?}",
+                    row.formatted
+                ));
+            }
+            formats += 1;
+            continue;
+        }
+        let Some(ctx_spec) = row.ctx.as_ref() else {
+            continue;
+        };
+        let args = ctx_spec["args"].clone();
+        let (main_work, mount_work) = fresh_copy(main_fixture, mount_fixture, label);
+        let db = open_two_db(&main_work, &mount_work, &spec.test_pepper_base64);
+        for sql in &row.plant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| {
+                ws.main()
+                    .connection()
+                    .execute_batch(&sql)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{label}: plant failed: {e}"));
+        }
+        if label.starts_with("executor_p4d375_") {
+            use quilltap_core::services::tool_execution::{
+                ToolCall, ToolExecutionContext, ToolRunner,
+            };
+            let runner = quilltap_core::tools::executor::BuiltInToolRunner::new(
+                db.clone(),
+                quilltap_core::tools::self_inventory::SelfInventoryEnv {
+                    version: String::new(),
+                    runtime_mode: "local-dev".to_string(),
+                    client_shell: quilltap_core::tools::self_inventory::ClientShell::Browser,
+                    mount_index_degraded: false,
+                    release_notes: None,
+                    changelog: None,
+                    model_info: Vec::new(),
+                    fallback_pricing: Vec::new(),
+                    registry_default_context: 8192,
+                },
+            )
+            .with_embedding_provider(
+                quilltap_core::model::embedding::ErasedEmbeddingProvider::new(build_provider(spec)),
+            );
+            let ctx = ToolExecutionContext {
+                chat_id: spec.chat_a_id.clone(),
+                user_id: spec.user_id.clone(),
+                project_id: Some(spec.project_id.clone()),
+                operator_surface: ctx_spec["operatorSurface"].as_bool().unwrap(),
+                ..Default::default()
+            };
+            let r = runner
+                .run(
+                    &ToolCall {
+                        name: "search".to_string(),
+                        arguments: args,
+                        call_id: None,
+                    },
+                    &ctx,
+                )
+                .await;
+            let got = serde_json::to_string(&r.result).unwrap();
+            if got != row.result_json {
+                failures.push(format!(
+                    "{label}: executor result\n  v5 {got}\n  v4 {}",
+                    row.result_json
+                ));
+            }
+            executors += 1;
+        } else {
+            let provider = CountingProvider {
+                inner: build_provider(spec),
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            };
+            let ctx = SearchContext {
+                user_id: if ctx_spec["wrongUser"].as_bool().unwrap() {
+                    spec.wrong_user_id.clone()
+                } else {
+                    spec.user_id.clone()
+                },
+                character_id: (!ctx_spec["noCharacter"].as_bool().unwrap())
+                    .then(|| spec.char_a_id.clone()),
+                embedding_profile_id: spec.embedding_profile_id.clone(),
+                project_id: (!ctx_spec["pool"].as_bool().unwrap()).then(|| spec.project_id.clone()),
+                operator_surface: ctx_spec["operatorSurface"].as_bool().unwrap(),
+                mount_pool: ctx_spec["pool"].as_bool().unwrap().then(|| {
+                    pool_for(
+                        &db,
+                        &spec.char_a_id,
+                        &spec.project_id,
+                        &spec.general_mount_point_id,
+                    )
+                }),
+                memory_zone_fallback: "UTC".to_string(),
+                chat_id: ctx_spec["chatId"].as_str().map(str::to_string),
+            };
+            captured.lock().unwrap().clear();
+            let out = execute_search_scriptorium(&db, &provider, &ctx, &args, spec.now_ms).await;
+            let got_json = serde_json::to_string(&out).unwrap();
+            if got_json != row.result_json {
+                failures.push(format!(
+                    "{label}: resultJson\n  v5 {got_json}\n  v4 {}",
+                    row.result_json
+                ));
+            }
+            if out.window_census.is_some() {
+                censuses += 1;
+            }
+            let got_fmt = format_search_scriptorium_results(
+                out.results.as_deref().unwrap_or(&[]),
+                Some(&FormatOptions {
+                    query: &out.query,
+                    window_census: out.window_census.as_ref(),
+                }),
+            );
+            if got_fmt != row.formatted {
+                failures.push(format!(
+                    "{label}: formatted\n  v5 {got_fmt:?}\n  v4 {:?}",
+                    row.formatted
+                ));
+            }
+            let got_no =
+                format_search_scriptorium_results(out.results.as_deref().unwrap_or(&[]), None);
+            if Some(&got_no) != row.formatted_no_opts.as_ref() {
+                failures.push(format!(
+                    "{label}: formattedNoOpts\n  v5 {got_no:?}\n  v4 {:?}",
+                    row.formatted_no_opts
+                ));
+            }
+            let calls = provider.calls.load(std::sync::atomic::Ordering::SeqCst);
+            if Some(calls) != row.embed_calls {
+                failures.push(format!(
+                    "{label}: embedding calls v5 {calls} v4 {:?}",
+                    row.embed_calls
+                ));
+            }
+            if row.embed_calls == Some(0) && got_json.contains("windowCensus") {
+                skips += 1;
+            }
+            let got_lines: Vec<Line> = captured
+                .lock()
+                .unwrap()
+                .drain(..)
+                .filter(|(t, _)| t == "quilltap_core::tools::search")
+                .map(|(_, l)| l)
+                .collect();
+            let want_lines = v4_lines(row.logs.as_ref());
+            if got_lines != want_lines {
+                failures.push(format!(
+                    "{label}: lines\n  v4: {want_lines:?}\n  v5: {got_lines:?}"
+                ));
+            }
+            searches += 1;
+        }
+        drop(db);
+        cleanup(&main_work, &mount_work);
+    }
+    assert!(searches >= 15, "P4.D375 search rows: {searches}");
+    assert!(formats >= 17, "P4.D375 format rows: {formats}");
+    assert_eq!(executors, 2, "P4.D375 executor rows");
+    assert!(skips >= 1, "the skip arm (no embedding call) ran");
+    assert!(censuses >= 10, "census rows: {censuses}");
+    assert!(
+        failures.is_empty(),
+        "{} P4.D375 divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
 }
 
 fn build_provider(spec: &Spec) -> CannedEmbeddingProvider {
