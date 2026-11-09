@@ -24,6 +24,12 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — P4.D362: the item-1 mutation proofs, plus a `6.5` cap row
+
+_No crate versions bumped._
+
+Eleven mutations were run against the ported units, each red against the pin's oracles and then restored. They are: each column ensure's gate inverted; the strip heal without `ledger_has` (the heal family's already-stamped mode); an exact `provider IN` in place of `upper()`; `removed` in blob order; the update re-writing the blob only when something was removed; `resolve_max_images_per_request` truncating a fraction or accepting a numeric string; `isEstablishedFact` emitted last; the strip moved out of the repository (the import carriers). The zero-rerun family stays green under the `ledger_has` mutation, because it runs v5's chain only once per mode. The tier-1 corpus gains `fraction-six` (`6.5`): the old `4.5` row truncates to the default 4 and could not catch a truncating resolver.
+
 #### 2026-11-08 — P4.D362: the profile-DTO ripple (R-L3) — the jest provider-validation mock and the 4.12 plant on the pascal and external-prompt oracles
 
 _No crate versions bumped._

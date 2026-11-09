@@ -37,6 +37,9 @@ const CORPUS: Array<{ name: string; input?: unknown; absent?: true }> = [
   { name: 'fifty', input: 50 },
   { name: 'fifty-one', input: 51 },
   { name: 'fraction', input: 4.5 },
+  // A fraction whose truncation is NOT the default (the M7 mutation proof:
+  // a resolver that truncates instead of refusing reads 6 here, not 4).
+  { name: 'fraction-six', input: 6.5 },
   { name: 'four-point-zero', input: 4.0 },
   { name: 'negative', input: -1 },
   { name: 'string-four', input: '4' },
