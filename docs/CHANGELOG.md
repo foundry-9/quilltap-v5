@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the .docx reading copy's DOMPurify sanitizer on a private instance, byte-equal to v4's under jsdom (P4.D387; v4 c34986421)
+
+_Versions: SPA 0.5.975._
+
+P4.D387 commit 2 (item 4, SPA ruling R9). New `document-browser/sanitize-docx.ts` `sanitizeDocxHtml` runs v4's `FilePreviewDocx` config verbatim (`USE_PROFILES: {html: true}`, `FORBID_TAGS` style / form / input / button / iframe / object / embed, `ALLOWED_URI_REGEXP` http(s) / mailto / `#` / `data:image/`) on a private `DOMPurify(window)` instance, following the `sanitize-svg.ts` precedent. It is reached only once a `.docx` converter lands: today the server refuses `render-html` for `.docx` (R-E). New capture `apps/web/oracle/docx-sanitize.capture.test.tsx` runs v4's real `sanitizeDocxHtml` under v4's jest jsdom at the pin and writes 24 rows to `document-browser/__fixtures__/docx-sanitize.v4.json` (scripts, handlers, forbidden tags, javascript / data / relative URLs, entity-encoded schemes, mammoth's typical output, `<svg onload>`). `sanitize-docx.spec.ts` matches all 24 byte for byte. DOMPurify is 3.4.17 on both sides, so there is no `DOMPURIFY_VERSION_SKEW`.
+
 #### 2026-11-08 — feat(spa): the document-store browser's pure half — preview-kind, document-actions, mount capabilities, folderTreeOf, getPreviewType delegation, the C13/C14 wire block (P4.D387; v4 c34986421)
 
 _Versions: SPA 0.5.974._

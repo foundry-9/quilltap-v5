@@ -1,0 +1,122 @@
+[
+  {
+    "id": "script",
+    "input": "<p>before</p><script>alert(1)</script><p>after</p>",
+    "output": "<p>before</p><p>after</p>"
+  },
+  {
+    "id": "onclick",
+    "input": "<p onclick=\"alert(1)\">click</p>",
+    "output": "<p>click</p>"
+  },
+  {
+    "id": "style element",
+    "input": "<style>body{display:none}</style><p>styled</p>",
+    "output": "<p>styled</p>"
+  },
+  {
+    "id": "style attribute",
+    "input": "<p style=\"color:red\">red</p>",
+    "output": "<p style=\"color:red\">red</p>"
+  },
+  {
+    "id": "form controls",
+    "input": "<form action=\"/x\"><input name=\"a\" value=\"b\"><button>Go</button></form><p>tail</p>",
+    "output": "Go<p>tail</p>"
+  },
+  {
+    "id": "iframe",
+    "input": "<iframe src=\"https://example.com\"></iframe><p>x</p>",
+    "output": "<p>x</p>"
+  },
+  {
+    "id": "object",
+    "input": "<object data=\"x.pdf\"></object><p>x</p>",
+    "output": "<p>x</p>"
+  },
+  {
+    "id": "embed",
+    "input": "<embed src=\"x.swf\"><p>x</p>",
+    "output": "<p>x</p>"
+  },
+  {
+    "id": "javascript href",
+    "input": "<a href=\"javascript:alert(1)\">js</a>",
+    "output": "<a>js</a>"
+  },
+  {
+    "id": "data html href",
+    "input": "<a href=\"data:text/html;base64,PHNjcmlwdD4=\">data</a>",
+    "output": "<a>data</a>"
+  },
+  {
+    "id": "data image src",
+    "input": "<img src=\"data:image/png;base64,iVBORw0KGgo=\" alt=\"dot\">",
+    "output": "<img src=\"data:image/png;base64,iVBORw0KGgo=\" alt=\"dot\">"
+  },
+  {
+    "id": "mailto",
+    "input": "<a href=\"mailto:someone@example.com\">mail</a>",
+    "output": "<a href=\"mailto:someone@example.com\">mail</a>"
+  },
+  {
+    "id": "fragment",
+    "input": "<a href=\"#section-2\">jump</a>",
+    "output": "<a href=\"#section-2\">jump</a>"
+  },
+  {
+    "id": "https",
+    "input": "<a href=\"https://example.com/a?b=c\">site</a>",
+    "output": "<a href=\"https://example.com/a?b=c\">site</a>"
+  },
+  {
+    "id": "http",
+    "input": "<a href=\"http://example.com\">plain</a>",
+    "output": "<a href=\"http://example.com\">plain</a>"
+  },
+  {
+    "id": "relative href",
+    "input": "<a href=\"notes/other.docx\">relative</a>",
+    "output": "<a>relative</a>"
+  },
+  {
+    "id": "relative img",
+    "input": "<img src=\"images/a.png\" alt=\"a\">",
+    "output": "<img alt=\"a\">"
+  },
+  {
+    "id": "mammoth typical",
+    "input": "<h1>Title</h1><h2>Sub</h2><h3>Third</h3><p><strong>Bold</strong> and <em>italic</em>.</p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol><table><tr><td>a</td><td>b</td></tr></table><p><img src=\"data:image/jpeg;base64,/9j/4AAQ\" /></p>",
+    "output": "<h1>Title</h1><h2>Sub</h2><h3>Third</h3><p><strong>Bold</strong> and <em>italic</em>.</p><ul><li>one</li><li>two</li></ul><ol><li>first</li></ol><table><tbody><tr><td>a</td><td>b</td></tr></tbody></table><p><img src=\"data:image/jpeg;base64,/9j/4AAQ\"></p>"
+  },
+  {
+    "id": "svg onload",
+    "input": "<svg onload=\"alert(1)\"><circle r=\"2\"></circle></svg><p>after</p>",
+    "output": "<p>after</p>"
+  },
+  {
+    "id": "encoded javascript",
+    "input": "<a href=\"&#106;avascript:alert(1)\">enc</a>",
+    "output": "<a>enc</a>"
+  },
+  {
+    "id": "amp-encoded javascript",
+    "input": "<a href=\"javascript&amp;colon;alert(1)\">amp</a>",
+    "output": "<a>amp</a>"
+  },
+  {
+    "id": "entity colon javascript",
+    "input": "<a href=\"javascript&colon;alert(1)\">colon</a>",
+    "output": "<a>colon</a>"
+  },
+  {
+    "id": "empty",
+    "input": "",
+    "output": ""
+  },
+  {
+    "id": "plain text",
+    "input": "just words & an ampersand",
+    "output": "just words & an ampersand"
+  }
+]
