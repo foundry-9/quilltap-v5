@@ -25,12 +25,18 @@
 //! [`super::roster::resolve_roster_from_pool`] precedent).
 //! [`resolve_tool_preset_pool`] wires the same walk to the live DB.
 //!
-//! # "Never throws" is not quite true
+//! # A mount row that will not read is a skipped store
 //!
 //! v4's docblock says the walk never throws, and a store that will not LIST is
-//! indeed reported in `unread`. But the mount-row read (`docMountPoints.findById`)
-//! sits outside the `try`, so a failing read propagates out of the walk and out
-//! of the route. v5 carries that: a `find_mount` error is the walk's `Err`.
+//! reported in `unread`. The mount-row read (`docMountPoints.findById`) sits
+//! outside the `try`, but it cannot throw either: `DocMountPointsRepository`
+//! does not override base `_findById`, a FALLBACK `safeQuery`
+//! (`base.repository.ts:247-258`) — a failed read logs the repository's ERROR
+//! `Error finding entity by ID {collection: doc_mount_points, id}` and answers
+//! `null`, so the store is skipped like a vanished row and the route answers
+//! 200. v5's live wiring reads through [`crate::db::fallback::find_by_id_or_none`]
+//! (the read [`crate::db::tiered_mount_pool`]'s `drop_disabled_mounts` makes for
+//! the same rows).
 
 use rusqlite::Connection;
 use serde_json::{json, Value};
@@ -170,9 +176,10 @@ impl ToolPresetPool {
 /// `resolveToolPresetPool` after its pool call).
 ///
 /// - `find_mount(id)` is v4's `docMountPoints.findById`: `Ok(None)` (a vanished
-///   row) skips the store SILENTLY — no line, not a save destination; an `Err`
-///   propagates (see the module doc). `Ok(Some((name, row)))` hands the row on
-///   to `list`.
+///   row, or a failed read after its repository line — see the module doc)
+///   skips the store, not a save destination; an `Err` propagates (the live
+///   wiring never returns one). `Ok(Some((name, row)))` hands the row on to
+///   `list`.
 /// - `list(&row)` is v4's `listToolsFolderFiles`; its `Err` is the message text.
 ///
 /// Logs v4's WARN `Preset listing failed for store` per unlisted store and one
@@ -283,7 +290,8 @@ pub fn resolve_tool_preset_pool_from<M, E>(
 ///
 /// Same pool as the roster's — no participant tier, since another character's
 /// vault is theirs alone — but with `enabled: require` ([`PRESET_POOL_OPTIONS`]).
-/// A mount-row read error propagates (v4's `findById` sits outside its `try`).
+/// A mount-row read error skips that store after the repository's line (v4's
+/// `findById` is a fallback read — see the module doc).
 pub fn resolve_tool_preset_pool(
     ctx: &ToolPresetPoolContext,
     main: &Connection,
@@ -303,18 +311,28 @@ pub fn resolve_tool_preset_pool(
         &TierResolveOptions::new(roster, enabled),
     );
 
-    let repo = DocMountPointsRepository::new(mount);
     resolve_tool_preset_pool_from(
         &pool,
         &ctx.tool_name,
         ctx.character_id.as_deref(),
-        |id| {
-            Ok::<_, DbError>(
-                repo.find_service_info_by_id(id)?
-                    .map(|row: MountServiceInfo| (row.name.clone(), row)),
-            )
-        },
+        |id| find_preset_mount(mount, id),
         |row| list_tools_folder_files(mount, row),
+    )
+}
+
+/// v4's `repos.docMountPoints.findById(mountPointId)` for one pool store: base
+/// `_findById`, a fallback read — a failed read logs `Error finding entity by
+/// ID` and answers `None` (the store is skipped), never an `Err`.
+fn find_preset_mount(
+    mount: &Connection,
+    id: &str,
+) -> Result<Option<(String, MountServiceInfo)>, DbError> {
+    let repo = DocMountPointsRepository::new(mount);
+    Ok(
+        crate::db::fallback::find_by_id_or_none("doc_mount_points", id, || {
+            repo.find_service_info_by_id(id)
+        })
+        .map(|row: MountServiceInfo| (row.name.clone(), row)),
     )
 }
 
@@ -328,5 +346,61 @@ mod tests {
     #[test]
     fn the_preset_pool_states_open_roster_and_required_enabled() {
         assert_eq!(PRESET_POOL_OPTIONS, (Roster::Open, Enabled::Require));
+    }
+
+    /// v4's `docMountPoints.findById` is base `_findById` — a FALLBACK
+    /// `safeQuery` (`base.repository.ts:247-258`; `DocMountPointsRepository`
+    /// does not override it): a failed mount-row read logs the repository's
+    /// `Error finding entity by ID {collection: doc_mount_points, id}`, answers
+    /// `null`, and the walk skips that store — the route still answers 200. A
+    /// NULL `name` makes v5's row read fail; the readable store survives.
+    #[test]
+    fn a_failing_mount_read_skips_the_store_and_logs_the_repository_line() {
+        let mount = Connection::open_in_memory().unwrap();
+        mount
+            .execute_batch(
+                r#"CREATE TABLE "doc_mount_points" ("id" TEXT PRIMARY KEY NOT NULL,
+                     "mountType" TEXT, "basePath" TEXT, "excludePatterns" TEXT,
+                     "includePatterns" TEXT, "name" TEXT, "enabled" INTEGER,
+                     "conversionStatus" TEXT);
+                   INSERT INTO doc_mount_points VALUES
+                     ('m-bad', 'database', '', '[]', '[]', NULL, 1, 'idle'),
+                     ('m-good', 'database', '', '[]', '[]', 'Good Store', 1, 'idle');"#,
+            )
+            .unwrap();
+        let pool = TieredMountPool {
+            group_mount_point_ids: vec!["m-bad".into()],
+            global_mount_point_id: Some("m-good".into()),
+            ..Default::default()
+        };
+        let (result, lines) = crate::test_support::captured_with(|| {
+            resolve_tool_preset_pool_from(
+                &pool,
+                "roll",
+                None,
+                |id| find_preset_mount(&mount, id),
+                |_| Ok(vec!["Tools/roll.fast.settings.json".to_string()]),
+            )
+        });
+        let pool = result.expect("a failed mount read is not the walk's Err");
+        let ids: Vec<&str> = pool
+            .stores
+            .iter()
+            .map(|s| s.mount_point_id.as_str())
+            .collect();
+        assert_eq!(ids, ["m-good"], "{lines:?}");
+        assert_eq!(pool.presets.len(), 1);
+        let home: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Error finding entity by ID"))
+            .collect();
+        assert_eq!(home.len(), 1, "{lines:?}");
+        assert!(
+            home[0].starts_with(
+                "ERROR quilltap::db Error finding entity by ID collection=doc_mount_points id=m-bad"
+            ),
+            "{}",
+            home[0]
+        );
     }
 }
