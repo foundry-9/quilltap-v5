@@ -52,8 +52,10 @@
 //!
 //! `CONCURRENT_TURN_FAILURE_CONTAINED` (ruling R-3 of P4.D368): a speaking turn
 //! that FAILS is caught per turn — ERROR `Storyteller speaking turn failed`, an
-//! error frame, an empty outcome — and the round goes on, closing `ran` with
-//! ONE `chainComplete`. Both ways: v4's concurrent `runTurn` throw rejects
+//! error frame (SEATED for a concurrent turn, through its seat's sink, so the
+//! Salon drops only that seat's bubble; unseated for a sequential one), an
+//! empty outcome — and the round goes on, closing `ran` with ONE
+//! `chainComplete`. Both ways: v4's concurrent `runTurn` throw rejects
 //! `Promise.all`, so `runStorytellerRound` rejects BEFORE `markClosed` — the
 //! round is left `running`, `openTurnStream`'s catch logs `Streaming error`
 //! and enqueues its unseated `Failed to generate response` frame, and no
@@ -785,12 +787,21 @@ where
                     error = %e,
                     "Storyteller speaking turn failed"
                 );
-                emit_send_error_frame(
-                    &self.spine.events,
-                    &self.chat_id,
-                    &e.to_string(),
-                    orchestrator::SubmissionLedger::default(),
-                );
+                match &seated {
+                    // A CONCURRENT seat's failure goes out on its own seat —
+                    // the round is still streaming the other seats' turns
+                    // (`CONCURRENT_TURN_FAILURE_CONTAINED`). An unseated error
+                    // frame here would read, to the Salon, as the whole run's
+                    // failure: it ended the main stream mid-round and left the
+                    // failed seat's half-written bubble on screen for good.
+                    Some(seated) => emit_seated_error_frame(seated, &self.chat_id, &e.to_string()),
+                    None => emit_send_error_frame(
+                        &self.spine.events,
+                        &self.chat_id,
+                        &e.to_string(),
+                        orchestrator::SubmissionLedger::default(),
+                    ),
+                }
                 *self.last_scene.borrow_mut() = None;
                 StorytellerTurnOutcome::default()
             }
@@ -829,6 +840,31 @@ where
     fn is_stopped(&self) -> bool {
         self.handle.is_stopped()
     }
+}
+
+/// The error frame for a CONCURRENT seat's failed turn: v4's shell frame
+/// (`Failed to generate response`, `errorType` `Error`, the failure as
+/// `details`) through the seat's own sink, so it carries `seat` LAST like
+/// every other frame of that turn. The submission flags are not carried: a
+/// storyteller turn runs in continue mode and never writes the operator's
+/// submission, so they would always read `false` (and the Salon's seated
+/// `error` arm reads only the message). Same `[TurnStream]` DEBUG as the
+/// unseated shell frame.
+fn emit_seated_error_frame(seated: &BroadcastSink, chat_id: &str, details: &str) {
+    let error_type = "Error";
+    let submission = orchestrator::SubmissionLedger::default();
+    tracing::debug!(
+        chatId = %chat_id,
+        errorType = error_type,
+        userMessagePersisted = submission.user_message_persisted,
+        pendingToolResultsPersisted = submission.pending_tool_results_persisted,
+        "[TurnStream] Emitting error frame",
+    );
+    seated.emit(ChatEvent::error(
+        "Failed to generate response",
+        error_type,
+        details,
+    ));
 }
 
 fn refusal(e: RoundServiceError) -> StorytellerDriverError {

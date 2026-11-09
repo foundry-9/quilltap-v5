@@ -719,6 +719,7 @@ fn storyteller_simultaneous_matches_oracle() {
                 .frames
                 .iter()
                 .any(|f| f["kind"] == "done" && f["participantId"] == P_CORA));
+            assert_failed_seat_error_is_seated(&got.frames);
             // Shared: Ada's seated frames v4 sent before the stream closed are
             // a prefix of v5's.
             let (ga, wa) = (&gs[P_ADA], &ws[P_ADA]);
@@ -808,6 +809,62 @@ fn storyteller_simultaneous_matches_oracle() {
         mismatches.len(),
         mismatches.join("\n")
     );
+}
+
+/// The contained failure's error frame rides the FAILED seat (v5-only; the
+/// `CONCURRENT_TURN_FAILURE_CONTAINED` carve's v5 half). The round is still
+/// streaming the other seats' turns, so an UNSEATED error frame would reach
+/// the Salon as the whole run's failure — its main `error` arm stops the
+/// stream mid-round, and the failed seat's half-bubble (only a seated `done`
+/// or `error` removes it) stays on screen for good. Exactly one error frame,
+/// tagged with Bram's seat LAST, and no unseated one before `chainComplete`.
+fn assert_failed_seat_error_is_seated(frames: &[Value]) {
+    let errors: Vec<&Value> = frames.iter().filter(|f| f["kind"] == "error").collect();
+    assert_eq!(
+        errors.len(),
+        1,
+        "one error frame for Bram's failure: {errors:#?}"
+    );
+    let e = errors[0];
+    assert_eq!(
+        e["seat"],
+        json!({"participantId": P_BRAM, "concurrent": true}),
+        "the failed concurrent seat's error frame carries its seat: {e}"
+    );
+    assert_eq!(e["message"], "Failed to generate response");
+    let text = serde_json::to_string(e).unwrap();
+    assert!(
+        text.ends_with(&format!(
+            r#","seat":{{"participantId":"{P_BRAM}","concurrent":true}}}}"#
+        )),
+        "the seat is the LAST key: {text}"
+    );
+    // Bram's seated stream ends on that error; Ada's still settles.
+    assert!(frames
+        .iter()
+        .any(|f| f["kind"] == "done" && f["seat"]["participantId"] == P_ADA));
+}
+
+#[test]
+fn concurrent_turn_failure_error_frame_is_seated() {
+    let _serial = serial();
+    let Some(fx) = fixture() else {
+        eprintln!("SKIP: set QT_FIXTURE_STS3_MAIN/MOUNT/LLMLOGS (see header).");
+        return;
+    };
+    let got = run_v5(&fx, ROUNDS[0], plan_for(CONCURRENT_TURN_FAILURE_CONTAINED));
+    assert_failed_seat_error_is_seated(&got.frames);
+    let chain: Vec<&Value> = got
+        .frames
+        .iter()
+        .filter(|f| f["kind"] == "chainComplete")
+        .collect();
+    assert_eq!(
+        chain.len(),
+        1,
+        "the round still closes with ONE chainComplete"
+    );
+    assert!(chain[0].get("seat").is_none());
 }
 
 /// Item 5's concurrency measurement (v5-only): two concurrent turns over a
