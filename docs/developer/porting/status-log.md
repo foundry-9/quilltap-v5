@@ -200733,3 +200733,135 @@ Lane-local calls:
 - Two group stores: stable order across reloads.
 - An off-roster character's `doc_list_files` and `search_scriptorium`: no project store, and the pool's line once per call.
 - The Scenario Builder launched from a group page still reaches the group's stores.
+
+## P4.D377 — ITEM ROUTES lane record (2026-11-09)
+
+**Where:** the session started in its own app-made worktree `.claude/worktrees/p4-d377-items-94d089` on branch `claude/p4-d377-items-94d089`, already at `REACH` (`07b68e7c3`). It cherry-picked P4.D376's recorded test-only amendment `428e0d7e7` as `5af02c7d1` (§R.14). No move was needed. Pin: `/tmp/qt-v4-pin-p4.d377-624d0d25c` at `624d0d25c…` (driver 13.0.3, zod 4.6.7, the plugin floor install), removed at close.
+
+**§R.2 probe (observation, 2026-11-09 08:08):** v4 `main` moved to `d281c2332` (dozens of commits past the pin; 4.12.2 released). `bugfix` is at `d67c70a51`. The tree is dirty (188 entries, 103 under `lib/` `app/` `packages/` `plugins/`). The pin read `4.13.0-dev.8`, so the lane continued.
+
+**Commits:**
+- `bb70cc90f` — the item-draft twin (core 0.0.1430)
+- `0c7ff5674` — the `wardrobe` topic (core 0.0.1431)
+- `d6e20e3cb` — the normaliser and the folders route (core 0.0.1432)
+- `9f6d84fd9` — the folder layer, preamble, #135, duplicate, locations over reach, the location write, and the images module (core 0.0.1433, web 0.0.257)
+- the docs commit (this record)
+
+**Versions at close:** core 0.0.1433, web 0.0.257. Host, cli, tauri, sys, SPA and harness are unchanged.
+
+### Tier 1, by item
+- **1. Red-first.** Measured on a scratch worktree at `5af02c7d1` (REACH + amendment), with the pin-regenerated oracles against REACH's code:
+  - `realtime_topics`: 11 red — the topic list, 8 `batch_wardrobe_*`, and P4.D372's 2.
+  - `item_mutations_tier2`: red at op 23 (the `[ItemFolders]` line).
+  - `inventory_keystone_tier2`: 47 mismatches — 4 `LINES` (`[ItemFolders]`) and 43 P4.D381 `PUBLISHES`.
+  - `wardrobe_location_tier2`: 2 divergences (Null Abbey under the raw read).
+  - `inventory_routes`: 12 red (the six new per-tier-label rows, × direct + http).
+  - `inventory_item_images_routes`: 4 red (the shared scope-enum order).
+  - `wardrobe_item_images_routes`: the v4 key table red (`context`).
+  - `degraded_mount_routes`: the 3 R-L5 rows red.
+  - `query_param_semantics`: red (P4.D381's rows).
+
+  Green on REACH:
+  - `wardrobe_item_images_tier2` and `wardrobe_images_routes`. **Bodies green both before and after**, which is the R-C wire claim; their line pins are v5 literals.
+  - `inventory_folders`, `wardrobe_instructions_routes`.
+
+  `wardrobe_folders_routes` and `wardrobe_item_draft` are red by construction at REACH: the new step ops (`duplicate` / `instructions` / `list-group`) and the new module do not exist there, so the REACH test cannot drive them.
+- **2. The shared folder layer.** NEW `inventory/item_folder_location.rs`. The kind is a struct of its rules plus a path-error constructor, generic over the location's error type (`ItemFolderKind<E>`); connections are explicit. Retired: `services/wardrobe_folder_mutations.rs`, the Inventory's three wrappers and `normalize_inventory_folder_name`. Item 12 grep: `crates/` has no `wardrobe_folder_mutations`, `create_inventory_folder(` / `rename_inventory_folder(` / `delete_inventory_folder(` or `normalize_inventory_folder_name` (the `_in_mount` repository fns stay).
+- **3. Preamble.** NEW `api/item_folder_routes.rs` (`ItemRouteKind` trait; `WardrobeKind` / `InventoryKind`).
+- **4. #135.** Every wardrobe GET is a read probe on the read pool. **Measured at the pin:** a project or group whose store pointer is NULL is STILL a 503 on both sides, because v4's probe owner check is the hydrated `findById` and it throws. So #135's observable is the `Wardrobe/` folder a GET no longer mints on a store-backed owner (`p4d377_list_project_bare_no_mint`, with its dump).
+- **5. Inventory through the preamble.**
+- **6. Duplicate.** `CoreRequest::WardrobeItemDuplicate`, `duplicate` last in `COLLECTION_POST_ACTIONS`, 201.
+- **7. Item-draft twin.**
+- **8. Topic and location writes.**
+- **9. Locations over reach.** A tier-2 R-F row with a corrupt project hydration was NOT added; the raw-read move is measured on Null Abbey (`wardrobe_location_tier2`'s two probes).
+- **10. Group tier strongest-first.** The code is ported, and a single-group `p4d377_list_group_tier` row is green. **DEFERRED:** the two-group same-id row. Group membership is not in the main DB the plants write, so the row needs a rebuilt keystone fixture, which the committed-fixture rule forbids in this lane.
+- **11. Images.** NEW `api/item_images_route.rs`: a struct of the kind's constants plus one emitter per line and the shared refusals. The handlers stay in the adapters because the two kinds' homes and services are different Rust types. Web edges changed: the generate-body parse moved to the shared helper, and the Inventory's scope sentence now uses the shared `ItemImagesScopeSchema` order.
+- **13. Module docs.** Carried.
+- **14 / 20. Normaliser and folders route.** §R.10 (e5) granted item 20, so no H5.
+- **15. Corpus growth.** `wardrobe-folders-routes.json` grew 116 → 150; `inventory-routes.json` 169 → 186; `realtime-topics.ts` +14; `wardrobe-item-draft.ts` NEW; `mount-chunker.ts` +53.
+- **16. Capture pins and mutation proofs.** Seven emits were mutated in one batch, each pinned by a distinct test's first assertion, and every one went red:
+  - `[ItemFolders] Moved items to folder` (`item_mutations_tier2`)
+  - `[WardrobeLocation] Location write` (`publish_tests`)
+  - `[Item routes] Refused a … write` (`preamble_lines`)
+  - `No ${noun} location`
+  - `Created ${noun} folder` (Inventory)
+  - `Listed item images` (`wardrobe_item_images_tier2`)
+  - `Duplicating wardrobe item`
+
+  The other lines are pinned by the same tests' later assertions, or by v4's captured lines in the images routes family (the key tables), without a one-by-one mutation. `Generate body is not valid JSON` logs inside the served router; it is pinned by v4's capture (`v4Lines`), not by a v5 capture.
+
+### Measured moves
+- **R-L5 (P4.166).** The degraded-mount entity gate is RETIRED. At the pin, `project_inventory_create` and `group_wardrobe_create` are v4's neutral 500 (was 503), and `project_wardrobe_list` is 200 `{mountPointId, wardrobeItems: []}` from the raw pointer (was 500 after #135's read path, and 503 before). The degraded General arm is kept and generalised to project / group.
+- **The `null` owner ref.** Null Abbey's ENSURING resolve now answers (the raw read re-links its existing store; no new `doc_mount_points` row). Its read probe and its GETs are still a 503.
+- **Item 17 censuses:**
+  - `dispatch_wrong_type_census` 523 → 524 (+1 row `WardrobeItemDuplicate.scope`);
+  - `tri_state_edges` 157 → 158 (`wardrobe_routes.rs` 33 → 34);
+  - `realtime_publish_sites_guard` +2 rows;
+  - unmoved: `web_edge_action_sites_census`, `fallback_home_guard`, `web_edge_body_parse_guard`, `import_warning_text_guard`, `p4_d279_wire_contract`.
+- **Item 18. NOT MEASURED.** `wardrobe_tools` / `pascal_wardrobe_effects` / `wardrobe_wear_commit_tier2` were not configured in this lane's gate (they SKIPped). Whether the new `[WardrobeLocation] Location write` DEBUG reaches their captured logs is OPEN; the unifier's §S.2 sweep measures it (P4.D378's pool move also touches them).
+- **Item 19.** No dedicated title-lint row added. `inventory_keystone_tier2`'s `folder-rename` rows are green apart from P4.D381's `PUBLISHES`.
+- **Item 28.** No v5 `ChildWritePayload` producer emits a `wardrobe.*` method (grep: none); the arm is corpus-pinned.
+- **Item 27.** The six non-store callers of `doc_mount_file_links::normalise_relative_path` (not nine), with each v4 counterpart's normaliser at the pin:
+  - `write_database_document`, `delete_database_document` and `canon_loaders` → the store's allowRoot form;
+  - `link_exists_at_path` (`character-scaffold.ts:148`) → none, a raw constant;
+  - `image_job_storage` and `file_storage` → the STRICT `path-utils` rule, then `normaliseBlobRelativePath`.
+
+  A recorded pre-existing divergence, not fixed.
+- **H4.** Routes answering a `StoreError` where v4 runs `file-op-status.ts`:
+  - `services/mount_index/folder_ops.rs` `store_err` and `store_file.rs`'s write arm map `FileOp` → `MountFileError::FileOp` → 400. These are one-line arms the new variant forced, in **P4.D381's files**.
+  - `store_file.rs:453` and `mount_files.rs:522` are unreachable (pre-normalised).
+  - `mount_blob_delete` matches v4 (500).
+
+  Also forced one-line arms in other owners' files: `documents/mod.rs` (P4.D380), `db/scenarios.rs`, `post_office/mailbox.rs`, `commonplace_digest_vault_bridge.rs`, `db/item_folder_ops.rs`, `tools/doc_edit/shared.rs`, and harness `inventory_title_lint_equivalence.rs`.
+- **Also edited outside §R.10 (j4)'s line carve:** `quilltap-web/src/wardrobe_routes.rs`'s collection-POST status for `duplicate` (the 201, fenced, at the `folder_write_request` call site).
+- **`services/image_job_common.rs`:** `tier_entity` was deleted (dead after R-L5).
+
+### Round-block corrections for the unifier
+- (a) §R.10 (i): the normaliser is imported from `doc_mount_file_links.rs`, not defined in `database_store.rs`. The lane's fence there also holds `impl From<StoreError> for DbError` and a unit-test module (three store fns `?` the normaliser into `DbError`).
+- (b) §R.6: this lane's web bump covers the wardrobe / Inventory / item-images routes.
+- (c) §R.10 (j4): the collection-POST call site of `folder_write_request` is outside `:205-275`; this lane fenced one arm there.
+- (d) C12: the Inventory duplicate is P4.D325's; only the wardrobe's is new, and it is on the collection POST.
+- (e) Item 20 WAS carved, by (e5).
+- (f) Item 27's "nine" callers are six.
+
+### HANDOFFs
+- **H1 → P4.D386:** the wire is live — `wardrobeItemDuplicate {scope, containerId?, itemId}` → 201, and the `wardrobe` topic.
+- **H2 → P4.D378:** wardrobe AND Inventory `group_locations_for_character` are now strongest-first (`group_origin_map`).
+- **H3 → P4.D382:** the help / docs pages; the NO-PORT records of item 26 (`ItemRouteConfigBase`, `AnnouncementRouteSender` — no v5 twin).
+- **H4:** the list above.
+- **H5:** void (carved).
+- **H6 → the unifier — the union families:**
+  - `realtime_topics` (P4.D372's 2 `ESTABLISHED_FACT_MEMORIES` rows);
+  - `inventory_keystone_tier2` (P4.D381's 43 `PUBLISHES`);
+  - `query_param_semantics` (P4.D381's 4 `mount_point_action_post` rows);
+  - `degraded_mount_routes`: P4.D369's `character_favorite_vaultless`; P4.D378's pool counts on `chat_wardrobe_history` / `chat_equip_wear` / `chat_wardrobe_rollback`; `project_scenarios_list` (P4.D376 — v4 #136);
+  - `qtap_schema_embed_guard` (P4.D362's re-vendor).
+
+### Deferrals, by number
+- **21–24, 26:** the siblings' (above).
+- **25:** client-only draft fns, NO-PORT (module doc).
+- **27:** recorded (above).
+- **28:** recorded.
+- **29:** "a inventory" — no v4 filing drafted (R-Z).
+- **Item 6's `duplicate_create_schema_refusal`:** not plantable (plants run on MAIN; a schema-refused item needs a mount-index document plant). The handler maps the refusal to the flat `Validation error`; that path is unexercised by the differential.
+- **Item 10's two-group row** and **item 14's tier-2 doc-store rows**: `doc-mount-file-links-tier2` is shared with P4.D380 / P4.D381; the behaviour is pinned by `database_store` unit tests only.
+
+### Gate
+- fmt: clean.
+- clippy, plain and `native-transport`: clean.
+- `cargo build --workspace --release`: clean.
+- `recipe_sweep.py --self-test`: exit 0.
+- `cargo test --workspace --no-fail-fast` with the lane's env block (34 vars, the pin as `QT_V4_*`): **901 binaries / 6,034 passed / 10 failed / 3 ignored**. The ten:
+  - standing: `spelling_guard`, `builtin_prompt_templates_guard` (live checkout), `provider_sdk_version_guard` (P4.D364);
+  - env: `cli_differential` (no `QT_NODE`);
+  - union (H6): `realtime_topics`, `inventory_keystone_tier2`, `query_param_semantics`, `degraded_mount_routes`, `qtap_schema_embed_guard`;
+  - sweep-order: `wardrobe_folder_writes_tier2`, whose shared `/tmp/p4d377/qt-wks-*` keystone was rebuilt by `wardrobe_location`'s regen. Each is green by its own regen (27 ops; 24 probes).
+- The lane's families green by name, with SKIP lines read: `wardrobe_item_draft` 26; `wardrobe_folders_routes` 150; `inventory_routes` 186; `wardrobe_instructions_routes`; `group_wardrobe_routes`; `wardrobe_routes` 150 / 176; the four images families; `inventory_folders` 605; `item_mutations_tier2`; `wardrobe_location_tier2`; `mount_chunker` (+53).
+
+### 💸 For the owed dogfood pass
+- Open a store-backed project's wardrobe that has no `Wardrobe/` folder (list / Dressing instructions / folders): no folder appears in the Scriptorium.
+- Duplicate a group item (title `(copy)` against that tier) and an archived one.
+- Create, rename and delete an Inventory folder, and read the three INFOs.
+- Open two windows on one wardrobe: edit in one, and the other refreshes (after P4.D386).
+- Set an Inventory picture as current and delete one (the new INFOs).
+- On a degraded mount index, the project wardrobe list answers `[]`.
