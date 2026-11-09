@@ -1,6 +1,7 @@
 //! The wardrobe-server dispatch handlers (P4.9f1) — the GLOBAL archetype CRUD
 //! tier (v4 `app/api/v1/wardrobe/route.ts` + `[itemId]/route.ts`), the
-//! wardrobe-transfers pair (v4 `app/api/v1/wardrobe/transfers/route.ts`), the
+//! wardrobe-transfers POST (v4 `app/api/v1/wardrobe/transfers/route.ts` — its
+//! `GET` was removed by v4 `a0ed5ecad`, so the path answers 405 to it), the
 //! synchronous avatar preview (v4 `app/api/v1/wardrobe/preview-avatar/route.ts`),
 //! and the `analyze-image` refusal arm.
 //!
@@ -24,7 +25,7 @@
 //! ## Tiers
 //!
 //! The global tier reads/writes Quilltap General ONLY (`findArchetypes()` with
-//! no project mounts — the route has no project context); the transfers pair
+//! no project mounts — the route has no project context); the transfers POST
 //! spans all four tiers through the already-ported
 //! [`crate::services::wardrobe_transfers`] service.
 
@@ -58,16 +59,6 @@ fn bad_request(msg: impl Into<String>) -> Response {
 fn not_found(resource: &str) -> Response {
     // v4 `notFound(resource)` → `{error: '<resource> not found'}`.
     Response::error(ErrorKind::NotFound, format!("{resource} not found"))
-}
-
-/// Read helper: run `f` with BOTH a main and a mount-index connection (the vault
-/// overlay needs both) — the salon.rs nested-read idiom (separate pools → no
-/// deadlock).
-fn read_main_mount<T>(
-    db: &Db,
-    f: impl FnOnce(&rusqlite::Connection, &rusqlite::Connection) -> Result<T, DbError>,
-) -> Result<T, DbError> {
-    db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
 }
 
 // ===========================================================================
@@ -114,77 +105,6 @@ pub async fn wardrobe_update(db: &Db, item_id: &str, body: Value) -> Response {
 /// v4 `DELETE /api/v1/wardrobe/[itemId]` — `{ success: true }`.
 pub async fn wardrobe_delete(db: &Db, item_id: &str) -> Response {
     factory::item_delete(db, GENERAL_WARDROBE, None, USER_ID, item_id).await
-}
-
-// ===========================================================================
-// GET /api/v1/wardrobe/transfers — destination enumeration
-// ===========================================================================
-
-/// v4 `GET /api/v1/wardrobe/transfers` — the destination options
-/// (`successResponse` → the RAW `{destinations}` body at the edge).
-pub fn wardrobe_transfer_destinations(db: &Db, user_id: &str) -> Response {
-    let uid = user_id.to_string();
-    let out = read_main_mount(db, move |main, mount| {
-        Ok(wardrobe_transfers::enumerate_destinations(
-            main, mount, &uid,
-        ))
-    });
-    let failure = match out {
-        Ok(Ok(v)) => return Response::Wardrobe(v),
-        // P4.166 (dogfood #156): a DEGRADED mount index is not v4's catch —
-        // its three list reads are fallback overlays that DROP every entity
-        // whose store they cannot read, so every project and group falls away
-        // and only a vault-less character survives (measured: 200 with empty
-        // lists on a degraded clone).
-        Err(crate::db::DbError::PartitionUnavailable(_)) => {
-            match degraded_transfer_destinations(db, user_id) {
-                Ok(v) => return Response::Wardrobe(v),
-                Err(e) => crate::db::fallback::error_text(&e),
-            }
-        }
-        Ok(Err(e)) => transfer_error_text(&e),
-        Err(e) => crate::db::fallback::error_text(&e),
-    };
-    // v4 `transfers/route.ts:203-206` (P4.166, survey C.11): the catch's ERROR
-    // (the Error as winston's error argument), then this exact message — the
-    // ONE catch for the sound read and the degraded arm alike.
-    tracing::error!(
-        userId = user_id,
-        error = %failure,
-        "[WardrobeTransfers v1] Failed to list destinations"
-    );
-    internal("Failed to load transfer destinations")
-}
-
-/// [`wardrobe_transfer_destinations`] on a DEGRADED mount index (P4.166):
-/// General stays available, every store-backed project / group drops, and the
-/// user's characters are the VAULT-LESS ones (v4's overlay drops a vaulted
-/// character whose keystone it cannot read) — named and sorted by the sound
-/// enumeration's own [`wardrobe_transfers::destinations_body`]. A failed read
-/// is the caller's catch.
-fn degraded_transfer_destinations(db: &Db, user_id: &str) -> Result<Value, DbError> {
-    let characters = db.read_main(crate::db::characters_read::find_all_raw)?;
-    let users: Vec<Value> = characters
-        .into_iter()
-        .filter(|c| c.get("userId").and_then(Value::as_str) == Some(user_id))
-        .filter(|c| {
-            c.get("characterDocumentMountPointId")
-                .and_then(Value::as_str)
-                .is_none_or(str::is_empty)
-        })
-        .collect();
-    Ok(wardrobe_transfers::destinations_body(&[], &[], &users))
-}
-
-/// A [`TransferError`]'s text for the catch's ERROR line.
-fn transfer_error_text(e: &TransferError) -> String {
-    match e {
-        TransferError::NotFound => "Wardrobe item not found".to_string(),
-        TransferError::BadRequest(m)
-        | TransferError::Conflict(m)
-        | TransferError::Server(m)
-        | TransferError::Internal(m) => m.clone(),
-    }
 }
 
 // ===========================================================================
@@ -455,7 +375,17 @@ pub async fn wardrobe_transfer_apply_with_codec(
         ))
     })
     .await;
+    transfer_response(user_id, out)
+}
 
+/// The transfer's outcome as the route answers it — v4's success body with its
+/// two lines, or the catch's arms (`transfers/route.ts:23-42` at the pin). The
+/// lines log HERE, on the CALLING thread, after `with_both_conns` returned (a
+/// line inside the closure would be invisible to the capture rig).
+fn transfer_response(
+    user_id: &str,
+    out: Result<Result<wardrobe_transfers::TransferOutcome, TransferError>, DbError>,
+) -> Response {
     match out {
         Ok(Ok(outcome)) => {
             if let Some(f) = &outcome.read_back_failure {
@@ -471,7 +401,7 @@ pub async fn wardrobe_transfer_apply_with_codec(
                         %serde_json::to_string(&outcome.unresolved_component_ids).unwrap_or_default(),
                     destinationScope = f.destination_scope,
                     destinationMountPointId = f.destination_mount_point_id.as_str(),
-                    "[WardrobeTransfers v1] Transferred outfit did not read back with its planned component references"
+                    "[WardrobeTransfers] Transferred outfit did not read back with its planned component references"
                 );
             }
             // v4 `9ecebf986` + `4a38222e6` (`folder: stored.folder ?? ''`).
@@ -490,7 +420,7 @@ pub async fn wardrobe_transfer_apply_with_codec(
                 destinationCharacterId = t.destination_character_id.as_deref().unwrap_or("null"),
                 sourceMountPointId = t.source_mount_point_id.as_str(),
                 destinationMountPointId = t.destination_mount_point_id.as_str(),
-                "[WardrobeTransfers v1] Wardrobe item transferred"
+                "[WardrobeTransfers] Wardrobe item transferred"
             );
             // v4: `{ wardrobeItem, action, componentsTransferred,
             // ...(unresolvedComponentIds when non-empty) }`.
@@ -511,18 +441,18 @@ pub async fn wardrobe_transfer_apply_with_codec(
         Ok(Err(TransferError::BadRequest(m))) => bad_request(m),
         // v4 `conflict(...)` for a `CharacterArchivedError` (P4.D263).
         Ok(Err(TransferError::Conflict(m))) => Response::error(ErrorKind::Conflict, m),
-        // v4's explicit serverError arms — the message IS the wire payload.
-        Ok(Err(TransferError::Server(m))) => internal(m),
-        // v4's catch → its ERROR (P4.166, survey C.11 — `transfers/route.ts:
-        // 424`, no context keys, the Error as winston's error argument) and
-        // serverError with this exact message. A failure before the transfer
-        // ran (a degraded mount index among them) is the same catch in v4.
+        // v4's catch → its ERROR (`transfers/route.ts:40` at `a0ed5ecad`, no
+        // context keys, the Error as winston's error argument — the ` v1` tag
+        // KEPT, it is the route's own line) and serverError with this exact
+        // message. A failure before the transfer ran (a degraded mount index
+        // among them) is the same catch in v4, and so — since `a0ed5ecad` —
+        // are the two thrown "Failed to remove … from source after move".
         Ok(Err(TransferError::Internal(m))) => transfer_failed(&m),
         Err(e) => transfer_failed(&crate::db::fallback::error_text(&e)),
     }
 }
 
-/// v4's POST catch (`transfers/route.ts:424-425`).
+/// v4's POST catch (`transfers/route.ts:40-41` at the pin).
 fn transfer_failed(error: &str) -> Response {
     tracing::error!(error = %error, "[WardrobeTransfers v1] Failed to transfer item");
     internal("Failed to transfer wardrobe item")
@@ -1285,5 +1215,153 @@ mod api_key_read_tests {
             assert_ne!(e.message, "API key for image profile is missing or invalid");
         }
         assert!(db_lines(&lines).is_empty(), "{lines:?}");
+    }
+}
+
+#[cfg(test)]
+mod p4d378_transfer_line_tests {
+    //! P4.D378 (v4 `a0ed5ecad`): the transfers POST's three lines at the pin.
+    //! The read-back ERROR and the success INFO lose their ` v1` tag (keys and
+    //! order unchanged); the catch's `[WardrobeTransfers v1] Failed to transfer
+    //! item` KEEPS it, and is now ALSO what the two "Failed to remove … from
+    //! source after move" failures reach (they throw at the pin; they were
+    //! `serverError(<message>)` arms). Those two are corpus-unreachable — v4's
+    //! `collectContainerComponents` dedups the travelling set through its
+    //! `visited` set and the source item was just read from the same folder —
+    //! so the MAPPING is pinned here instead of by a corpus row.
+    use super::*;
+    use crate::services::wardrobe_transfers::{ReadBackFailure, TransferOutcome, TransferredLine};
+
+    fn outcome(read_back: bool) -> TransferOutcome {
+        TransferOutcome {
+            wardrobe_item: json!({ "id": "i-1", "title": "Coat" }),
+            action: TransferAction::Move,
+            components_transferred: 1,
+            unresolved_component_ids: if read_back {
+                vec!["c-2".into()]
+            } else {
+                Vec::new()
+            },
+            read_back_failure: read_back.then(|| ReadBackFailure {
+                outfit_id: "i-1".into(),
+                outfit_found_at_destination: true,
+                planned_component_ids: vec!["c-1".into(), "c-2".into()],
+                read_back_component_ids: vec!["c-1".into()],
+                destination_scope: "general",
+                destination_mount_point_id: "m-dest".into(),
+            }),
+            transferred: TransferredLine {
+                component_mode: "move",
+                item_id: "i-1".into(),
+                result_item_id: "i-1".into(),
+                folder: String::new(),
+                source_scope: "character",
+                destination_scope: "general",
+                source_character_id: Some("ch-1".into()),
+                destination_character_id: None,
+                source_mount_point_id: "m-src".into(),
+                destination_mount_point_id: "m-dest".into(),
+            },
+        }
+    }
+
+    /// The `key=` names of a captured line, in order, after `marker`.
+    fn keys_after(line: &str, marker: &str) -> Vec<String> {
+        line.split(marker)
+            .nth(1)
+            .unwrap_or_default()
+            .split_whitespace()
+            .filter(|kv| kv.contains('='))
+            .map(|kv| kv.split('=').next().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_read_back_error_and_the_success_info_drop_v1() {
+        let (resp, lines) =
+            crate::test_support::captured_with(|| transfer_response("u-1", Ok(Ok(outcome(true)))));
+        assert!(matches!(resp, Response::Wardrobe(_)), "{resp:?}");
+        let marker = "[WardrobeTransfers] Transferred outfit did not read back with its planned component references";
+        let error = lines
+            .iter()
+            .find(|l| l.contains(marker))
+            .unwrap_or_else(|| panic!("no read-back ERROR: {lines:#?}"));
+        assert!(error.starts_with("ERROR "), "{error}");
+        assert_eq!(
+            keys_after(error, marker),
+            [
+                "userId",
+                "outfitId",
+                "outfitFoundAtDestination",
+                "plannedComponentIdsJson",
+                "readBackComponentIdsJson",
+                "unresolvedComponentIdsJson",
+                "destinationScope",
+                "destinationMountPointId",
+            ],
+            "{error}"
+        );
+        let marker = "[WardrobeTransfers] Wardrobe item transferred";
+        let info = lines
+            .iter()
+            .find(|l| l.contains(marker))
+            .unwrap_or_else(|| panic!("no success INFO: {lines:#?}"));
+        assert!(info.starts_with("INFO "), "{info}");
+        assert_eq!(keys_after(info, marker).len(), 13, "{info}");
+        assert!(
+            !lines.iter().any(|l| l.contains("[WardrobeTransfers v1]")),
+            "the ` v1` forms are retired: {lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_clean_transfer_logs_no_read_back_error() {
+        let (_, lines) =
+            crate::test_support::captured_with(|| transfer_response("u-1", Ok(Ok(outcome(false)))));
+        assert!(
+            !lines.iter().any(|l| l.contains("did not read back")),
+            "{lines:#?}"
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Failed to transfer item")),
+            "{lines:#?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[WardrobeTransfers] Wardrobe item transferred")),
+            "{lines:#?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_source_remove_is_the_catchs_500() {
+        for message in [
+            "Failed to remove a component from source after move",
+            "Failed to remove item from source after move",
+        ] {
+            let (resp, lines) = crate::test_support::captured_with(|| {
+                transfer_response("u-1", Ok(Err(TransferError::Internal(message.to_string()))))
+            });
+            match &resp {
+                Response::Error(e) => {
+                    assert_eq!(e.kind, ErrorKind::Internal, "{resp:?}");
+                    assert_eq!(e.message, "Failed to transfer wardrobe item", "{resp:?}");
+                }
+                other => panic!("expected the catch's 500, got {other:?}"),
+            }
+            let error = lines
+                .iter()
+                .find(|l| l.contains("[WardrobeTransfers v1] Failed to transfer item"))
+                .unwrap_or_else(|| panic!("no catch ERROR: {lines:#?}"));
+            assert!(error.starts_with("ERROR "), "{error}");
+            assert!(error.contains(message), "{error}");
+            assert!(
+                !lines
+                    .iter()
+                    .any(|l| l.contains("Wardrobe item transferred")),
+                "a failed move logs no success INFO: {lines:#?}"
+            );
+        }
     }
 }

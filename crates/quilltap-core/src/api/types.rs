@@ -2924,8 +2924,9 @@ pub enum Request {
         #[serde(flatten)]
         body: serde_json::Value,
     },
-    /// v4 `GET /api/v1/wardrobe/transfers` — the destination options.
-    WardrobeTransferDestinations,
+    // === P4.D378 === the transfer-destinations variant REMOVED (v4
+    // `a0ed5ecad` deleted `GET /api/v1/wardrobe/transfers`; §R.10 (r)).
+    // === /P4.D378 ===
     /// v4 `POST /api/v1/wardrobe/transfers` — move/copy one item between
     /// tiers; the v4 body (`{action, itemId, sourceCharacterId,
     /// sourceProjectId?, destination}`) rides flattened raw.

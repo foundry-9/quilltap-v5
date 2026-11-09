@@ -5670,10 +5670,8 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::WardrobeTransferDestinations => match self.ready_db() {
-                Ok(db) => super::wardrobe::wardrobe_transfer_destinations(&db, SINGLE_USER_ID),
-                Err(r) => r,
-            },
+            // === P4.D378 === the transfer-destinations arm REMOVED
+            // (v4 `a0ed5ecad`; §R.10 (r)). === /P4.D378 ===
             Request::WardrobeTransferApply { body } => match self.ready_db_and_blob_webp() {
                 // P4.D263 HANDOFF, landed at the `f5e953a3f` unification: the
                 // carried pictures' blob links normalize through the engine's

@@ -1,25 +1,27 @@
-//! Wardrobe transfers (v4 `app/api/v1/wardrobe/transfers/route.ts`) — moving or
-//! copying one wardrobe item between the four tiers (character vault / Quilltap
-//! General / project / group). Ported as a core service function; the HTTP
-//! transport shim is Phase-4.
+//! Wardrobe transfers (v4 `lib/wardrobe/transfers.ts`, moved out of
+//! `app/api/v1/wardrobe/transfers/route.ts` by `a0ed5ecad`) — moving or copying
+//! one wardrobe item between the four tiers (character vault / Quilltap General
+//! / project / group). Ported as a core service function; the route
+//! (`api::wardrobe::wardrobe_transfer`) is a thin wrapper over it.
 //!
-//! Two entry points mirror the route's `GET`/`POST`:
-//!
-//!   - [`enumerate_destinations`] — the destination options (General + the user's
-//!     projects/groups/characters, each name-sorted).
-//!   - [`transfer_wardrobe_item`] — resolve source (explicit container or
-//!     character-probed) → resolve destination → guard same-location → plan the
-//!     moved/copied item + its travelling components (`f6a10055`: the transitive
-//!     closure of same-container components, all-or-nothing, ids remapped on
-//!     copy) → collision-check EVERY planned id → components land first, then
-//!     the outfit → (move only) delete travelling components + the item →
-//!     post-write read-back verification (`unresolvedComponentIds`).
+//! ONE entry point, the route's `POST` — [`transfer_wardrobe_item`]: resolve
+//! source (explicit container or character-probed) → resolve destination →
+//! guard same-location → plan the moved/copied item + its travelling components
+//! (`f6a10055`: the transitive closure of same-container components,
+//! all-or-nothing, ids remapped on copy) → collision-check EVERY planned id →
+//! components land first, then the outfit → (move only) delete travelling
+//! components + the item → post-write read-back verification
+//! (`unresolvedComponentIds`). v4 `a0ed5ecad` REMOVED the route's `GET` (the
+//! destination roster, which had no callers): the destinations the dialog
+//! offers come from the SPA's shared container catalogue, not from here.
 //!
 //! Since `9ecebf986` every tier is a wardrobe LOCATION
 //! ([`resolve_wardrobe_location`]): the source is probed character → GROUPS
-//! (strongest first) → project → General WITHOUT provisioning (bug 192 — v5
-//! probed the project before the groups and provisioned its store on the
-//! probe), only the destination is resolved with `ensure: true`, items land
+//! (membership order, the first group to claim a store keeps it — `0c47f4539`)
+//! → every store of the project (official first) → General WITHOUT
+//! provisioning (bug 192 — v5 probed the project before the groups and
+//! provisioned its store on the probe), only the destination is resolved with
+//! `ensure: true`, items land
 //! through the keystone's `create_item` with their identity preserved (the
 //! destination folder created as needed), and a move deletes through
 //! `location.delete`. Every planned item carries its `folder` (`4a38222e6`),
@@ -43,16 +45,16 @@
 use std::collections::HashMap;
 
 use rusqlite::Connection;
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::collation::locale_compare;
-use crate::db::characters_read;
-use crate::db::groups::GroupsRepository;
-use crate::db::projects::ProjectsRepository;
+use crate::db::archetype_wardrobe::{WardrobeOrigin, WardrobeOriginScope};
+use crate::db::projects;
+use crate::db::tiered_mount_pool::resolve_project_mount_point_ids;
 use crate::db::vault_wardrobe_public::WardrobePublicError;
 use crate::db::wardrobe_location::{
-    group_locations_for_character, resolve_wardrobe_location, ResolveWardrobeLocationOptions,
-    WardrobeLocation, WardrobeLocationError, WardrobeScope,
+    group_locations_for_character, location_for_mount, resolve_wardrobe_location,
+    ResolveWardrobeLocationOptions, WardrobeLocation, WardrobeLocationError, WardrobeMount,
+    WardrobeScope,
 };
 use crate::db::DbError;
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
@@ -165,11 +167,12 @@ pub enum TransferError {
     /// v4 `conflict(...)` — a `CharacterArchivedError` out of the source /
     /// destination mount resolution or a vault writer (P4.D263).
     Conflict(String),
-    /// v4's explicit `serverError(msg)` arms — the MESSAGE reaches the wire
-    /// (unlike [`TransferError::Internal`], which the route's catch collapses
-    /// to `'Failed to transfer wardrobe item'`).
-    Server(String),
-    /// A thrown/unexpected failure — v4's catch → the generic 500 sentence.
+    /// A thrown/unexpected failure — v4's catch → the generic 500 sentence
+    /// (`Failed to transfer wardrobe item`) with the message on the ERROR
+    /// line. Since `a0ed5ecad` the two "Failed to remove … from source after
+    /// move" failures THROW into that catch (they were `serverError(<message>)`
+    /// arms with the message on the wire before), so the explicit-message
+    /// `Server` variant this enum carried has no producer left and is gone.
     Internal(String),
 }
 
@@ -191,70 +194,6 @@ impl From<WardrobePublicError> for TransferError {
             e => TransferError::Internal(format!("{e:?}")),
         }
     }
-}
-
-// ── GET: destination enumeration ─────────────────────────────────────────────
-
-/// v4 GET — the destination options for the transfer UI: General (always
-/// available), plus the user's projects, groups, and characters, each sorted by
-/// name (locale-aware, matching v4's `localeCompare`). Falsy names fall back to
-/// v4's placeholders.
-pub fn enumerate_destinations(
-    main: &Connection,
-    mount: &Connection,
-    user_id: &str,
-) -> Result<Value, TransferError> {
-    let projects = ProjectsRepository::new(main, mount)
-        .find_all()
-        .map_err(|e| TransferError::Internal(format!("{e:?}")))?;
-    let groups = GroupsRepository::new(main, mount)
-        .find_all()
-        .map_err(|e| TransferError::Internal(format!("{e:?}")))?;
-    let characters = characters_read::find_by_user_id(main, mount, user_id)?;
-    Ok(destinations_body(&projects, &groups, &characters))
-}
-
-/// v4 GET's success body over the three lists it read — ONE naming / sorting
-/// rule for both the sound enumeration and the degraded-mount arm
-/// (`api::wardrobe`, P4.166): each entity as `{ id, name }` where a falsy name
-/// falls back to v4's placeholder (`project.name || 'Untitled project'`), the
-/// list sorted by `name.localeCompare`.
-pub fn destinations_body(projects: &[Value], groups: &[Value], users: &[Value]) -> Value {
-    json!({
-        "destinations": {
-            "general": { "available": true, "label": "Quilltap General" },
-            "projects": name_list(projects, "Untitled project"),
-            "groups": name_list(groups, "Untitled group"),
-            "users": name_list(users, "Unnamed user"),
-        }
-    })
-}
-
-/// `rows.map(r => ({ id: r.id, name: r.name || fallback })).sort((a, b) =>
-/// a.name.localeCompare(b.name))`.
-fn name_list(rows: &[Value], fallback: &str) -> Vec<Value> {
-    let mut named: Vec<(String, String)> = rows
-        .iter()
-        .map(|r| {
-            let id = r
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let name = r
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-                .unwrap_or(fallback)
-                .to_string();
-            (id, name)
-        })
-        .collect();
-    named.sort_by(|a, b| locale_compare(&a.1, &b.1));
-    named
-        .into_iter()
-        .map(|(id, name)| json!({ "id": id, "name": name }))
-        .collect()
 }
 
 // ── POST: move / copy ────────────────────────────────────────────────────────
@@ -351,12 +290,14 @@ fn read_location(
     )?)
 }
 
-/// v4 `resolveSourceItem` (bug 192, `9ecebf986`) — find the item in the
-/// character's vault, then the character's GROUP stores (the LATER group mount
-/// first — later mounts shadow earlier ones, so probe strongest first), then
-/// the named project, then Quilltap General. Probing NEVER provisions: a
-/// project with no store yet is skipped, not created. The ownership gate
-/// (the character must be `user_id`'s) is the location's (R-E).
+/// v4 `resolveSourceItem` (bug 192, `9ecebf986`; the walk settled by
+/// `0c47f4539`) — probe the tiers a character wears from, in precedence order:
+/// their vault, then their groups' stores (membership order, the first group
+/// to claim a store keeps it), then every store of the project (official
+/// first), then General — for the item. The same walk and order as the
+/// wearable pool. A probe only reads: a store that doesn't exist yet is
+/// skipped, never provisioned (bug 192). The ownership gate (the character
+/// must be `user_id`'s) is the location's (R-E).
 fn resolve_source_item(
     main: &Connection,
     mount: &Connection,
@@ -381,10 +322,9 @@ fn resolve_source_item(
 
     // The source character is the one wearing the item, so their memberships
     // are the right scope — matching how the wearable pool resolves the tier.
-    // Later group mounts shadow earlier ones, so probe strongest first.
-    let mut groups = group_locations_for_character(main, mount, source_character_id);
-    groups.reverse();
-    for group in groups {
+    // `0c47f4539`: FORWARD — inside a tier the earlier mount wins (the first
+    // group joined), so the walk is no longer reversed.
+    for group in group_locations_for_character(main, mount, source_character_id) {
         if let Some(hit) = find_in_location(mount, group, item_id)? {
             return Ok(Some(hit));
         }
@@ -392,13 +332,7 @@ fn resolve_source_item(
 
     // v4 `if (sourceProjectId)` — an empty string is falsy too.
     if let Some(project_id) = source_project_id.filter(|s| !s.is_empty()) {
-        if let Some(project) = read_location(
-            main,
-            mount,
-            user_id,
-            WardrobeScope::Project,
-            Some(project_id),
-        )? {
+        for project in project_locations(main, mount, user_id, project_id)? {
             if let Some(hit) = find_in_location(mount, project, item_id)? {
                 return Ok(Some(hit));
             }
@@ -409,6 +343,67 @@ fn resolve_source_item(
         Some(general) => find_in_location(mount, general, item_id),
         None => Ok(None),
     }
+}
+
+/// v4 `projectLocations(projectId, repos, userId)` (NEW in `0c47f4539`) — the
+/// project tier as locations: the official store (through the location, so it
+/// carries the project's origin), then every other linked store, tagged with
+/// the project too. Read-only — nothing is provisioned.
+///
+/// - The ids come from the tier walk's official-first
+///   [`resolve_project_mount_point_ids`]; `[]` when there is neither an
+///   official location nor an id.
+/// - Without an official location the origin is `{ scope: 'project', id,
+///   name: <the RAW row's name> || 'Project' }` — the raw read runs ONLY in
+///   that branch, and a JS-falsy `''` name falls back too.
+/// - An official location whose mount is NOT among the ids is DROPPED (v4
+///   maps the ids, not the location). Unreachable while both halves read the
+///   same raw row's `officialMountPointId`; recorded, not guarded.
+fn project_locations(
+    main: &Connection,
+    mount: &Connection,
+    user_id: &str,
+    project_id: &str,
+) -> Result<Vec<WardrobeLocation>, TransferError> {
+    let official = read_location(
+        main,
+        mount,
+        user_id,
+        WardrobeScope::Project,
+        Some(project_id),
+    )?;
+    let mount_point_ids = resolve_project_mount_point_ids(main, mount, Some(project_id));
+    if official.is_none() && mount_point_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let origin = match &official {
+        Some(o) => o.origin.clone(),
+        None => {
+            let raw_name = projects::find_by_id_raw_or_none(main, project_id)
+                .and_then(|row| row.get("name").and_then(Value::as_str).map(str::to_string))
+                .filter(|n| !n.is_empty());
+            WardrobeOrigin::new(
+                WardrobeOriginScope::Project,
+                project_id,
+                raw_name.as_deref().unwrap_or("Project"),
+            )
+        }
+    };
+    Ok(mount_point_ids
+        .into_iter()
+        .map(|mount_point_id| match &official {
+            Some(o) if o.mount_point_id == mount_point_id => o.clone(),
+            _ => location_for_mount(
+                WardrobeMount {
+                    mount_point_id,
+                    scope: WardrobeScope::Project,
+                    character_id: None,
+                },
+                Some(project_id),
+                origin.clone(),
+            ),
+        })
+        .collect())
 }
 
 /// v4 `createAtDestination(destination, planned)` — `createItem(destination,
@@ -670,14 +665,17 @@ pub fn transfer_wardrobe_item(
         if req.components == ComponentMode::Move {
             for component in &travelling {
                 if !source.location.delete(main, mount, &component.id)? {
-                    return Err(TransferError::Server(
+                    // v4 `transfers.ts:374-384` (`a0ed5ecad`): a THROWN
+                    // Error → the route's catch (500 `Failed to transfer
+                    // wardrobe item`, the message on its ERROR).
+                    return Err(TransferError::Internal(
                         "Failed to remove a component from source after move".to_string(),
                     ));
                 }
             }
         }
         if !source.location.delete(main, mount, &source.item.id)? {
-            return Err(TransferError::Server(
+            return Err(TransferError::Internal(
                 "Failed to remove item from source after move".to_string(),
             ));
         }
@@ -745,9 +743,10 @@ pub fn transfer_wardrobe_item(
     })
 }
 
-/// The post-write read-back's ERROR payload (v4 `[WardrobeTransfers v1]
+/// The post-write read-back's ERROR payload (v4 `[WardrobeTransfers]
 /// Transferred outfit did not read back with its planned component
-/// references`), logged by the route on the CALLING thread.
+/// references` — the ` v1` dropped by `a0ed5ecad`), logged by the route on the
+/// CALLING thread.
 #[derive(Debug, Clone)]
 pub struct ReadBackFailure {
     pub outfit_id: String,
@@ -758,8 +757,9 @@ pub struct ReadBackFailure {
     pub destination_mount_point_id: String,
 }
 
-/// The success INFO's payload (v4 `[WardrobeTransfers v1] Wardrobe item
-/// transferred`), logged by the route on the CALLING thread.
+/// The success INFO's payload (v4 `[WardrobeTransfers] Wardrobe item
+/// transferred` — the ` v1` dropped by `a0ed5ecad`), logged by the route on
+/// the CALLING thread.
 #[derive(Debug, Clone)]
 pub struct TransferredLine {
     pub component_mode: &'static str,

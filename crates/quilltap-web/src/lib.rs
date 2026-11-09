@@ -482,10 +482,11 @@ pub fn build_router(state: SharedState) -> Router {
             "/api/v1/wardrobe",
             get(wardrobe_routes::wardrobe_get).post(wardrobe_routes::wardrobe_post),
         )
+        // === P4.D378 === v4 `a0ed5ecad` removed the transfers GET: the path
+        // keeps its POST, so a GET answers axum's 405. === /P4.D378 ===
         .route(
             "/api/v1/wardrobe/transfers",
-            get(wardrobe_routes::wardrobe_transfers_get)
-                .post(wardrobe_routes::wardrobe_transfers_post),
+            post(wardrobe_routes::wardrobe_transfers_post),
         )
         .route(
             "/api/v1/wardrobe/preview-avatar",

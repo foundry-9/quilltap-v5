@@ -102,6 +102,20 @@ interface Spec {
   /** P4.D281 (bug 192): a project whose store has no `Wardrobe/` folder — a
    * probe or an explicit source never provisions it. */
   bareProjectId: string;
+  /** P4.D378 (v4 `0c47f4539` (g)): the forward group walk + every project store. */
+  p4d378SecondGroupId: string;
+  p4d378SecondGroupMemberId: string;
+  p4d378ForwardFirstItem: ItemSpec;
+  p4d378ForwardSecondItem: ItemSpec;
+  p4d378LinkedStore: { id: string; name: string };
+  p4d378LinkedStoreLinkId: string;
+  p4d378LinkedOnlyItem: ItemSpec;
+  p4d378OfficialItem: ItemSpec;
+  p4d378LinkedTwinItem: ItemSpec;
+  p4d378StorelessProjectId: string;
+  p4d378StorelessLinkedStore: { id: string; name: string };
+  p4d378StorelessLinkId: string;
+  p4d378StorelessItem: ItemSpec;
 }
 
 const PINNED_TS = '2026-02-01T00:00:00.000Z';
@@ -554,6 +568,99 @@ async function main(): Promise<void> {
       { name: 'Bare Transfer Project' } as never,
       { id: spec.bareProjectId, createdAt: PINNED_TS, updatedAt: PINNED_TS } as never,
     );
+  }
+
+  // ── P4.D378 (v4 `0c47f4539` move (g)): the probe walks groups FORWARD and
+  // probes EVERY store of the project, official first ──
+  {
+    const seedInto = async (mp: string, item: ItemSpec) => {
+      await ensureSharedWardrobeFolder(mp);
+      await createIntoMount(mp, {
+        id: item.id,
+        characterId: null,
+        title: item.title,
+        description: item.description ?? null,
+        imagePrompt: item.imagePrompt ?? null,
+        types: item.types,
+        componentItemIds: item.componentItemIds ?? [],
+        appropriateness: item.appropriateness ?? null,
+        isDefault: item.isDefault ?? false,
+        replace: item.replace ?? false,
+        migratedFromClothingRecordId: null,
+        archivedAt: null,
+        createdAt: PINNED_TS,
+        updatedAt: PINNED_TS,
+      } as never);
+    };
+    const LATER_TS = '2026-02-02T00:00:00.000Z';
+    // A second group the source character joins AFTER the first; ONE id in
+    // both groups' stores under different titles.
+    await repos.groups.create(
+      { name: 'Second Transfer Group' } as never,
+      { id: spec.p4d378SecondGroupId, createdAt: LATER_TS, updatedAt: LATER_TS } as never,
+    );
+    await repos.groupCharacterMembers.create(
+      { groupId: spec.p4d378SecondGroupId, characterId: spec.characterId } as never,
+      { id: spec.p4d378SecondGroupMemberId, createdAt: LATER_TS, updatedAt: LATER_TS } as never,
+    );
+    const secondGroupMp = (await repos.groups.findByIdRaw(spec.p4d378SecondGroupId))
+      ?.officialMountPointId as string;
+    if (!secondGroupMp) throw new Error('second group official store not minted');
+    await seedInto(groupMp, spec.p4d378ForwardFirstItem);
+    await seedInto(secondGroupMp, spec.p4d378ForwardSecondItem);
+
+    const makeStore = async (store: { id: string; name: string }) => {
+      await repos.docMountPoints.create(
+        {
+          name: store.name,
+          basePath: '',
+          mountType: 'database',
+          storeType: 'documents',
+          includePatterns: [],
+          excludePatterns: [],
+          enabled: true,
+          lastScannedAt: null,
+          scanStatus: 'idle',
+          lastScanError: null,
+          conversionStatus: 'idle',
+          conversionError: null,
+          fileCount: 0,
+          chunkCount: 0,
+          totalSizeBytes: 0,
+        } as never,
+        { id: store.id, createdAt: LATER_TS, updatedAt: LATER_TS },
+      );
+    };
+    // A store LINKED to the project: an item only there, and an id the
+    // official store holds too.
+    await makeStore(spec.p4d378LinkedStore);
+    await repos.projectDocMountLinks.create(
+      { projectId: spec.projectId, mountPointId: spec.p4d378LinkedStore.id } as never,
+      { id: spec.p4d378LinkedStoreLinkId, createdAt: LATER_TS, updatedAt: LATER_TS } as never,
+    );
+    await seedInto(spec.p4d378LinkedStore.id, spec.p4d378LinkedOnlyItem);
+    await seedInto(projectMp, spec.p4d378OfficialItem);
+    await seedInto(spec.p4d378LinkedStore.id, spec.p4d378LinkedTwinItem);
+
+    // A project with NO official store and an EMPTY raw name, whose linked
+    // store holds an item (v4 `projectLocations`' `'Project'` origin arm).
+    await repos.projects.create(
+      { name: 'Storeless Transfer Project' } as never,
+      { id: spec.p4d378StorelessProjectId, createdAt: LATER_TS, updatedAt: LATER_TS } as never,
+    );
+    await rawQuery('UPDATE "projects" SET "officialMountPointId" = NULL, "name" = ? WHERE "id" = ?', [
+      '',
+      spec.p4d378StorelessProjectId,
+    ]);
+    await makeStore(spec.p4d378StorelessLinkedStore);
+    await repos.projectDocMountLinks.create(
+      {
+        projectId: spec.p4d378StorelessProjectId,
+        mountPointId: spec.p4d378StorelessLinkedStore.id,
+      } as never,
+      { id: spec.p4d378StorelessLinkId, createdAt: LATER_TS, updatedAt: LATER_TS } as never,
+    );
+    await seedInto(spec.p4d378StorelessLinkedStore.id, spec.p4d378StorelessItem);
   }
 
   await rawQuery('UPDATE "characters" SET "archivedAt" = ? WHERE "id" IN (?, ?)', [

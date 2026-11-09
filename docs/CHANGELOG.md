@@ -700,6 +700,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(wardrobe): the transfers GET removed, the transfer probe walks every store forward (v4 a0ed5ecad + 0c47f4539 (g); P4.D378)
+
+_Versions: core 0.0.1430, web 0.0.257._
+
+P4.D378 items 2–5. **The GET is gone** (v4 `a0ed5ecad`): `enumerate_destinations` / `destinations_body` / `name_list`, the dispatch handler and its P4.166 degraded arm, the `Request` variant and its engine arm (fenced §R.10 (r) removal hunks), and the web GET leg — `GET /api/v1/wardrobe/transfers` now answers axum's 405 while the POST stays routed (NEW `quilltap-web/tests/wardrobe_transfers_get_removed.rs`, status only: v4's 405 body / `Allow` header are unmeasured). The two "Failed to remove … from source after move" failures THROW into the route's catch (500 `Failed to transfer wardrobe item`, ERROR `[WardrobeTransfers v1] Failed to transfer item` with the message) — `TransferError::Server` is deleted; corpus-unreachable (v4's component closure dedups), so the mapping is pinned by unit tests. The read-back ERROR and the success INFO lose ` v1` (capture pins + silence legs; the web P4.D281 pin updated). A census test of record in `wardrobe_transfers_tier2_equivalence` holds the retired texts at zero. **The probe** (v4 `0c47f4539` (g)): groups FORWARD (membership order, first claim), then every store of the project official first through a NEW `project_locations` (the raw name or `'Project'` origin when there is no official store). `wardrobe_transfers_tier2` grows four rows (a second group, a linked project store, a store-less `''`-named project); `probe_project_no_official_store_linked_hit` is carved both ways as `UNION_PENDING_P4D377_RAW_OWNER` until P4.D377's move (k) reads the owner raw.
+
 #### 2026-11-08 — fix(reach): the path resolver's roster unit test reads the pool's DEBUG (REACH follow-up)
 
 _Versions: core 0.0.1429._

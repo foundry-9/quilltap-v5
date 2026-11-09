@@ -1304,8 +1304,9 @@ fn p4d281_factory_lines_are_v4s() {
     no_old(&lines);
 }
 
+// === P4.D378 === (v4 `a0ed5ecad`: the tag lost its ` v1`)
 /// P4.D281 (v4 `9ecebf986` + `4a38222e6`): the transfers route's success INFO
-/// `[WardrobeTransfers v1] Wardrobe item transferred` — v4's thirteen keys in
+/// `[WardrobeTransfers] Wardrobe item transferred` — v4's thirteen keys in
 /// v4's order, `folder` (`stored.folder ?? ''`) NEW at the pin, a null
 /// character id rendered `null` — on the calling thread; and the silence leg:
 /// a refused transfer logs no such line.
@@ -1339,8 +1340,14 @@ fn p4d281_transfer_line_is_v4s() {
     let item = success_body(&resp).expect("the move succeeds")["wardrobeItem"].clone();
     let line = lines
         .iter()
-        .find(|l| l.contains("[WardrobeTransfers v1] Wardrobe item transferred"))
+        .find(|l| l.contains("[WardrobeTransfers] Wardrobe item transferred"))
         .unwrap_or_else(|| panic!("no transfer line: {lines:#?}"));
+    assert!(
+        !lines
+            .iter()
+            .any(|l| l.contains("[WardrobeTransfers v1] Wardrobe")),
+        "the ` v1` form is retired: {lines:#?}"
+    );
     assert!(line.starts_with("INFO "), "{line}");
     let tail = line.split("Wardrobe item transferred").nth(1).unwrap();
     let keys: Vec<&str> = tail
@@ -1397,6 +1404,7 @@ fn p4d281_transfer_line_is_v4s() {
         "{lines:#?}"
     );
 }
+// === /P4.D378 ===
 
 /// [P4.D316] Capture pins (§R.5) for the rollback POST's caller-thread lines,
 /// each with its silence leg: the success INFO `[Chats v1] Wardrobe rolled

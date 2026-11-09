@@ -8,7 +8,8 @@
 //!   move-items | copy-items` on POST — P4.D281, v4 `4a38222e6`; `copy-items`
 //!   P4.D309, v4 `bbbcd2388`)
 //! - `GET|PUT|DELETE /api/v1/wardrobe/{itemId}`    → one archetype
-//! - `GET|POST   /api/v1/wardrobe/transfers`       → the transfers pair
+//! - `POST       /api/v1/wardrobe/transfers`       → the transfers POST
+//!   (P4.D378: v4 `a0ed5ecad` removed the GET; a GET answers axum's 405)
 //! - `POST       /api/v1/wardrobe/preview-avatar`  → the one-shot render
 //! - `POST       /api/v1/wardrobe/analyze-image`   → REFUSAL-ARMED (tier 3)
 //! - `GET        /api/v1/chats/{id}?action=outfit` → the equipped-outfit read
@@ -469,12 +470,8 @@ pub async fn wardrobe_item_delete(
 // /api/v1/wardrobe/transfers
 // ===========================================================================
 
-pub async fn wardrobe_transfers_get(State(state): State<SharedState>) -> AxumResponse {
-    match dispatch_core(&state, CoreRequest::WardrobeTransferDestinations).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
-        Err(r) => r,
-    }
-}
+// === P4.D378 === the transfers GET handler REMOVED (v4 `a0ed5ecad`).
+// === /P4.D378 ===
 
 pub async fn wardrobe_transfers_post(
     State(state): State<SharedState>,

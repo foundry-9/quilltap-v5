@@ -620,6 +620,49 @@
     "scope": "vault"
    },
    "expect": "error"
+  },
+  {
+   "name": "probe_groups_forward",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-000000037801",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_linked_project_store",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-000000037802",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": "b1000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_project_official_before_link",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-000000037803",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": "b1000000-0000-4000-8000-000000000001",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
+  },
+  {
+   "name": "probe_project_no_official_store_linked_hit",
+   "action": "move",
+   "itemId": "e5000000-0000-4000-8000-000000037804",
+   "sourceCharacterId": "c7000000-0000-4000-8000-000000000001",
+   "sourceProjectId": "b1000000-0000-4000-8000-000000000378",
+   "destination": {
+    "scope": "general"
+   },
+   "expect": "ok"
   }
  ],
  "groupMemberId": "b2000000-0000-4000-8000-000000000002",
@@ -915,5 +958,85 @@
   "replace": false,
   "componentItemIds": []
  },
- "bareProjectId": "b1000000-0000-4000-8000-0000000000b2"
+ "bareProjectId": "b1000000-0000-4000-8000-0000000000b2",
+ "$p4d378": "P4.D378 (v4 0c47f4539 move (g)): the transfer probe walks groups FORWARD (membership order, first claim) and probes EVERY store of the project, official first. A second group the source character joins AFTER the first, each group store holding ONE id under different titles; a store LINKED to the project (an item only there, and an id shared with the official store); a project with NO official store and an empty raw name whose linked store holds an item.",
+ "p4d378SecondGroupId": "b2000000-0000-4000-8000-000000000378",
+ "p4d378SecondGroupMemberId": "b2000000-0000-4000-8000-000000000379",
+ "p4d378ForwardFirstItem": {
+  "id": "e5000000-0000-4000-8000-000000037801",
+  "title": "First Group Scarf",
+  "types": [
+   "accessories"
+  ],
+  "description": "The first group's scarf.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "p4d378ForwardSecondItem": {
+  "id": "e5000000-0000-4000-8000-000000037801",
+  "title": "Second Group Scarf",
+  "types": [
+   "accessories"
+  ],
+  "description": "The second group's scarf.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "p4d378LinkedStore": {
+  "id": "a3780000-0000-4000-8000-000000000001",
+  "name": "Transfer Project Linked Store"
+ },
+ "p4d378LinkedStoreLinkId": "a3780000-0000-4000-8000-000000000011",
+ "p4d378LinkedOnlyItem": {
+  "id": "e5000000-0000-4000-8000-000000037802",
+  "title": "Linked Boots",
+  "types": [
+   "accessories"
+  ],
+  "description": "Only in the project's linked store.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "p4d378OfficialItem": {
+  "id": "e5000000-0000-4000-8000-000000037803",
+  "title": "Official Gloves",
+  "types": [
+   "accessories"
+  ],
+  "description": "The official store's gloves.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "p4d378LinkedTwinItem": {
+  "id": "e5000000-0000-4000-8000-000000037803",
+  "title": "Linked Gloves",
+  "types": [
+   "accessories"
+  ],
+  "description": "The linked store's gloves.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ },
+ "p4d378StorelessProjectId": "b1000000-0000-4000-8000-000000000378",
+ "p4d378StorelessLinkedStore": {
+  "id": "a3780000-0000-4000-8000-000000000002",
+  "name": "Storeless Project Linked Store"
+ },
+ "p4d378StorelessLinkId": "a3780000-0000-4000-8000-000000000012",
+ "p4d378StorelessItem": {
+  "id": "e5000000-0000-4000-8000-000000037804",
+  "title": "Storeless Hat",
+  "types": [
+   "accessories"
+  ],
+  "description": "In a store linked to a project with no official store.",
+  "isDefault": false,
+  "replace": false,
+  "componentItemIds": []
+ }
 }
