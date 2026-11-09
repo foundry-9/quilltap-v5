@@ -624,7 +624,11 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/db/character_vault.rs", "backfill_character_vault_managed_files", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/db/database_store.rs", "read_database_blob_text", "find_by_mount_point_and_path", "other-repo"), // P4.D354 (bug 260: the blob repo's link read)
+    // P4.D380: the P4.D354 site MOVED into `find_blob_by_path_or_none` — v4's
+    // blob path lookup is a try/catch fallback (`Failed to find blob by path` +
+    // `null`), read by both `read_database_blob_text` and the new
+    // `read_database_blob_as_document` through the ONE helper.
+    ("quilltap-core/src/db/database_store.rs", "find_blob_by_path_or_none", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_content_and_mtime_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "delete_database_document", "find_by_mount_point_and_path_or_none", "converted"), // P4.D340
@@ -685,6 +689,9 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    // P4.D380 (v4 `5efe53ea7`): `viewTargetFor`'s link read — v4's fallback
+    // `findByMountPointAndPath`, so a twin.
+    ("quilltap-core/src/documents/core/view_target.rs", "view_target_for", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/inventory/dependents.rs", "read_all_inventory_records", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/inventory/title_lint_documents.rs", "lint_inventory_document_change", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"), // P4.D340
@@ -938,6 +945,10 @@ fn the_class_counts_are_pinned() {
 // new — `inventory_readers::scan_inventory_folder` (the `Inventory/` scan)
 // and `inventory::dependents::read_all_inventory_records` (the instance-wide
 // read the kit / dependents checks walk), both v4's fallback reads, so twins.
+// **P4.D380 (+1 converted): 95 → 96** — the document core's `view_target_for`
+// (v4 `5efe53ea7`) reads the link through v4's fallback, a twin; the P4.D354
+// blob-text site moved into `database_store::find_blob_by_path_or_none` (still
+// `other-repo`, the count unchanged).
 const COUNTS: (
     usize,
     usize,
@@ -948,7 +959,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (95, 14, 20, 1, 13, 5, 1, 20, 5);
+) = (96, 14, 20, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`

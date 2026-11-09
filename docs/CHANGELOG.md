@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — test(harness): the document core's census rows and the documents_routes recipe stages its plants (P4.D380)
+
+_No crate versions bumped._
+
+`doc_mount_fallback_sites_census` classifies the document core's two read sites. `view_target_for`'s link read is v4's fallback (`converted`, 95 → 96). The P4.D354 blob-text site moved into `database_store::find_blob_by_path_or_none`, the one v4-fallback blob path lookup (`other-repo`, unchanged). The `documents_routes` recipe header now stages `documents-core.json` beside `documents-reach.json`, so the sweep driver regenerates the family.
+
 #### 2026-11-09 — feat(doc-edit): the doc tools through the document core — the one refresh, uploads, expected_mtime, moves follow, #137 (P4.D380, v4 a3d53eae1 / 30a3b4cb7)
 
 _Versions: core 0.0.1438._

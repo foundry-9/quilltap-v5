@@ -15,6 +15,7 @@
 //!   cp "$V5W/harness/oracle/cases/documents-routes.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/documents-web.json" "$TMPO/fixtures/"
 //!   cp "$V5W/harness/oracle/fixtures/documents-reach.json" "$TMPO/fixtures/"   # P4.D376
+//!   cp "$V5W/harness/oracle/fixtures/documents-core.json" "$TMPO/fixtures/"   # P4.D380
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_DOC_MAIN=$V5W/crates/quilltap-web/tests/fixtures/documents-main.db \
 //!   QT_FIXTURE_DOC_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/documents-mount.db \
