@@ -202513,3 +202513,145 @@ Versions at close: SPA `0.5.978`; no crate moved. The pin worktree is removed an
 - The lane's `target/` is KEPT at Driftcheck's request (2026-11-08, "don't delete your target/ unless I ask").
 - `/tmp/p4d386/` is left for the unifier.
 - Nothing was pushed to `main`.
+
+## P4.D387 — the document-store browser, Document Mode's viewers and libraries, D18 retired (lane record)
+
+**Branch:** `claude/p4-d387-spa-docs-e802ef`. The session started in its app-made worktree (`.claude/worktrees/p4-d387-spa-docs-e802ef`), already on `BROWSER` `8785aeca0` with no commits of its own. It stayed there; the base was confirmed against P4.D386's status header on `claude/p4-d386-spa-browser-81cc32`. The two backward-compatible `BROWSER` amendments of `a84ac25ba` (the menu-entry template `$implicit`, and the host-`id` clear on `qt-item-folder-field` / `qt-container-select`) were cherry-picked as plain hunks into commit 1 (§R.14).
+
+**§R.2 probe (observation).**
+- At 2026-11-08 21:54 CST, v4 `main` was at `88c9cc81d`, 31 commits past the pin ("fix: folder moves match folder paths case-insensitively" … "4089469a8 Refine from Memories & Instructions"), and `bugfix` was at `d67c70a51`, 11 past `997657639` (4.12.2). The tree was clean.
+- The pin was usable: `git -C "$PIN" rev-parse HEAD` = `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`, `package.json` `4.13.0-dev.8`, and `npm ci --offline --ignore-scripts` succeeded first time (no `ENOTCACHED`), followed by `npm rebuild better-sqlite3`; `.claude/pin-plugin-sdks.sh` ran (rc 0).
+- Resolved under the pin: dompurify **3.4.17** (v5 3.4.17, so no `DOMPURIFY_VERSION_SKEW`), jest-environment-jsdom 30.5.2, tsx 4.23.15, better-sqlite3 13.0.3.
+
+**P4.D381 request names adopted** (read from `claude/p4-d381-stores-e2ff41`'s `api/types.rs`): `mountFolderCopy {fromPath, toPath, destMountPointId?}`, `mountFileUnlink {path}`, `mountFileLinks {mountPointId, path}`, `mountFileRenderHtml {mountPointId, path}`, plus `mountFolderMove.destMountPointId?` and `mountFolderDelete.recursive?`. **Ruling L-2's switch, recorded:** P4.D381 landed dispatch variants for both GET actions, so the SPA reads links and render-html over dispatch, not the REST `?action=` legs. The `.docx` 422 arrives as a `CoreDispatchError` of kind `not_available`.
+
+**Red-first (§R.7), each measured before its source edit:**
+- `document-browser.oracle.spec.ts`: failed to compile, `TS2307` ×4 (`./document-actions`, `./document-store.source`, `./mount-capabilities`, `./preview-kind`).
+- `file-model.spec.ts`: the new `getPreviewType` row was **1 of 15 red** (`application/x-ndjson` read `unsupported`).
+- `sanitize-docx.spec.ts`: `Could not resolve "./sanitize-docx"`.
+- `ui/modal.spec.ts`: **4 of 19 red** on the unported `modal.ts` (the `MODAL_ESCAPE_NO_STOP_PROPAGATION` flip, case 2 sibling, case 2 nested, case 3 with a bare `role="alertdialog"`). Cases 1 and 4 were already green. Case 3 with the REAL `AlertModalService` was also green before the port: `AlertModalHost`'s own `stopImmediatePropagation` shields it. It is kept as a pin, not a flip.
+- `realtime-topic-map.spec.ts`: **2 of 27 red** (the scoped / bare rows, and the sweep prefix).
+- `document-picker.spec.ts`: the `generalLibrary` row was **1 of 15 red**. `document-pane.spec.ts`: the `viewer` row was **1 of 14 red** (the editor mounted).
+- The D18 census: **65 sites** at `b08bc86aa` (56 under `src/app`: the 16 `files/**` files' own imports and selectors, `store-detail.ts` ×11, `file-table.ts` / `file-detail-row.ts` and their specs, `entry-points.spec.ts`, `scriptorium.spec.ts`, `store-detail.spec.ts`, the `qt-file-manager` comments in `library-browse-panel.ts` and `files-browser.ts`; plus 9 in e2e: `scriptorium-file-manager-flow.spec.ts` ×4, `scriptorium-flow.spec.ts` ×5). It found 0 after the retirement.
+
+**The oracles.**
+- `apps/web/oracle/document-browser.recorder.ts` → `src/testing/fixtures/document-browser.oracle.ndjson`, **422 rows**: 86 `previewKindOf`, 9 `mimeTypeForName`, 12 `getPreviewType`, 4 `documentPreviewKind`, 256 `documentFileActions` (the 4 caps × 2 link × 4 kinds × 2 targets × 4 paths grid), 5 `documentFolderActions`, 18 `canLinkBetween`, 5 `canLinkGates`, 7 `isCustomToolDefinition`, 6 `hasDescription`, 3 `capabilitiesOf`, 8 `deriveMountCapabilities`, 3 `folderTreeOf`. It is seeded with every case of v4's `document-actions.test.ts`. `useDocumentStoreSource.ts` (with `@tanstack/react-query` and React) LOADED under tsx, so `folderTreeOf` is v4's real function. Regen (from the pin worktree):
+
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4.d387-624d0d25c
+  V5W=~/source/quilltap-v5
+  cp "$V5W/apps/web/oracle/document-browser.recorder.ts" "$PIN/"
+  OUT="$V5W/apps/web/src/testing/fixtures/document-browser.oracle.ndjson"
+  rm -f "$OUT"
+  (cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC npx tsx document-browser.recorder.ts > "$OUT")
+  rm -f "$PIN/document-browser.recorder.ts"
+  wc -l "$OUT"   # expect 422
+  ```
+
+- `apps/web/oracle/docx-sanitize.capture.test.tsx` → `document-browser/__fixtures__/docx-sanitize.v4.json`, **24 rows**, v4's REAL `sanitizeDocxHtml` under v4's jest jsdom. Regen:
+
+  ```bash
+  PIN=/tmp/qt-v4-pin-p4.d387-624d0d25c
+  V5W=~/source/quilltap-v5
+  cp "$V5W/apps/web/oracle/docx-sanitize.capture.test.tsx" "$PIN/__tests__/unit/zz-p4d387-docx-sanitize.capture.test.tsx"
+  OUT="$V5W/apps/web/src/app/document-browser/__fixtures__/docx-sanitize.v4.json"
+  rm -f "$OUT"
+  (cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC P4D387_DOCX_OUT="$OUT" \
+     npx jest --watchman=false --testTimeout=180000 --runTestsByPath __tests__/unit/zz-p4d387-docx-sanitize.capture.test.tsx)
+  rm -f "$PIN/__tests__/unit/zz-p4d387-docx-sanitize.capture.test.tsx"
+  node -p "require('$OUT').length"   # expect 24
+  ```
+
+  All 24 rows are byte-equal under vitest's jsdom.
+- No fixture was changed that any other oracle reads. Both fixtures are new and read only by this lane's two specs.
+
+**Deleted (D18, ruling R-D):**
+- the 16 files of `apps/web/src/app/files/**` (`types.ts`, `error-translation{,.spec}.ts`, `event-wire-map{,.spec}.ts`, `file-manager-adapter{,.spec}.ts`, `file-manager-transport.ts`, `listing-to-tree{,.spec}.ts`, `node-id{,.spec}.ts`, `reindex-after-copy{,.spec}.ts`, `file-manager/file-manager{,.spec}.ts`);
+- `screens/scriptorium/file-table.ts`, `file-detail-row.ts`, `file-detail-row.spec.ts`, `file-table-opener.spec.ts`;
+- the "New file manager (beta)" toggle (in `store-detail.ts`);
+- `e2e/scriptorium-file-manager-flow.spec.ts`.
+
+The now-dead `scriptorium.api.ts` per-file ops (`fetchStoreFiles`, `listMountBlobs`, `DocumentStoreBlob`, `deleteMountFile`, `describeMountFile`), `DocumentApi` / `StandaloneDocumentApi.listMountFiles` + `MountFilesResult`, and `library-picker.api.ts`'s `fetchMountFiles` / `fetchProjectStores` went too, each by census.
+
+**Re-aimed / removed spec cases:**
+- `screens/custom-tools/entry-points.spec.ts`: all six cases re-aimed. Five go onto `documentFileActions` (`workbench` present for `Tools/x.tool.json` and `TOOLS/X.TOOL.JSON`, absent for `Notes/Tools/…`, `Tools/sub/…` and `Tools/readme.md`; v4 `document-actions.ts:86-88`). One goes onto `DocumentRow`'s emitted `workbench` action.
+- `scriptorium.spec.ts` `describe('FileTable')` became `describe('the store browser …')`. Re-aimed: rows + Upload hidden when unwritable (v4 `DocumentStoreBrowser.tsx:413`), `Upload here` + empty text (`:333-335`), the store search (`:94-97`), the delete confirm (`:165-185`). **Removed** (no counterpart after `c34986421`): the column-sort toggle (`handleSort` / `sortDir`), since v4 sorts by name only (`:90-93`). The drill test now asserts the browser instead of `Indexed Files`, and the drill / re-activation describes gained TanStack providers.
+- `store-detail.spec.ts`: the toggle-title case was **removed** (the toggle is gone from v4). New cases: `Files` heading + browser, both `openStore` hosts, re-activation invalidation.
+- `library-browse-panel.spec.ts`: **removed** with v4's own source (`c17033f04` deleted `FileBrowser.tsx:226-262`): "an explicit database store browses THAT store", "auto-resolves its own store", "a failing auto-resolve falls back", "a filesystem mount stays in legacy mode", "emits the clicked row, mount fields intact". Re-aimed to "emits the clicked legacy row".
+- `document-picker.spec.ts`: the four browse cases were re-aimed onto the store browser (pick, `New document here` with `targetFolder`, the project library as a STORE, the standalone browse).
+- `standalone-wire.spec.ts`: `listMountFiles rides the shared mountFilesList verb` was **removed** (the method is gone; the store browser's read is pinned by `document-store.source.spec.ts`), and `fetchStores` now pins `{stores, generalLibrary}`.
+- `projects.spec.ts`'s FilesCard "disables Browse All Files" was re-aimed to the open / close case (fenced `P4.D387`).
+- `e2e/scriptorium-flow.spec.ts` beats `:70` and `:134` were re-aimed onto the browser's row ⋮ (Edit description…, Download, Delete + the in-page `alertdialog` confirm) and the `Files` heading.
+
+**`MODAL_IN_PLACE_LAYERING`.** Measured: no non-modal `role="dialog"` sits inside a `qt-modal` in v5. The only `role="dialog"` without a static `aria-modal="true"` is `ui/slide-over-panel.ts`, which binds `aria-modal` while open. The `MODAL_ESCAPE_NO_STOP_PROPAGATION` pin FLIPPED by design: it is renamed "two stacked modals: one Escape closes only the top one (v4 5efe53ea7 anotherDialogOwns)", with `innerCloses 1, closes 0`, and the module doc is updated. **`WARDROBE_VIEWER_ESCAPE_LAYERED` re-measured at P4.D387: v4's editor is `useEscapeKey`, not `BaseModal`; divergence STANDS.** `wardrobe-item-editor.spec.ts` is green, unchanged, in every full run.
+
+**Named records:**
+- `NATIVE_PDF_VIEWER` (R10): both-ways, in `document-viewer.ts`'s doc + spec and in `file-preview-modal.ts`'s doc + spec. v4's `pdfjs-dist` texts are named; no PDF dependency is added.
+- `DOCX_RENDER_HTML_REFUSED`, SPA arm: the 422 `not_available` → the fallback, pinned in `document-viewer.spec.ts`; any other error → the error line.
+- The rich-text deferral (syntax highlighting, wikilinks, KaTeX, and Markdown rendering) is now shared by the store viewer.
+- Tier 3 NO-PORTs: SVAR's `components/files/svar/**` + `svar-theme-bridge.css` (v5 never vendored SVAR; D18 is retired here), `useMountPointBlobUpload.ts` / `useProjectFileUpload.ts` (no v5 twins), `useClickOutside`'s event widening (folded into `modal.ts`), and `keys.ts`'s `customTools.presets` move (P4.D388 / P4.D379).
+
+**HANDOFFs (state at close):**
+- **H1 (P4.D386 `BROWSER`):** none needed beyond the two `a84ac25ba` amendments (cherry-picked). `FolderBrowserShell`, `createFolderBrowserState` / `createItemFolderHandlers`, `ItemActionMenu`, `DestinationPickerDialog` (its `[qtDestinationContainer]` slot, `containerKey`, `createFolder`, `creating`, `note`, `currentFolder`, `link` mode) and `item-folders.ts` covered every v4 prop the document browser uses.
+- **H1b (NEW, P4.D386's file → the unifier, since that lane is closed):** `inventory/inventory-control-dialog.spec.ts:276` goes red under `anotherDialogOwns`. The Escape is dispatched before the item editor's `qtDialogFocus` moves focus into it, which happens one rAF later, as v4's `useDialogFocus` does. So focus is still on the Inventory card beneath, which owns the event. Fix, measured green (18/18): insert `await new Promise<void>((r) => requestAnimationFrame(() => r()));` immediately before the `:276` Escape. The behaviour is v4-faithful. It is the ONLY red in every full SPA run of this lane, and it is noted in the coordinator's notes folder (`p4d387-handoffs.md`).
+- **H2 (P4.D381) / H3 (P4.D380):** the C13 / C14 wire. The gated beats in `e2e/document-store-browser-flow.spec.ts` (`P4D381_SERVER_LANDED`, `P4D380_SERVER_LANDED`) flip on the union (§S.9).
+- **H4 (P4.D388):** About drops `File Manager: SVAR` (`about-page.ts:427`) and `@svar-ui/react-filemanager, ` (`:~452`), plus the Scriptorium blurb's `c34986421` addition (SPA survey §3.4). P4.D388 lands them.
+- **H4b (P4.D385 → this lane's `documents/document-pane.toolbar.spec.ts:188`):** does NOT apply on this branch. P4.D385's tooltip sweep (and its `testing/tooltip-content.ts` helper) is not in `BROWSER`, so the spec is green as it stands. **For the unifier:** once P4.D385's toolbar lands, apply its replacement lines (`expect(buttons.map((b) => tooltipContentOf(fixture, b))).toEqual(` + `import { tooltipContentOf } from '../../testing/tooltip-content';`). The same applies to H4's e2e `salon-documents-flow.spec.ts:350` (`await expectTooltip(delimiters.first(), 'Thoughts (~...~)');`).
+- **H5 (P4.D384):** none raised. The viewer branch lives in `document-pane.ts` (L-3). One optional binding exists: `qt-document-picker` gained a `projectName` input, which the Salon host may bind for v4's browse-header label. Without it, the label reads v4's fallback `Project`.
+- **H6 (the unifier):**
+  - restore `realtime-topic-map.spec.ts`'s exact sweep count once P4.D386's `wardrobe` row is in (this lane relaxed it to `toContainEqual(['mount-points'])`, fenced);
+  - run the D18 census on the union;
+  - flip the gated beats;
+  - re-measure `WARDROBE_VIEWER_ESCAPE_LAYERED` on the union;
+  - apply H1b and H4b.
+  - **The D18 retirement note for `phase-4.md:263` (§S.7), wording:** "**D18 RETIRED (P4.D387, ruling R-D, 2026-11-08).** v4 `c34986421` replaced the SVAR file manager and the classic table with ONE document-store browser on the shared folder browser, and v5 follows: `apps/web/src/app/files/**` (the bespoke `qt-file-manager`), `screens/scriptorium/file-table.ts` / `file-detail-row.ts` and the "New file manager (beta)" toggle are deleted. The store page, Document Mode's picker, the Library picker and the project FilesCard all browse through `document-browser/document-store-browser.ts`. `document-browser/d18-retirement.census.spec.ts` keeps any import or locator of the retired surface from returning."
+
+**Commits** (SPA 0.5.973 at `BROWSER` → **0.5.985** at close; no crate bumps):
+- `2d5ca9d4a` (0.5.974): the pure half + the oracle + the C13/C14 contract block + the `a84ac25ba` amendments (items 2–3);
+- `866417c0a` (0.5.975): the `.docx` sanitizer + its capture (item 4);
+- `accd1c715` (0.5.976): `anotherDialogOwns` (item 5);
+- `b544056b9` (0.5.977): the data layer + the realtime arm (items 6–7);
+- `b08bc86aa` (0.5.978): row, viewers, dialogs, destination, the browser (items 8–12);
+- `0e52b1de6` (0.5.979): `ProjectStoreBrowser` (item 13);
+- `e1ed4facc` (0.5.980): the store detail page + the D18 retirement + census + `scriptorium.api.ts` types (items 14, 15, 24);
+- `d3b87bed9` (0.5.981): Document Mode picker + viewer pane (items 16–17; one commit, since the picker reads the contract changes item 17 carries);
+- `fc0c13dd1` (0.5.982): General Files names + the file-preview PDF (items 20–21);
+- `269536ed1` (0.5.983): the Library picker (item 18);
+- `d234a6c9e` (0.5.984): FilesCard Browse All (item 19);
+- `6f47fcbec` (0.5.985): the e2e walks (item 22);
+- (this commit) the record + the status header (docs only).
+
+**Not landed:**
+- **Tier 2 item 23**, deferred by name: Markdown rendered in the store viewer through `renderMarkdownToHtml` (a corpus measurement is owed first). The viewer keeps the file preview's `<pre>` + Copy.
+- Tier 2 item 25 was measured: the picker / library hosts are dialogs, and v4 relies on the realtime hint there too. Nothing was added.
+
+**Divergences / adaptations recorded beyond the order:**
+- The store detail page now raises v4's edit / scan toasts, which v5 had never shown. They are byte-exact from `useDocumentStoreDetail`; `notifyQueueChange` has no v5 twin.
+- `qt-document-store-browser` takes an explicit `opensStores` input, because an Angular output's binding can't be observed (v4 tests `onOpenStore`'s presence).
+- The library picker's scope-card class is v4's full `ScopeCard` string (`hover:qt-bg-surface-hover transition-colors cursor-pointer`).
+
+**The gate.**
+- **SPA, per commit:** `npm run lint` 0 (check-qt-classes, check-css-vars, check-a11y-names, each with self-test); `npm test` 642–650 files, last run **642/643 files, 16,174/16,175 tests**, where the single red is H1b (P4.D386's spec); `npm run build` 0, and no built chunk names a retired D18 selector.
+- **Playwright, by file, one run at a time:**
+  - `document-store-browser-flow` **10 passed / 7 skipped** (the gated beats);
+  - `scriptorium-flow`, `salon-documents-flow`, `workspace-document-standalone-flow`, `workspace-search-documents-flow`, `projects-flow`, `general-files-flow`: **28 passed** in one sequential invocation;
+  - `salon-library-picker-flow` **4/4 green by file**. In the sequential run after `salon-documents-flow`, its `:192` beat was red at the final `.last()` Librarian-chip assertion: the recorded run-order fragility of that gesture, since both files post Librarian chips in Solo Voyage.
+  - Two of my runs failed in global setup when P4.D368's Playwright run started on the shared port at the same time; both re-ran green after it finished.
+- **Rust, once at close** (debug bins built from a clone of main's `target/`; the clone's stale Oct-28 `target/release/quilltap{,-web}` were deleted so the e2e harness used fresh debug bins):
+  - `cargo fmt --all --check` 0;
+  - `cargo clippy --workspace --all-targets -- -D warnings` 0, and the same with `--features quilltap-core/native-transport` 0;
+  - `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast`: **899 binaries / 6,017 passed / 6 failed / 3 ignored**. This lane moves no Rust, so every red is pre-existing or a sibling's:
+    - `builtin_prompt_templates_guard` (P4.D373), `custom_tool_schema_embed_guard` / `public_schemas_vendor_guard` / `qtap_schema_embed_guard` (P4.D382 vendor) and `provider_sdk_version_guard` (P4.D364): each reads the LIVE v4 checkout, which is past the pin;
+    - `spelling_guard`: a quoted misspelling in the committed setupphase survey `surveys/2026-11-04-setupphase-vendor-norport.md:295`, pre-existing on `BROWSER` and not this lane's file (a `quilltap-spelling-exception` mark is the fix, for the unifier or the survey's owner).
+- `grep -rni 'quil[t]tap'` over `apps/web/{src,oracle,e2e}` + this order → 0; `TODO|FIXME` in every new file → 0.
+
+**💸 for the owed dogfood pass:** the order's list (§ Lane record), unchanged.
+
+**Gotchas worth keeping:**
+- (a) An own-instance e2e on the salon pair needs `chat_documents` planted from `fresh_schema.json` before Document Mode can open anything; without it the open answers `no such table: chat_documents`.
+- (b) In the Document Mode picker, a store button matched by a non-exact name also matches the Recent row naming that store, so use `exact: true`.
+- (c) A cloned `target/release` carries main's stale release bins, and `webBinary()` prefers release.
+- (d) A spec-owned server's `afterAll` must wait for the process to exit before `rmSync`, or it races with the shutdown writes (`ENOTEMPTY`).
+- (e) `TestBed.createComponent` of a second root detaches the first root's element, so create the alert host last.
+
+**Cleanup:** the lane's `target/` was deleted whole at close, the pin worktree was removed (`git worktree remove` + `prune`), and `/tmp/p4d387` scratch was removed.

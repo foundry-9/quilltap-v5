@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — docs(porting): P4.D387 lane record — LANE COMPLETE, PARTIAL (Tier 2 item 23 deferred; H1b for the unifier)
+
+_Docs-only change._
+
+P4.D387's lane record (`status-log.md`) and its order's status header. The record covers the probe, the red-first counts, the two oracle regen recipes, the deleted and re-aimed specs, the HANDOFF table, the D18 wording for `phase-4.md`, and the gate.
+
 #### 2026-11-08 — test(e2e): the document-store browser walks on an own instance (4364), gated C13/C14 beats, and the library-picker store beat on the browser (P4.D387)
 
 _Versions: SPA 0.5.985._
