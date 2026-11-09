@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — docs(porting): P4.D379 lane record and status header (LANE COMPLETE)
+
+_Docs-only change._
+
+Appends the P4.D379 lane record to `status-log.md` (red-first counts, mutation proofs, measured fixture stores, plants, the item-7 measurements, the gate) and sets the work order's status header to LANE COMPLETE.
+
 #### 2026-11-09 — test(web): the hand-built construction census counts the presets arm (P4.D379)
 
 _No crate versions bumped._

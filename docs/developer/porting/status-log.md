@@ -200939,3 +200939,149 @@ Lane-local calls:
 - `cli_differential` `[db help]` (v4's `integrity` help text) — P4.D365.
 
 **Commits:** `3494b93a2` (the cherry-picked `428e0d7e7`), `17989ec71` (transfers, C-a + C-b; core 0.0.1430, web 0.0.257), `f4c06a27f` (pools + dressing + the NEW pool-order family; core 0.0.1431), `adb5944d7` (owners + title lint + the NEW mount-owner family + the issue draft; core 0.0.1432), `6a284c907` (self_inventory + the Core whisper + the NEW core-packet family; core 0.0.1433). Harness not bumped (frozen 0.0.1110).
+
+## P4.D379 — Pascal custom-tool presets follow the tool walk, server side (lane record, 2026-11-09)
+
+**Branch** `claude/p4-d379-presets-716761` (worktree `.claude/worktrees/p4-d379-presets-716761`). The session started in this app-made worktree, already on `REACH` `07b68e7c3` with no commits of its own, so it did not move. Pin `624d0d25c`.
+
+### Setup
+
+- **§R.14 REACH amendment:** cherry-picked P4.D376's test-only follow-up `428e0d7e7` as `6e456465f`. The path resolver's roster unit test now reads the pool's DEBUG.
+- **§R.2 probe (an observation), 2026-11-09 08:08 CST:**
+  - v4 moved: `main` is at `d281c2332`, 35 commits past `624d0d25c`. `bugfix` is at `d67c70a51`.
+  - Tree dirty: 188 paths (`__tests__/`, `CLAUDE.md`, `.claude/commands/…`).
+  - The pin itself is usable: `rev-parse` gives `624d0d25c6cb…`, and `package.json` reads `4.13.0-dev.8`.
+- **Pin:** `/tmp/qt-v4-pin-p4d379-624d0d25c`, created once and never swept. `npm ci --offline` succeeded without the retry. `better-sqlite3` is 13.0.3 and `zod` is 4.6.7. Floor install: CLI driver 13.0.3 / SQLite 3.53.4 / chacha20; openai 7.47.0, anthropic 1.4.0, genai 2.32.0, openrouter 1.5.34, plugin-utils 2.7.3.
+
+### Commits
+
+| sha | item |
+|---|---|
+| `0d3cbcc2a` | 1: `pascal/tool_presets.rs`, the naming contract (tier 1) |
+| `1317b1241` | 2: one `Tools/` listing; `ordered_mounts` → `db::reach::order_mounts` |
+| `76521224c` | 3: `pascal/tool_preset_pool.rs`, the pool (seam plus production wrapper) |
+| `52bd2a616` | 4: `chat_custom_tool_presets`, the boundary verb, the census, the wire contract |
+| `4f9daf742` | 5: the web edge, plus the two `query_param_semantics` pins and the new edge 400 assertion |
+| `1d3b45add` | 6 + 9: the route differential (19 presets rows), plus the perspective-dropped WARN |
+| `844eb6b57` | 8: the roster's `Custom-tool listing failed for mount` WARN |
+| `0a75d22c2` | the gate's catch: `tri_state_edges_share_the_decoder`'s hand-built count (test-only) |
+
+Item 9 is folded into item 6's commit because its witness row lives in the route family. Item 5 carries the query-param asserts, so no commit is red.
+
+### Red-first (on `REACH` + `428e0d7e7`)
+
+- **`pascal_roster_equivalence`:** exactly ONE red, `same-tier-tie-order-zzz-aaa` (v4 deals from `zzz`, v5's sort dealt from `aaa`). Every other row was green, so REACH added no red here.
+  - Two new scenarios: `mount-in-two-tiers` and `same-tier-three-groups-unsorted`.
+  - Mutation: reinstating the old per-tier id sort without dedup reddens `zzz-aaa` and `three-groups-unsorted`.
+  - **Finding:** the cross-tier `seen` dedup is NOT observable in roster output (a twice-listed mount loses to itself). The preset pool's `duplicate-mount-across-tiers` scenario pins it instead.
+- **New units (`pascal_tool_presets` and `pascal_tool_preset_pool`):** the oracles had no Rust answer before the port.
+  - `pascal_tool_presets`: 71 rows (1 constants / 24 pattern / 46 parse).
+  - `pascal_tool_preset_pool`: 15 scenarios.
+- **Census:** measured **525**, not the predicted 524, against 523. The `*_id` heuristic also drops `as_character_id`, a v4 QUERY value. So the census has ONE `V4::Query` row (`tool`), not two. Recorded in the constant's history paragraph.
+- **`query_param_semantics`:** `unserved_known_actions_are_pinned_v5_side` was red at `:909` once the edge listed `presets`. The `:992` assert sat behind it; both moved.
+- **Route family:**
+  - Before item 4, the core had no verb, so all 19 presets rows were structurally red.
+  - At the item-4 tip, the measured red was `presets-broken-vault-perspective` (the missing item-9 WARN). The other 18 presets rows and all 47 pre-existing rows were green, so REACH's pool change reddens none of this family's rows.
+  - After item 9: 66 / 66. After item 8: 67 / 67. `list-unread-store` was measured red with the WARN text mutated.
+
+### Mutation proofs
+
+- **Overlap guard:** removing `start > end` makes `an_overlapping_prefix_and_suffix_is_no_preset_and_no_panic` PANIC on the slice.
+- **Shadow order reversed:** `three-tiers-one-name-two-shadows` goes red.
+- **Code-unit sort:** `collation-order` goes red. ICU puts `0x, 9, a, a_a, a_b, a-a, a-b, a1, ab, b`.
+- **Stores pushed after the listing:** `v4-broken-store-reported` goes red.
+- **The old roster tie sort:** see red-first above.
+- **The item-8 WARN removed:** `list-unread-store` goes red.
+
+### Fixture measurements (the committed `pascal-run-custom` pair, unchanged)
+
+- Vault A `f22f5571-e962-41c3-94e8-051185b33016`, vault B `55db253f-ca9e-4426-ad33-94b3ee5299a0`, vault D (Spode, broken) `3e082188-bde8-48fc-b8dd-319fcdd7ba80`.
+- Group `Table Stakes` store `f6b09c65-bd2b-4f7f-8d80-bf984e303c5c`, linked; no plant was needed.
+- Project `The Ledger Office` official store `35b077a1-b95f-405b-adb0-cdc881444d93`. General `93000000-0000-4000-8000-0000000000aa`.
+- No chat lacks a CHARACTER participant, and CHAR_D sits in no chat. Both are PLANTED per row by a participants `UPDATE` on `CHAT_SOLO`.
+
+### Plants per new route row (recorded in each NDJSON row and replayed by the Rust side)
+
+- `presets-shadowed`: docs in vault A (aggressive), the group store (aggressive, careful), the project store (quiet), and General (careful, house).
+- `presets-filtered`: five vault-A docs. Only `fine` parses.
+- `presets-unread`: disk store `9d00…d1` "Locked Drawer" (filesystem, project link, `Tools/` chmod 000), plus General `house`.
+- `presets-disk-store`: the same store, readable ("Open Drawer"), holding `drawer` plus a `.tool.json`; General `drawer` is the shadow.
+- `presets-disabled-store`: `UPDATE doc_mount_points SET enabled = 0` on the group store; group doc `gone`; General `house`.
+- `presets-as-b`: `mine` in vaults A and B, `table` in the group store.
+- `presets-empty-as`: `mine` in vaults A and B.
+- `presets-no-character` / `presets-no-character-stranger`: `CHAT_SOLO` participants set to `[]`.
+- `presets-broken-vault-perspective`: `CHAT_SOLO` participants set to `[D, A]`.
+- `list-unread-store`: the locked disk store.
+- The remaining rows plant nothing.
+
+### Ported lines (each with its capture pin and silence leg)
+
+- **WARN `Preset listing failed for store`:** `pascal_tool_preset_pool_equivalence` (three broken scenarios) and the route row `presets-unread`. Every clean scenario logs none.
+- **DEBUG `Tool presets resolved`:** once per walk in both families. `characterId: null` renders absent.
+- **DEBUG `Custom-tool presets listed for the operator`:** every 200 presets row. No 400/404 row logs it.
+- **Tier 2 WARN `Custom-tool perspective dropped — character unreadable`:** `presets-broken-vault-perspective`. All 66 other rows are silent.
+- **Tier 2 WARN `Custom-tool listing failed for mount`:** `list-unread-store` (three, one per perspective), plus `the_library_names_every_store_and_a_failed_listing`'s capture. Alpha's empty store is the silence leg.
+
+### Item 7: the families that resolve a roster, re-run at the tip from the pin
+
+All seven are unmoved:
+
+- `pascal_run_custom`, `pascal_trigger_runner`, `pascal_custom_tools_execution` and `pascal_intervention_route` are green through the sweep driver (regenerated from the pin).
+- `pascal_build_tools_roster` is green and has no oracle.
+- **`pascal_run_custom_handler` and `pascal_workbench_route` cannot regenerate at this base.** Their profile create throws `acceptsSamplingParameters is not a function`. This is the P4.D362 profile class (fixed on P4.D362's branch, `57a39acb3` / `9024789a2`, not in `REACH`).
+  - Measured anyway on SCRATCH copies (uncommitted, `/tmp/p4d379/measure/`). The copies carry the setup's mocks plus the real `acceptsSamplingParameters`, and v4's `maxImagesPerRequest` DDL where the table exists.
+  - Result: 53 / 53 and 91 / 91 green.
+  - On the union they regenerate with P4.D362's oracle fix.
+
+### Survey corrections and findings
+
+1. The pool's "never throws" is false for the mount read (P-5). v5 propagates a `find_service_info_by_id` error.
+2. v5 lacked both pre-existing WARNs. Both are ported (items 8 and 9).
+3. `parsePresetFromPath`'s overlap case is a panic hazard, and `localeCompare` is not code-unit order. Both are pinned.
+4. The discovery family reddens on this lane's hunk, as the order claimed: one row.
+5. **NEW:** the census moved +2, not +1 (see red-first).
+6. **NEW:** the route oracle could not run at the pin before this lane.
+   - The `profile: true` case's create threw (`acceptsSamplingParameters`, then `no column named maxImagesPerRequest`) and killed the whole run after row 10.
+   - Fixed in the case, fenced: provider-validation is doMocked with the setup's three mocks plus the real function, and v4's `add-profile-max-images-per-request-v1` DDL is applied to that case's copy only.
+   - The profile's `parameters` is `{}`, so nothing is stripped. v5's side of that row is unchanged at this base.
+7. **NEW:** jest prefixes Node's fs error text with `Error: ` (`Error: EACCES: …`). Real Node's `getErrorMessage` and v5 both answer it bare. The route harness strips the prefix from v4's side, and records it.
+8. The `?action=presets` rows are replayed through `chat_custom_tool_presets` with a local first-value query read. The edge arm is pinned in `quilltap-web`'s `query_param_semantics_equivalence`, whose `?action=presets&tool=Coin&tool=coin` assertion pins the first-value rule plus the 400. `presets-unknown-action`'s v4 bytes are compared with the same literal the web test pins against v5.
+
+### Tier 3 records
+
+- **Item 10, NOT PORTED by P-2:** `sanitizePresetNameInput` and `presetSettingsPath`, named in `tool_presets.rs`'s module doc.
+- **Item 11, P-5:** a mount-read failure propagates as the route's `internal(e)` 500. It has no corpus row (it needs a throwing plant that fails both reads).
+- **Item 12:** P4.D328's ruling stands. A `None` base path is an empty store, not `unread` (kept in `list_tools_folder_files`).
+
+### HANDOFFs
+
+- **H1 → P4.D388:** retire `apps/web/src/app/pascal/tool-presets.ts`'s "no Rust twin" note. The twin is `crates/quilltap-core/src/pascal/tool_presets.rs`. The wire is C11: `chatCustomToolPresets {chatId, tool?, asCharacterId?}` → `customToolPresets`.
+- **H2 → P4.D382:** vendor the help and API docs. No edit here.
+- **H3 → unifier:** `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE`: this lane is +2 (523 → 525 at this tip). Recount by number on the union. The two `query_param_semantics` asserts read `["interventions","presets"]`.
+- **H4 → P4.D376:** none needed. `order_mounts(pool, false)` and `Roster::Open` / `Enabled::Require` were already there.
+- **Union obligation:** regenerate `pascal_run_custom_handler` and `pascal_workbench_route` on the union with P4.D362's oracle fix.
+- **C17:** no About change.
+
+### Gate
+
+- fmt clean; clippy `--workspace --all-targets -D warnings`, plain AND `--features quilltap-core/native-transport`: clean (`apps/web/dist` built in the lane).
+- `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` (env `/tmp/p4d379/gate-env.sh`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin; one sibling gate running, within the two-gate cap): **903 binaries / 6,030 passed / 6 failed / 3 ignored.** The six:
+  - `tri_state_edges_share_the_decoder` — MINE (the presets arm is a hand-built construction; 8 → 9, 157 → 158), fixed in `0a75d22c2`, green by name;
+  - `spelling_guard` — the base's known red (`surveys/2026-11-04-setupphase-vendor-norport.md:295`, fixed on main);
+  - `builtin_prompt_templates_guard` (21 vs 22 prompts) → P4.D373; `provider_sdk_version_guard` → P4.D364; `qtap_schema_embed_guard` → P4.D362 — each reads the pin;
+  - `cli_differential` (`db help` text: v4's `db integrity`) → P4.D365.
+- My families by name with `--nocapture`: ZERO `SKIP`; tool presets 71 rows, pool 15, roster 62, route 67, run_custom 40, handler 53 (scratch-measured oracle), trigger runner 30, workbench 91 (scratch-measured), execution, intervention route; `pascal_presets_wire_contract` 4, `query_param_semantics` 3, `dispatch_wrong_type_census` 14, `pascal_build_tools_roster` 2.
+- Censuses by name: `fallback_home_guard`, `web_edge_body_parse_guard`, `realtime_publish_sites_guard` green (no new route; no topic); `spelling_guard` red only on the base's survey line.
+- No SPA file moves (no SPA gate / Playwright / Tier R).
+
+**Versions at close:** core 0.0.1435, web 0.0.257. Host, cli, tauri, sys, harness and SPA are untouched.
+
+### 💸 Owed dogfood rows (no spend)
+
+- On a Friday copy, `GET /api/v1/chats/<a project chat>/custom-tools?action=presets&tool=<a real tool>`:
+  - `stores` lists the vault, each group store, the project's stores (official first) and General, nearest first;
+  - plant `Tools/<tool>.house.settings.json` in General and in the vault, and the vault's copy wins with General in `shadows`.
+- The same request with `asCharacterId` set to a second character in the room (a different vault tier).
+- `?action=foo` lists `["interventions","presets"]`.
+
+Oracles are under `/tmp/p4d379/` for the unifier's read. The regen recipes are the four families' headers, run from the pin. The scripts are `/tmp/p4d379/regen-{discovery,pool,route}.sh`, plus the `tsx` line in `pascal_tool_presets_equivalence.rs`.
