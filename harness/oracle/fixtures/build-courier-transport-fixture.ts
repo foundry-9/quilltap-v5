@@ -44,6 +44,10 @@ interface MessageSpec {
   createdAt: string;
   targetParticipantIds?: string[];
   systemSender?: string;
+  /** P4.D372: a machine fact's `systemKind: 'established-fact'`. */
+  systemKind?: string;
+  /** P4.D372: a seat line posted as established fact. */
+  isEstablishedFact?: boolean;
 }
 interface ChatSpec {
   id: string;
@@ -227,6 +231,8 @@ async function main(): Promise<void> {
           attachments: [],
           ...(m.targetParticipantIds ? { targetParticipantIds: m.targetParticipantIds } : {}),
           ...(m.systemSender ? { systemSender: m.systemSender } : {}),
+          ...(m.systemKind ? { systemKind: m.systemKind } : {}), // P4.D372
+          ...(m.isEstablishedFact !== undefined ? { isEstablishedFact: m.isEstablishedFact } : {}), // P4.D372
         })) as never
       );
     }

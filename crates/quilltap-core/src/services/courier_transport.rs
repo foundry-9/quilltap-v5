@@ -346,6 +346,17 @@ fn build_courier_delta_events(
     }
 
     let resolve_speaker = |event: &Value| -> String {
+        // P4.D372 (v4 `db6190b44`): a machine-delivered established fact
+        // belongs to no speaker — BEFORE the Staff arm, which it would
+        // otherwise fall into as `[Staff: Host]`.
+        if crate::established_fact::is_established_fact_announcement(
+            &crate::established_fact::EstablishedFactFields::from_value(event),
+        ) {
+            return format!(
+                "[{}]",
+                crate::established_fact::ESTABLISHED_FACT_SPEAKER_LABEL
+            );
+        }
         if let Some(sender) = event
             .get("systemSender")
             .and_then(Value::as_str)
@@ -411,6 +422,7 @@ fn build_courier_delta_events(
     };
 
     let mut delta_events: Vec<CourierDeltaEvent> = Vec::new();
+    let mut framed_facts = 0usize; // P4.D372
     for event in &fresh_messages {
         if event.get("type").and_then(Value::as_str) != Some("message") {
             continue;
@@ -467,20 +479,42 @@ fn build_courier_delta_events(
             }
         }
 
+        // P4.D372 (v4 `db6190b44`): established facts are framed here as
+        // everywhere a model reads them — plain voice, matching
+        // `extract_visible_conversation`; this transport reads raw rows, so
+        // the context builder's frame pass never reaches it.
+        let framed_fact = crate::established_fact::framed_established_fact_body_of_value(
+            event,
+            crate::established_fact::EstablishedFactVoice::Plain,
+        );
+        if framed_fact.is_some() {
+            framed_facts += 1;
+        }
         delta_events.push(CourierDeltaEvent {
             speaker: resolve_speaker(event),
             created_at: created_at.to_string(),
-            content: event
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
+            content: framed_fact.unwrap_or_else(|| {
+                event
+                    .get("content")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            }),
             attachments: if attachments.is_empty() {
                 None
             } else {
                 Some(attachments)
             },
         });
+    }
+
+    // P4.D372: v4's literal — no bracketed tag.
+    if framed_facts > 0 {
+        tracing::debug!(
+            chatId = %chat_id,
+            framedFacts = framed_facts,
+            "Courier delta: framed established facts"
+        );
     }
 
     Ok(delta_events)
@@ -1212,4 +1246,123 @@ mod tests {
             assert!(!lower.contains(word), "leak of {word}: {text}");
         }
     }
+
+    // === P4.D372 ===
+    /// v4 `established-fact-leaks.test.ts` "the Courier delta bundle": both
+    /// kinds framed in the plain voice, the machine fact labelled
+    /// `[Established fact]` (not `[Staff: Host]`), the UI name nowhere — and
+    /// v4's `Courier delta: framed established facts` DEBUG with its silence
+    /// leg (a delta holding no fact logs nothing).
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_delta_frames_both_facts_and_logs_the_count() {
+        use crate::established_fact::{leak_tests, EstablishedFactVoice};
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        const CHAT: &str = "c3000000-0000-4000-8000-0000000000d1";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Courier Facts",
+            "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)?;
+            for mut row in [
+                leak_tests::seat_line(),
+                leak_tests::machine_fact(),
+                leak_tests::reply(),
+            ] {
+                // The v5 row ids are UUID-shaped (the raw read drops others).
+                let id = match row["id"].as_str().unwrap() {
+                    "m-seat" => "d1000000-0000-4000-8000-000000000001",
+                    "m-fact" => "d1000000-0000-4000-8000-000000000002",
+                    _ => "d1000000-0000-4000-8000-000000000003",
+                };
+                row["id"] = json!(id);
+                if !row["participantId"].is_null() {
+                    let pid = if row["participantId"] == "p-user" {
+                        "e1000000-0000-4000-8000-000000000001"
+                    } else {
+                        "e1000000-0000-4000-8000-000000000002"
+                    };
+                    row["participantId"] = json!(pid);
+                }
+                let ev: crate::db::chats_messages::ChatEventInput =
+                    serde_json::from_value(row).unwrap();
+                w.main().chat_messages().add_message(CHAT, &ev)?;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let chat = db
+            .read_main(|c| Ok(chats_read::find_by_id_or_none(c, CHAT)))
+            .unwrap()
+            .unwrap();
+        let run = |resolved_at: &str| {
+            let resolved_at = resolved_at.to_string();
+            crate::test_support::captured_with(|| {
+                db.read_main(|c| {
+                    build_courier_delta_events(
+                        c,
+                        CHAT,
+                        &CourierCheckpoint {
+                            last_resolved_message_id: String::new(),
+                            resolved_at,
+                        },
+                        &chat,
+                        &HashMap::new(),
+                        &json!({ "id": "c-alice", "name": "Alice" }),
+                        "e1000000-0000-4000-8000-000000000002",
+                        "Captain",
+                    )
+                })
+                .unwrap()
+            })
+        };
+        let (events, lines) = run("2000-01-01T00:00:00.000Z");
+        assert_eq!(events.len(), 3, "{events:?}");
+        assert_eq!(events[1].speaker, "[Established fact]");
+        let text: String = events
+            .iter()
+            .map(|e| format!("{}: {}\n", e.speaker, e.content))
+            .collect();
+        leak_tests::expect_facts_framed(&text, EstablishedFactVoice::Plain);
+        let hits: Vec<_> = lines
+            .iter()
+            .filter(|l| l.contains("Courier delta: framed established facts"))
+            .collect();
+        assert_eq!(hits.len(), 1, "{lines:?}");
+        assert!(
+            hits[0].starts_with("DEBUG")
+                && hits[0].ends_with(&format!("chatId={CHAT} framedFacts=2")),
+            "{}",
+            hits[0]
+        );
+        // Silence leg: a delta after both facts holds only the reply.
+        let (events, lines) = run("2026-10-01T10:01:30.000Z");
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("framed established facts")),
+            "{lines:?}"
+        );
+    }
+    // === /P4.D372 ===
 }

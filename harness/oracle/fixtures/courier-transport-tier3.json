@@ -44,7 +44,9 @@
         { "id": "00000000-0000-4000-8000-00000000b001", "role": "ASSISTANT", "content": "Basil speaks in the open.", "participantId": "00000000-0000-4000-8000-00000000a022", "createdAt": "2020-06-01T00:00:01.000Z" },
         { "id": "00000000-0000-4000-8000-00000000b011", "role": "ASSISTANT", "content": "A whisper meant only for Basil.", "participantId": "00000000-0000-4000-8000-00000000a022", "createdAt": "2020-06-01T00:00:02.000Z", "targetParticipantIds": ["00000000-0000-4000-8000-00000000a022"] },
         { "id": "00000000-0000-4000-8000-00000000b012", "role": "ASSISTANT", "content": "The Commonplace Book recalls for Aria.", "systemSender": "commonplaceBook", "createdAt": "2020-06-01T00:00:03.000Z", "targetParticipantIds": ["00000000-0000-4000-8000-00000000a021"] },
-        { "id": "00000000-0000-4000-8000-00000000b013", "role": "USER", "content": "This one is exactly at the checkpoint and must be skipped.", "participantId": "00000000-0000-4000-8000-00000000a023", "createdAt": "2020-01-01T00:00:00.000Z" }
+        { "id": "00000000-0000-4000-8000-00000000b013", "role": "USER", "content": "This one is exactly at the checkpoint and must be skipped.", "participantId": "00000000-0000-4000-8000-00000000a023", "createdAt": "2020-01-01T00:00:00.000Z" },
+        { "id": "00000000-0000-4000-8000-00000000b014", "role": "ASSISTANT", "content": "The river has risen above the old mill.", "systemSender": "host", "systemKind": "established-fact", "createdAt": "2020-06-01T00:00:04.000Z" },
+        { "id": "00000000-0000-4000-8000-00000000b015", "role": "USER", "content": "The bridge to Ashford collapsed in the night.", "participantId": "00000000-0000-4000-8000-00000000a023", "createdAt": "2020-06-01T00:00:05.000Z", "isEstablishedFact": true }
       ]
     },
     {
