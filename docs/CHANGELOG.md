@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(tools): run_sql fits results to v4's 24,000-character budget with the note; the BrahmaSql DEBUG lines (P4.D374)
+
+_Versions: core 0.0.1430._
+
+P4.D374 Tier 1 item 12 + Tier 2 item 20. `tools/run_sql.rs` gains v4's `fitToBudget` (`c539c82e0`): results over 24,000 UTF-16 units of `JSON.stringify(rows)` get string cells over 600 units clipped with v4's `… [N chars; select substr(<key>, …) to read more]` suffix, then trailing rows dropped by the 0.75 loop. `truncated` now also covers dropped rows, and the success envelope carries v4's `note` last, only when the budget was exceeded (its parts list can be empty, as in v4). The budget is measured with the JS `json_stringify` twin (ruling L-4). Measured: `serde_json` and V8 agree on `1e21` (`1e+21`) and disagree on `1e20` (`1e20` vs `100000000000000000000`), so the `1e20` rows are the mutation guard. `RUN_SQL_LONE_SURROGATE_CLIP` is a named both-ways table (L-3). v4's five `BrahmaSql` DEBUG lines are now logged on the caller thread with `context=BrahmaSql`: the new `run_sql result shortened to fit the size budget`, plus the pre-existing `rejected by pre-scan`, `prepare failed`, `rejected: statement is not read-only` and `execution failed`, which v5 had never logged. New tier-1 family `run_sql_fit_to_budget_equivalence` (18 rows); `state_sql_tools_equivalence` grows six cases (five budget, one run-time failure) and compares every `run_sql` case's lines, silence included.
+
 #### 2026-11-08 — docs(porting): P4.D374 — record the CATALOG sha 91ccabb06
 
 _Docs-only change._

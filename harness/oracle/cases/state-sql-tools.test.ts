@@ -134,7 +134,30 @@ const SQL_CASES: SqlCase[] = [
   { label: 'sql_prepare_error', kind: 'run_sql', args: { sql: 'SELECT * FROM nonexistent_table' } },
   { label: 'sql_mutating_pragma', kind: 'run_sql', args: { sql: 'PRAGMA journal_mode = WAL' } },
   { label: 'sql_validation_nonobject', kind: 'run_sql', args: 'nope' },
+  // === P4.D374 === the result size budget (`fitToBudget`, v4 `c539c82e0`):
+  // three wide results generated in-query (`hex(zeroblob(n))` is 2n '0's), so
+  // no fixture plant is needed; and the run-time failure arm (prepare succeeds,
+  // the step throws) that item 20's `run_sql execution failed` line needs.
+  { label: 'sql_budget_clip_then_drop', kind: 'run_sql', args: { sql: "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 60) SELECT i, substr(hex(zeroblob(400)), 1, 700) AS t FROM n" } },
+  { label: 'sql_budget_drop_only', kind: 'run_sql', args: { sql: "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100) SELECT i, hex(zeroblob(200)) AS t FROM n" } },
+  { label: 'sql_budget_one_wide_row', kind: 'run_sql', args: { sql: `SELECT ${Array.from({ length: 50 }, (_, k) => `hex(zeroblob(295)) AS c${k}`).join(', ')}` } },
+  { label: 'sql_budget_capped_and_dropped', kind: 'run_sql', args: { sql: "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300) SELECT i, hex(zeroblob(200)) AS t FROM n", max_rows: 250 } },
+  { label: 'sql_budget_under', kind: 'run_sql', args: { sql: "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20) SELECT i, hex(zeroblob(300)) AS t FROM n" } },
+  { label: 'sql_exec_error', kind: 'run_sql', args: { sql: "SELECT json('not json') AS j" } },
+  // === /P4.D374 ===
 ];
+
+// === P4.D374 === the `BrahmaSql` child logger's lines (`run-sql-handler.ts`),
+// captured through the singleton logger's transports (memory note
+// `v4-oracle-job-host-and-log-capture` §2); `service` / `environment` dropped.
+const PINNED_SQL_MESSAGES = new Set([
+  'run_sql rejected by pre-scan',
+  'run_sql prepare failed',
+  'run_sql rejected: statement is not read-only',
+  'run_sql execution failed',
+  'run_sql result shortened to fit the size budget',
+]);
+// === /P4.D374 ===
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -175,7 +198,7 @@ async function main(): Promise<void> {
     process.env.SQLITE_LLM_LOGS_PATH = llmWork;
     process.env.QUILLTAP_DATA_DIR = scratch;
     delete process.env.SQLITE_WAL_MODE;
-    process.env.LOG_LEVEL = 'error';
+    process.env.LOG_LEVEL = c.kind === 'run_sql' ? 'debug' : 'error';
 
     jest.resetModules();
     jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
@@ -253,9 +276,23 @@ async function main(): Promise<void> {
         '@/lib/database/backends/sqlite/llm-logs-client'
       );
       getRawLLMLogsDatabase();
+      // === P4.D374 === capture the pinned lines.
+      const { logger } = await import('@/lib/logger');
+      const logs: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+      const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+      internal.transports.splice(0, internal.transports.length, {
+        write: (d: unknown) => {
+          const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+          if (!PINNED_SQL_MESSAGES.has(data.message)) return;
+          const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+          if (data.error) fields.error = data.error.message;
+          logs.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+        },
+      });
+      // === /P4.D374 ===
       const out = await executeRunSqlTool(c.args, { userId: spec.userId });
       const resultJson = JSON.stringify(out);
-      lines.push(JSON.stringify({ label: c.label, kind: 'run_sql', resultJson }));
+      lines.push(JSON.stringify({ label: c.label, kind: 'run_sql', resultJson, logs }));
     }
 
     await closeDatabase();

@@ -39,6 +39,8 @@
 //!   QT_FIXTURE_TMP_LLM=/tmp/qt-state-llm.db \
 //!     cargo test -p quilltap-harness --test state_sql_tools_equivalence
 
+mod common;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -92,6 +94,36 @@ struct OracleRow {
     group_alpha_state: Option<Value>,
     #[serde(default, rename = "generalState")]
     general_state: Option<Value>,
+    /// P4.D374: the `BrahmaSql` lines a `run_sql` case logged (absent on a
+    /// `state` row).
+    #[serde(default)]
+    logs: Option<Vec<Value>>,
+}
+
+/// P4.D374: the `BrahmaSql` child logger's lines this family pins (the
+/// oracle's `PINNED_SQL_MESSAGES`).
+const PINNED_SQL_MESSAGES: [&str; 5] = [
+    "run_sql rejected by pre-scan",
+    "run_sql prepare failed",
+    "run_sql rejected: statement is not read-only",
+    "run_sql execution failed",
+    "run_sql result shortened to fit the size budget",
+];
+
+/// Capture every event a future emits, the guard held across the await (the
+/// test runs on tokio's current-thread runtime, so the thread-scoped rig sees
+/// the whole call — every `BrahmaSql` line is emitted on the caller's thread).
+async fn captured_async<T, F: std::future::Future<Output = T>>(f: F) -> (T, Vec<String>) {
+    use tracing_subscriber::layer::SubscriberExt;
+    let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let subscriber = tracing_subscriber::registry()
+        .with(quilltap_core::test_support::CaptureLayer(logs.clone()));
+    let out = {
+        let _guard = tracing::subscriber::set_default(subscriber);
+        f.await
+    };
+    let lines = logs.lock().unwrap().clone();
+    (out, lines)
 }
 
 fn spec_path() -> PathBuf {
@@ -705,12 +737,44 @@ async fn run_sql_cases(
             label: "sql_validation_nonobject",
             args: Value::String("nope".into()),
         },
+        // === P4.D374 === the result size budget + the run-time failure arm.
+        SqlCase {
+            label: "sql_budget_clip_then_drop",
+            args: json!({ "sql": "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 60) SELECT i, substr(hex(zeroblob(400)), 1, 700) AS t FROM n" }),
+        },
+        SqlCase {
+            label: "sql_budget_drop_only",
+            args: json!({ "sql": "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 100) SELECT i, hex(zeroblob(200)) AS t FROM n" }),
+        },
+        SqlCase {
+            label: "sql_budget_one_wide_row",
+            args: json!({ "sql": format!(
+                "SELECT {}",
+                (0..50).map(|k| format!("hex(zeroblob(295)) AS c{k}")).collect::<Vec<_>>().join(", ")
+            ) }),
+        },
+        SqlCase {
+            label: "sql_budget_capped_and_dropped",
+            args: json!({ "sql": "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300) SELECT i, hex(zeroblob(200)) AS t FROM n", "max_rows": 250 }),
+        },
+        SqlCase {
+            label: "sql_budget_under",
+            args: json!({ "sql": "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20) SELECT i, hex(zeroblob(300)) AS t FROM n" }),
+        },
+        SqlCase {
+            label: "sql_exec_error",
+            args: json!({ "sql": "SELECT json('not json') AS j" }),
+        },
+        // === /P4.D374 ===
     ];
+    let mut logged_cases = 0usize;
+    let mut silent_cases = 0usize;
 
     for c in &cases {
         let (main, mount, llm) = fresh_copy(main_fx, mount_fx, llm_fx, c.label);
         let db = open_three_db(&main, &mount, &llm, &spec.test_pepper_base64);
-        let out = execute_run_sql_tool(&db, &c.args, &spec.user_id).await;
+        let (out, lines) =
+            captured_async(execute_run_sql_tool(&db, &c.args, &spec.user_id)).await;
         let got_json = serde_json::to_string(&out).unwrap();
 
         let want = oracle
@@ -722,10 +786,32 @@ async fn run_sql_cases(
             "resultJson diverged for {}",
             c.label
         );
+        // P4.D374: v4's `BrahmaSql` lines, line for line (the silence leg is
+        // every case whose oracle row logged nothing — v5 must log nothing).
+        let want_lines: Vec<String> = want
+            .logs
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle row {} has no `logs`", c.label))
+            .iter()
+            .map(|l| common::v4_log_as_capture_line("quilltap::tools", l))
+            .collect();
+        let got_lines =
+            common::pinned_capture_lines(&lines, "quilltap::tools", &PINNED_SQL_MESSAGES);
+        assert_eq!(got_lines, want_lines, "BrahmaSql lines diverged for {}", c.label);
+        if want_lines.is_empty() {
+            silent_cases += 1;
+        } else {
+            logged_cases += 1;
+        }
 
         drop(db);
         for p in [&main, &mount, &llm] {
             clear(p);
         }
     }
+    // Every pinned line is reached: the pre-scan arm (write, CTE write,
+    // multi-statement, empty), prepare, not-read-only, execution, and four
+    // budget cases.
+    assert!(logged_cases >= 8, "only {logged_cases} run_sql cases logged a BrahmaSql line");
+    assert!(silent_cases >= 5, "only {silent_cases} silent run_sql cases");
 }
