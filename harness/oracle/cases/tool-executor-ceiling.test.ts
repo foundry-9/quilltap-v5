@@ -66,6 +66,15 @@ const ROWS: Row[] = [
   { id: 'run-custom-named-read-within', call: { name: 'run_custom', arguments: { tool: 'peek' } }, effectCeiling: 'read', customToolEffects: [['unlock', 'write'], ['peek', 'read']] },
   { id: 'unknown-within-destroy', call: { name: 'some_mcp_tool', arguments: {} }, effectCeiling: 'destroy' },
   { id: 'unknown-no-ceiling', call: { name: 'some_mcp_tool', arguments: {} }, effectCeiling: null },
+  // === P4.D374 === the four Brahma lookups declare `read` (v4 `c539c82e0`):
+  // within a `read` ceiling, refused under `none`.
+  { id: 'p4d374-lookup-character-under-read', call: { name: 'lookup_character', arguments: { character: 'x' } }, effectCeiling: 'read' },
+  { id: 'p4d374-lookup-memories-under-none', call: { name: 'lookup_memories', arguments: { query: 'x' } }, effectCeiling: 'none' },
+  { id: 'p4d374-lookup-messages-under-read', call: { name: 'lookup_messages', arguments: { query: 'x' } }, effectCeiling: 'read' },
+  { id: 'p4d374-read-messages-under-none', call: { name: 'read_messages', arguments: { conversation_id: 'x' } }, effectCeiling: 'none' },
+  { id: 'p4d374-lookup-character-under-none', call: { name: 'lookup_character', arguments: { character: 'x' } }, effectCeiling: 'none' },
+  { id: 'p4d374-read-messages-under-write', call: { name: 'read_messages', arguments: { conversation_id: 'x' } }, effectCeiling: 'write' },
+  // === /P4.D374 ===
 ];
 
 describe('tool executor effect ceiling (P4.D343 oracle)', () => {

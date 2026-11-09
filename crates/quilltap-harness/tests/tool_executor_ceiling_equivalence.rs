@@ -212,7 +212,7 @@ fn tool_executor_ceiling_matches_v4() {
     }
     eprintln!("tool_executor_ceiling_equivalence: {rows} rows ({refused_rows} refused, {silent_rows} silent)");
     assert!(
-        rows >= 13 && refused_rows >= 5 && silent_rows >= 1,
+        rows >= 19 && refused_rows >= 8 && silent_rows >= 1,
         "stale or truncated oracle"
     );
     assert!(

@@ -1800,6 +1800,27 @@ pub fn unconsidered_hot_count_or_zero(
     })
 }
 
+// === P4.D374 === v4 `countByCharacterId` (`memories.repository.ts:973-983`),
+// the Brahma lookups' reader: ERROR `Error counting memories for character
+// {collection, characterId, error}`, fallback 0 (MEASURED at `624d0d25c`: a
+// broken `memories` table answers `0`, never a throw).
+pub fn memories_count_by_character_or_zero(
+    character_id: &str,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting memories for character"
+        );
+    })
+}
+// === /P4.D374 ===
+
 // (P4.D288: `findColdIdsByCharacterId`'s home RETIRED with v4's reader,
 // `af48f6cc2` — the store loads tiers from rows now.)
 

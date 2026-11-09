@@ -773,8 +773,7 @@ async fn run_sql_cases(
     for c in &cases {
         let (main, mount, llm) = fresh_copy(main_fx, mount_fx, llm_fx, c.label);
         let db = open_three_db(&main, &mount, &llm, &spec.test_pepper_base64);
-        let (out, lines) =
-            captured_async(execute_run_sql_tool(&db, &c.args, &spec.user_id)).await;
+        let (out, lines) = captured_async(execute_run_sql_tool(&db, &c.args, &spec.user_id)).await;
         let got_json = serde_json::to_string(&out).unwrap();
 
         let want = oracle
@@ -797,7 +796,11 @@ async fn run_sql_cases(
             .collect();
         let got_lines =
             common::pinned_capture_lines(&lines, "quilltap::tools", &PINNED_SQL_MESSAGES);
-        assert_eq!(got_lines, want_lines, "BrahmaSql lines diverged for {}", c.label);
+        assert_eq!(
+            got_lines, want_lines,
+            "BrahmaSql lines diverged for {}",
+            c.label
+        );
         if want_lines.is_empty() {
             silent_cases += 1;
         } else {
@@ -812,6 +815,12 @@ async fn run_sql_cases(
     // Every pinned line is reached: the pre-scan arm (write, CTE write,
     // multi-statement, empty), prepare, not-read-only, execution, and four
     // budget cases.
-    assert!(logged_cases >= 8, "only {logged_cases} run_sql cases logged a BrahmaSql line");
-    assert!(silent_cases >= 5, "only {silent_cases} silent run_sql cases");
+    assert!(
+        logged_cases >= 8,
+        "only {logged_cases} run_sql cases logged a BrahmaSql line"
+    );
+    assert!(
+        silent_cases >= 5,
+        "only {silent_cases} silent run_sql cases"
+    );
 }

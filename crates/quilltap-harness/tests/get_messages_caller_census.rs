@@ -359,6 +359,11 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     // the handlers, the Carina path, the fold catch-up and `queue-memories`
     // all read through it now.
     ("services/turn_transcript.rs", "load_chat_message_events", F),
+    // === P4.D374 === `read_messages` (v4 `c539c82e0`) reads the slice through
+    // `repos.chats.getMessages` — the FALLBACK read (MEASURED at `624d0d25c`:
+    // a broken `chat_messages` answers zero spoken lines, never the catch).
+    ("tools/brahma_lookup.rs", "read_messages_inner", F),
+    // === /P4.D374 ===
     ("tools/generate_image.rs", "gather_db_context", F),
 ];
 
@@ -554,9 +559,10 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // `db/chats_messages_read.rs`): 83 and 50.
     // P4.D372 added THREE fallback sites in three new files (the
     // established-fact handler, and the writer / operator-post unit tests that
-    // read their rows back): 86 and 53.
-    assert_eq!((swallowing, strict), (86, 7), "census totals");
-    assert_eq!(file_count, 53, "census files");
+    // read their rows back), and P4.D374 added ONE in a new file
+    // (`tools/brahma_lookup.rs::read_messages_inner`): 87 and 54.
+    assert_eq!((swallowing, strict), (87, 7), "census totals");
+    assert_eq!(file_count, 54, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

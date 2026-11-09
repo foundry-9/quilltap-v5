@@ -68,10 +68,10 @@ use super::wardrobe_tool_table::{
     WARDROBE_TOOL_NAMES,
 };
 use super::{
-    annotations, ask_carina, discard_mail, doc_edit, edit_custom_tool, help, help_search,
-    list_mail, log_create_entry, log_grep, log_read, photo, project_info, read_conversation,
-    read_mail, request_full_context, rng, run_custom, run_sql, search, self_inventory, send_mail,
-    state, terminal, web_search, whisper,
+    annotations, ask_carina, brahma_lookup, discard_mail, doc_edit, edit_custom_tool, help,
+    help_search, list_mail, log_create_entry, log_grep, log_read, photo, project_info,
+    read_conversation, read_mail, request_full_context, rng, run_custom, run_sql, search,
+    self_inventory, send_mail, state, terminal, web_search, whisper,
 };
 use crate::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
 use crate::db::runtime::Db;
@@ -125,6 +125,12 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "delete_annotation",
     "search",
     "run_sql",
+    // === P4.D374 === v4 `...BRAHMA_LOOKUP_TOOL_NAMES` right after `run_sql`.
+    "lookup_character",
+    "lookup_memories",
+    "lookup_messages",
+    "read_messages",
+    // === /P4.D374 ===
     "wardrobe_list",
     "wardrobe_read",
     "wardrobe_create",
@@ -263,6 +269,12 @@ pub const PORTED_TOOLS: &[&str] = &[
     // W4.1d5: host-seamed + remaining tools (state + run_sql + the Post Office).
     "state",
     "run_sql",
+    // === P4.D374 === the four Brahma lookups (v4 `c539c82e0`).
+    "lookup_character",
+    "lookup_memories",
+    "lookup_messages",
+    "read_messages",
+    // === /P4.D374 ===
     "send_mail",
     "list_mail",
     // P4.D234: the Post Office's own letter tools (v4 `39bc98ffc`/`12c336fad`).
@@ -676,6 +688,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // W4.1d5
             "state" => self.run_state(tc, ctx).await,
             "run_sql" => self.run_run_sql(tc, ctx).await,
+            // === P4.D374 ===
+            name if brahma_lookup::BRAHMA_LOOKUP_TOOL_NAMES.contains(&name) => {
+                self.run_brahma_lookup(tc, ctx).await
+            }
+            // === /P4.D374 ===
             "send_mail" => self.run_send_mail(tc, ctx).await,
             "list_mail" => self.run_list_mail(tc, ctx).await,
             "read_mail" => self.run_read_mail(tc, ctx).await,
@@ -1320,6 +1337,52 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             run_sql::RunSqlResult::Failure { error } => fail("run_sql", error.clone()),
         }
     }
+
+    // === P4.D374 === the Brahma lookup shortcuts (tool-executor.ts:1066-1088).
+    // Same double gate as run_sql: only offered to the console, and never
+    // executed off the operator surface — they read every character's memories
+    // and every conversation.
+    async fn run_brahma_lookup(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let name = tc.name.as_str();
+        if !ctx.operator_surface {
+            return fail(
+                name,
+                format!("{name} is only available in the Brahma Console."),
+            );
+        }
+        let zone = crate::host_zone::zone_name(&self.display_zone).to_string();
+        let lookup_ctx = brahma_lookup::BrahmaLookupContext {
+            user_id: &ctx.user_id,
+            memory_zone_fallback: &zone,
+            now_ms: crate::clock::now_unix_ms() as f64,
+        };
+        let out = match name {
+            "lookup_character" => {
+                brahma_lookup::execute_lookup_character_tool(&self.db, &tc.arguments, &lookup_ctx)
+            }
+            "lookup_memories" => {
+                brahma_lookup::execute_lookup_memories_tool(
+                    &self.db,
+                    &self.embedding_provider,
+                    &tc.arguments,
+                    &lookup_ctx,
+                )
+                .await
+            }
+            "lookup_messages" => {
+                brahma_lookup::execute_lookup_messages_tool(&self.db, &tc.arguments, &lookup_ctx)
+            }
+            _ => brahma_lookup::execute_read_messages_tool(&self.db, &tc.arguments, &lookup_ctx),
+        };
+        // v4: `result: result.success ? result : null` — the whole object.
+        match &out {
+            brahma_lookup::BrahmaLookupResult::Success(_) => {
+                ok(name, serde_json::to_value(&out).unwrap_or(Value::Null))
+            }
+            brahma_lookup::BrahmaLookupResult::Failure(error) => fail(name, error.clone()),
+        }
+    }
+    // === /P4.D374 ===
 
     // -- search_web (tool-executor.ts:406) ----------------------------------
     fn run_web_search(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
@@ -2608,6 +2671,21 @@ mod tests {
             "wardrobe_rollback",
             "wardrobe_history",
         ] {
+            assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
+            assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));
+        }
+    }
+
+    /// P4.D374: the four Brahma lookups are built-ins (right after `run_sql`,
+    /// v4's `BUILT_IN_TOOLS` spread) and dispatched.
+    #[test]
+    fn brahma_lookup_tools_are_ported() {
+        let at = BUILT_IN_TOOLS.iter().position(|n| *n == "run_sql").unwrap();
+        assert_eq!(
+            &BUILT_IN_TOOLS[at + 1..at + 5],
+            &brahma_lookup::BRAHMA_LOOKUP_TOOL_NAMES[..]
+        );
+        for name in brahma_lookup::BRAHMA_LOOKUP_TOOL_NAMES {
             assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
             assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));
         }

@@ -83,14 +83,8 @@ fn fit_to_budget_matches_oracle() {
         let fit = fit_to_budget(input);
         let mut out = Map::new();
         out.insert("rows".into(), Value::Array(fit.rows));
-        out.insert(
-            "clippedCells".into(),
-            Value::from(fit.clipped_cells as u64),
-        );
-        out.insert(
-            "droppedRows".into(),
-            Value::from(fit.dropped_rows as u64),
-        );
+        out.insert("clippedCells".into(), Value::from(fit.clipped_cells as u64));
+        out.insert("droppedRows".into(), Value::from(fit.dropped_rows as u64));
         if let Some(note) = fit.note {
             out.insert("note".into(), Value::String(note));
         }
@@ -109,7 +103,12 @@ fn fit_to_budget_matches_oracle() {
                 .zip(expected.chars())
                 .take_while(|(a, b)| a == b)
                 .count();
-            let ctx = |s: &str| s.chars().skip(at.saturating_sub(40)).take(140).collect::<String>();
+            let ctx = |s: &str| {
+                s.chars()
+                    .skip(at.saturating_sub(40))
+                    .take(140)
+                    .collect::<String>()
+            };
             red.push(format!(
                 "{id}: differs at char {at}\n   v5: {}\n   v4: {}",
                 ctx(&actual),

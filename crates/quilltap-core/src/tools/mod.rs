@@ -5,6 +5,7 @@
 
 pub mod annotations;
 pub mod ask_carina;
+pub mod brahma_lookup; // P4.D374
 pub mod definitions;
 pub mod discard_mail;
 pub mod doc_edit;

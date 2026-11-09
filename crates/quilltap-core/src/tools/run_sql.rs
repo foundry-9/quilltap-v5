@@ -393,9 +393,10 @@ pub async fn execute_run_sql_tool(db: &Db, args: &Value, user_id: &str) -> RunSq
     // Run the whole prepare + read-only guard + fetch inside the read closure. A
     // SQLite prepare/exec error becomes an `Ok(RunSqlResult::fail(..))`; only a
     // partition-unavailable/open error surfaces as `Err(DbError)`.
-    let run = move |conn: &rusqlite::Connection| -> Result<(RunSqlResult, Option<SqlLog>), DbError> {
-        Ok(run_query(conn, &sql_c, &db_target, max_rows))
-    };
+    let run =
+        move |conn: &rusqlite::Connection| -> Result<(RunSqlResult, Option<SqlLog>), DbError> {
+            Ok(run_query(conn, &sql_c, &db_target, max_rows))
+        };
 
     let result = match database.as_str() {
         "llm-logs" => db.read_llm_logs(run),
@@ -939,7 +940,10 @@ mod tests {
     #[test]
     fn fit_to_budget_arms() {
         let under = fit_to_budget(vec![json!({ "a": "x".repeat(700) })]);
-        assert_eq!((under.clipped_cells, under.dropped_rows, under.note), (0, 0, None));
+        assert_eq!(
+            (under.clipped_cells, under.dropped_rows, under.note),
+            (0, 0, None)
+        );
         let mut wide = Map::new();
         for k in 0..100 {
             wide.insert(format!("c{k}"), json!("x".repeat(300)));
@@ -954,7 +958,10 @@ mod tests {
         assert_eq!(big.clipped_cells, 1);
         assert_eq!(
             big.rows[0]["t"].as_str().unwrap(),
-            format!("{}… [30000 chars; select substr(t, …) to read more]", "y".repeat(600))
+            format!(
+                "{}… [30000 chars; select substr(t, …) to read more]",
+                "y".repeat(600)
+            )
         );
     }
 

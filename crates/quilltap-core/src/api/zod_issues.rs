@@ -2498,6 +2498,146 @@ pub fn zod_log_entry_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssu
 
 // === end P4.D331 ===
 
+// === P4.D374 === the four Brahma lookup tools' input schemas (v4
+// `c539c82e0`: `lib/tools/lookup-character-tool.ts`, `lookup-memories-tool.ts`,
+// `lookup-messages-tool.ts`, `read-messages-tool.ts`).
+//
+// Each returns the issues in SHAPE order (Zod 4 walks an object's keys in
+// shape order), the FIRST failing check per key — the only issue the handler's
+// `invalid()` reads is `issues[0]`. Unknown keys are not issues (`z.object`
+// strips them).
+
+/// `z.string().min(1)` (required) or `z.string().optional()` at `k`.
+fn lookup_string_issue(
+    obj: &serde_json::Map<String, Value>,
+    k: &str,
+    required: bool,
+    issues: &mut Vec<ZodIssue>,
+) {
+    match obj.get(k) {
+        None if !required => {}
+        Some(Value::String(s)) => {
+            // `.min(1)`: any non-empty string has ≥ 1 unit and ≥ 1 code point.
+            if required && s.is_empty() {
+                issues.push(ZodIssue::too_small_string(json!(1), vec![key(k)]));
+            }
+        }
+        other => issues.push(ZodIssue::invalid_type("string", vec![key(k)], other)),
+    }
+}
+
+/// `llmNumber(z.number().int().min(lo)[.max(hi)]).default(d).optional()` at
+/// `k`: the lenient string conversion first ([`crate::tools::llm_number`]), so
+/// a quoted `"7"` is validated as `7`; an absent key takes the default (no
+/// issue). `int()` before the bounds — a non-integer reports the int issue.
+fn lookup_llm_int_issue(
+    obj: &serde_json::Map<String, Value>,
+    k: &str,
+    lo: Option<i64>,
+    hi: Option<i64>,
+    issues: &mut Vec<ZodIssue>,
+) {
+    let Some(raw) = obj.get(k) else {
+        return;
+    };
+    let coerced = crate::tools::llm_number::llm_number(raw);
+    let Some(n) = coerced.as_f64() else {
+        // A non-number survives the preprocess with its original type.
+        issues.push(ZodIssue::invalid_type("number", vec![key(k)], Some(raw)));
+        return;
+    };
+    if n.fract() != 0.0 {
+        issues.push(ZodIssue::invalid_int_type(vec![key(k)], Some(&coerced)));
+        return;
+    }
+    if n > MAX_SAFE_INTEGER_I64 as f64 {
+        issues.push(ZodIssue::too_big_int(vec![key(k)]));
+        return;
+    }
+    if n < -(MAX_SAFE_INTEGER_I64 as f64) {
+        issues.push(ZodIssue::too_small_int(vec![key(k)]));
+        return;
+    }
+    if let Some(lo) = lo.filter(|lo| n < *lo as f64) {
+        issues.push(ZodIssue::too_small_number(json!(lo), vec![key(k)]));
+        return;
+    }
+    if let Some(hi) = hi.filter(|hi| n > *hi as f64) {
+        issues.push(ZodIssue::too_big_number(json!(hi), vec![key(k)]));
+    }
+}
+
+/// The shared root arm: `z.object` over a non-object (an empty path).
+fn lookup_object(input: &Value) -> Result<&serde_json::Map<String, Value>, Vec<ZodIssue>> {
+    input
+        .as_object()
+        .ok_or_else(|| vec![ZodIssue::invalid_type("object", vec![], Some(input))])
+}
+
+/// v4 `lookupCharacterToolInputSchema`: `{ character: z.string().min(1) }`.
+pub fn zod_lookup_character_issues(input: &Value) -> Vec<ZodIssue> {
+    let obj = match lookup_object(input) {
+        Ok(o) => o,
+        Err(i) => return i,
+    };
+    let mut issues = Vec::new();
+    lookup_string_issue(obj, "character", true, &mut issues);
+    issues
+}
+
+/// v4 `lookupMemoriesToolInputSchema`: `query` (min 1); `character`, `about`,
+/// `since`, `until` optional strings; `limit` llmNumber int 1..=30.
+pub fn zod_lookup_memories_issues(input: &Value) -> Vec<ZodIssue> {
+    let obj = match lookup_object(input) {
+        Ok(o) => o,
+        Err(i) => return i,
+    };
+    let mut issues = Vec::new();
+    lookup_string_issue(obj, "query", true, &mut issues);
+    for k in ["character", "about", "since", "until"] {
+        lookup_string_issue(obj, k, false, &mut issues);
+    }
+    lookup_llm_int_issue(obj, "limit", Some(1), Some(30), &mut issues);
+    issues
+}
+
+/// v4 `lookupMessagesToolInputSchema`: `query` (min 1); `character`,
+/// `speaker`, `since`, `until` optional strings; `limit` llmNumber int 1..=30.
+pub fn zod_lookup_messages_issues(input: &Value) -> Vec<ZodIssue> {
+    let obj = match lookup_object(input) {
+        Ok(o) => o,
+        Err(i) => return i,
+    };
+    let mut issues = Vec::new();
+    lookup_string_issue(obj, "query", true, &mut issues);
+    for k in ["character", "speaker", "since", "until"] {
+        lookup_string_issue(obj, k, false, &mut issues);
+    }
+    lookup_llm_int_issue(obj, "limit", Some(1), Some(30), &mut issues);
+    issues
+}
+
+/// v4 `readMessagesToolInputSchema`: `conversation_id` (min 1);
+/// `around_message_id` optional string; `before` / `after` llmNumber int
+/// 0..=10; `offset` llmNumber int (no bounds — negative counts from the end);
+/// `count` llmNumber int 1..=20.
+pub fn zod_read_messages_issues(input: &Value) -> Vec<ZodIssue> {
+    let obj = match lookup_object(input) {
+        Ok(o) => o,
+        Err(i) => return i,
+    };
+    let mut issues = Vec::new();
+    lookup_string_issue(obj, "conversation_id", true, &mut issues);
+    lookup_string_issue(obj, "around_message_id", false, &mut issues);
+    lookup_llm_int_issue(obj, "before", Some(0), Some(10), &mut issues);
+    lookup_llm_int_issue(obj, "after", Some(0), Some(10), &mut issues);
+    lookup_llm_int_issue(obj, "offset", None, None, &mut issues);
+    lookup_llm_int_issue(obj, "count", Some(1), Some(20), &mut issues);
+    issues
+}
+
+// === /P4.D374 ===
+
 #[cfg(test)]
 mod tests {
     /// Zod 4.6.7's length checks compare a non-array's `length` with JS
