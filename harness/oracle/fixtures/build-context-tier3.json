@@ -6326,6 +6326,365 @@
         "messageCount": 80,
         "warnings": []
       }
+    },
+    {
+      "name": "deus_pre_join_fact_and_reminder",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": false,
+          "createdAt": "2024-01-02T00:00:30.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a0",
+          "role": "USER",
+          "content": "A line from before Ada arrived.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a1",
+          "role": "USER",
+          "content": "The Host makes it known, as established fact (true in this story, known to everyone, needing no verification):\n\nThe lamp-oil ledger was burned last winter.",
+          "createdAt": "2024-01-02T00:00:10.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f1"
+          ]
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D372 (v4 db6190b44): the responder joined at 00:00:30 without history access \u2014 a pre-join MARKED fact survives the cut (the attribution DEBUG's factsKept 1) while the plain pre-join line drops; the planted machine fact + seat line (after the join, no own turn in the DB transcript) ride the since-you-last-spoke reminder after inform.",
+      "plantSql": [
+        "INSERT INTO chat_messages (id, chatId, type, role, content, opaqueContent, attachments, createdAt, participantId, systemSender, systemKind) VALUES ('e3720000-0000-4000-8000-0000000000f1', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'The river has risen above the old mill.', 'The river has risen above the old mill.', '[]', '2024-06-15T14:00:00.000Z', NULL, 'host', 'established-fact')",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId, isEstablishedFact) VALUES ('e3720000-0000-4000-8000-0000000000f2', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'USER', 'The bridge to Ashford collapsed in the night.', '[]', '2024-06-15T14:01:00.000Z', 'ba000000-0000-4000-8000-0000000000f3', 1.0)"
+      ],
+      "unplantSql": [
+        "DELETE FROM chat_messages WHERE id IN ('e3720000-0000-4000-8000-0000000000f1', 'e3720000-0000-4000-8000-0000000000f2')"
+      ]
+    },
+    {
+      "name": "deus_reminder_gone_after_own_turn",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": false,
+          "createdAt": "2024-01-02T00:00:30.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a0",
+          "role": "USER",
+          "content": "A line from before Ada arrived.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a1",
+          "role": "USER",
+          "content": "The Host makes it known, as established fact (true in this story, known to everyone, needing no verification):\n\nThe lamp-oil ledger was burned last winter.",
+          "createdAt": "2024-01-02T00:00:10.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f1"
+          ]
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D372: the responder spoke AFTER the facts (planted own turn 14:05) \u2014 no reminder.",
+      "plantSql": [
+        "INSERT INTO chat_messages (id, chatId, type, role, content, opaqueContent, attachments, createdAt, participantId, systemSender, systemKind) VALUES ('e3720000-0000-4000-8000-0000000000f1', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'The river has risen above the old mill.', 'The river has risen above the old mill.', '[]', '2024-06-15T14:00:00.000Z', NULL, 'host', 'established-fact')",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId, isEstablishedFact) VALUES ('e3720000-0000-4000-8000-0000000000f2', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'USER', 'The bridge to Ashford collapsed in the night.', '[]', '2024-06-15T14:01:00.000Z', 'ba000000-0000-4000-8000-0000000000f3', 1.0)",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId) VALUES ('e3720000-0000-4000-8000-0000000000f3', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'Then we take the ferry.', '[]', '2024-06-15T14:05:00.000Z', 'ba000000-0000-4000-8000-0000000000f1')"
+      ],
+      "unplantSql": [
+        "DELETE FROM chat_messages WHERE id IN ('e3720000-0000-4000-8000-0000000000f1', 'e3720000-0000-4000-8000-0000000000f2', 'e3720000-0000-4000-8000-0000000000f3')"
+      ]
+    },
+    {
+      "name": "deus_reminder_swipe_keeps_it",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Welcome to the salon, everyone."
+        },
+        {
+          "role": "assistant",
+          "content": "Delighted to be here among the engines."
+        },
+        {
+          "role": "assistant",
+          "content": "I have been sketching card loops all morning."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": false,
+          "createdAt": "2024-01-02T00:00:30.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a0",
+          "role": "USER",
+          "content": "A line from before Ada arrived.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e3720000-0000-4000-8000-0000000000a1",
+          "role": "USER",
+          "content": "The Host makes it known, as established fact (true in this story, known to everyone, needing no verification):\n\nThe lamp-oil ledger was burned last winter.",
+          "createdAt": "2024-01-02T00:00:10.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e1",
+          "role": "USER",
+          "content": "Welcome to the salon, everyone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:00:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e2",
+          "role": "ASSISTANT",
+          "content": "Delighted to be here among the engines.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-02T00:01:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e3",
+          "role": "ASSISTANT",
+          "content": "I have been sketching card loops all morning.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-02T00:02:00.000Z"
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e4",
+          "role": "USER",
+          "content": "A private aside meant only for Bea.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:03:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f2"
+          ]
+        },
+        {
+          "id": "e0000000-0000-4000-8000-0000000000e5",
+          "role": "USER",
+          "content": "A whisper meant for Ada alone.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-02T00:04:00.000Z",
+          "targetParticipantIds": [
+            "ba000000-0000-4000-8000-0000000000f1"
+          ]
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "_comment": "P4.D372: a swipe of that own turn cuts the transcript at it, so the re-roll gets the same reminder.",
+      "plantSql": [
+        "INSERT INTO chat_messages (id, chatId, type, role, content, opaqueContent, attachments, createdAt, participantId, systemSender, systemKind) VALUES ('e3720000-0000-4000-8000-0000000000f1', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'The river has risen above the old mill.', 'The river has risen above the old mill.', '[]', '2024-06-15T14:00:00.000Z', NULL, 'host', 'established-fact')",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId, isEstablishedFact) VALUES ('e3720000-0000-4000-8000-0000000000f2', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'USER', 'The bridge to Ashford collapsed in the night.', '[]', '2024-06-15T14:01:00.000Z', 'ba000000-0000-4000-8000-0000000000f3', 1.0)",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId) VALUES ('e3720000-0000-4000-8000-0000000000f3', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'Then we take the ferry.', '[]', '2024-06-15T14:05:00.000Z', 'ba000000-0000-4000-8000-0000000000f1')"
+      ],
+      "unplantSql": [
+        "DELETE FROM chat_messages WHERE id IN ('e3720000-0000-4000-8000-0000000000f1', 'e3720000-0000-4000-8000-0000000000f2', 'e3720000-0000-4000-8000-0000000000f3')"
+      ],
+      "regenerationOfMessageIds": [
+        "e3720000-0000-4000-8000-0000000000f3"
+      ]
     }
   ],
   "vaultConversationSummaries": [

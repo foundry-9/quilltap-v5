@@ -251,6 +251,17 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — test(harness): build_context_tier3's deus_* rows + a QT_BC_COMPARE_ONLY knob (P4.D372 item 15)
+
+_No crate versions bumped._
+
+`build_context_tier3_equivalence` gains three ops, appended last (R-L3) and derived from `multi_character_turn`:
+- `deus_pre_join_fact_and_reminder`: a responder without history access keeps a MARKED pre-join fact past the cut and drops the plain pre-join line. The planted machine fact and seat line ride the since-you-last-spoke reminder after the inventory section and before the referent ledger.
+- `deus_reminder_gone_after_own_turn`: the responder spoke after the facts, so there is no reminder.
+- `deus_reminder_swipe_keeps_it`: a swipe of that own turn cuts the transcript at it, so the reminder returns.
+
+Facts plant and unplant by per-op SQL. All three are green against v4 at the pin, and two mutants (the reminder unwired, the history mark dropped) redden the first op. NEW `QT_BC_COMPARE_ONLY` (comma-separated op names) still RUNS every op in order but compares only the named ones. This mirrors `orchestrator_tier3`'s `QT_ORCH_CALLS`, so a lane can prove its rows while a sibling's §R.13 red sits earlier in the corpus. The whole-corpus non-vacuity pins hold only on a full compare. On this branch the family's first full-compare red is `retrospective_recall_turn`: sibling recall drift, recorded for its owner.
+
 #### 2026-11-09 — deus: the transcript projects isEstablishedFact with or_null (P4.D372 item 21, R4)
 
 _Versions: core 0.0.1439._

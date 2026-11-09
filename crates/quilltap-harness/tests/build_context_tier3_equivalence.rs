@@ -738,6 +738,21 @@ async fn build_context_tier3_matches_oracle() {
         profile_parameters: None,
     };
 
+    // === P4.D372 === `QT_BC_COMPARE_ONLY` (comma-separated op names): every op
+    // still RUNS in order (ops share one DB, so a skipped op would move later
+    // premises), but only the named ops are compared — a lane proving its own
+    // rows while a sibling's §R.13 red sits earlier in the corpus (the
+    // `orchestrator_tier3` `QT_ORCH_CALLS` idiom). Unset = compare every op.
+    let compare_only: Option<Vec<String>> = std::env::var("QT_BC_COMPARE_ONLY")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.split(',').map(|s| s.trim().to_string()).collect());
+    let compared = |name: &str| {
+        compare_only
+            .as_ref()
+            .is_none_or(|v| v.iter().any(|n| n == name))
+    };
+    // === /P4.D372 ===
     let mut inform_lines_seen = 0usize;
     let mut yield_lines_seen = 0usize;
     let mut p4d347_lines_seen: std::collections::BTreeMap<String, usize> =
@@ -1327,23 +1342,32 @@ async fn build_context_tier3_matches_oracle() {
         let want_inform_log = oracle_inform_logs
             .get(&op.name)
             .unwrap_or_else(|| panic!("{}: no 'informLog' oracle row — regenerate", op.name));
-        assert_inform_delivery_lines(&op.name, &lines, want_inform_log);
+        let compare_op = compared(&op.name); // P4.D372
+        if compare_op {
+            assert_inform_delivery_lines(&op.name, &lines, want_inform_log);
+        }
         inform_lines_seen += want_inform_log.as_array().map_or(0, Vec::len);
         let want_delivery_log = oracle_delivery_logs
             .get(&op.name)
             .unwrap_or_else(|| panic!("{}: no 'deliveryLog' oracle row — regenerate", op.name));
-        for (msg, n) in assert_delivery_lines(&op.name, &lines, want_delivery_log) {
-            *delivery_lines_seen.entry(msg).or_default() += n;
+        if compare_op {
+            for (msg, n) in assert_delivery_lines(&op.name, &lines, want_delivery_log) {
+                *delivery_lines_seen.entry(msg).or_default() += n;
+            }
         }
         let want_yield_log = oracle_yield_logs
             .get(&op.name)
             .unwrap_or_else(|| panic!("{}: no 'yieldLog' oracle row — regenerate", op.name));
-        yield_lines_seen += assert_yield_note_lines(&op.name, &lines, want_yield_log);
+        if compare_op {
+            yield_lines_seen += assert_yield_note_lines(&op.name, &lines, want_yield_log);
+        }
         let want_p4d347_log = oracle_p4d347_logs
             .get(&op.name)
             .unwrap_or_else(|| panic!("{}: no 'p4d347Log' oracle row — regenerate", op.name));
-        for (msg, n) in assert_p4d347_lines(&op.name, &lines, want_p4d347_log) {
-            *p4d347_lines_seen.entry(msg).or_default() += n;
+        if compare_op {
+            for (msg, n) in assert_p4d347_lines(&op.name, &lines, want_p4d347_log) {
+                *p4d347_lines_seen.entry(msg).or_default() += n;
+            }
         }
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
@@ -1366,12 +1390,14 @@ async fn build_context_tier3_matches_oracle() {
         } else {
             1
         };
-        assert_eq!(
-            (seat_reads, other_reads),
-            (want_seat_reads, 0),
-            "{}: chat_informs reads during ONE build_context (per-seat, other)",
-            op.name
-        );
+        if compare_op {
+            assert_eq!(
+                (seat_reads, other_reads),
+                (want_seat_reads, 0),
+                "{}: chat_informs reads during ONE build_context (per-seat, other)",
+                op.name
+            );
+        }
 
         // Serialize then RE-PARSE the Rust result so both sides pass through the
         // same serde_json float parse. Without the `float_roundtrip` feature
@@ -1384,14 +1410,16 @@ async fn build_context_tier3_matches_oracle() {
         let got_text = serde_json::to_string(&built).expect("serialize built context");
         let got: Value = serde_json::from_str(&got_text).expect("reparse built context");
         let want = normalize_oracle(oracle_result);
-        assert_eq!(
-            got,
-            want,
-            "{}: built context diverges\n got={}\nwant={}",
-            op.name,
-            serde_json::to_string_pretty(&got).unwrap(),
-            serde_json::to_string_pretty(&want).unwrap(),
-        );
+        if compare_op {
+            assert_eq!(
+                got,
+                want,
+                "{}: built context diverges\n got={}\nwant={}",
+                op.name,
+                serde_json::to_string_pretty(&got).unwrap(),
+                serde_json::to_string_pretty(&want).unwrap(),
+            );
+        }
 
         // P4.d15: the WRITE side — the Commonplace-Book whisper rows this op left
         // behind (kind / body / target scope, so the `retrospective-recall` whisper
@@ -1491,14 +1519,16 @@ async fn build_context_tier3_matches_oracle() {
             "stamped": stamped,
             "unalertedMail": unalerted_mail,
         });
-        assert_eq!(
-            &got_side,
-            want_side,
-            "{}: whisper rows / recall history diverge\n got={}\nwant={}",
-            op.name,
-            serde_json::to_string_pretty(&got_side).unwrap(),
-            serde_json::to_string_pretty(want_side).unwrap(),
-        );
+        if compare_op {
+            assert_eq!(
+                &got_side,
+                want_side,
+                "{}: whisper rows / recall history diverge\n got={}\nwant={}",
+                op.name,
+                serde_json::to_string_pretty(&got_side).unwrap(),
+                serde_json::to_string_pretty(want_side).unwrap(),
+            );
+        }
         for sql in &op.unplant_sql {
             let sql = sql.clone();
             db.write(move |ws| {
@@ -1511,44 +1541,47 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|e| panic!("{}: unplant failed: {e}", op.name));
         }
     }
-    // P4.D347: the context builder's comparands are non-vacuous — the ledger,
-    // the echo and the exhausted-budget WARN each fire somewhere in the corpus.
-    for msg in [
-        "[ReferentLedger] Ledger built",
-        "[ReferentLedger] Closing echo built",
-        "[ContextManager] Message budget exhausted before any history",
-    ] {
-        assert!(
-            p4d347_lines_seen.get(msg).copied().unwrap_or(0) > 0,
-            "no `{msg}` line in the oracle — the capture seam broke: {p4d347_lines_seen:?}"
+    // P4.D372: the whole-corpus non-vacuity pins hold only on a full compare.
+    if compare_only.is_none() {
+        // P4.D347: the context builder's comparands are non-vacuous — the ledger,
+        // the echo and the exhausted-budget WARN each fire somewhere in the corpus.
+        for msg in [
+            "[ReferentLedger] Ledger built",
+            "[ReferentLedger] Closing echo built",
+            "[ContextManager] Message budget exhausted before any history",
+        ] {
+            assert!(
+                p4d347_lines_seen.get(msg).copied().unwrap_or(0) > 0,
+                "no `{msg}` line in the oracle — the capture seam broke: {p4d347_lines_seen:?}"
+            );
+        }
+        // P4.D335: the yield-note comparand is non-vacuous (four `offerYield` ops).
+        assert_eq!(
+            yield_lines_seen, 4,
+            "the four `offerYield` ops must each log v4's `[TurnYield]` DEBUG"
         );
-    }
-    // P4.D335: the yield-note comparand is non-vacuous (four `offerYield` ops).
-    assert_eq!(
-        yield_lines_seen, 4,
-        "the four `offerYield` ops must each log v4's `[TurnYield]` DEBUG"
-    );
-    // P4.D268: each delivery comparand is non-vacuous.
-    for msg in DELIVERY_MESSAGES {
-        let n = delivery_lines_seen.get(msg).copied().unwrap_or(0);
-        assert!(
-            n > 0,
-            "no `{msg}` line in the oracle — the capture seam broke"
-        );
-    }
+        // P4.D268: each delivery comparand is non-vacuous.
+        for msg in DELIVERY_MESSAGES {
+            let n = delivery_lines_seen.get(msg).copied().unwrap_or(0);
+            assert!(
+                n > 0,
+                "no `{msg}` line in the oracle — the capture seam broke"
+            );
+        }
 
-    assert_eq!(
-        oracle_whispers.len(),
-        spec.ops.len(),
-        "whisper-row count mismatch — regenerate the oracle NDJSON"
-    );
-    // P4.D254: the capture pin is non-vacuous — v4 logged the line on at least
-    // the seven ops that carry a block (the silence leg is every other op).
-    assert!(
-        inform_lines_seen >= 7,
-        "only {inform_lines_seen} `[Inform] Delivering` lines in the oracle — the \
+        assert_eq!(
+            oracle_whispers.len(),
+            spec.ops.len(),
+            "whisper-row count mismatch — regenerate the oracle NDJSON"
+        );
+        // P4.D254: the capture pin is non-vacuous — v4 logged the line on at least
+        // the seven ops that carry a block (the silence leg is every other op).
+        assert!(
+            inform_lines_seen >= 7,
+            "only {inform_lines_seen} `[Inform] Delivering` lines in the oracle — the \
          capture seam broke"
-    );
+        );
+    }
 
     drop(db);
     let _ = std::fs::remove_file(&work_main);
