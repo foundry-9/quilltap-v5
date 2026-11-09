@@ -1219,4 +1219,82 @@ mod tests {
             r#"{"entries":[{"attachmentId":"a","filename":"a.png","mimeType":"image/png","origin":null,"base64Bytes":2,"outcome":"kept","reason":"within-budget"}],"kept":1,"described":0,"dropped":0,"base64Kept":2}"#
         );
     }
+
+    // -----------------------------------------------------------------------
+    // The persisted-description probe's two silent-or-logged legs
+    // -----------------------------------------------------------------------
+
+    /// A scratch main partition; the dir rides out with the handle.
+    fn probe_db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::Builder::new()
+            .prefix("qt-image-transport-probe-")
+            .tempdir()
+            .expect("tempdir");
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    fn probe(db: &Db, file_id: &str) -> (bool, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        crate::test_support::captured_with(|| {
+            rt.block_on(has_persisted_image_description(db, file_id))
+        })
+    }
+
+    /// v4 `context-builder.service.ts:440-445` — a `files` read that THROWS
+    /// answers `false` and logs exactly one DEBUG, v4's sentence with
+    /// `{fileId, error}` (the bare message). A main partition with no `files`
+    /// table is the read failure.
+    #[test]
+    fn a_failed_probe_answers_false_with_v4s_debug() {
+        let (db, _scratch) = probe_db();
+        let (got, lines) = probe(&db, "file-err-1");
+        assert!(!got);
+        let hits: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains(
+                    "Persisted-description probe failed; treating the image as not describable",
+                )
+            })
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly one DEBUG: {lines:#?}");
+        let line = hits[0];
+        assert!(line.starts_with("DEBUG "), "{line}");
+        assert!(line.contains(" fileId=file-err-1"), "{line}");
+        assert!(line.contains(" error=") && line.contains("files"), "{line}");
+        assert_eq!(lines.len(), 1, "nothing else logs: {lines:#?}");
+    }
+
+    /// R5 — a mount-link id the `files` table does not hold answers `Ok(None)`
+    /// → `false`, SILENTLY (v4's `findById` answers null; no catch fires).
+    #[test]
+    fn a_mount_link_id_answers_false_silently() {
+        let (db, _scratch) = probe_db();
+        let schema: Value =
+            serde_json::from_str(include_str!("provisioning/fresh_schema.json")).unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"files\" ("))
+            .unwrap()
+            .to_string();
+        db.write_blocking(move |w| {
+            w.main().connection().execute_batch(&ddl)?;
+            Ok(())
+        })
+        .unwrap();
+        let (got, lines) = probe(&db, "mount-link-0001");
+        assert!(!got);
+        assert!(lines.is_empty(), "silent: {lines:#?}");
+    }
 }
