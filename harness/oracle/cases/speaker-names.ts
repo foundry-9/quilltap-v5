@@ -38,6 +38,9 @@ import { tmpdir } from 'node:os';
 interface LabelSpec {
   participantId: string | null;
   role: string;
+  systemSender?: string;
+  systemKind?: string;
+  isEstablishedFact?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -128,13 +131,11 @@ async function main(): Promise<void> {
       labelInputs.push({ participantId: p.id, role: 'USER' });
       labelInputs.push({ participantId: p.id, role: 'ASSISTANT' });
     }
+    // P4.D372: the label input is the WHOLE spec row (v4 `speakerLabel` reads
+    // `systemSender` / `systemKind` since `db6190b44`); the output echoes it.
     const labels = labelInputs.map((l) => ({
-      participantId: l.participantId,
-      role: l.role,
-      label: speakerLabel(
-        { participantId: l.participantId, role: l.role } as never,
-        names
-      ),
+      ...l,
+      label: speakerLabel(l as never, names),
     }));
 
     cases.push({

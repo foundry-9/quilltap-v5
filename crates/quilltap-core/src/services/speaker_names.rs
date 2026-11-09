@@ -108,20 +108,60 @@ pub fn resolve_speaker_names(conn: &Connection, participants: &[Value]) -> Speak
     names
 }
 
+/// The fields [`speaker_label`] reads (v4's `Pick<MessageEvent, 'participantId'
+/// | 'role'> & Partial<Pick<MessageEvent, 'systemSender' | 'systemKind'>>`).
+///
+/// P4.D372 (R2): ONE widened function, no `_with_kind` twin. A caller that, like
+/// v4's, passes only `{role, participantId}` (the referent ledger,
+/// `turn-trailing.ts:160`) sets both system fields to `None`, so a fact there
+/// keeps its `User` / `Character` label.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SpeakerRow<'a> {
+    pub participant_id: Option<&'a str>,
+    pub role: &'a str,
+    pub system_sender: Option<&'a str>,
+    pub system_kind: Option<&'a str>,
+}
+
+impl<'a> SpeakerRow<'a> {
+    /// The full row (v4's callers that pass the whole `MessageEvent`).
+    pub fn from_value(m: &'a Value) -> Self {
+        SpeakerRow {
+            participant_id: m.get("participantId").and_then(Value::as_str),
+            role: m.get("role").and_then(Value::as_str).unwrap_or(""),
+            system_sender: m.get("systemSender").and_then(Value::as_str),
+            system_kind: m.get("systemKind").and_then(Value::as_str),
+        }
+    }
+}
+
 /// v4 `speakerLabel(m, names)` — the label a transcript line gets. Never a bare
 /// LLM role: an unresolvable seat becomes `User` or `Character`, which the fold
-/// prompt is told to keep verbatim rather than to name.
+/// prompt is told to keep verbatim rather than to name. A machine-delivered
+/// established fact has no speaker and is labelled `Established fact` — tested
+/// FIRST, before the name lookup.
 ///
 /// `participant_id` is v4's `m.participantId` (JS truthiness: `None` and `""`
 /// both skip the lookup); a resolved name that is empty falls through too.
-pub fn speaker_label(participant_id: Option<&str>, role: &str, names: &SpeakerNames) -> String {
-    let resolved = participant_id
+pub fn speaker_label(m: &SpeakerRow<'_>, names: &SpeakerNames) -> String {
+    use crate::established_fact::{
+        is_established_fact_announcement, EstablishedFactFields, ESTABLISHED_FACT_SPEAKER_LABEL,
+    };
+    if is_established_fact_announcement(&EstablishedFactFields {
+        is_established_fact: None,
+        system_sender: m.system_sender,
+        system_kind: m.system_kind,
+    }) {
+        return ESTABLISHED_FACT_SPEAKER_LABEL.to_string();
+    }
+    let resolved = m
+        .participant_id
         .filter(|id| !id.is_empty())
         .and_then(|id| names.get(id))
         .filter(|n| !n.is_empty());
     match resolved {
         Some(name) => name.to_string(),
-        None if role == "USER" => "User".to_string(),
+        None if m.role == "USER" => "User".to_string(),
         None => "Character".to_string(),
     }
 }
@@ -130,6 +170,46 @@ pub fn speaker_label(participant_id: Option<&str>, role: &str, names: &SpeakerNa
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn row<'a>(participant_id: Option<&'a str>, role: &'a str) -> SpeakerRow<'a> {
+        SpeakerRow {
+            participant_id,
+            role,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_machine_fact_is_labelled_before_the_name_lookup() {
+        let mut names = SpeakerNames::default();
+        names.entries.push(("p1".into(), "Aria".into()));
+        let fact = json!({"participantId": "p1", "role": "ASSISTANT",
+            "systemSender": "host", "systemKind": "established-fact"});
+        assert_eq!(
+            speaker_label(&SpeakerRow::from_value(&fact), &names),
+            "Established fact"
+        );
+        // A Host row of another kind labels by its seat; a seat line by its speaker.
+        let inform = json!({"participantId": "p1", "role": "ASSISTANT",
+            "systemSender": "host", "systemKind": "inform"});
+        assert_eq!(
+            speaker_label(&SpeakerRow::from_value(&inform), &names),
+            "Aria"
+        );
+        let seat = json!({"participantId": "p1", "role": "USER", "isEstablishedFact": true});
+        assert_eq!(
+            speaker_label(&SpeakerRow::from_value(&seat), &names),
+            "Aria"
+        );
+    }
+
+    /// v4's referent ledger (`turn-trailing.ts:160`) passes only role +
+    /// participantId, so a machine fact there keeps a role label.
+    #[test]
+    fn a_caller_that_passes_no_sender_never_labels_a_fact() {
+        let names = SpeakerNames::default();
+        assert_eq!(speaker_label(&row(None, "ASSISTANT"), &names), "Character");
+    }
 
     fn conn_with_characters(rows: &[(&str, &str)]) -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -172,8 +252,11 @@ mod tests {
         ];
         let names = resolve_speaker_names(&conn, &participants);
         assert!(names.is_empty());
-        assert_eq!(speaker_label(Some("p1"), "ASSISTANT", &names), "Character");
-        assert_eq!(speaker_label(Some("p2"), "USER", &names), "User");
+        assert_eq!(
+            speaker_label(&row(Some("p1"), "ASSISTANT"), &names),
+            "Character"
+        );
+        assert_eq!(speaker_label(&row(Some("p2"), "USER"), &names), "User");
     }
 
     #[test]
@@ -194,6 +277,9 @@ mod tests {
         let conn = conn_with_characters(&[("c1", "")]);
         let names = resolve_speaker_names(&conn, &[json!({"id": "p1", "characterId": "c1"})]);
         assert!(!names.has("p1"));
-        assert_eq!(speaker_label(Some("p1"), "ASSISTANT", &names), "Character");
+        assert_eq!(
+            speaker_label(&row(Some("p1"), "ASSISTANT"), &names),
+            "Character"
+        );
     }
 }

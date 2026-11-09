@@ -1146,11 +1146,18 @@ fn referent_sections_inner(
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_uppercase();
+        // === P4.D372 === v4 `turn-trailing.ts:160` passes ONLY `{role,
+        // participantId}`: the referent ledger never labels a fact (R2).
         let label = crate::services::speaker_names::speaker_label(
-            m.get("participantId").and_then(Value::as_str),
-            &role,
+            &crate::services::speaker_names::SpeakerRow {
+                participant_id: m.get("participantId").and_then(Value::as_str),
+                role: &role,
+                system_sender: None,
+                system_kind: None,
+            },
             &speaker_names,
         );
+        // === /P4.D372 ===
         if label == "User" {
             user_name.to_string()
         } else {

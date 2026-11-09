@@ -236,6 +236,40 @@
     {
       "participantId": "5a000000-0000-4000-8000-000000000003",
       "role": "TOOL"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000001",
+      "role": "ASSISTANT",
+      "systemSender": "host",
+      "systemKind": "established-fact"
+    },
+    {
+      "participantId": null,
+      "role": "ASSISTANT",
+      "systemSender": "host",
+      "systemKind": "established-fact"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000001",
+      "role": "ASSISTANT",
+      "systemSender": "host",
+      "systemKind": "inform"
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000001",
+      "role": "USER",
+      "isEstablishedFact": true
+    },
+    {
+      "participantId": null,
+      "role": "USER",
+      "isEstablishedFact": true
+    },
+    {
+      "participantId": "5a000000-0000-4000-8000-000000000001",
+      "role": "ASSISTANT",
+      "systemSender": "aurora",
+      "systemKind": "established-fact"
     }
   ]
 }

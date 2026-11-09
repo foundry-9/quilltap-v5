@@ -111,7 +111,9 @@ use tasks::{
     fold_chat_summary, generate_help_chat_title_from_summary, generate_title_from_summary, FoldTurn,
 };
 
-use crate::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerNames};
+use crate::services::speaker_names::{
+    resolve_speaker_names, speaker_label, SpeakerNames, SpeakerRow,
+};
 
 /// v4 `SUMMARY_CONTENT_PREFIX` (`lib/services/librarian-notifications/writer.ts`):
 /// the legacy-whisper content prefix the sweep matches on when a whisper carries
@@ -636,11 +638,8 @@ fn turns_to_chat_messages(
             if let Some(m) = rows_by_id.get(id.as_str()) {
                 let role = m.get("role").and_then(Value::as_str).unwrap_or("");
                 result.push(FoldTurn {
-                    speaker: speaker_label(
-                        m.get("participantId").and_then(Value::as_str),
-                        role,
-                        names,
-                    ),
+                    // v4 `speakerLabel(m, names)` over the FULL row (P4.D372 R2).
+                    speaker: speaker_label(&SpeakerRow::from_value(m), names),
                     role: role.to_lowercase(),
                     content: m
                         .get("content")

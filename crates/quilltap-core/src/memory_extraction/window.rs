@@ -34,7 +34,7 @@ use serde_json::Value;
 
 use crate::jsstr::{js_trim, utf16_len, utf16_truncate};
 use crate::memory_format::format_name_with_pronouns;
-use crate::services::speaker_names::{speaker_label, SpeakerNames};
+use crate::services::speaker_names::{speaker_label, SpeakerNames, SpeakerRow};
 use crate::services::turn_transcript::{TurnCharacterSlice, TurnTranscript};
 
 // ============================================================================
@@ -138,11 +138,8 @@ pub fn stretch_window(
     let rendered = messages
         .iter()
         .map(|m| StretchMessage {
-            speaker: speaker_label(
-                str_field(m, "participantId"),
-                str_field(m, "role").unwrap_or_default(),
-                speaker_names,
-            ),
+            // v4 `speakerLabel(m, names)` over the FULL row (P4.D372 R2).
+            speaker: speaker_label(&SpeakerRow::from_value(m), speaker_names),
             content: str_field(m, "content").unwrap_or_default().to_string(),
             created_at: str_field(m, "createdAt").map(str::to_string),
         })

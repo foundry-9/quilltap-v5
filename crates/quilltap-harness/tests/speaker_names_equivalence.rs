@@ -60,7 +60,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use quilltap_core::db::{characters_read, chats_read, Writer};
-use quilltap_core::services::speaker_names::{resolve_speaker_names, speaker_label};
+use quilltap_core::services::speaker_names::{resolve_speaker_names, speaker_label, SpeakerRow};
 use rusqlite::{ffi, Connection};
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -80,6 +80,11 @@ struct SpecLabel {
     #[serde(rename = "participantId")]
     participant_id: Option<String>,
     role: String,
+    // P4.D372: the machine-fact label reads these (v4 `db6190b44`).
+    #[serde(default, rename = "systemSender")]
+    system_sender: Option<String>,
+    #[serde(default, rename = "systemKind")]
+    system_kind: Option<String>,
 }
 #[derive(Deserialize)]
 struct Spec {
@@ -335,24 +340,40 @@ fn speaker_names_match_oracle() {
         );
 
         // Label inputs: the spec list, then every seat under USER + ASSISTANT.
-        let mut inputs: Vec<(Option<String>, String)> = spec
+        type LabelInput = (Option<String>, String, Option<String>, Option<String>);
+        let mut inputs: Vec<LabelInput> = spec
             .labels
             .iter()
-            .map(|l| (l.participant_id.clone(), l.role.clone()))
+            .map(|l| {
+                (
+                    l.participant_id.clone(),
+                    l.role.clone(),
+                    l.system_sender.clone(),
+                    l.system_kind.clone(),
+                )
+            })
             .collect();
         for p in &participants {
             let id = p.get("id").and_then(Value::as_str).map(str::to_string);
-            inputs.push((id.clone(), "USER".to_string()));
-            inputs.push((id, "ASSISTANT".to_string()));
+            inputs.push((id.clone(), "USER".to_string(), None, None));
+            inputs.push((id, "ASSISTANT".to_string(), None, None));
         }
         assert_eq!(inputs.len(), oc.labels.len(), "{ctx}: label row count");
-        for (i, ((pid, role), ol)) in inputs.iter().zip(&oc.labels).enumerate() {
+        for (i, ((pid, role, sender, kind), ol)) in inputs.iter().zip(&oc.labels).enumerate() {
             assert_eq!(
                 (pid, role),
                 (&ol.participant_id, &ol.role),
                 "{ctx}: label {i} input"
             );
-            let got = speaker_label(pid.as_deref(), role, &names);
+            let got = speaker_label(
+                &SpeakerRow {
+                    participant_id: pid.as_deref(),
+                    role,
+                    system_sender: sender.as_deref(),
+                    system_kind: kind.as_deref(),
+                },
+                &names,
+            );
             assert_eq!(
                 got, ol.label,
                 "{ctx}: label {i} (participantId {pid:?}, role {role}) diverged"

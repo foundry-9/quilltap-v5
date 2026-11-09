@@ -251,6 +251,12 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: speaker_label widened to SpeakerRow — a machine fact is "Established fact" (P4.D372 item 9, R2)
+
+_Versions: core 0.0.1431._
+
+`speaker_label` now takes ONE `SpeakerRow { participant_id, role, system_sender, system_kind }` (plus `SpeakerRow::from_value`). It checks for a machine fact before the name lookup and labels it `Established fact`, as v4's widened `speakerLabel` does. There is no second variant. The fold (`turns_to_chat_messages`) and the extraction stretch window pass the full row. The referent ledger passes no sender or kind, as v4's `turn-trailing.ts:160` does, so a fact there keeps a role label. `speaker_names_equivalence`'s spec grows six label rows: a machine fact with and without a resolvable seat, a Host inform, two seat lines, and a non-Host established-fact kind. The case now passes the whole spec row to v4. Red-first: label 12 diverged (`Character` vs `Established fact`).
+
 #### 2026-11-09 — deus: CandidatePass::EstablishedFact between manual and consolidation (P4.D372 item 20)
 
 _Versions: core 0.0.1430._
