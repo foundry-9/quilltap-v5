@@ -67,6 +67,8 @@ interface Spec {
 /** The search lines this family pins (v4's exact messages). */
 const CAPTURED = new Set([
   '[Memory] Specific entity anchors chosen',
+  // P4.D375 (v4 4.12.1 `6121f59b9`): the window pass's DEBUG.
+  '[Memory] Window-first gather',
   '[Memory] Semantic search failed, falling back to text search',
   '[Recall] Query embedding failed; recall falls back to text search',
   '[Recall] Probe embedding failed; skipping probe',

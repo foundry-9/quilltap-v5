@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — test(harness): semantic_search_tuning_tier3 records v4's `[Memory] Window-first gather` line (P4.D375)
+
+_No crate versions bumped._
+
+The case's capture whitelist lacked 4.12.1's new DEBUG, so v4's three `[Memory] Window-first gather` lines were silently dropped while v5 emitted them. The family stayed green at red-first only because of that gap. The message joins the whitelist; regenerated from the pin, green with the lines compared.
+
 #### 2026-11-09 — feat(tools): the simple-JSON tool prompt's rule 6 reads a listed conversation before saying "I don't recall" (v4 6121f59b9)
 
 _Versions: core 0.0.1433._
