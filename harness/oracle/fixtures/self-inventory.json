@@ -301,6 +301,81 @@
         "holdings"
       ],
       "withLoadedMemories": true
+    },
+    {
+      "name": "pools_shared_store_vault_groups",
+      "characterId": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1",
+      "sections": [
+        "vault.groups"
+      ]
+    },
+    {
+      "name": "pools_shared_store_vault_access_groups",
+      "characterId": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1",
+      "sections": [
+        "vaultAccess.groups"
+      ]
+    },
+    {
+      "name": "pools_shared_store_context_groups_project",
+      "characterId": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1",
+      "sections": [
+        "context.groups",
+        "context.project"
+      ]
+    },
+    {
+      "name": "pools_orphan_membership_vault_groups",
+      "characterId": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2",
+      "sections": [
+        "vault.groups"
+      ]
+    },
+    {
+      "name": "pools_orphan_membership_vault_access_groups",
+      "characterId": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2",
+      "sections": [
+        "vaultAccess.groups"
+      ]
+    },
+    {
+      "name": "pools_orphan_membership_context_groups_project",
+      "characterId": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2",
+      "sections": [
+        "context.groups",
+        "context.project"
+      ]
+    },
+    {
+      "name": "pools_rf_group_unreadable_vault_groups",
+      "characterId": "a3a3a3a3-9999-4999-8999-a3a3a3a3a3a3",
+      "sections": [
+        "vault.groups"
+      ],
+      "hydratedProbeGroupIds": [
+        "6c6c6c6c-0000-4000-8000-000000000073"
+      ]
+    },
+    {
+      "name": "pools_rf_group_unreadable_vault_access_groups",
+      "characterId": "a3a3a3a3-9999-4999-8999-a3a3a3a3a3a3",
+      "sections": [
+        "vaultAccess.groups"
+      ],
+      "hydratedProbeGroupIds": [
+        "6c6c6c6c-0000-4000-8000-000000000073"
+      ]
+    },
+    {
+      "name": "pools_rf_group_unreadable_context_groups_project",
+      "characterId": "a3a3a3a3-9999-4999-8999-a3a3a3a3a3a3",
+      "sections": [
+        "context.groups",
+        "context.project"
+      ],
+      "hydratedProbeGroupIds": [
+        "6c6c6c6c-0000-4000-8000-000000000073"
+      ]
     }
   ],
   "_holdingsComment": "P4.D350 (v4 074e1e01a): the holdings + core-files plants. Quilltap General; two garments and one outfit made of them in Aria's vault; two Inventory objects, one kit and one archetype split across Aria's vault and General (one object carried by Aria in the chat); one custom tool in Aria's vault; Aria's manifesto.md deleted and example-dialogues.md emptied; Fenn, a character whose vault pointer is NULLed after creation; one chat_settings row (customTools on; one case turns it off for itself).",
@@ -489,5 +564,95 @@
         ]
       }
     }
-  ]
+  ],
+  "_poolsComment": "P4.D378 (v4 0c47f4539, the shared group walk `groupMountsFor`): three NEW characters so the existing cases stay put. Gale joins Weavers Guild THEN Cartographers Circle, and Cartographers Circle is LINKED to Weavers Guild's official store: v4 credits the shared store to the FIRST-joined group only (v5 at the baseline lists it under both). Hale joins Weavers Guild THEN an ORPHAN group id (a membership + a group_doc_mount_links row, NO groups row) linked to its own store Orphan Annex: v4 lists the orphan with name '' (it sorts FIRST); v5 at the baseline skips it. Ivo joins Ruined Rotunda, whose official store's properties.json is planted UNREADABLE ('{'): the HYDRATED groups.findById throws on both sides while the RAW row (name, officialMountPointId) stays whole (R-F, item 13) — the cases' `hydratedProbeGroupIds` prove it in-case on both sides; v4 names the group from the raw row.",
+  "pools": {
+    "characters": [
+      {
+        "id": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1",
+        "name": "Gale",
+        "description": "A weaver who maps the threads between guilds.",
+        "identity": "the thread-mapper",
+        "canBeCarina": false
+      },
+      {
+        "id": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2",
+        "name": "Hale",
+        "description": "A weaver whose second guild has lost its charter.",
+        "identity": "the charterless weaver",
+        "canBeCarina": false
+      },
+      {
+        "id": "a3a3a3a3-9999-4999-8999-a3a3a3a3a3a3",
+        "name": "Ivo",
+        "description": "A keeper of a rotunda whose ledger has gone to ruin.",
+        "identity": "the rotunda keeper",
+        "canBeCarina": false
+      }
+    ],
+    "groups": [
+      {
+        "id": "6c6c6c6c-0000-4000-8000-000000000071",
+        "name": "Weavers Guild"
+      },
+      {
+        "id": "6c6c6c6c-0000-4000-8000-000000000072",
+        "name": "Cartographers Circle"
+      },
+      {
+        "id": "6c6c6c6c-0000-4000-8000-000000000073",
+        "name": "Ruined Rotunda",
+        "corruptProperties": "{"
+      }
+    ],
+    "orphan": {
+      "groupId": "6c6c6c6c-0000-4000-8000-000000000074",
+      "storeId": "9f9f9f9f-0000-4000-8000-000000000075",
+      "storeName": "Orphan Annex",
+      "doc": {
+        "path": "notes.md",
+        "content": "# Orphan notes\n\nThe charter was never found.\n"
+      }
+    },
+    "memberships": [
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000081",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000071",
+        "characterId": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1"
+      },
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000082",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000072",
+        "characterId": "a1a1a1a1-7777-4777-8777-a1a1a1a1a1a1"
+      },
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000083",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000071",
+        "characterId": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2"
+      },
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000084",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000074",
+        "characterId": "a2a2a2a2-8888-4888-8888-a2a2a2a2a2a2"
+      },
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000085",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000073",
+        "characterId": "a3a3a3a3-9999-4999-8999-a3a3a3a3a3a3"
+      }
+    ],
+    "_linksComment": "`mountPointId` is either a literal store id or `official:<groupId>` (that group's minted official store, read back from its RAW row).",
+    "links": [
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000091",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000072",
+        "mountPointId": "official:6c6c6c6c-0000-4000-8000-000000000071"
+      },
+      {
+        "id": "a0a0a0a0-0000-4000-8000-000000000092",
+        "groupId": "6c6c6c6c-0000-4000-8000-000000000074",
+        "mountPointId": "9f9f9f9f-0000-4000-8000-000000000075"
+      }
+    ]
+  }
 }

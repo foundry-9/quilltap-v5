@@ -20,6 +20,15 @@
  *   - Two chat_documents for the chat (`repos.chatDocuments.create`).
  *   - An llm_logs row for the chat in the LLM-LOGS sibling DB (real
  *     `LLMLogsRepository`, with a usage object) so the lastTurn section resolves.
+ *   - P4.D378 (v4 `0c47f4539`, the shared group walk): three NEW characters
+ *     (Gale / Hale / Ivo), three groups, an orphan membership + link for a group
+ *     id with NO `groups` row (its own plain store), Cartographers Circle linked
+ *     to Weavers Guild's official store, and the R-F plant — Ruined Rotunda's
+ *     `properties.json` overwritten with `{` (hydrated `findById` throws; raw
+ *     row whole — self-checked here). Widening adds rows only: `sqlite_master`
+ *     of all three databases is byte-identical before and after, and the only
+ *     pre-existing case output that moves is the Carina roster (it lists every
+ *     character; three non-answerers join it).
  *
  * Both the oracle and the Rust port then READ a COPY of the SAME baked fixtures, so
  * every cell is identical on both sides. The ONLY genuinely nondeterministic value
@@ -29,12 +38,12 @@
  * the differential runs with NO normalization.
  *
  * Run (Node 24, from the v4 checkout):
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_MAIN=/tmp/qt-selfinv-main.db \
  *   QT_FIXTURE_MOUNT=/tmp/qt-selfinv-mount.db \
  *   QT_FIXTURE_LLMLOGS=/tmp/qt-selfinv-llmlogs.db \
- *     $N/node --import tsx $V5/harness/oracle/fixtures/build-self-inventory-fixture.ts
+ *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-self-inventory-fixture.ts
  */
 
 import { fileURLToPath } from 'node:url';
@@ -85,6 +94,19 @@ interface Spec {
     createdAt: string;
   };
   memories: Array<{ id: string; importance: number }>;
+  /** P4.D378 (v4 `0c47f4539`): the shared group walk's three shapes. */
+  pools: {
+    characters: CharacterSpec[];
+    groups: Array<{ id: string; name: string; corruptProperties?: string }>;
+    orphan: {
+      groupId: string;
+      storeId: string;
+      storeName: string;
+      doc: { path: string; content: string };
+    };
+    memberships: Array<{ id: string; groupId: string; characterId: string }>;
+    links: Array<{ id: string; groupId: string; mountPointId: string }>;
+  };
   chatDocuments: Array<{
     id: string;
     filePath: string;
@@ -446,6 +468,84 @@ async function main(): Promise<void> {
   });
   //   e. Fenn's vault comes unlinked (the pointer NULLed; the store stays).
   await rawQuery('UPDATE characters SET characterDocumentMountPointId = NULL WHERE id = ?', [spec.fenn.id]);
+
+  // 11. P4.D378 (v4 `0c47f4539`) — the shared group walk (`groupMountsFor`):
+  //     three NEW characters (Gale / Hale / Ivo, canBeCarina off, in no chat)
+  //     so every pre-existing case reads exactly what it read before. All
+  //     through v4's REAL repositories / document store.
+  //   a. The characters (each provisions + scaffolds its own vault).
+  for (const c of spec.pools.characters) await makeChar(c);
+  //   b. The groups (each provisions an official store).
+  for (const g of spec.pools.groups) {
+    await repos.groups.create(
+      { name: g.name } as never,
+      { id: g.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+    );
+  }
+  //   c. The orphan's store: a plain database store with one document. Its
+  //      group id gets a membership + a link below but NO `groups` row.
+  await repos.docMountPoints.create(
+    {
+      name: spec.pools.orphan.storeName,
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: spec.pools.orphan.storeId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+  );
+  await writeDatabaseDocument(
+    spec.pools.orphan.storeId,
+    spec.pools.orphan.doc.path,
+    spec.pools.orphan.doc.content,
+  );
+  //   d. Memberships, in join order (the walk reads them in rowid order).
+  for (const m of spec.pools.memberships) {
+    await members.create(
+      { groupId: m.groupId, characterId: m.characterId },
+      { id: m.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+    );
+  }
+  //   e. Links. `official:<groupId>` resolves to that group's minted official
+  //      store, read back from the RAW row.
+  for (const l of spec.pools.links) {
+    let mountPointId = l.mountPointId;
+    if (mountPointId.startsWith('official:')) {
+      const owner = await repos.groups.findByIdRaw(mountPointId.slice('official:'.length));
+      if (!owner?.officialMountPointId) throw new Error(`no official store for ${mountPointId}`);
+      mountPointId = owner.officialMountPointId;
+    }
+    await repos.groupDocMountLinks.create(
+      { groupId: l.groupId, mountPointId } as never,
+      { id: l.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+    );
+  }
+  //   f. R-F: the planted-UNREADABLE group store — malformed `properties.json`
+  //      bytes through the REAL document writer (the `store-unavailable-routes`
+  //      plant). The hydrated `groups.findById` throws; the raw row is whole.
+  for (const g of spec.pools.groups) {
+    if (g.corruptProperties === undefined) continue;
+    const row = await repos.groups.findByIdRaw(g.id);
+    if (!row?.officialMountPointId) throw new Error(`no official store for ${g.id}`);
+    await writeDatabaseDocument(row.officialMountPointId, 'properties.json', g.corruptProperties);
+    let threw = false;
+    try {
+      await repos.groups.findById(g.id);
+    } catch {
+      threw = true;
+    }
+    if (!threw) throw new Error(`R-F plant did not break the hydrated read of ${g.id}`);
+  }
 
   // P4.D140 (v4 `735d9408c`): the chat has NO messages, so `lastMessageAt` is
   // NULL and `chatActivityAt` must fall back to `createdAt`. Push `updatedAt`

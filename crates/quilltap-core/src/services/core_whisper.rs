@@ -134,10 +134,13 @@ fn render_packet_bodies(files: &[CoreFile]) -> String {
     files
         .iter()
         .map(|f| {
-            let heading = match &f.source_label {
+            // === P4.D378 === v4 `f.sourceLabel ? … : …` — an EMPTY label (an
+            // orphan membership's group, now listed) is falsy too.
+            let heading = match f.source_label.as_deref().filter(|l| !l.is_empty()) {
                 Some(label) => format!("### [Shared — {label}] {}", f.path),
                 None => format!("### {}", f.path),
             };
+            // === /P4.D378 ===
             format!("{heading}\n\n{}", f.body)
         })
         .collect::<Vec<_>>()
@@ -226,53 +229,33 @@ fn assemble_group_core_files(
     character_id: &str,
     character_mount_point_id: Option<&str>,
 ) -> Vec<CoreFile> {
-    let group_ids =
-        match crate::db::group_character_members::GroupCharacterMembersRepository::new(mount)
-            .find_group_ids_by_character_id(character_id)
-        {
-            Ok(ids) => ids,
-            Err(_) => return Vec::new(),
-        };
-    if group_ids.is_empty() {
-        return Vec::new();
-    }
-
-    // seenMounts seeded with the character's own vault.
-    let mut seen_mounts: std::collections::HashSet<String> = std::collections::HashSet::new();
-    if let Some(mp) = character_mount_point_id {
-        seen_mounts.insert(mp.to_string());
-    }
-
-    // groups: Vec<(name, mountIds)>.
+    // === P4.D378 === v4 `0c47f4539` (Refactor 4.12 (C)): the group tier
+    // through the shared walk — `groupMountsFor(characterId)` (membership
+    // order, the first group to claim a store keeps it, a group with no stores
+    // dropped), each group's stores minus the character's own vault, a group
+    // left empty dropped. Measured equal to the baseline's `seenMounts` loop
+    // for every sound input; it differs on a membership whose group row is
+    // ABSENT but has links (the baseline skipped it; v4 lists it, named `''`
+    // — it sorts first) and on a group raw-read failure (the baseline's
+    // `[CoreWhisper] Failed to resolve group Core mounts` WARN is gone at the
+    // pin; v5 never had it — nothing retires).
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-    for group_id in &group_ids {
-        let group =
-            match crate::db::groups::find_name_and_official_mount_point_id_raw(main, group_id) {
-                Ok(Some(g)) => g,
-                _ => continue,
-            };
-        let (name, official) = group;
-        let mut mount_ids: Vec<String> = Vec::new();
-        if let Some(off) = official {
-            if !seen_mounts.contains(&off) {
-                seen_mounts.insert(off.clone());
-                mount_ids.push(off);
-            }
-        }
-        let links = crate::db::group_doc_mount_links::GroupDocMountLinksRepository::new(mount)
-            .find_by_group_id(group_id)
-            .unwrap_or_default();
-        for link in links {
-            if seen_mounts.contains(&link) {
-                continue;
-            }
-            seen_mounts.insert(link.clone());
-            mount_ids.push(link);
-        }
+    for g in crate::db::reach::group_mounts_for(
+        main,
+        mount,
+        character_id,
+        crate::db::tiered_mount_pool::GroupMountsOptions::default(),
+    ) {
+        let mount_ids: Vec<String> = g
+            .mount_point_ids
+            .into_iter()
+            .filter(|id| Some(id.as_str()) != character_mount_point_id)
+            .collect();
         if !mount_ids.is_empty() {
-            groups.push((name, mount_ids));
+            groups.push((g.group.name, mount_ids));
         }
     }
+    // === /P4.D378 ===
 
     // Emit groups alphabetically by name (`localeCompare`).
     groups.sort_by(|a, b| locale_compare(&a.0, &b.0));

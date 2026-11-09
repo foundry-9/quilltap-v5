@@ -700,6 +700,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(groups): self_inventory and the Core whisper read the group tier through the shared walk (v4 0c47f4539 (h)/(i); P4.D378)
+
+_Versions: core 0.0.1433._
+
+P4.D378 items 11–13. `self_inventory`'s `resolve_my_groups` is `group_mounts_for(include_empty)` — first claim, the membership's id, the RAW name (an orphan membership with links is listed as `''`, sorting first; a group whose store cannot be hydrated is still named) — and `build_context_project` takes its stores from the official-first `resolve_project_mount_point_ids`. The Core whisper's `assemble_group_core_files` iterates `group_mounts_for` minus the vault (measured equal on the three sound shapes); an empty source label renders like none, as v4's `sourceLabel ? … : …`. `self_inventory_equivalence` grows nine cases (shared store, orphan membership, R-F); NEW `core_packet_tier2_equivalence` (v4's REAL `assembleCorePacket`, eleven rows).
+
 #### 2026-11-09 — fix(inventory): the mount owner and the title lint's location through classify_mount, owners read raw (v4 0c47f4539 (j); P4.D378)
 
 _Versions: core 0.0.1432._

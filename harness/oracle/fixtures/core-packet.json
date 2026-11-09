@@ -1,0 +1,391 @@
+{
+  "_comment": "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the shared test pepper used across the differential fixtures). NEVER a real pepper.",
+  "_purpose": "P4.D378 item 12 (v4 0c47f4539, core-whisper.ts:252-267): v4's REAL assembleCorePacket over a builder-made pair. One character per row. `mountPointId` / `mount` spellings: `official:<groupId>` = that group's minted official store (read back RAW), `vault:<characterId>` = that character's minted vault, otherwise a literal store id. `nullOfficial` groups have their officialMountPointId NULLed by a raw UPDATE after their links are made (the sound shapes need a group whose stores are EXACTLY its links). `corruptProperties` plants malformed properties.json bytes into the group's official store through the REAL document writer (R-F).",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-01-02T03:04:05.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "characters": [
+    {
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "name": "Vera"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000002",
+      "name": "Alma"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000003",
+      "name": "Saul"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000004",
+      "name": "Gwen"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000005",
+      "name": "Otto"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000006",
+      "name": "Nell"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000007",
+      "name": "Rory"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000008",
+      "name": "Sian"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-000000000009",
+      "name": "Tess"
+    },
+    {
+      "id": "c1000000-0000-4000-8000-00000000000a",
+      "name": "Uma"
+    }
+  ],
+  "stores": [
+    {
+      "id": "9b000000-0000-4000-8000-000000000001",
+      "name": "Orphan Charter Store"
+    },
+    {
+      "id": "9b000000-0000-4000-8000-000000000002",
+      "name": "Shared Shelf"
+    },
+    {
+      "id": "9b000000-0000-4000-8000-000000000003",
+      "name": "Second Shelf"
+    }
+  ],
+  "groups": [
+    {
+      "id": "6a000000-0000-4000-8000-000000000001",
+      "name": "Zephyr Lodge"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000002",
+      "name": "Amber Hall"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000003",
+      "name": "Ninth House"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000004",
+      "name": "Bell Tower"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000005",
+      "name": "Mirror Club"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000006",
+      "name": "Abbey of Quills"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000007",
+      "name": "Broken Bell",
+      "corruptProperties": "{"
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000008",
+      "name": "Aster Circle",
+      "nullOfficial": true
+    },
+    {
+      "id": "6a000000-0000-4000-8000-000000000009",
+      "name": "Briar Court",
+      "nullOfficial": true
+    },
+    {
+      "id": "6a000000-0000-4000-8000-00000000000a",
+      "name": "Cedar Court",
+      "nullOfficial": true
+    },
+    {
+      "id": "6a000000-0000-4000-8000-00000000000b",
+      "name": "Dune Court",
+      "nullOfficial": true
+    },
+    {
+      "id": "6a000000-0000-4000-8000-00000000000c",
+      "name": "Elm Court",
+      "nullOfficial": true
+    }
+  ],
+  "orphanGroupId": "6a000000-0000-4000-8000-0000000000ff",
+  "memberships": [
+    {
+      "id": "a7000000-0000-4000-8000-000000000001",
+      "groupId": "6a000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000002",
+      "groupId": "6a000000-0000-4000-8000-000000000002",
+      "characterId": "c1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000003",
+      "groupId": "6a000000-0000-4000-8000-000000000003",
+      "characterId": "c1000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000004",
+      "groupId": "6a000000-0000-4000-8000-000000000004",
+      "characterId": "c1000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000005",
+      "groupId": "6a000000-0000-4000-8000-000000000005",
+      "characterId": "c1000000-0000-4000-8000-000000000004"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000006",
+      "groupId": "6a000000-0000-4000-8000-000000000006",
+      "characterId": "c1000000-0000-4000-8000-000000000005"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000007",
+      "groupId": "6a000000-0000-4000-8000-0000000000ff",
+      "characterId": "c1000000-0000-4000-8000-000000000005"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000008",
+      "groupId": "6a000000-0000-4000-8000-000000000007",
+      "characterId": "c1000000-0000-4000-8000-000000000007"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-000000000009",
+      "groupId": "6a000000-0000-4000-8000-000000000008",
+      "characterId": "c1000000-0000-4000-8000-000000000008"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-00000000000a",
+      "groupId": "6a000000-0000-4000-8000-000000000009",
+      "characterId": "c1000000-0000-4000-8000-000000000009"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-00000000000b",
+      "groupId": "6a000000-0000-4000-8000-00000000000a",
+      "characterId": "c1000000-0000-4000-8000-000000000009"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-00000000000c",
+      "groupId": "6a000000-0000-4000-8000-00000000000b",
+      "characterId": "c1000000-0000-4000-8000-00000000000a"
+    },
+    {
+      "id": "a7000000-0000-4000-8000-00000000000d",
+      "groupId": "6a000000-0000-4000-8000-00000000000c",
+      "characterId": "c1000000-0000-4000-8000-00000000000a"
+    }
+  ],
+  "links": [
+    {
+      "id": "a8000000-0000-4000-8000-000000000001",
+      "groupId": "6a000000-0000-4000-8000-000000000004",
+      "mountPointId": "official:6a000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000002",
+      "groupId": "6a000000-0000-4000-8000-000000000005",
+      "mountPointId": "vault:c1000000-0000-4000-8000-000000000004"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000003",
+      "groupId": "6a000000-0000-4000-8000-0000000000ff",
+      "mountPointId": "9b000000-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000004",
+      "groupId": "6a000000-0000-4000-8000-000000000008",
+      "mountPointId": "vault:c1000000-0000-4000-8000-000000000008"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000005",
+      "groupId": "6a000000-0000-4000-8000-000000000009",
+      "mountPointId": "vault:c1000000-0000-4000-8000-000000000009"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000006",
+      "groupId": "6a000000-0000-4000-8000-000000000009",
+      "mountPointId": "9b000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000007",
+      "groupId": "6a000000-0000-4000-8000-00000000000a",
+      "mountPointId": "9b000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000008",
+      "groupId": "6a000000-0000-4000-8000-00000000000b",
+      "mountPointId": "9b000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-000000000009",
+      "groupId": "6a000000-0000-4000-8000-00000000000c",
+      "mountPointId": "9b000000-0000-4000-8000-000000000003"
+    },
+    {
+      "id": "a8000000-0000-4000-8000-00000000000a",
+      "groupId": "6a000000-0000-4000-8000-00000000000c",
+      "mountPointId": "vault:c1000000-0000-4000-8000-00000000000a"
+    }
+  ],
+  "docs": [
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000001",
+      "path": "Core/manifesto.md",
+      "content": "---\ntitle: Manifesto\n---\n\nI keep the lamps lit for whoever comes late.\n\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000001",
+      "path": "Core/Wants.md",
+      "content": "I want the archive to outlive me.  \n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000001",
+      "path": "Core/deep/roots.md",
+      "content": "Roots before branches.\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000001",
+      "path": "notes.md",
+      "content": "Not a Core file; never in the packet.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000001",
+      "path": "Core/creed.md",
+      "content": "Zephyr creed: travel light.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000002",
+      "path": "Core/creed.md",
+      "content": "Amber creed: keep the honey warm.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000003",
+      "path": "Core/oath.md",
+      "content": "Ninth House oath: nine doors, one key.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000004",
+      "path": "Core/bells.md",
+      "content": "Bell Tower rule: ring on the hour.\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000004",
+      "path": "Core/self.md",
+      "content": "Gwen, as she writes herself.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000005",
+      "path": "Core/club.md",
+      "content": "Mirror Club: reflect before replying.\n"
+    },
+    {
+      "mount": "9b000000-0000-4000-8000-000000000001",
+      "path": "Core/charter.md",
+      "content": "The lost charter: all are welcome.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000006",
+      "path": "Core/rule.md",
+      "content": "Abbey rule: ink before speech.\n"
+    },
+    {
+      "mount": "official:6a000000-0000-4000-8000-000000000007",
+      "path": "Core/toll.md",
+      "content": "Broken Bell: toll even when cracked.\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000008",
+      "path": "Core/me.md",
+      "content": "Sian keeps her own counsel.\n"
+    },
+    {
+      "mount": "9b000000-0000-4000-8000-000000000002",
+      "path": "Core/shelf.md",
+      "content": "The shared shelf holds what both courts need.\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-000000000009",
+      "path": "Core/t.md",
+      "content": "Tess, in her own hand.\n"
+    },
+    {
+      "mount": "9b000000-0000-4000-8000-000000000003",
+      "path": "Core/y.md",
+      "content": "The second shelf, first claimed.\n"
+    },
+    {
+      "mount": "vault:c1000000-0000-4000-8000-00000000000a",
+      "path": "Core/u.md",
+      "content": "Uma, in her own hand.\n"
+    }
+  ],
+  "cases": [
+    {
+      "name": "vault_only",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "budget": 4000
+    },
+    {
+      "name": "two_groups_alpha_order",
+      "characterId": "c1000000-0000-4000-8000-000000000002",
+      "budget": 4000
+    },
+    {
+      "name": "shared_store_first_group",
+      "characterId": "c1000000-0000-4000-8000-000000000003",
+      "budget": 4000
+    },
+    {
+      "name": "group_store_is_the_vault",
+      "characterId": "c1000000-0000-4000-8000-000000000004",
+      "budget": 4000
+    },
+    {
+      "name": "orphan_membership_with_links",
+      "characterId": "c1000000-0000-4000-8000-000000000005",
+      "budget": 4000
+    },
+    {
+      "name": "no_core_files",
+      "characterId": "c1000000-0000-4000-8000-000000000006",
+      "budget": 4000
+    },
+    {
+      "name": "rf_group_hydrated_read_fails_raw_whole",
+      "characterId": "c1000000-0000-4000-8000-000000000007",
+      "hydratedProbeGroupIds": [
+        "6a000000-0000-4000-8000-000000000007"
+      ],
+      "budget": 4000
+    },
+    {
+      "name": "sound_vault_in_group_a_only",
+      "characterId": "c1000000-0000-4000-8000-000000000008",
+      "budget": 4000
+    },
+    {
+      "name": "sound_a_vault_x_b_x",
+      "characterId": "c1000000-0000-4000-8000-000000000009",
+      "budget": 4000
+    },
+    {
+      "name": "sound_a_x_b_x_vault",
+      "characterId": "c1000000-0000-4000-8000-00000000000a",
+      "budget": 4000
+    },
+    {
+      "name": "missing_character",
+      "characterId": "c1000000-0000-4000-8000-0000000000ee",
+      "budget": 4000
+    }
+  ]
+}

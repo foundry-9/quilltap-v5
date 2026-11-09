@@ -18,18 +18,41 @@
 //! `ANTHROPIC`/`claude-3-opus` resolves via `MODEL_CONTEXT_OVERRIDES`, a hardcoded
 //! table both sides share, so no registry rows are needed → contextWindow 200000).
 //!
+//! P4.D378 (v4 `0c47f4539`, the shared group walk `groupMountsFor`): the
+//! fixture grows three NEW characters (Gale / Hale / Ivo — nothing pre-existing
+//! moves but the Carina roster, which lists every character) and nine `pools_*`
+//! cases over `vault.groups` / `vaultAccess.groups` / `context.groups` +
+//! `context.project`:
+//!   - `pools_shared_store_*` — Gale joins Weavers Guild THEN Cartographers
+//!     Circle, which is LINKED to Weavers Guild's official store: v4 credits the
+//!     shared store to the first-joined group only.
+//!   - `pools_orphan_membership_*` — Hale's second membership names a group id
+//!     with NO `groups` row but a `group_doc_mount_links` row to its own store:
+//!     v4 lists it with name `''` (it sorts FIRST) and its store.
+//!   - `pools_rf_group_unreadable_*` (R-F, item 13) — Ivo's group's
+//!     `properties.json` is planted unreadable (`{`): the HYDRATED
+//!     `groups.findById` fails on BOTH sides while the RAW row stays whole
+//!     (`hydratedProbeGroupIds` — each side probes in-case and the probe rows
+//!     compare byte-for-byte, plus a self-check that the plant took); v4 names
+//!     the group from the raw row.
+//!
+//! Every case is checked; the red set is printed whole, then the test FAILS if
+//! any case differs.
+//!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
+//!   rm -f /tmp/qt-selfinv-main.db /tmp/qt-selfinv-mount.db /tmp/qt-selfinv-llmlogs.db
 //!   QT_FIXTURE_MAIN=/tmp/qt-selfinv-main.db \
 //!   QT_FIXTURE_MOUNT=/tmp/qt-selfinv-mount.db \
 //!   QT_FIXTURE_LLMLOGS=/tmp/qt-selfinv-llmlogs.db \
-//!     $N/node --import tsx $V5/harness/oracle/fixtures/build-self-inventory-fixture.ts
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-self-inventory-fixture.ts
 //!   QT_FIXTURE_SELFINV_MAIN=/tmp/qt-selfinv-main.db \
 //!   QT_FIXTURE_SELFINV_MOUNT=/tmp/qt-selfinv-mount.db \
 //!   QT_FIXTURE_SELFINV_LLMLOGS=/tmp/qt-selfinv-llmlogs.db \
-//!     $N/node --import tsx $V5/harness/oracle/cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson
+//!     $N/node --import tsx $V5W/harness/oracle/cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson
 //! Run:
+//!   cd $V5W
 //!   QT_ORACLE_SELFINV=/tmp/oracle-selfinv.ndjson \
 //!   QT_FIXTURE_SELFINV_MAIN=/tmp/qt-selfinv-main.db \
 //!   QT_FIXTURE_SELFINV_MOUNT=/tmp/qt-selfinv-mount.db \
@@ -104,6 +127,10 @@ struct CaseSpec {
     plant_sql: Option<String>,
     #[serde(rename = "restoreSql")]
     restore_sql: Option<String>,
+    /// P4.D378 R-F: groups whose hydrated read must fail while the raw row
+    /// stays whole (probed in-case on both sides).
+    #[serde(rename = "hydratedProbeGroupIds")]
+    hydrated_probe_group_ids: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +140,8 @@ struct OracleRow {
     formatted: String,
     /// P4.D350: the handler's own `self_inventory: …` DEBUG lines.
     logs: Vec<OracleLog>,
+    /// P4.D378 R-F: v4's in-case hydrated-vs-raw probe rows.
+    probe: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -259,6 +288,7 @@ async fn self_inventory_matches_oracle() {
     };
 
     quilltap_core::test_support::global_capture::install();
+    let mut failures: Vec<String> = Vec::new();
     for (case, oracle) in spec.cases.iter().zip(oracle_rows.iter()) {
         assert_eq!(case.name, oracle.name, "case name alignment");
         if let Some(sql) = &case.plant_sql {
@@ -266,6 +296,61 @@ async fn self_inventory_matches_oracle() {
             db.write(move |ws| Ok(ws.main().connection().execute_batch(&sql)?))
                 .await
                 .unwrap_or_else(|e| panic!("plant: {e}"));
+        }
+
+        // P4.D378 R-F: the hydrated read FAILS and the raw row is whole — on
+        // v5, compared with v4's in-case probe byte-for-byte.
+        let mut case_failures: Vec<String> = Vec::new();
+        if let Some(ids) = &case.hydrated_probe_group_ids {
+            let got_probe: Vec<Value> = ids
+                .iter()
+                .map(|group_id| {
+                    let hydrated_threw = db
+                        .read_main(|main| {
+                            db.read_mount_index(|mount| {
+                                Ok(
+                                    quilltap_core::db::groups::GroupsRepository::new(main, mount)
+                                        .find_by_id(group_id)
+                                        .is_err(),
+                                )
+                            })
+                        })
+                        .expect("hydrated probe");
+                    let raw = db
+                        .read_main(|main| {
+                            quilltap_core::db::groups::find_name_and_official_mount_point_id_raw(
+                                main, group_id,
+                            )
+                        })
+                        .expect("raw probe");
+                    serde_json::json!({
+                        "groupId": group_id,
+                        "hydratedThrew": hydrated_threw,
+                        "rawName": raw.as_ref().map(|(n, _)| n.clone()),
+                        "rawHasOfficialStore": raw.as_ref().is_some_and(|(_, o)| o.is_some()),
+                    })
+                })
+                .collect();
+            let want_probe = oracle
+                .probe
+                .clone()
+                .unwrap_or_else(|| panic!("case {}: oracle carries no probe", case.name));
+            // The plant must have taken on v4's side (else the row proves nothing).
+            for p in want_probe.as_array().expect("probe array") {
+                assert_eq!(
+                    p["hydratedThrew"],
+                    Value::Bool(true),
+                    "case {}: v4 plant",
+                    case.name
+                );
+                assert!(p["rawName"].is_string(), "case {}: v4 raw row", case.name);
+            }
+            let got_probe = Value::Array(got_probe);
+            if serde_json::to_string(&got_probe).unwrap()
+                != serde_json::to_string(&want_probe).unwrap()
+            {
+                case_failures.push(format!("R-F probe\n GOT: {got_probe}\n EXP: {want_probe}"));
+            }
         }
 
         let mut args = serde_json::Map::new();
@@ -312,28 +397,45 @@ async fn self_inventory_matches_oracle() {
             .map(|l| strip_target(l))
             .collect();
         let want_lines: Vec<String> = oracle.logs.iter().map(render_v4_line).collect();
-        assert_eq!(
-            got_lines, want_lines,
-            "case {}: self_inventory lines",
-            case.name
-        );
+        if got_lines != want_lines {
+            case_failures.push(format!(
+                "self_inventory lines\n GOT: {got_lines:?}\n EXP: {want_lines:?}"
+            ));
+        }
 
         // BYTES, never `Value ==` (key order is the contract).
         let got_json = serde_json::to_value(&out).expect("serialize output");
-        assert_eq!(
-            serde_json::to_string(&got_json).unwrap(),
-            serde_json::to_string(&oracle.output).unwrap(),
-            "case {}: output JSON mismatch\n GOT: {}\n EXP: {}",
-            case.name,
-            serde_json::to_string_pretty(&got_json).unwrap(),
-            serde_json::to_string_pretty(&oracle.output).unwrap(),
-        );
+        if serde_json::to_string(&got_json).unwrap()
+            != serde_json::to_string(&oracle.output).unwrap()
+        {
+            case_failures.push(format!(
+                "output JSON mismatch\n GOT: {}\n EXP: {}",
+                serde_json::to_string_pretty(&got_json).unwrap(),
+                serde_json::to_string_pretty(&oracle.output).unwrap(),
+            ));
+        }
 
         let got_formatted = format_self_inventory(&out);
-        assert_eq!(
-            got_formatted, oracle.formatted,
-            "case {}: formatted string mismatch",
-            case.name
-        );
+        if got_formatted != oracle.formatted {
+            case_failures.push(format!(
+                "formatted string mismatch\n GOT: {got_formatted}\n EXP: {}",
+                oracle.formatted
+            ));
+        }
+
+        if case_failures.is_empty() {
+            eprintln!("OK {}", case.name);
+        } else {
+            eprintln!("RED {}", case.name);
+            for f in &case_failures {
+                failures.push(format!("case {}: {f}", case.name));
+            }
+        }
     }
+    eprintln!(
+        "self_inventory_equivalence: {} cases, {} failure(s)",
+        spec.cases.len(),
+        failures.len()
+    );
+    assert!(failures.is_empty(), "\n{}", failures.join("\n\n"));
 }

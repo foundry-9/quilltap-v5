@@ -874,54 +874,37 @@ struct ResolvedGroup {
 }
 
 /// Resolve the groups the character belongs to + each group's document stores
-/// (v4 `resolveMyGroups`): membership → `groups.findById` (skip on error/absent),
-/// official mount + `groupDocMountLinks.findByGroupId`, then sort by group name.
+/// (v4 `resolveMyGroups`, through the shared walk since `0c47f4539`):
+/// `groupMountsFor(characterId, { includeEmpty: true })` — membership order,
+/// each group's official store first then its links, a store shared with an
+/// EARLIER group not credited again, a group with no store kept (a listing,
+/// not a walk); the id is the MEMBERSHIP's and the name the RAW row's (`''`
+/// when the row is absent — an orphan membership with links is LISTED; R-F: a
+/// group whose store cannot be hydrated is still named). Then sorted by name
+/// (`localeCompare`, stable). The baseline's hydrated `groups.findById` skip
+/// and its DEBUG `self_inventory: skipping group with unavailable store` are
+/// gone at the pin (v5 never logged the DEBUG — nothing retires).
 fn resolve_my_groups(db: &Db, character_id: &str) -> Result<Vec<ResolvedGroup>, DbError> {
-    let memberships: Vec<String> = db.read_mount_index(|mount| {
-        crate::db::group_character_members::GroupCharacterMembersRepository::new(mount)
-            .find_group_ids_by_character_id(character_id)
+    let groups = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            Ok(crate::db::reach::group_mounts_for(
+                main,
+                mount,
+                character_id,
+                crate::db::tiered_mount_pool::GroupMountsOptions {
+                    include_empty: true,
+                },
+            ))
+        })
     })?;
-
-    let mut resolved: Vec<ResolvedGroup> = Vec::new();
-    for group_id in memberships {
-        // v4 wraps `groups.findById` in try/catch (unavailable store → skip).
-        let group = db.read_main(|main| {
-            db.read_mount_index(|mount| {
-                crate::db::groups::GroupsRepository::new(main, mount)
-                    .find_by_id(&group_id)
-                    .map_err(overlay_to_db_err)
-            })
-        });
-        let group = match group {
-            Ok(Some(g)) => g,
-            Ok(None) => continue,
-            Err(_) => continue, // store unavailable — skip, not fatal
-        };
-
-        // Official store + linked stores, deduped (first-seen order).
-        let mut ids: Vec<String> = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        if let Some(official) = json_str(&group, "officialMountPointId") {
-            if seen.insert(official.clone()) {
-                ids.push(official);
-            }
-        }
-        let links = db.read_mount_index(|mount| {
-            crate::db::group_doc_mount_links::GroupDocMountLinksRepository::new(mount)
-                .find_by_group_id(&group_id)
-        })?;
-        for l in links {
-            if seen.insert(l.clone()) {
-                ids.push(l);
-            }
-        }
-
-        resolved.push(ResolvedGroup {
-            group_id: json_str(&group, "id").unwrap_or_default(),
-            group_name: json_str(&group, "name").unwrap_or_default(),
-            mount_point_ids: ids,
-        });
-    }
+    let mut resolved: Vec<ResolvedGroup> = groups
+        .into_iter()
+        .map(|g| ResolvedGroup {
+            group_id: g.group.id,
+            group_name: g.group.name,
+            mount_point_ids: g.mount_point_ids,
+        })
+        .collect();
 
     // JS `.sort` (stable) by group name localeCompare.
     resolved.sort_by(|a, b| locale_compare(&a.group_name, &b.group_name));
@@ -1965,25 +1948,21 @@ fn build_context_project(db: &Db, project_id: Option<&str>) -> Result<ContextPro
         }
     };
 
-    let mut ids: Vec<String> = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    if let Some(official) = json_str(&project, "officialMountPointId") {
-        if seen.insert(official.clone()) {
-            ids.push(official);
-        }
-    }
-    // v4 wraps projectDocMountLinks in try/catch (mount-index unavailable → skip).
-    if let Ok(links) = db.read_mount_index(|mount| {
-        crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(mount)
-            .find_by_project_id(project_id)
-    }) {
-        for l in links {
-            if seen.insert(l.clone()) {
-                ids.push(l);
-            }
-        }
-    }
-
+    // v4 `resolveProjectMountPointIds(projectId)` (`0c47f4539`): the official
+    // store from the RAW row first, then every link — each half fails soft
+    // with the tier walk's own lines. Presence and `name` stay the hydrated
+    // read's above.
+    let ids = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            Ok(
+                crate::db::tiered_mount_pool::resolve_project_mount_point_ids(
+                    main,
+                    mount,
+                    Some(project_id),
+                ),
+            )
+        })
+    })?;
     let mount_points = resolve_mount_names(db, &ids)?;
     Ok(ContextProject::Present {
         available: AvailTrue,

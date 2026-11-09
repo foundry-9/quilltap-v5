@@ -16,12 +16,12 @@
  * deferral). `isMountIndexDegraded()` is false (healthy fixture).
  *
  * Run (Node 24, from the v4 checkout), AFTER building the fixtures:
- *   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
  *   QT_FIXTURE_SELFINV_MAIN=/tmp/qt-selfinv-main.db \
  *   QT_FIXTURE_SELFINV_MOUNT=/tmp/qt-selfinv-mount.db \
  *   QT_FIXTURE_SELFINV_LLMLOGS=/tmp/qt-selfinv-llmlogs.db \
- *     $N/node --import tsx $V5/harness/oracle/cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson
+ *     $N/node --import tsx $V5W/harness/oracle/cases/self-inventory.ts > /tmp/oracle-selfinv.ndjson
  */
 
 import { fileURLToPath } from 'node:url';
@@ -39,6 +39,12 @@ interface CaseSpec {
   plantSql?: string;
   /** P4.D350: raw SQL run after the case, restoring the plant (both sides). */
   restoreSql?: string;
+  /**
+   * P4.D378 R-F (item 13): group ids whose HYDRATED read (`groups.findById`)
+   * must throw while the RAW row (`findByIdRaw`) stays whole — proven in-case,
+   * on both sides, before the handler runs.
+   */
+  hydratedProbeGroupIds?: string[];
 }
 
 interface Spec {
@@ -126,7 +132,16 @@ async function main(): Promise<void> {
     recap: spec.loadedMemories.recap,
   };
 
-  const outputs: Array<{ name: string; output: unknown; formatted: string; logs: unknown[] }> = [];
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  const repos = getRepositories();
+
+  const outputs: Array<{
+    name: string;
+    output: unknown;
+    formatted: string;
+    logs: unknown[];
+    probe?: unknown[];
+  }> = [];
   for (const c of spec.cases) {
     const input: Record<string, unknown> = {};
     if (c.sections) input.sections = c.sections;
@@ -144,12 +159,31 @@ async function main(): Promise<void> {
     if (c.withLoadedMemories) context.loadedMemories = loadedMemoriesContext;
 
     if (c.plantSql) await rawQuery(c.plantSql);
+    let probe: unknown[] | undefined;
+    if (c.hydratedProbeGroupIds) {
+      probe = [];
+      for (const groupId of c.hydratedProbeGroupIds) {
+        let hydratedThrew = false;
+        try {
+          await repos.groups.findById(groupId);
+        } catch {
+          hydratedThrew = true;
+        }
+        const raw = await repos.groups.findByIdRaw(groupId);
+        probe.push({
+          groupId,
+          hydratedThrew,
+          rawName: raw?.name ?? null,
+          rawHasOfficialStore: Boolean(raw?.officialMountPointId),
+        });
+      }
+    }
     captured.length = 0;
     const output = await executeSelfInventoryTool(input, context as never);
     const logs = captured.splice(0, captured.length);
     if (c.restoreSql) await rawQuery(c.restoreSql);
     const formatted = formatSelfInventoryResults(output);
-    outputs.push({ name: c.name, output, formatted, logs });
+    outputs.push(probe ? { name: c.name, output, formatted, logs, probe } : { name: c.name, output, formatted, logs });
   }
 
   await closeDatabase();
