@@ -65,6 +65,8 @@ const CAPTURED = new Set([
   // P4.D291 (v4 `584d28164`): the TF-IDF gate-off and R6 reservation lines
   // are retired; the anchors line is the search's one.
   '[Memory] Specific entity anchors chosen',
+  // P4.D375 (v4 4.12.1 `6121f59b9`): the window pass's DEBUG.
+  '[Memory] Window-first gather',
 ]);
 interface Spec {
   $nowMs: number;

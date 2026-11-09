@@ -128,7 +128,9 @@ struct OracleRow {
 /// P4.D291 (v4 `584d28164`): Phase E's search no longer logs the TF-IDF
 /// gate-off or the R6 reservation lines (both RETIRED at the pin, in v4 and
 /// v5), so they left this list — the anchors line is the search's one.
-const PINNED_LINES: [(&str, &str); 6] = [
+///
+/// P4.D375 (v4 4.12.1 `6121f59b9`): + the window pass's DEBUG.
+const PINNED_LINES: [(&str, &str); 7] = [
     ("[Chats v1] Recall replay requested", "quilltap::chats"),
     ("[Chats v1] Recall replay failed", "quilltap::chats"),
     (
@@ -141,6 +143,7 @@ const PINNED_LINES: [(&str, &str); 6] = [
         "[Memory] Specific entity anchors chosen",
         "quilltap::memories",
     ),
+    ("[Memory] Window-first gather", "quilltap::memories"),
 ];
 
 /// v4's captured line as v5's capture rig renders it: `LEVEL target message

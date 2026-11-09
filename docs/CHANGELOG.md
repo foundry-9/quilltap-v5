@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — test(harness): recall_replay records v4's `[Memory] Window-first gather` line (P4.D375)
+
+_No crate versions bumped._
+
+The same whitelist gap as `semantic_search_tuning_tier3`: both sides filtered the replay's lines to a pinned list that predates 4.12.1. The message joins the case and `PINNED_LINES`; regenerated from the pin, green with 26 v4 lines compared.
+
 #### 2026-11-09 — test(harness): semantic_search_tuning_tier3 records v4's `[Memory] Window-first gather` line (P4.D375)
 
 _No crate versions bumped._
