@@ -12,19 +12,22 @@
 //!     BYTES (the winner of a same-id collision — inside a tier the EARLIER
 //!     mount wins: membership order for groups, the official store first for
 //!     the project);
-//!   - `consulted` / `unread`: the pool's `consultedMounts` /
-//!     `unreadMounts`, every mount id replaced by its label through ONE remap,
-//!     compared PER TIER (each tier's subsequence, in order — the within-tier
-//!     reversal) as a HARD comparand;
-//!   - the same arrays VERBATIM. v4 runs the four tier reads under
-//!     `Promise.all`, so the cross-tier interleave of the pushes follows
-//!     microtask resolution, where v5 reads the tiers serially. A verbatim
-//!     difference whose per-tier subsequences AND multiset agree is the
-//!     RULED deliberate divergence `CONSULTED_CROSS_TIER_INTERLEAVE` (work
-//!     order Tier 2 item 17; the human, 2026-11-09: v5's serial tier order is
-//!     the intended behaviour, v4's `Promise.all` interleave a v4 bug — drafted
-//!     in `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`):
-//!     it is PRINTED, not failed. Any other verbatim difference fails;
+//!   - `unread`: the pool's `unreadMounts`, every mount id replaced by its
+//!     label through ONE remap, compared VERBATIM on every row (hard);
+//!   - `consulted`: the pool's `consultedMounts`, relabelled the same way,
+//!     compared VERBATIM (hard) on every row but the five `INTERLEAVE_ROWS`.
+//!     v4 runs the four tier reads under `Promise.all`, so the cross-tier
+//!     interleave of the pushes follows microtask resolution, where v5 reads
+//!     the tiers serially — the RULED deliberate divergence
+//!     `CONSULTED_CROSS_TIER_INTERLEAVE` (work order Tier 2 item 17; the
+//!     human, 2026-11-09: v5's serial tier order is the intended behaviour,
+//!     v4's interleave a v4 bug — drafted in
+//!     `work-orders/surveys/2026-11-09-p4.d378-v4-consulted-interleave-draft.md`).
+//!     The carve is NARROW and TWO-WAY: on `first_group_wins` and
+//!     `interleave_dangling_two_tiers` ONLY, v5 must equal v4's array STABLY
+//!     re-sorted by tier rank (own → group → project → General), AND v4's
+//!     verbatim must still differ (the carve fails once v4 stops
+//!     interleaving); both rows must run;
 //!   - every `[InventoryPool]` line, whole (level, message, every field in
 //!     v4's order), mount ids relabelled `<mp:label>` on both sides.
 //!
@@ -52,8 +55,23 @@ use quilltap_core::test_support::captured_with;
 use regex::Regex;
 use serde_json::{json, Map, Value};
 
-/// The open, pre-existing divergence item 17 records (never carved).
+/// The RULED deliberate divergence item 17 records (the human, 2026-11-09).
 const INTERLEAVE: &str = "CONSULTED_CROSS_TIER_INTERLEAVE";
+
+/// The ONLY rows the `CONSULTED_CROSS_TIER_INTERLEAVE` carve covers — the rows
+/// whose v4 `consulted` interleaves tiers at the pin. MEASURED at the
+/// `624d0d25c` unification from the pin: all FIVE corpus rows interleave
+/// (status-log P4.D378: "per tier equal in all five rows"), e.g.
+/// `first_group_wins` `[own, second, general, first]`. Each must be present in
+/// the corpus, must equal v4's array stably re-sorted by tier rank, and must
+/// still differ from v4 verbatim (two-way). The `unread` list is never carved.
+const INTERLEAVE_ROWS: [&str; 5] = [
+    "first_group_wins",
+    "project_official_wins",
+    "consulted_reversed_within_tier",
+    "unread_order_reversed",
+    "interleave_dangling_two_tiers",
+];
 
 fn spec_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -71,21 +89,22 @@ fn tier_of(label: &str) -> &'static str {
     }
 }
 
-fn per_tier(labels: &[String]) -> Vec<(&'static str, Vec<String>)> {
-    ["own", "group", "project", "general", "unlabelled"]
-        .into_iter()
-        .map(|t| {
-            (
-                t,
-                labels.iter().filter(|l| tier_of(l) == t).cloned().collect(),
-            )
-        })
-        .collect()
+/// The tier's rank in v5's serial read order (own → group → project → General).
+fn tier_rank(label: &str) -> usize {
+    match tier_of(label) {
+        "own" => 0,
+        "group" => 1,
+        "project" => 2,
+        "general" => 3,
+        _ => 4,
+    }
 }
 
-fn sorted(v: &[String]) -> Vec<String> {
-    let mut v = v.to_vec();
-    v.sort();
+/// v4's array STABLY re-sorted by tier rank: each tier's v4 subsequence kept
+/// in v4's order, the tiers laid end to end in v5's serial order.
+fn tier_stable_sorted(labels: &[String]) -> Vec<String> {
+    let mut v = labels.to_vec();
+    v.sort_by_key(|l| tier_rank(l));
     v
 }
 
@@ -163,6 +182,7 @@ fn inventory_pool_order_matches_oracle() {
     let mut failures: Vec<String> = Vec::new();
     let mut recorded: Vec<String> = Vec::new();
     let mut green: Vec<&str> = Vec::new();
+    let mut interleave_rows_seen: Vec<&str> = Vec::new();
     for row in rows {
         let name = row["name"].as_str().unwrap();
         let want = by_op
@@ -290,7 +310,7 @@ fn inventory_pool_order_matches_oracle() {
                 red = true;
             }
         }
-        // consulted / unread: per tier (hard), verbatim (interleave recorded)
+        // consulted / unread
         let got_consulted: Vec<String> = pool.consulted_mounts.iter().map(|m| label(m)).collect();
         let want_consulted: Vec<String> = want["consulted"]
             .as_array()
@@ -304,46 +324,39 @@ fn inventory_pool_order_matches_oracle() {
             .map(|u| s(&json!({ "mount": label(&u.mount_point_id), "error": u.error })))
             .collect();
         let want_unread: Vec<String> = want["unread"].as_array().unwrap().iter().map(s).collect();
-        for (what, got, want_v, tiered) in [
-            ("CONSULTED", &got_consulted, &want_consulted, true),
-            ("UNREAD", &got_unread, &want_unread, false),
-        ] {
-            if got == want_v {
-                continue;
-            }
-            let tier_key = |v: &[String]| -> Vec<(&'static str, Vec<String>)> {
-                if tiered {
-                    per_tier(v)
-                } else {
-                    let labels: Vec<String> = v
-                        .iter()
-                        .map(|u| {
-                            serde_json::from_str::<Value>(u).unwrap()["mount"]
-                                .as_str()
-                                .unwrap()
-                                .to_string()
-                        })
-                        .collect();
-                    per_tier(&labels)
-                }
-            };
-            if tier_key(got) != tier_key(want_v) {
+        // UNREAD: verbatim, hard, on every row.
+        if got_unread != want_unread {
+            failures.push(format!(
+                "{name} UNREAD (verbatim)\n  v5: {got_unread:?}\n  v4: {want_unread:?}"
+            ));
+            red = true;
+        }
+        // CONSULTED: verbatim, hard — except on the RULED rows, where v5 must
+        // equal v4's array STABLY re-sorted by tier rank AND v4's verbatim must
+        // still differ (two-way: the carve fails if v4 stops interleaving).
+        if INTERLEAVE_ROWS.contains(&name) {
+            interleave_rows_seen.push(name);
+            let tier_sorted = tier_stable_sorted(&want_consulted);
+            if got_consulted != tier_sorted {
                 failures.push(format!(
-                    "{name} {what} (per tier)\n  v5: {:?}\n  v4: {:?}",
-                    tier_key(got),
-                    tier_key(want_v)
+                    "{name} CONSULTED ({INTERLEAVE} carve: v5 must be v4 tier-stable-sorted)\n  v5: {got_consulted:?}\n  v4 tier-sorted: {tier_sorted:?}\n  v4: {want_consulted:?}"
                 ));
                 red = true;
-            } else if sorted(got) == sorted(want_v) {
-                recorded.push(format!(
-                    "{name} {what} — {INTERLEAVE} (RULED 2026-11-09: v4 Promise.all interleave vs v5's intended serial order)\n  v5: {got:?}\n  v4: {want_v:?}"
+            } else if got_consulted == want_consulted {
+                failures.push(format!(
+                    "{name} CONSULTED ({INTERLEAVE} carve is STALE: v4 no longer interleaves — retire the carve)\n  both: {got_consulted:?}"
                 ));
+                red = true;
             } else {
-                failures.push(format!(
-                    "{name} {what} (verbatim)\n  v5: {got:?}\n  v4: {want_v:?}"
+                recorded.push(format!(
+                    "{name} CONSULTED — {INTERLEAVE} (RULED 2026-11-09: v4 Promise.all interleave vs v5's intended serial order)\n  v5: {got_consulted:?}\n  v4: {want_consulted:?}"
                 ));
-                red = true;
             }
+        } else if got_consulted != want_consulted {
+            failures.push(format!(
+                "{name} CONSULTED (verbatim)\n  v5: {got_consulted:?}\n  v4: {want_consulted:?}"
+            ));
+            red = true;
         }
         // lines
         let got_lines = v5_lines(&captured, &label_of);
@@ -366,6 +379,14 @@ fn inventory_pool_order_matches_oracle() {
         rows.len(),
         green.len(),
         recorded.len()
+    );
+    interleave_rows_seen.sort_unstable();
+    let mut want_rows = INTERLEAVE_ROWS.to_vec();
+    want_rows.sort_unstable();
+    assert_eq!(
+        interleave_rows_seen,
+        want_rows,
+        "the {INTERLEAVE} carve's named rows must each run exactly once (a renamed or removed row would silence the carve)"
     );
     assert!(
         failures.is_empty(),

@@ -830,6 +830,7 @@ fn inventory_title_lint_matches_oracle() {
     };
     let mut ran = 0;
     let mut lines_compared = 0;
+    let mut interleave_hits = 0usize;
     for op in spec["ops"].as_array().unwrap() {
         let name = op["name"].as_str().unwrap();
         let want = by_op[name];
@@ -918,6 +919,7 @@ fn inventory_title_lint_matches_oracle() {
         // v4's on the oracle, v5's here; with v5's swapped for v4's, every
         // line must then match byte for byte. It reds if the sides converge.
         if CONSULTED_CROSS_TIER_INTERLEAVE.contains(&name) {
+            interleave_hits += 1;
             let census = |lines: &[String]| -> Vec<usize> {
                 lines
                     .iter()
@@ -967,6 +969,15 @@ fn inventory_title_lint_matches_oracle() {
         paths.len(),
         norms.len(),
         messages.len()
+    );
+    // The carve must have RUN on exactly its two named rows: a renamed or
+    // removed corpus row would otherwise silence it.
+    assert_eq!(
+        interleave_hits,
+        CONSULTED_CROSS_TIER_INTERLEAVE.len(),
+        "the CONSULTED_CROSS_TIER_INTERLEAVE carve ran on {interleave_hits} rows, not its {} named rows {:?}",
+        CONSULTED_CROSS_TIER_INTERLEAVE.len(),
+        CONSULTED_CROSS_TIER_INTERLEAVE
     );
     assert!(
         failures.is_empty(),
