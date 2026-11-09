@@ -989,6 +989,37 @@ async function main(): Promise<void> {
       id: ARIA,
       body: { physicalDescription: { name: 'Spheres', humanoid: 'no' } },
     },
+    // P4.D369 (v4 `b09ca46bb`): the PUT's `kind` key (`z.enum(CHARACTER_KINDS)
+    // .optional()`, after `diagramStyle`) — vault-managed (properties.json, nine
+    // keys); a bad value (incl. `null` and the wrong case) is Zod's
+    // `invalid_value` at `["kind"]`, nothing written. And the POST create path:
+    // `createCharacterSchema` has NO `kind` (nor the other properties.json keys
+    // but `title` / `firstMessage`), so a body's value never reaches the vault.
+    { name: 'p4d369_update_kind_assistant', kind: 'update', id: ARIA, body: { kind: 'assistant' } },
+    { name: 'p4d369_update_kind_roleplay', kind: 'update', id: ARIA, body: { kind: 'roleplay' } },
+    { name: 'p4d369_update_kind_robot', kind: 'update', id: ARIA, body: { kind: 'robot' } },
+    { name: 'p4d369_update_kind_null', kind: 'update', id: ARIA, body: { kind: null } },
+    { name: 'p4d369_update_kind_mixed_case', kind: 'update', id: ARIA, body: { kind: 'Assistant' } },
+    {
+      name: 'p4d369_update_kind_with_bad_diagram',
+      kind: 'update',
+      id: ARIA,
+      body: { diagramStyle: 'crayon', kind: 'robot' },
+    },
+    { name: 'p4d369_create_with_kind', kind: 'create', body: { name: 'Kindless', kind: 'assistant' } },
+    // Tier 2 item 13: the create-path class — one non-default properties.json
+    // key per row, measured against v4's explicit create bag (`post.ts:327-348`).
+    { name: 'p4d369_create_with_talkativeness', kind: 'create', body: { name: 'Kindless', talkativeness: 0.9 } },
+    {
+      name: 'p4d369_create_with_pronouns',
+      kind: 'create',
+      body: { name: 'Kindless', pronouns: { subject: 'they', object: 'them', possessive: 'their' } },
+    },
+    { name: 'p4d369_create_with_aliases', kind: 'create', body: { name: 'Kindless', aliases: ['Kay'] } },
+    { name: 'p4d369_create_with_can_choose_outfit', kind: 'create', body: { name: 'Kindless', canChooseOutfit: true } },
+    { name: 'p4d369_create_with_can_draw_diagrams', kind: 'create', body: { name: 'Kindless', canDrawDiagrams: true } },
+    { name: 'p4d369_create_with_diagram_style', kind: 'create', body: { name: 'Kindless', diagramStyle: 'clean' } },
+    { name: 'p4d369_create_with_metadata', kind: 'create', body: { name: 'Kindless', metadata: { faction: 'Lumen' } } },
     // [P4.D201 / v4 `baa85e19b`, bug 154] The character PUT's
     // `defaultSystemPromptId` chokepoint. Aria's baked prompts are `Backup`
     // (path-first) and `Explorer` (the standing default), so a move to `Backup`

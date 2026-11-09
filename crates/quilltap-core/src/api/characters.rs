@@ -1289,15 +1289,16 @@ fn build_create_slim(user_id: &str, body: &Value) -> Result<CharacterCreate, Res
 /// defaults + the managed inputs → `create_character` (which provisions the vault)
 /// → reload through the overlay. Response `{ character }` (201). The managed-field
 /// bag (`title`/`identity`/`description`/`manifesto`/`personality`/`firstMessage`/
-/// `exampleDialogues`/`scenarios`/`systemPrompts`/`physicalDescription`)
-/// deserializes straight off the body (unknown keys ignored; a scenario's
-/// id/timestamps are irrelevant to the title/content vault projection).
+/// `exampleDialogues`/`scenarios`/`systemPrompts`/`physicalDescription`) is
+/// projected from v4's EXPLICIT create bag ([`create_vault_bag`]) — never the
+/// raw body (a scenario's id/timestamps are irrelevant to the title/content
+/// vault projection).
 pub async fn character_create(db: &Db, user_id: &str, body: Value) -> Response {
     let slim = match build_create_slim(user_id, &body) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    let vault: CharacterVaultWriteInput = match serde_json::from_value(body) {
+    let vault: CharacterVaultWriteInput = match serde_json::from_value(create_vault_bag(&body)) {
         Ok(v) => v,
         Err(e) => return bad_request(format!("Invalid character data: {e}")),
     };
@@ -1312,6 +1313,42 @@ pub async fn character_create(db: &Db, user_id: &str, body: Value) -> Response {
         Ok(c) => Response::Character(json!({ "character": c })),
         Err(e) => db_error_response(e),
     }
+}
+
+/// The vault-managed half of v4's create bag (`post.ts:327-348`). v4's
+/// `createCharacterSchema` (`post.ts:30-82`) declares NONE of the other
+/// properties.json keys — `kind` (`b09ca46bb`), `talkativeness`, `pronouns`,
+/// `aliases`, `canChooseOutfit`, `canDrawDiagrams`, `diagramStyle` — nor
+/// `metadata`, and `handleCreate` hands `repos.characters.create` an explicit
+/// bag, so a POST body's value for any of them never reaches the vault: a
+/// v4-created character is always `roleplay` with the defaults (P4.D369 Tier
+/// 2 item 13, measured by the `p4d369_create_with_*` rows). The string fields
+/// take v4's `|| null`.
+fn create_vault_bag(body: &Value) -> Value {
+    let mut bag = serde_json::Map::new();
+    for key in [
+        "title",
+        "identity",
+        "description",
+        "manifesto",
+        "personality",
+        "firstMessage",
+        "exampleDialogues",
+    ] {
+        // `validatedData.<key> || null` — an empty string is JS-falsy.
+        let v = body
+            .get(key)
+            .filter(|v| v.as_str().is_some_and(|s| !s.is_empty()))
+            .cloned()
+            .unwrap_or(Value::Null);
+        bag.insert(key.to_string(), v);
+    }
+    for key in ["scenarios", "systemPrompts", "physicalDescription"] {
+        if let Some(v) = body.get(key) {
+            bag.insert(key.to_string(), v.clone());
+        }
+    }
+    Value::Object(bag)
 }
 
 /// v4 `POST /characters?action=quick-create` (`handleQuickCreate`): a minimal
@@ -2241,6 +2278,10 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
     // vault-managed (`properties.json`) for the same reason.
     "canDrawDiagrams",
     "diagramStyle",
+    // P4.D369 (v4 `b09ca46bb`, `put.ts:79-81`): how the character is performed
+    // (roleplay / assistant) — vault-managed (`properties.json`); a value
+    // outside `CHARACTER_KINDS` is refused at the parse.
+    "kind",
     // Wardrobe-permission tri-states (null = inherit global, true/false = override).
     // Real DB columns; omitting them here would strip the key before it reached
     // `update()`, so the editor toggles would silently never persist (v4 `put.ts:74`).
@@ -2296,10 +2337,11 @@ pub async fn character_update(
         if characters_read::find_by_id_raw(main, &cid)?.is_none() {
             return Ok(Err(not_found("Character")));
         }
-        // P4.D349: v4's `updateCharacterSchema.parse` refuses a bad diagram key
-        // or a non-boolean `physicalDescription.humanoid` with the Zod 400,
-        // before any write. Only these three arms are ported; the rest of the
-        // schema stays the standing Zod-format-validator deferral.
+        // P4.D349 / P4.D369: v4's `updateCharacterSchema.parse` refuses a bad
+        // diagram key, a bad `kind` or a non-boolean
+        // `physicalDescription.humanoid` with the Zod 400, before any write.
+        // Only these four arms are ported; the rest of the schema stays the
+        // standing Zod-format-validator deferral.
         let issues = p4d349_update_issues(&body);
         if !issues.is_empty() {
             return Ok(Err(Response::validation_error(
@@ -2403,10 +2445,12 @@ pub async fn character_update(
     }
 }
 
-/// P4.D349: the three refusals of v4's `updateCharacterSchema` this lane ports,
-/// in the schema's shape order (`put.ts:74-76`, `:93-101`): a present
-/// non-boolean `canDrawDiagrams` (`invalid_type`), a present `diagramStyle`
-/// outside `DIAGRAM_STYLES` (`invalid_value`), and a present non-boolean
+/// P4.D349 + P4.D369: the four refusals of v4's `updateCharacterSchema`
+/// ported so far, in the schema's shape order (`put.ts:74-81`, `:93-101`): a
+/// present non-boolean `canDrawDiagrams` (`invalid_type`), a present
+/// `diagramStyle` outside `DIAGRAM_STYLES` (`invalid_value`), a present `kind`
+/// outside `CHARACTER_KINDS` — incl. `null`, `.optional()` is not nullable
+/// (`invalid_value`, `b09ca46bb`), and a present non-boolean
 /// `physicalDescription.humanoid` (`invalid_type` at `["physicalDescription",
 /// "humanoid"]`). Bytes measured from the oracle (`characters-mutations`'
 /// `p4d349_update_*` rows).
@@ -2433,6 +2477,17 @@ fn p4d349_update_issues(body: &Value) -> Vec<crate::api::zod_issues::ZodIssue> {
             issues.push(ZodIssue::invalid_value(
                 &crate::characters::diagrams::DIAGRAM_STYLES,
                 vec![key("diagramStyle")],
+            ));
+        }
+    }
+    if let Some(v) = obj.get("kind") {
+        if !v
+            .as_str()
+            .is_some_and(|s| crate::characters::kind::CHARACTER_KINDS.contains(&s))
+        {
+            issues.push(ZodIssue::invalid_value(
+                &crate::characters::kind::CHARACTER_KINDS,
+                vec![key("kind")],
             ));
         }
     }

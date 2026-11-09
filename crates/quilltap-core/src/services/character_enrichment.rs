@@ -143,6 +143,12 @@ pub fn build_list_dto(
                 .as_str()
         ),
     );
+    // v4 `b09ca46bb` (`get.ts:84`): `kind: resolveCharacterKind(character)`,
+    // right after `diagramStyle`.
+    out.insert(
+        "kind".to_string(),
+        json!(crate::characters::kind::resolve_character_kind(Some(character)).as_str()),
+    );
     out.insert(
         "defaultConnectionProfileId".to_string(),
         js_or_null(character.get("defaultConnectionProfileId")),

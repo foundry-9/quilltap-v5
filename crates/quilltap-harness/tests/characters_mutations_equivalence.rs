@@ -783,6 +783,121 @@ fn characters_mutations_match_oracle() {
         }
         run(name, r);
     }
+    // P4.D369 (v4 `b09ca46bb`): the PUT's `kind` arm (vault-managed; a bad
+    // value is Zod's `invalid_value` 400, nothing written) and the POST create
+    // path (v4's `createCharacterSchema` has no `kind` — nor, Tier 2 item 13,
+    // any properties.json key but `title` / `firstMessage`).
+    for (name, scratch, create, body) in [
+        (
+            "p4d369_update_kind_assistant",
+            "p4d369_ka",
+            false,
+            json!({ "kind": "assistant" }),
+        ),
+        (
+            "p4d369_update_kind_roleplay",
+            "p4d369_kr",
+            false,
+            json!({ "kind": "roleplay" }),
+        ),
+        (
+            "p4d369_update_kind_robot",
+            "p4d369_kx",
+            false,
+            json!({ "kind": "robot" }),
+        ),
+        (
+            "p4d369_update_kind_null",
+            "p4d369_kn",
+            false,
+            json!({ "kind": null }),
+        ),
+        (
+            "p4d369_update_kind_mixed_case",
+            "p4d369_km",
+            false,
+            json!({ "kind": "Assistant" }),
+        ),
+        (
+            "p4d369_update_kind_with_bad_diagram",
+            "p4d369_kd",
+            false,
+            json!({ "diagramStyle": "crayon", "kind": "robot" }),
+        ),
+        (
+            "p4d369_create_with_kind",
+            "p4d369_ck",
+            true,
+            json!({ "name": "Kindless", "kind": "assistant" }),
+        ),
+        (
+            "p4d369_create_with_talkativeness",
+            "p4d369_ct",
+            true,
+            json!({ "name": "Kindless", "talkativeness": 0.9 }),
+        ),
+        (
+            "p4d369_create_with_pronouns",
+            "p4d369_cp",
+            true,
+            json!({ "name": "Kindless", "pronouns": { "subject": "they", "object": "them", "possessive": "their" } }),
+        ),
+        (
+            "p4d369_create_with_aliases",
+            "p4d369_ca",
+            true,
+            json!({ "name": "Kindless", "aliases": ["Kay"] }),
+        ),
+        (
+            "p4d369_create_with_can_choose_outfit",
+            "p4d369_cco",
+            true,
+            json!({ "name": "Kindless", "canChooseOutfit": true }),
+        ),
+        (
+            "p4d369_create_with_can_draw_diagrams",
+            "p4d369_ccd",
+            true,
+            json!({ "name": "Kindless", "canDrawDiagrams": true }),
+        ),
+        (
+            "p4d369_create_with_diagram_style",
+            "p4d369_cds",
+            true,
+            json!({ "name": "Kindless", "diagramStyle": "clean" }),
+        ),
+        (
+            "p4d369_create_with_metadata",
+            "p4d369_cm",
+            true,
+            json!({ "name": "Kindless", "metadata": { "faction": "Lumen" } }),
+        ),
+    ] {
+        let (db, _scratch) = fresh_db(&spec, scratch);
+        let r = if create {
+            rt.block_on(characters::character_create(&db, &uid, body))
+        } else {
+            rt.block_on(characters::character_update(&db, &uid, ARIA, body))
+        };
+        let want = &oracle[name];
+        if matches!(r, Response::Error(_)) || want["status"].as_i64().is_some_and(|s| s >= 400) {
+            let (status, got) = to_status_body(&r);
+            if Some(status) != want["status"].as_i64()
+                || serde_json::to_string(&got).unwrap()
+                    != serde_json::to_string(&want["body"]).unwrap()
+            {
+                eprintln!(
+                    "[{name}] STATUS/BODY MISMATCH: got {status} {got} want {} {}",
+                    want["status"], want["body"]
+                );
+                p4d349_refusals_failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK ({status}).");
+            }
+            continue;
+        }
+        run(name, r);
+    }
     {
         // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist
         // through PUT (previously stripped before update()).
