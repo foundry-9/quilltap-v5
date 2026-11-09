@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(brahma): regenerate the Brahma SQL prompt from v4 624d0d25c — the lookup-shortcuts section (P4.D374)
+
+_Versions: core 0.0.1431._
+
+P4.D374 Tier 1 item 13. `services/brahma_console/prompt_text.rs` regenerated from v4 `624d0d25c` via `gen-brahma-prompts.mjs`: `BRAHMA_SQL_PROMPT` gains v4's leading "Reach for the lookup shortcuts first" section and two sentences in "Chats and messages" (8,231 → 10,615 UTF-16 units). `BRAHMA_BASE_BRIEF` is unchanged (863). `dqs_sql_literal_census` stays green (1,248 literals).
+
 #### 2026-11-08 — feat(tools): run_sql fits results to v4's 24,000-character budget with the note; the BrahmaSql DEBUG lines (P4.D374)
 
 _Versions: core 0.0.1430._
