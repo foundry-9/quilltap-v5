@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(projects): the brahmaConnectionProfileId vault key — three-state, kept on every write, UUID-gated on PUT (P4.D374)
+
+_Versions: core 0.0.1435._
+
+P4.D374 Tier 1 item 17. The project vault key `brahmaConnectionProfileId` (v4 `c539c82e0`) is three-state in `ProjectProperties`, between `answerConfirmationOverride` and `storyBackgroundsEnabled`, and is listed in `property_keys()`, so it stays in `properties.json` and no row writer names the fresh-only column. This ends the project-write erasure: a v4-written UUID, `null` or absent key survives a v5 read-modify-write byte-for-byte. The project PUT accepts a UUID or `null` and answers 400 for anything else (`PROJECT_UPDATE_SCHEMA` and `zod_project_properties_issues`). `projects_tier2_equivalence` grows 17 ops (stored bytes for all three states; the column stays NULL) and `projects_routes_equivalence` grows 5 rows.
+
 #### 2026-11-08 — feat(settings): v4's Brahma Console settings schema whole — inlineConnectionProfileId survives every read and PUT (P4.D374)
 
 _Versions: core 0.0.1434._

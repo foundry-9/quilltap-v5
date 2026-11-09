@@ -1207,6 +1207,104 @@ fn projects_routes_match_oracle() {
             &mut failed,
         );
     }
+    // === P4.D374 === (v4 `c539c82e0`) the project vault key
+    // `brahmaConnectionProfileId`: set / absent-preserved / null on the PUT, the
+    // GET after each compared as BYTES (the key's schema position), a non-UUID
+    // and a number refused 400. The UUID row also dumps the tables: the
+    // committed fixture's `projects` table predates the fresh column, so the
+    // write succeeding at all proves no row writer names it.
+    {
+        const P4D374_PROFILE: &str = "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e";
+        let bytes_check = |name: &str, got: &Value, failed: &mut Vec<String>| {
+            let want = &oracle[name]["body"];
+            let (g, w) = (norm_blanked(got), norm_blanked(want));
+            let (gs, ws) = (
+                serde_json::to_string(&g).unwrap(),
+                serde_json::to_string(&w).unwrap(),
+            );
+            // Key ORDER is NOT compared here: `norm` sorts keys, and the
+            // project read wire's order already differs from v4's for keys
+            // this lane does not touch (v4 hydrates `description` /
+            // `instructions` / `state` before the bag and — measured —
+            // places `brahmaConnectionProfileId` after `backgroundDisplayMode`;
+            // v5 emits the bag in schema order). The family is order-blind by
+            // design; the STORED `properties.json` bytes (the key at its schema
+            // position) are proven byte-exact by `projects_tier2_equivalence`.
+            if gs != ws {
+                eprintln!("[{name}] MISMATCH (bytes):\n{}", first_diff(&g, &w));
+                eprintln!("[{name}]   v4 {ws}\n[{name}]   v5 {gs}");
+                failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK.");
+            }
+        };
+        let name = "update_brahma_profile_uuid";
+        let db = fresh_db(&spec, "p4d374_ubpu");
+        let put = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "brahmaConnectionProfileId": P4D374_PROFILE }),
+        ));
+        let get = projects::project_get(&db, IOTA);
+        let got = json!({ "put": response_data(&put), "get": response_data(&get) });
+        bytes_check(name, &got, &mut failed);
+        check_tables(name, &dump_project_tables(&db), &mut failed);
+
+        let name = "update_brahma_profile_absent_preserved";
+        let db = fresh_db(&spec, "p4d374_ubpap");
+        let _ = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "brahmaConnectionProfileId": P4D374_PROFILE }),
+        ));
+        let put = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "name": "Iota Kept" }),
+        ));
+        let get = projects::project_get(&db, IOTA);
+        let got = json!({ "put": response_data(&put), "get": response_data(&get) });
+        bytes_check(name, &got, &mut failed);
+
+        let name = "update_brahma_profile_null";
+        let db = fresh_db(&spec, "p4d374_ubpn");
+        let _ = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "brahmaConnectionProfileId": P4D374_PROFILE }),
+        ));
+        let put = rt.block_on(projects::project_update(
+            &db,
+            IOTA,
+            json!({ "brahmaConnectionProfileId": null }),
+        ));
+        let get = projects::project_get(&db, IOTA);
+        let got = json!({ "put": response_data(&put), "get": response_data(&get) });
+        bytes_check(name, &got, &mut failed);
+        assert_eq!(
+            oracle[name]["body"]["get"]["project"].get("brahmaConnectionProfileId"),
+            Some(&Value::Null),
+            "{name}: v4 writes the explicit null (not removal)"
+        );
+
+        for (name, tag, patch) in [
+            (
+                "update_brahma_profile_non_uuid",
+                "p4d374_ubpnu",
+                json!({ "brahmaConnectionProfileId": "not-a-uuid" }),
+            ),
+            (
+                "update_brahma_profile_number",
+                "p4d374_ubpnum",
+                json!({ "brahmaConnectionProfileId": 7 }),
+            ),
+        ] {
+            let db = fresh_db(&spec, tag);
+            let resp = rt.block_on(projects::project_update(&db, IOTA, patch));
+            check_error(name, &resp, &mut failed);
+        }
+    }
+    // === /P4.D374 ===
     {
         let db = fresh_db(&spec, "delete");
         let (resp, lines) = quilltap_core::test_support::captured_with(|| {

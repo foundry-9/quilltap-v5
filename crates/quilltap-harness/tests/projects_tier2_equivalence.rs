@@ -571,9 +571,10 @@ fn projects_tier2_matches_oracle() {
     // [P4.146] Iota, Kappa and Lambda (the null-preservation arms) make eleven.
     // P4.148 adds two (mu — the planted refusal cells — and nu, the refused
     // updates).
-    assert_eq!(rows("projects").len(), 13, "13 project rows");
-    assert_eq!(rows("points").len(), 13, "13 mount-point rows");
-    assert_eq!(rows("projectLinks").len(), 13, "13 project→store links");
+    // P4.D374 adds two (xi and omicron — the `brahmaConnectionProfileId` arms).
+    assert_eq!(rows("projects").len(), 15, "15 project rows");
+    assert_eq!(rows("points").len(), 15, "15 mount-point rows");
+    assert_eq!(rows("projectLinks").len(), 15, "15 project→store links");
 
     // The minimal project's properties.json = the five materialized defaults,
     // in schema order, with backgroundDisplayMode 'theme' (Beta after the

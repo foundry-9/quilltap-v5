@@ -1004,6 +1004,11 @@ pub fn zod_project_properties_issues(bag: &Value) -> Vec<ZodIssue> {
             vec![key("answerConfirmationOverride")],
         )),
     }
+    // === P4.D374 === v4 `c539c82e0`: `brahmaConnectionProfileId:
+    // UUIDSchema.nullable().optional()`, between the override and the
+    // story-background keys (Zod reports issues in shape order).
+    nullable_uuid("brahmaConnectionProfileId", &mut issues);
+    // === /P4.D374 ===
     nullable_boolean("storyBackgroundsEnabled", &mut issues);
     nullable_uuid("staticBackgroundImageId", &mut issues);
     nullable_uuid("storyBackgroundImageId", &mut issues);

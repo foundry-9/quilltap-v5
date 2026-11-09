@@ -410,6 +410,112 @@
         "state": [],
         "color": 5
       }
+    },
+    {
+      "$comment": "[P4.D374 / v4 c539c82e0] The project vault key `brahmaConnectionProfileId: UUIDSchema.nullable().optional()` (between answerConfirmationOverride and storyBackgroundsEnabled, store-managed). (a) A repository create carrying a profile id writes it into properties.json at its schema position; the read wire carries it.",
+      "kind": "create",
+      "label": "xi",
+      "input": {
+        "name": "Xi",
+        "description": "Desc X",
+        "state": {},
+        "answerConfirmationOverride": "ON",
+        "brahmaConnectionProfileId": "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e",
+        "storyBackgroundsEnabled": false
+      }
+    },
+    {
+      "kind": "read",
+      "label": "xi"
+    },
+    {
+      "$comment": "[P4.D374] (b) A v4-written bag carrying the key survives an UNRELATED read-modify-write byte-for-byte (the erasure this order retires).",
+      "kind": "plantProperties",
+      "label": "xi",
+      "content": "{\n  \"allowAnyCharacter\": false,\n  \"characterRoster\": [],\n  \"color\": \"#0a0b0c\",\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"answerConfirmationOverride\": \"OFF\",\n  \"brahmaConnectionProfileId\": \"b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e\",\n  \"storyBackgroundsEnabled\": true,\n  \"backgroundDisplayMode\": \"theme\"\n}"
+    },
+    {
+      "kind": "update",
+      "label": "xi",
+      "patch": {
+        "icon": "compass"
+      }
+    },
+    {
+      "kind": "read",
+      "label": "xi"
+    },
+    {
+      "$comment": "[P4.D374] (c) A patch setting the key to null writes null (not removal).",
+      "kind": "update",
+      "label": "xi",
+      "patch": {
+        "brahmaConnectionProfileId": null
+      }
+    },
+    {
+      "kind": "read",
+      "label": "xi"
+    },
+    {
+      "$comment": "[P4.D374] (d) A stored explicit null survives a one-key toggle; then set back to a value.",
+      "kind": "create",
+      "label": "omicron",
+      "input": {
+        "name": "Omicron",
+        "state": {}
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "omicron",
+      "content": "{\n  \"allowAnyCharacter\": true,\n  \"characterRoster\": [],\n  \"defaultDisabledTools\": [],\n  \"defaultDisabledToolGroups\": [],\n  \"brahmaConnectionProfileId\": null,\n  \"backgroundDisplayMode\": \"theme\"\n}"
+    },
+    {
+      "kind": "setAllowAnyCharacter",
+      "label": "omicron",
+      "value": false
+    },
+    {
+      "kind": "read",
+      "label": "omicron"
+    },
+    {
+      "kind": "update",
+      "label": "omicron",
+      "patch": {
+        "brahmaConnectionProfileId": "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e"
+      }
+    },
+    {
+      "kind": "read",
+      "label": "omicron"
+    },
+    {
+      "$comment": "[P4.D374] (e) A patch carrying a non-UUID id is refused by the bag's parse; a planted non-UUID is refused on read.",
+      "kind": "updateExpectError",
+      "label": "omicron",
+      "patch": {
+        "brahmaConnectionProfileId": "not-a-uuid"
+      }
+    },
+    {
+      "kind": "plantProperties",
+      "label": "omicron",
+      "content": "{\n  \"brahmaConnectionProfileId\": \"not-a-uuid\"\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "omicron"
+    },
+    {
+      "kind": "plantProperties",
+      "label": "omicron",
+      "content": "{\n  \"brahmaConnectionProfileId\": 5\n}"
+    },
+    {
+      "kind": "readExpectError",
+      "label": "omicron"
     }
   ]
 }

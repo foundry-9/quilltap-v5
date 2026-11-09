@@ -43,6 +43,8 @@ interface Spec {
 }
 
 const IOTA = 'a3000000-0000-4000-8000-000000000001';
+/** P4.D374: an inline-Brahma connection profile id (a well-formed RFC uuid; no row needed — the PUT gate is a format check). */
+const P4D374_PROFILE = 'b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e';
 const LAMBDA = 'a3000000-0000-4000-8000-000000000002';
 const KAPPA = 'a3000000-0000-4000-8000-000000000003';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
@@ -723,6 +725,52 @@ async function main(): Promise<void> {
       name: 'update_clear_description',
       run: async () =>
         respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { description: null }), p(IOTA))),
+    },
+    // ── P4.D374 (v4 `c539c82e0`): the project vault key `brahmaConnectionProfileId`
+    // — `z.string().uuid().nullable().optional()` on the PUT, `UUIDSchema.nullable()
+    // .optional()` in the properties bag (store-managed, between
+    // `answerConfirmationOverride` and `storyBackgroundsEnabled`). Each row echoes
+    // the PUT and the GET after it (the read wire, its key order).
+    {
+      name: 'update_brahma_profile_uuid',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        const put = await respond(await mod.PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: P4D374_PROFILE }), p(IOTA)));
+        const get = await respond(await mod.GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        return { status: put.status, body: { put: put.body, get: get.body }, tables: await dumpProjectTables() };
+      },
+    },
+    {
+      // Absent on a later PUT → the stored id is preserved (the erasure retired).
+      name: 'update_brahma_profile_absent_preserved',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        await mod.PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: P4D374_PROFILE }), p(IOTA));
+        const put = await respond(await mod.PUT(mockRequest(`${B}/${IOTA}`, { name: 'Iota Kept' }), p(IOTA)));
+        const get = await respond(await mod.GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        return { status: put.status, body: { put: put.body, get: get.body } };
+      },
+    },
+    {
+      // An explicit null CLEARS it — written as `null`, not removed.
+      name: 'update_brahma_profile_null',
+      run: async () => {
+        const mod = await loadRoute(idRoute);
+        await mod.PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: P4D374_PROFILE }), p(IOTA));
+        const put = await respond(await mod.PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: null }), p(IOTA)));
+        const get = await respond(await mod.GET(mockRequest(`${B}/${IOTA}`), p(IOTA)));
+        return { status: put.status, body: { put: put.body, get: get.body } };
+      },
+    },
+    {
+      name: 'update_brahma_profile_non_uuid',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: 'not-a-uuid' }), p(IOTA))),
+    },
+    {
+      name: 'update_brahma_profile_number',
+      run: async () =>
+        respond(await (await loadRoute(idRoute)).PUT(mockRequest(`${B}/${IOTA}`, { brahmaConnectionProfileId: 7 }), p(IOTA))),
     },
     // ── P4.D246 (v4 `9753d0eb2`): the PUT answers the ENRICHED project ──
     // `handlePutDefault` now runs the GET's `enrichProject` over the stored

@@ -141,6 +141,25 @@ pub struct ProjectProperties {
         skip_serializing_if = "Option::is_none"
     )]
     pub answer_confirmation_override: Option<Option<String>>,
+    // === P4.D374 === v4 `c539c82e0` (`project.types.ts:101-109`):
+    /// The connection profile the inline Brahma (`@Brahma:` / `@Brahma?` in a
+    /// Salon chat of this project) answers with,
+    /// `UUIDSchema.nullable().optional()` — `None` (absent) / `Some(None)`
+    /// (explicit `null`) / `Some(Some(id))`, the #136 three-state, so a
+    /// v4-written bag keeps its explicit `null` through every read-modify-write.
+    /// `null`/absent inherit the global `brahmaConsole.inlineConnectionProfileId`,
+    /// then the user's default profile; a stale id falls through. Store-managed
+    /// (`PROJECT_STORE_MANAGED_FIELDS`): it lives in `properties.json`, never in
+    /// the `projects` row (the fresh column stays NULL). Schema-order: between
+    /// `answerConfirmationOverride` and `storyBackgroundsEnabled`.
+    #[serde(
+        default,
+        rename = "brahmaConnectionProfileId",
+        deserialize_with = "double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub brahma_connection_profile_id: Option<Option<String>>,
+    // === /P4.D374 ===
     #[serde(
         default,
         rename = "storyBackgroundsEnabled",
@@ -193,6 +212,7 @@ impl StoreEntity for ProjectEntity {
             "defaultRoleplayTemplateId",
             "defaultAlertCharactersOfLanternImages",
             "answerConfirmationOverride",
+            "brahmaConnectionProfileId", // P4.D374 (v4 `c539c82e0`)
             "storyBackgroundsEnabled",
             "staticBackgroundImageId",
             "storyBackgroundImageId",
@@ -804,6 +824,42 @@ mod three_state_tests {
         assert_eq!(out["defaultAgentModeEnabled"], true);
         assert_eq!(out["answerConfirmationOverride"], "ON");
     }
+
+    // === P4.D374 === v4 `c539c82e0`: `brahmaConnectionProfileId` — the three
+    // states round-trip byte-for-byte at the key's schema position, and a
+    // non-UUID / non-string value is refused by the bag's parse.
+    #[test]
+    fn brahma_connection_profile_id_three_states() {
+        let id = "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e";
+        for (given, want) in [
+            (
+                json!({ "answerConfirmationOverride": "ON", "brahmaConnectionProfileId": id, "storyBackgroundsEnabled": true }),
+                format!("  \"answerConfirmationOverride\": \"ON\",\n  \"brahmaConnectionProfileId\": \"{id}\",\n  \"storyBackgroundsEnabled\": true,\n"),
+            ),
+            (
+                json!({ "storyBackgroundsEnabled": true, "brahmaConnectionProfileId": null }),
+                "  \"brahmaConnectionProfileId\": null,\n  \"storyBackgroundsEnabled\": true,\n".to_string(),
+            ),
+        ] {
+            let text = round_trip(&given);
+            assert!(text.contains(&want), "{text}");
+        }
+        let props = ProjectEntity::parse_properties(&json!({})).unwrap();
+        assert_eq!(props.brahma_connection_profile_id, None);
+        assert!(!round_trip(&json!({})).contains("brahmaConnectionProfileId"));
+        let props =
+            ProjectEntity::parse_properties(&json!({ "brahmaConnectionProfileId": null })).unwrap();
+        assert_eq!(props.brahma_connection_profile_id, Some(None));
+        for bad in [json!("not-a-uuid"), json!(5), json!(["x"])] {
+            assert!(
+                ProjectEntity::parse_properties(&json!({ "brahmaConnectionProfileId": bad }))
+                    .is_err(),
+                "{bad} must be refused"
+            );
+        }
+        assert!(ProjectEntity::property_keys().contains(&"brahmaConnectionProfileId"));
+    }
+    // === /P4.D374 ===
 
     /// A mixed bag: null, value and absent side by side, each kept as given.
     #[test]

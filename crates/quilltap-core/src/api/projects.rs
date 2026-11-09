@@ -498,6 +498,12 @@ const PROJECT_UPDATE_SCHEMA: &[(&str, FieldRule, bool)] = &[
         FieldRule::Enum(&["ON", "OFF"]),
         true,
     ),
+    // === P4.D374 === v4 `c539c82e0` (`app/api/v1/projects/[id]/schemas.ts:23`):
+    // `brahmaConnectionProfileId: z.string().uuid().nullable().optional()` —
+    // the inline `@Brahma` project profile, between `answerConfirmationOverride`
+    // and `backgroundDisplayMode`.
+    ("brahmaConnectionProfileId", FieldRule::Uuid, true),
+    // === /P4.D374 ===
     // [70505745a] Narrowed to the two modes that work; `project` and `static`
     // are refused here (the schema is the write gate, not a coercion point —
     // the coercion lives in `ProjectEntity::parse_properties` so a pre-4.9
