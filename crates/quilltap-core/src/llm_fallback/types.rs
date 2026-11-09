@@ -201,6 +201,14 @@ pub struct FallbackProfile {
     /// The profile's `parameters` bag, carried so a stand-in's per-model
     /// settings survive the swap.
     pub parameters: Option<Value>,
+    // === P4.D367 ===
+    /// The profile's per-request image cap, resolved at parse
+    /// ([`crate::services::connection_profiles::resolve_max_images_per_request`]
+    /// — an absent / out-of-range value reads v4's `4`). v4's chain hands the
+    /// whole `ConnectionProfile` to `applyImageTransportBudget`; v5's parsed
+    /// shape carries the one extra key the pass reads.
+    pub max_images_per_request: i64,
+    // === /P4.D367 ===
 }
 
 impl FallbackProfile {
@@ -213,6 +221,23 @@ impl FallbackProfile {
             supports_image_upload: Some(self.supports_image_upload),
         }
     }
+
+    // === P4.D367 ===
+    /// The profile as the image transport pass reads it — the six keys it
+    /// touches: the four log keys (`id`, `name`, `provider`, `modelName`), the
+    /// two capability keys `AttachmentProfileView::from_json` reads (`provider`,
+    /// `supportsImageUpload`), and the cap.
+    pub fn transport_profile_json(&self) -> Value {
+        serde_json::json!({
+            "id": self.id,
+            "name": self.name,
+            "provider": self.provider,
+            "modelName": self.model_name,
+            "supportsImageUpload": self.supports_image_upload,
+            "maxImagesPerRequest": self.max_images_per_request,
+        })
+    }
+    // === /P4.D367 ===
 
     /// Read a profile out of a net-read `connection_profiles` row.
     ///
@@ -246,6 +271,10 @@ impl FallbackProfile {
             fallback_profile_id: os("fallbackProfileId"),
             allow_tier_fallback: b("allowTierFallback", false),
             parameters: v.get("parameters").cloned(),
+            // === P4.D367 ===
+            max_images_per_request:
+                crate::services::connection_profiles::resolve_max_images_per_request(v),
+            // === /P4.D367 ===
         })
     }
 }

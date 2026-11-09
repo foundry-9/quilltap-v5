@@ -81,8 +81,9 @@ pub struct RouteResult {
     pub connection_profile: EffectiveProfile,
     pub api_key: String,
     /// The rerouted profile's raw row — v4's `routeResult.connectionProfile` IS
-    /// the whole `ConnectionProfile`, and `adaptMessagesForProfile` reads
-    /// `supportsImageUpload`/`provider` off it (v4 `a1d88aa3a`, bug 106). v5's
+    /// the whole `ConnectionProfile`, and `applyImageTransportBudget` reads
+    /// `supportsImageUpload` / `provider` / `maxImagesPerRequest` off it (v4
+    /// `a1d88aa3a`, bug 106; `29c1e2690`, P4.D367). v5's
     /// four-field [`EffectiveProfile`] cannot answer the attachment question, so
     /// the row rides along.
     ///
@@ -274,10 +275,11 @@ pub async fn attempt_empty_response_recovery<P, S, R, FR, CMP>(
     sink: &S,
     router: &R,
     repos: Option<&FR>,
-    // `adapter`: v4's `repos ? await adaptMessagesForProfile(…) :
-    // formattedMessages` (`a1d88aa3a`, bug 106) — the describer-bearing deps the
-    // re-decide needs. `None` takes v4's falsy-`repos` arm and reroutes the
-    // array unchanged.
+    // `adapter`: v4's `repos ? (await applyImageTransportBudget(…)).messages :
+    // formattedMessages` (`29c1e2690`, P4.D367) — the describer-bearing deps the
+    // transport pass needs. `None` takes v4's falsy-`repos` arm on the reroute
+    // and reroutes the array unchanged; the chain walk still runs its pass (v4
+    // has no guard there) over a describer that answers every call `Err`.
     adapter: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
     opts: AttemptEmptyResponseRecoveryOptions<'_>,
     log: Option<FailoverLogCtx<'_>>,
@@ -653,6 +655,9 @@ where
                             character_name: character_name.clone(),
                         },
                         log,
+                        // === P4.D367 ===
+                        adapter,
+                        // === /P4.D367 ===
                     )
                     .await;
                     flags.chain_fallback_attempted = true;
@@ -791,7 +796,7 @@ where
             &exclude,
             // What the array is actually carrying, so the scan does not offer a
             // substitute the payload rules out (v4 `a1d88aa3a`, bug 106).
-            &crate::services::message_attachment_adapter::collect_attachment_mime_types(
+            &crate::services::image_transport_budget::collect_attachment_mime_types(
                 &params.messages,
             ),
         )
@@ -851,34 +856,38 @@ where
     let mut re_params = params.clone();
     re_params.model = reroute.model_name.clone();
 
+    // === P4.D367 ===
     // The array was built for the profile that just refused. An explicitly
     // configured uncensored profile is honoured ahead of the scan, so it may
-    // still be one that cannot read this turn's images — re-decide before
-    // spending the attempt, or the gateway 400s (v4 `a1d88aa3a`, bug 106).
+    // still be one that cannot read this turn's images, or takes fewer per
+    // request — re-apply the transport budget before spending the attempt, or
+    // the gateway 400s (bug 106). v4 keeps its `repos ?` guard here (the
+    // describer deps), unlike the chain walk.
     //
-    // `None` back from the adapter is v4's same-array-reference contract:
-    // nothing needed changing, so `re_params` keeps what it had.
+    // `None` back is v4's same-array-reference contract: nothing needed
+    // changing, so `re_params` keeps what it had.
     if let (Some(adapter), Some(row)) = (adapter, understudy.profile_row.as_ref()) {
-        if let Some(adapted) =
-            crate::services::message_attachment_adapter::adapt_messages_for_profile(
+        let (adapted, _report) =
+            crate::services::image_transport_budget::apply_image_transport_budget(
                 &re_params.messages,
                 row,
-                adapter,
-                chat_id,
+                &crate::services::image_transport_budget::FallbackDepsDescriber(adapter),
+                &crate::services::image_transport_budget::TransportLogContext::chat(chat_id),
+                None,
             )
-            .await
-        {
+            .await;
+        if let Some(adapted) = adapted {
             re_params.messages = adapted;
         }
     }
+    // === /P4.D367 ===
 
     if substitute {
         reset_streaming_buffers_for_swap(state);
     }
 
-    // v4 wraps the adapt + restream in one try/catch. v5's adapter answers an
-    // `Option` rather than throwing, so the restream is the only thing that can
-    // reach the catch.
+    // v4 wraps the budget pass + restream in one try/catch. v5's pass never
+    // fails, so the restream is the only thing that can reach the catch.
     match restream_into(
         provider,
         state,
@@ -1370,17 +1379,24 @@ pub struct FallbackChainResult {
 /// finalization, token accounting and the tool loop all attribute the message to
 /// whoever actually wrote it. On exhaustion the buffers are left empty — a stray
 /// fragment from a dead understudy is not this character's words.
-async fn walk_fallback_chain<P, S, R>(
+///
+/// === P4.D367 === `describer` is the turn's describer deps for the image
+/// transport pass each understudy gets (v4 `walkFallbackChain` `:844-856`).
+/// `None` only from test doubles: the pass still runs (v4 has no guard here),
+/// over [`crate::services::image_transport_budget::NoTransportDescriber`].
+async fn walk_fallback_chain<P, S, R, CMP>(
     provider: &P,
     sink: &S,
     opts: WalkFallbackChainOptions<'_, R>,
     opening_failure: FallbackAttempt,
     log: Option<FailoverLogCtx<'_>>,
+    describer: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
 ) -> FallbackChainResult
 where
     P: StreamingCompletionProvider,
     S: EventSink,
     R: FallbackChainRepos,
+    CMP: crate::model::completion::CompletionProvider,
 {
     let WalkFallbackChainOptions {
         state,
@@ -1476,6 +1492,49 @@ where
         // so a swap changes the model too.
         let mut re_params = params.clone();
         re_params.model = understudy.model_name.clone();
+
+        // === P4.D367 ===
+        // The array was built for the primary. The understudy gets the whole
+        // transport budget re-applied for its own profile — count, bytes and
+        // capability — with the overflow described or omitted with a note
+        // (`None` back when nothing changes). Always from the PRIMARY's array
+        // (v4 passes `formattedMessages` to every candidate), never from a
+        // previous understudy's. One that can't see images at all was already
+        // left out of the chain.
+        {
+            use crate::services::image_transport_budget::{
+                apply_image_transport_budget, FallbackDepsDescriber, NoTransportDescriber,
+                TransportLogContext,
+            };
+            let transport_profile = understudy.transport_profile_json();
+            let log_context = TransportLogContext::chain(&chat_id, candidate.kind.as_str());
+            let (understudy_messages, _report) = match describer {
+                Some(deps) => {
+                    apply_image_transport_budget(
+                        &params.messages,
+                        &transport_profile,
+                        &FallbackDepsDescriber(deps),
+                        &log_context,
+                        None,
+                    )
+                    .await
+                }
+                None => {
+                    apply_image_transport_budget(
+                        &params.messages,
+                        &transport_profile,
+                        &NoTransportDescriber,
+                        &log_context,
+                        None,
+                    )
+                    .await
+                }
+            };
+            if let Some(understudy_messages) = understudy_messages {
+                re_params.messages = understudy_messages;
+            }
+        }
+        // === /P4.D367 ===
 
         if let Err(understudy_error) = restream_into(
             provider,
@@ -1743,7 +1802,8 @@ where
                 false,
             )
             .await;
-            return walk_fallback_chain(provider, sink, opts, opening, log).await;
+            return walk_fallback_chain(provider, sink, opts, opening, log, concierge.adapter)
+                .await;
         }
         // Re-asked at refusal time: the Concierge may have gone off duty
         // mid-call (v4 `3b463d6b1`, #76).
@@ -1828,7 +1888,8 @@ where
             );
             opts.context.dangerous = true;
             opts.context.already_tried = already_tried;
-            return walk_fallback_chain(provider, sink, opts, opening, log).await;
+            return walk_fallback_chain(provider, sink, opts, opening, log, concierge.adapter)
+                .await;
         }
 
         tracing::info!(
@@ -1846,7 +1907,7 @@ where
             false,
         )
         .await;
-        return walk_fallback_chain(provider, sink, opts, opening, log).await;
+        return walk_fallback_chain(provider, sink, opts, opening, log, concierge.adapter).await;
     }
 
     // The failure that opens the chain is the trail's first row.
@@ -1860,7 +1921,7 @@ where
         None,
     );
 
-    walk_fallback_chain(provider, sink, opts, opening, log).await
+    walk_fallback_chain(provider, sink, opts, opening, log, concierge.adapter).await
 }
 
 /// The Concierge's half of a hard-error failover (v4's `dangerSettings` on
@@ -1876,8 +1937,9 @@ pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::Completi
     /// v4 `conciergePolicy?` (`3b463d6b1`, #76) — `None` means no uncensored
     /// retry (the refusal is still recorded and the chain still walks).
     pub concierge_policy: Option<&'a ResolvedConciergePolicy>,
-    /// v4 `repos ? adaptMessagesForProfile(…) : formattedMessages` — `None`
-    /// reroutes the array unchanged.
+    /// v4 `repos ? applyImageTransportBudget(…) : formattedMessages` — `None`
+    /// reroutes the array unchanged (P4.D367: the same deps feed every chain
+    /// understudy's transport pass).
     pub adapter: Option<&'a crate::services::file_fallback::FallbackDeps<'a, CMP>>,
 }
 
@@ -1894,16 +1956,19 @@ pub struct ConciergeFailoverSeam<'a, RT, CMP: crate::model::completion::Completi
 /// *uncensored* profile rather than the one the chat started with — that profile
 /// carries its own `fallbackProfileId`/`allowTierFallback`, and its chain runs
 /// with `dangerous: true` so tier picks stay cleared for the content.
-pub async fn attempt_empty_response_chain_fallback<P, S, R>(
+pub async fn attempt_empty_response_chain_fallback<P, S, R, CMP>(
     provider: &P,
     sink: &S,
     opts: WalkFallbackChainOptions<'_, R>,
     log: Option<FailoverLogCtx<'_>>,
+    // === P4.D367 === the describer deps for each understudy's transport pass.
+    describer: Option<&crate::services::file_fallback::FallbackDeps<'_, CMP>>,
 ) -> FallbackChainResult
 where
     P: StreamingCompletionProvider,
     S: EventSink,
     R: FallbackChainRepos,
+    CMP: crate::model::completion::CompletionProvider,
 {
     tracing::warn!(
         target: "quilltap::failover",
@@ -1921,7 +1986,7 @@ where
         FallbackTrigger::EmptyResponse,
         Some("empty response"),
     );
-    walk_fallback_chain(provider, sink, opts, opening, log).await
+    walk_fallback_chain(provider, sink, opts, opening, log, describer).await
 }
 
 #[cfg(test)]
@@ -3074,6 +3139,9 @@ mod tests {
             fallback_profile_id: None,
             allow_tier_fallback: false,
             parameters: None,
+            // === P4.D367 ===
+            max_images_per_request: 4,
+            // === /P4.D367 ===
         }
     }
 
@@ -3141,11 +3209,148 @@ mod tests {
                     character_name: "Friday".into(),
                 },
                 None,
+                // === P4.D367 ===
+                None::<
+                    &crate::services::file_fallback::FallbackDeps<
+                        '_,
+                        crate::model::completion::CannedCompletionProvider,
+                    >,
+                >,
+                // === /P4.D367 ===
             )
             .await;
         })
         .await
     }
+
+    // === P4.D367 ===
+    /// A streaming provider that records every restream's model + messages and
+    /// fails the model `a-model`.
+    #[derive(Default)]
+    struct RecordingChainProvider {
+        seen: std::sync::Mutex<Vec<(String, Vec<crate::model::stream::StreamMessage>)>>,
+    }
+    impl StreamingCompletionProvider for RecordingChainProvider {
+        fn stream_message(
+            &self,
+            _provider: &str,
+            _base_url: Option<&str>,
+            params: &StreamParams,
+        ) -> impl std::future::Future<
+            Output = tokio::sync::mpsc::Receiver<crate::model::stream::StreamChunkResult>,
+        > + Send {
+            use crate::model::stream::{StreamChunk, StreamError};
+            self.seen
+                .lock()
+                .unwrap()
+                .push((params.model.clone(), params.messages.clone()));
+            let fail = params.model == "a-model";
+            async move {
+                let (tx, rx) = tokio::sync::mpsc::channel(4);
+                if fail {
+                    let _ = tx.send(Err(StreamError::new("boom"))).await;
+                } else {
+                    let _ = tx.send(Ok(StreamChunk::content("ok"))).await;
+                    let _ = tx.send(Ok(StreamChunk::done(None))).await;
+                }
+                rx
+            }
+        }
+    }
+
+    /// v4 "re-applies the whole transport budget: a substitute with a lower
+    /// image cap gets fewer images" (`provider-failover.service.test.ts`). A
+    /// three-image array: understudy A (cap 2) restreams two images and a note
+    /// for the third (no describer deps here, so the overflow's describe
+    /// answers `Err` → v4's omitted note + WARN; the description arm is pinned
+    /// by `image_transport_budget_equivalence`), then fails; understudy B
+    /// (cap 4) restreams all three — from the PRIMARY's array, not A's.
+    #[tokio::test]
+    async fn each_understudy_gets_the_transport_budget_for_its_own_profile() {
+        use crate::model::stream::StreamMessage;
+        let img = |id: &str| serde_json::json!({"id": id, "filename": format!("{id}.png"), "mimeType": "image/png", "data": "AAAA"});
+        let mut failed = chain_profile("p1", "Primary", "ANTHROPIC", "m");
+        failed.fallback_profile_id = Some("ua".into());
+        failed.allow_tier_fallback = true;
+        let mut a = chain_profile("ua", "Understudy A", "ANTHROPIC", "a-model");
+        a.max_images_per_request = 2;
+        let b = chain_profile("ub", "Understudy B", "ANTHROPIC", "b-model");
+        let repos = ChainRepos {
+            profiles: vec![failed.clone(), a, b],
+            keys: Default::default(),
+        };
+        let provider = RecordingChainProvider::default();
+        let sink = RecordingSink::new();
+        let mut params = base_params();
+        params.messages = vec![StreamMessage::User {
+            content: "look".into(),
+            cache_control: None,
+            attachments: vec![img("i1"), img("i2"), img("i3")],
+            name: None,
+        }];
+        let mut state = StreamingState::default();
+        let mut result = FallbackChainResult::default();
+        let lines = captured_async(async {
+            result = attempt_empty_response_chain_fallback(
+                &provider,
+                &sink,
+                WalkFallbackChainOptions {
+                    state: &mut state,
+                    repos: &repos,
+                    failed,
+                    context: chain_context(),
+                    params,
+                    chat_id: "chat-9".into(),
+                    character_id: "ch".into(),
+                    character_name: "Friday".into(),
+                },
+                None,
+                None::<
+                    &crate::services::file_fallback::FallbackDeps<
+                        '_,
+                        crate::model::completion::CannedCompletionProvider,
+                    >,
+                >,
+            )
+            .await;
+        })
+        .await;
+        assert!(result.recovered, "{result:?}");
+        let seen = provider.seen.lock().unwrap();
+        let models: Vec<&str> = seen.iter().map(|(m, _)| m.as_str()).collect();
+        assert_eq!(models, vec!["a-model", "b-model"]);
+        let ids = |msgs: &[StreamMessage]| -> Vec<String> {
+            msgs[0]
+                .attachments()
+                .iter()
+                .map(|a| a["id"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(ids(&seen[0].1), vec!["i1", "i2"]);
+        assert_eq!(
+            seen[0].1[0].content(),
+            "[image omitted: over the request budget]\n\nlook"
+        );
+        assert_eq!(ids(&seen[1].1), vec!["i1", "i2", "i3"]);
+        assert_eq!(seen[1].1[0].content(), "look");
+        let info = line(
+            &lines,
+            "[ImageTransport] Images over the request budget were described or omitted",
+        );
+        assert!(
+            info.contains("chatId=chat-9 kind=configured profileId=ua"),
+            "{info}"
+        );
+        assert!(info.contains("maxImages=2"), "{info}");
+        // B's pass had nothing to do: no line names it.
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[ImageTransport]") && l.contains("profileId=ub")),
+            "{lines:#?}"
+        );
+    }
+    // === /P4.D367 ===
 
     /// v4 `:632`. The bag names the understudy AND the reason it was passed
     /// over — without `reason` an operator cannot tell "no key configured" from

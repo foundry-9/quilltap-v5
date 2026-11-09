@@ -18,12 +18,14 @@
 //!
 //!  - **Per image** ([`LLM_TRANSPORT_MAX_EDGE`], [`LLM_TRANSPORT_TARGET_BASE64`]).
 //!    A long-edge cap plus a quality ladder down to a byte ceiling.
-//!  - **Per turn** ([`LANTERN_IMAGE_BASE64_BUDGET`], spent by the Lantern walk in
-//!    [`crate::services::message_context`]). The per-image cap cannot see how
-//!    many images a turn carries, which is precisely how bug 151 happened: two
-//!    avatars, each comfortably under the provider's 4 MB per-image limit,
-//!    summed to 4.52 MB of base64 and NanoGPT answered the turn with
-//!    `413 Request Entity Too Large`.
+//!  - **Per request** ([`LLM_TRANSPORT_TOTAL_BASE64`], spent by
+//!    [`crate::services::image_transport_budget::apply_image_transport_budget`]
+//!    over every image on the final message array — uploads, re-hydrated
+//!    uploads and Lantern images alike — for each profile tried). The
+//!    per-image cap cannot see how many images a turn carries, which is
+//!    precisely how bug 151 happened: two avatars, each comfortably under the
+//!    provider's 4 MB per-image limit, summed to 4.52 MB of base64 and NanoGPT
+//!    answered the turn with `413 Request Entity Too Large`.
 //!
 //! The provider's own per-image limit still applies on top — this module lowers
 //! the ceiling, it never raises it.
@@ -112,16 +114,18 @@ pub const LLM_TRANSPORT_TARGET_BASE64: i64 = 500 * 1024;
 /// rather than saving it bytes.
 pub const LLM_TRANSPORT_QUALITY_LADDER: &[i64] = &[78, 65, 55, 45];
 
-/// Ceiling on the *total* base64 an unseen-image walk may add to one turn.
+/// Ceiling on the *total* base64 of the images one LLM request may carry,
+/// from every source together.
 ///
-/// ~2 MB is four images at the per-image ceiling, which is more pictures than a
-/// turn has ever usefully carried, and leaves a wide margin under the narrowest
-/// provider body limit we have met (NanoGPT's, which bug 151 found somewhere
-/// under 4.5 MB). Spent newest-first: see the consumer's note.
-///
-/// Defined here because v4 defines it here; the spend itself is the Lantern
-/// walk's (`services/message_context.rs`, section K).
-pub const LANTERN_IMAGE_BASE64_BUDGET: usize = 2 * 1024 * 1024;
+/// 4 MB of base64 is about 3 MB of image: eight images at the per-image
+/// ceiling, which is twice the default per-request image cap, and under the
+/// narrowest provider body limit we have met (NanoGPT's, which bug 151 found
+/// somewhere under 4.5 MB). Spent down a ranked list — this turn's uploads,
+/// then re-hydrated uploads, then Lantern images, each newest first — by
+/// [`crate::services::image_transport_budget::apply_image_transport_budget`].
+/// It replaces the Lantern-only 2 MB budget, which covered one of the three
+/// sources (v4 `29c1e2690`).
+pub const LLM_TRANSPORT_TOTAL_BASE64: usize = 4 * 1024 * 1024;
 
 /// Outcome of a transport shrink (v4 `LlmImageShrinkResult`). `was_shrunk` is
 /// false when nothing was done — and then `buffer` is the INPUT bytes,
@@ -693,6 +697,6 @@ mod tests {
         assert_eq!(LLM_TRANSPORT_MAX_EDGE, 1024);
         assert_eq!(LLM_TRANSPORT_TARGET_BASE64, 512_000);
         assert_eq!(LLM_TRANSPORT_QUALITY_LADDER, &[78, 65, 55, 45]);
-        assert_eq!(LANTERN_IMAGE_BASE64_BUDGET, 2_097_152);
+        assert_eq!(LLM_TRANSPORT_TOTAL_BASE64, 4_194_304);
     }
 }

@@ -841,6 +841,14 @@ async function main(): Promise<void> {
     '[TurnPreparation] Prospero context refresh due',
     'Failed to read project store links; doc tools withheld',
     'Recording an LLM stream that ended without a terminal chunk',
+    // === P4.D367 === v4 `29c1e2690`: the transport budget's lines (the
+    // primary pass, the reroute and every understudy).
+    '[ImageTransport] Images over the request budget were described or omitted',
+    '[ImageTransport] Transport report',
+    '[ImageTransport] Fallback failed for an attachment the profile cannot receive; dropping it',
+    '[ImageTransport] Describing an over-budget image failed; omitting it with a note',
+    'Persisted-description probe failed; treating the image as not describable',
+    // === /P4.D367 ===
   ]);
   let spineLines: Array<Record<string, unknown>> = [];
   {

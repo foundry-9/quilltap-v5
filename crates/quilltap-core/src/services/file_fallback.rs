@@ -1090,7 +1090,7 @@ async fn describe_via_fallback_chain<CMP: CompletionProvider>(
 
 /// The first non-empty JS-trimmed value in priority order (v4's `a?.trim() ||
 /// b?.trim() || c?.trim()`).
-fn first_non_empty_trimmed(candidates: &[Option<&str>]) -> Option<String> {
+pub(crate) fn first_non_empty_trimmed(candidates: &[Option<&str>]) -> Option<String> {
     for s in candidates.iter().flatten() {
         let t = crate::jsstr::js_trim(s);
         if !t.is_empty() {

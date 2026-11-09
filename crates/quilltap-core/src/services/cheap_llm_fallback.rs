@@ -160,6 +160,10 @@ pub fn build_cheap_fallback_selections(
         fallback_profile_id: None,
         allow_tier_fallback: false,
         parameters: None,
+        // === P4.D367 === v4's default cap; the synthetic profile never
+        // reaches the chat transport pass (a cheap task carries no images).
+        max_images_per_request: 4,
+        // === /P4.D367 ===
     };
 
     let candidates: Vec<FallbackProfile> = cheap.iter().map(|(f, _)| f.clone()).collect();

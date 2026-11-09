@@ -717,15 +717,15 @@ mod tests {
         );
     }
 
-    /// v4 "keeps two shrunk avatars inside the per-turn budget that bug 151
+    /// v4 "keeps two shrunk avatars inside the per-request budget that bug 151
     /// blew" — the reported turn reproduced over the real codec: two unseen
-    /// avatars on one request sum under `LANTERN_IMAGE_BASE64_BUDGET`, and
+    /// avatars on one request sum under `LLM_TRANSPORT_TOTAL_BASE64`, and
     /// under the 4.52 MB NanoGPT answered with 413.
     #[test]
-    fn two_shrunk_avatars_fit_the_per_turn_budget_bug_151_blew() {
+    fn two_shrunk_avatars_fit_the_per_request_budget_bug_151_blew() {
         use quilltap_core::files::image_processing::calculate_base64_size;
         use quilltap_core::files::llm_image_budget::{
-            shrink_image_for_llm_transport, LANTERN_IMAGE_BASE64_BUDGET,
+            shrink_image_for_llm_transport, LLM_TRANSPORT_TOTAL_BASE64,
         };
         let codec = HostImageCodec;
         let t: &dyn quilltap_core::files::image_processing::ImageTranscoder = &codec;
@@ -745,8 +745,8 @@ mod tests {
         );
         let on_the_wire = calculate_base64_size(a.final_size) + calculate_base64_size(b.final_size);
         assert!(
-            on_the_wire <= LANTERN_IMAGE_BASE64_BUDGET as i64,
-            "two shrunk avatars must fit the per-turn budget: {on_the_wire}"
+            on_the_wire <= LLM_TRANSPORT_TOTAL_BASE64 as i64,
+            "two shrunk avatars must fit the per-request budget: {on_the_wire}"
         );
         // 4.52 MB was what NanoGPT answered with 413.
         assert!(on_the_wire < (4.52 * 1024.0 * 1024.0) as i64);

@@ -613,6 +613,13 @@ fn file_attachment_matches_oracle() {
             "visionNoTransport",
             &["descImage"],
         ),
+        // === P4.D367 ===
+        (
+            "lap_images_and_text_in_load_order",
+            "imgOK",
+            &["keptImage", "text", "zip", "descImage"],
+        ),
+        // === /P4.D367 ===
     ];
     for (label, profile_key, file_keys) in lap_cases {
         let profile = &spec.resp_profiles[*profile_key];
@@ -630,11 +637,36 @@ fn file_attachment_matches_oracle() {
             "prefix": out.message_content_prefix.clone().unwrap_or_default(),
             "attachedFileIds": out.attached_file_ids,
             "attachmentsToSend": out.attachments_to_send,
+            // === P4.D367 ===
+            "fallbackResultTypes": out
+                .fallback_results
+                .iter()
+                .map(|r| serde_json::to_value(r.type_).unwrap())
+                .collect::<Vec<Value>>(),
+            // === /P4.D367 ===
         });
         let (_family, want) = cases
             .get(*label)
             .unwrap_or_else(|| panic!("oracle missing case {label}"));
-        assert_eq!(&got, want, "lap case {label} diverged");
+        // === P4.D367 ===
+        // An upload's `transport.createdAt` is the send's wall clock (v4's one
+        // `Date.now()`, v5's one `now_unix_ms()`): MASK the value both sides —
+        // the key's presence and position stay comparands, byte-compared — and
+        // prove on each side that every upload in one send shares it.
+        let (got, got_stamps) = mask_upload_created_at(&got);
+        let (want, want_stamps) = mask_upload_created_at(want);
+        for stamps in [&got_stamps, &want_stamps] {
+            assert!(
+                stamps.windows(2).all(|w| w[0] == w[1]),
+                "lap case {label}: one send, one createdAt: {stamps:?}"
+            );
+        }
+        assert_eq!(
+            serde_json::to_string(&got).unwrap(),
+            serde_json::to_string(&want).unwrap(),
+            "lap case {label} diverged"
+        );
+        // === /P4.D367 ===
     }
 
     // ---- (B) processFileAttachmentFallback ----
@@ -698,16 +730,22 @@ fn file_attachment_matches_oracle() {
         assert_eq!(&got, want, "fb case {label} diverged");
     }
 
-    // ---- (E) adaptMessagesForProfile / collectAttachmentMimeTypes ----
+    // ---- (E) applyImageTransportBudget / collectAttachmentMimeTypes ----
     //
-    // v4 `lib/chat/message-attachment-adapter.ts` (`a1d88aa3a`, bug 106). Runs
-    // between (B) and (C) on BOTH sides so the describer cache each section
-    // leaves behind is in the same state when the next one starts.
+    // v4 `lib/chat/image-transport-budget.ts` (`29c1e2690`; the bug-106 adapter
+    // it replaced was `a1d88aa3a`). Runs between (B) and (C) on BOTH sides so
+    // the describer cache each section leaves behind is in the same state when
+    // the next one starts. Only `.messages` of v4's `{messages, report}` is
+    // compared here — the report and the lines are
+    // `image_transport_budget_equivalence`'s.
     {
         use quilltap_core::model::stream::StreamMessage;
-        use quilltap_core::services::message_attachment_adapter::{
-            adapt_messages_for_profile, collect_attachment_mime_types,
+        // === P4.D367 ===
+        use quilltap_core::services::image_transport_budget::{
+            apply_image_transport_budget, collect_attachment_mime_types, FallbackDepsDescriber,
+            TransportLogContext,
         };
+        // === /P4.D367 ===
 
         let build_attachment = |r: &AttachmentRef| -> Value {
             if let Some(raw) = &r.raw {
@@ -804,19 +842,22 @@ fn file_attachment_matches_oracle() {
             transcoder: &transcoder,
             user_id: &spec.user_id,
             now_ms: 0,
-            // v4 `3b463d6b1` (#76): the adapter's `options.chatId`.
+            // v4 `3b463d6b1` (#76): the pass's `describeOptions.chatId`.
             chat_id: Some(&spec.chat_id),
             log_context: quilltap_core::services::llm_logging::LogContext::none(),
         };
         for c in &spec.adapt_cases {
             let messages = build_messages(&c.messages);
             let profile = &spec.resp_profiles[&c.profile];
-            let adapted = rt.block_on(adapt_messages_for_profile(
+            // === P4.D367 === v4 passes no `policy` (the profile's own).
+            let (adapted, _report) = rt.block_on(apply_image_transport_budget(
                 &messages,
                 profile,
-                &adapt_deps,
-                &spec.chat_id,
+                &FallbackDepsDescriber(&adapt_deps),
+                &TransportLogContext::chat(&spec.chat_id),
+                None,
             ));
+            // === /P4.D367 ===
             let got = json!({
                 // v4's same-array-reference contract, made a comparand: `None`
                 // back from the port IS `result === messages`.
@@ -826,7 +867,15 @@ fn file_attachment_matches_oracle() {
             let (_family, want) = cases
                 .get(c.label.as_str())
                 .unwrap_or_else(|| panic!("oracle missing case {}", c.label));
-            assert_eq!(&got, want, "adapt case {} diverged", c.label);
+            // === P4.D367 === byte-compared: a kept tag's key order is a
+            // comparand (`serde_json` `Map` equality is order-blind).
+            assert_eq!(
+                serde_json::to_string(&got).unwrap(),
+                serde_json::to_string(want).unwrap(),
+                "adapt case {} diverged",
+                c.label
+            );
+            // === /P4.D367 ===
         }
 
         for c in &spec.mime_cases {
@@ -1325,3 +1374,25 @@ fn file_attachment_matches_oracle() {
     drop(db);
     eprintln!("OK: file-attachment differential matched the oracle across all cases.");
 }
+
+// === P4.D367 ===
+/// Replace every `attachmentsToSend[*].transport.createdAt` with `"<masked>"`,
+/// handing back the masked value and the stamps it removed (in order).
+fn mask_upload_created_at(v: &Value) -> (Value, Vec<Value>) {
+    let mut out = v.clone();
+    let mut stamps = Vec::new();
+    if let Some(atts) = out
+        .get_mut("attachmentsToSend")
+        .and_then(Value::as_array_mut)
+    {
+        for a in atts {
+            if let Some(t) = a.get_mut("transport").and_then(Value::as_object_mut) {
+                if let Some(c) = t.get_mut("createdAt") {
+                    stamps.push(std::mem::replace(c, Value::String("<masked>".into())));
+                }
+            }
+        }
+    }
+    (out, stamps)
+}
+// === /P4.D367 ===

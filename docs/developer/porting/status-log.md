@@ -199222,3 +199222,103 @@ Invalidated for any other family: none. The grown corpora are read only by the f
 - **Shas:** `PROVIDERS` `31c655539`; Tier 2 `6de3be4f1` (core), `be04b7c36` (harness); this record.
 - **💸 for the dogfood pass:** the order's rows, plus one for the ruled X2: Fetch Models / Test /
   a real turn on an Anthropic key, all under `Authorization: Bearer` (no `x-api-key`).
+
+## P4.D367 — lane record (IMAGES; 2026-11-09)
+
+Branch `claude/p4-d367-images-b3679e`, worktree `.claude/worktrees/p4-d367-images-b3679e` (the coordinator's; the order's `.claude/worktrees/p4d367` name was not used — every recipe below names the real path). The session started ON the branch, already at `PROVIDERS` `31c655539` (P4.D364's Tier-1 commit); `SCHEMA` `4e3a1584e` is an ancestor (verified). No move was needed. Versions read there: core 0.0.1429, host 0.0.224.
+
+### §R.2 probe (observation, 2026-11-09 12:40 CST)
+
+- v4 `main` moved: 21+ commits past the pin, HEAD `921fe94bb` (incl. `88c9cc81d` #147, `f1386cebd` the Foundry rebuild, `348172b9c` Green Room). `bugfix` moved to `d67c70a51` (4.12.2 bug branch, 10 commits). Tree DIRTY: `app/salon/[id]/*` (6 files), `app/styles/qt-components/_green-room.css`, `docs/CHANGELOG.md`, `help/chats.md`, `packages/theme-storybook/*` (2). Recorded, not ported; the pin is unaffected.
+- Pin `/tmp/qt-v4-pin-p4d367-624d0d25c` = `624d0d25c6cb…`, `"version": "4.13.0-dev.8"`. `npm ci --offline --ignore-scripts` succeeded first try (no ENOTCACHED); `npm rebuild better-sqlite3` OK. Root: better-sqlite3 13.0.3, openai 7.47.0, @openrouter/sdk 1.5.34, zod 4.6.7, mermaid 12.3.0. `.claude/pin-plugin-sdks.sh` floors printed exactly: `openai 7.47.0 | anthropic 1.4.0 | genai 2.32.0 | openrouter 1.5.34 | plugin-utils 2.7.3`.
+
+### Red-first (§R.7), measured at `PROVIDERS` before any source edit
+
+- **`file_attachment_tier3` (oracle regenerated from the pin, existing corpus):** the Rust side stops at its first assert, so the count came from a scratch soft-assert copy (`assert_eq!` → `eprintln!`, discarded): **4 red, all `lap`** — `lap_image_kept` (v4 tags the upload `{origin:"upload",createdAt,describable:true}` LAST; v5 sends it bare), `lap_image_desc`, `lap_refusal_retry`, `lap_vision_no_transport` (v5 describes the image into `prefix` and drops it; v4 sends it whole and tagged, `prefix` empty). **(E): 0 red** on the existing corpus (no row reached the cap or the byte budget, and (E) compares only `.messages`).
+- **(E), the grown corpus** (four rows added — see below), run on a scratch worktree AT `PROVIDERS` with the same soft-assert copy, then removed: **all 4 new rows red** — each `same:true` on v5 (the adapter neither caps, budgets nor ranks) where v4 rebuilds: `adapt_budget_cap_five_on_vision` (5th image described from its persisted prompt), `adapt_budget_profile_cap_two` (cap 2 → 3rd described), `adapt_budget_bytes_skip_to_smaller` (3.2 MB image described, the small one kept), `adapt_budget_rank_upload_over_lantern` (upload + newer Lantern kept, the older Lantern omitted with the note).
+- **`orchestrator_tier3`:** RED family-wide on this branch before and after — every call misses its canned stream because v4's system prompt is 5,030 chars where v5 renders 4,435 (sibling prompt drift — P4.D370 / P4.D373 / P4.D375; P4.D372's close note says the same family greens only at the union). The image comparands were therefore proven under item 14's scratch (below).
+- **NEW `image_transport_budget_equivalence`:** a mutation run over the ported module (each mutant applied, the family run, the file restored — `cmp` verified):
+
+  | mutant | result | row that flipped |
+  |---|---|---|
+  | M1 `>=` for the byte test | killed | `plan_exact_fit` |
+  | M2 bytes before count | killed | `plan_count_before_bytes` |
+  | M3 `break` on the bytes arm | killed | `plan_bytes_skip_to_smaller` |
+  | M4 `createdAt` ascending | killed | `plan_count_before_bytes` (first of several) |
+  | M5 untagged ranked 0 | killed | `plan_untagged_last` |
+  | M6 untagged not describable | killed | `apply_cap_four_of_six` (lines) |
+  | M7 over-count images consume bytes | **survived — EQUIVALENT** | none can: once `kept >= maxImages`, `kept` never grows, so every later image is a count overflow whatever `bytes_left` holds. Recorded, no row can be added. |
+  | M8 DEBUG on the early return | killed | `apply_nothing_no_attachments` (lines) |
+  | M9 `[]` instead of a deleted key on `FormattedMsg` | killed | `apply_bug106_described_key_dropped` (FormattedMsg leg) |
+  | M10 tag not stripped before the describer | **not expressible on v5** | v5's `FallbackFile` has no slot for a tag; the describer can only ever see `id / filename / mimeType / data`. v4's side records `hasTransport` per call (all `false`). |
+  | M11 `str::len` for `data` | killed | `plan_data_shapes` |
+
+### What landed
+
+**One commit** (`IMAGES: …`, core 0.0.1430, host 0.0.225):
+
+- `services/image_transport_budget.rs` (NEW) — every item-3 name as ordered: `ImageTransportOrigin` (`as_str`, `rank`), `UNTAGGED_RANK`, `ImageTransportTag` (+ `to_json`), `read_tag`, `tag_for_transport`, `strip_transport_tag` (`Cow`), `strip_transport_tags` (`Cow<[Value]>`), `AttachmentBearingMessage` (for `StreamMessage` and `FormattedMsg`), `collect_attachment_mime_types`, `ImageTransportPolicy` (+ `explicit`, `can_receive`), `image_transport_policy_for`, `IMAGE_OMITTED_NOTE`, `TransportVerdict`, `OverflowReason`, `plan_image_transport`, `TransportOutcome` / `TransportReason` / `TransportReportEntry` / `TransportReport`, `TransportDescriber`, `FallbackDepsDescriber`, `NoTransportDescriber`, `TransportLogContext` (`primary` / `chat` / `chain`), `apply_image_transport_budget`, `has_persisted_image_description`. Additions beyond item 3 (not departures): `base64_bytes` is `pub`; `ranked_image_positions` (the tier-1 ranked-order projection). `TransportLogContext` is a struct of three `Option`s rather than an ordered list — tracing omits a `None` field, which is v4's omitted `undefined` key, and the three keys can only appear in v4's order.
+- `files/llm_image_budget.rs`: `LLM_TRANSPORT_TOTAL_BASE64 = 4 * 1024 * 1024` with v4's why; the "Per request" header bullet; the unit pin `4_194_304`. `quilltap-host/src/image_codec.rs`: `two_shrunk_avatars_fit_the_per_request_budget_bug_151_blew`.
+- `services/message_attachment_adapter.rs` DELETED; `services/mod.rs` line replaced; `primary_stream.rs`, `provider_failover.rs` (mime list), `orchestrator.rs:3707` (fenced, the ONE hunk) and the harness (E) import retargeted.
+- `services/chat_files.rs`: `load_and_process_files` — metadata by id then position, images tagged `upload` with ONE `now_unix_ms()`, keep rule inline (load order kept); `load_lantern_images` collect-only (lost its profile parameter); `load_user_attachments` — images `is_image: true`, no fallback; `RealMessageContextSeams::apply_image_transport_budget`.
+- `services/message_context.rs` (fenced, inside §R.10 (b)'s widened carve): the import; `LanternLoad` without `prefix`; `UserAttachmentFile.is_image`; the seam method `apply_image_transport_budget` (pass-through default); `rehydrate_user_attachments` `carried_at` + the `rehydrated` tag; `spend_lantern_image_budget` + its recorded divergence + its WARN DELETED; section K's `carried_at` (ASSISTANT exact, latest wins) + sequential probes + `lantern` tags; `construct_formatted_messages` without the prefix parameter (R-I7); **the primary pass between L and M**.
+- `services/provider_failover.rs` (fenced): the reroute's pass (v4's `repos ?` guard kept, `{chatId}`); `walk_fallback_chain(…, describer)` running the pass for EVERY candidate after `reset_streaming_buffers_for_swap`, always from the primary's `params.messages`, `{chatId, kind}`; `attempt_empty_response_chain_fallback(…, describer)`; the four `attempt_hard_error_failover` calls pass `concierge.adapter`; `attempt_empty_response_recovery` passes `adapter`. Comments re-worded.
+- `llm_fallback/types.rs`: `FallbackProfile.max_images_per_request` (C2 at `from_value`) + `transport_profile_json()`; literal sites `cheap_llm_fallback.rs` (4), `provider_failover.rs` test `chain_profile` (4), harness `fallback_engine_equivalence.rs` `blank` (4; `profile_from` goes through `from_value`).
+- `model/streaming_provider.rs` (fenced): the strip at `stream_with_key` (`Cow`, no clone when untagged).
+
+### Differentials and pins
+
+- **`image_transport_budget_equivalence` (NEW): 23 plan rows + 30 apply rows equal (8 also through `FormattedMsg`, exact).** Markers: plan `"overflow"` 14, `"bytes"` 4, `"capability"` 2; apply `[image omitted: over the request budget]` 3, `[ImageTransport] Transport report` 26, `"same":true` 4. The tier-1 leaf throws on any row that misses its `expect`; the jest case asserts the static capability table answers OLLAMA `false` / OPENAI-with-tick `true` (no vacuous capability rows) and hands `repos` as a Proxy that throws on any read.
+- **`file_attachment_tier3_equivalence`: green whole** — (E) on `apply_image_transport_budget` (byte-compared now), four new rows; `lap` gains `lap_images_and_text_in_load_order` and the `fallbackResultTypes` comparand; `createdAt` masked both sides with a one-send-one-stamp check per side.
+- **`orchestrator_tier3_equivalence` (item 14):** five `lb_*` arms re-derived (sizes: `lb_big` 2,621,440 raw, `lb_half1/2` 1,572,864 each = exactly 4,194,304 of base64, `lb_huge` 3,145,731 → 4,194,308); four calls ADDED (`image_cap_five_lantern`, `image_rank_upload_over_lantern`, `image_bug_151` — at the default cap 4, the 4 MiB arm is the new family's `apply_bug_151` — and `image_upload_nonvision_seat`); the five `[ImageTransport]` / probe lines added to both sides' spine sets (`report` → `reportJson`); the outcome pin rewritten to eight slates; the `fileProcessing` note updated. **The frames / prompt reds DID mask the comparands** (every call missed its canned key). Proven with a lane-local, uncommitted scratch (`/tmp/p4d367/orch-scratch-final.diff`, 65 lines): the canned key blanks `system` content and cuts user content at `\n\n---\n\nYou remember the gist` (the recall list differs under `QT_ORCH_CALLS` subsetting — Friday's other chats never ran), plus an early block comparing the slates, the image lines and the `fileProcessing` presence, then `return`. Run with `QT_ORCH_CALLS` = the 11 image calls: **all 11 keys hit (anchor contents byte-equal), 11 slates byte-equal, 12 image lines equal, `fileProcessing` absent on BOTH sides for every image call.** Discarded (0 `SCRATCH` lines in the committed file).
+- Unit pins (core): the module's eight; `message_context`'s `a_rehydrated_image_is_handed_back_whole_and_tagged`, `the_lantern_walk_tags_with_the_latest_carrier_and_the_pass_sees_the_anchor`, `the_pass_runs_before_the_multi_character_anchor`, `the_pass_is_not_called_without_attachments`, the two anchor pins re-derived; `provider_failover`'s `each_understudy_gets_the_transport_budget_for_its_own_profile`; `streaming_provider`'s `the_transport_tag_never_reaches_the_plugin`; the host's renamed codec test.
+
+### Log lines
+
+- The four `[ImageTransport]` lines: tier-3 rows both sides, incl. silence legs (four nothing-to-do rows log nothing; `apply_capability_only_no_info` logs only the DEBUG). Default target `quilltap_core::services::image_transport_budget` (R-I9: v4 logs through the ROOT logger; the root-logger ports in the tree use the default target, e.g. `cycle_order.rs`). All fire on the caller's thread (the thread-scoped rig sees them; no `global_capture`).
+- The probe DEBUG: ported, unit-reachable only on a failing read (Tier 2 item 17 — see OPEN).
+- Retired-line censuses over `crates/` + `harness/` (`grep -rn --include=*.rs`): `LANTERN_IMAGE_BASE64_BUDGET` 0; `[Attachment] Re-deciding` 0; `Unseen assistant images exceeded` 0; `message_attachment_adapter` 0; v4's never-ported `per-request image cap; the oldest were described instead` 0.
+
+### Tier 3 records
+
+20 (R5) recorded in `has_persisted_image_description`'s doc and proven live by `lantern_budget_single_over` / `image_cap_five_lantern` (non-describable Lantern images omitted with the note); 21 in `TransportDescriber`'s doc; 22 in `NoTransportDescriber`'s doc (production callers pass `Some(&adapter_deps)` at `orchestrator.rs` — the two sites the order names); 23 in `read_tag`'s doc; 24 on the `StreamMessage` impl; 25 on `fallback_file_of`; 26 unchanged; 27 untouched.
+
+### HANDOFFs
+
+- H1 (P4.D362): `resolve_max_images_per_request` answered v4's value on every cap edge (`apply_cap_edge_*`: absent / null / 0 / 1 / 3.0 → 3 / 2.5 / 50 / 51 / "3" / true) — green, nothing to hand off. The orchestrator fixture is pin-built (the column exists).
+- H2 (P4.D382), H3 (P4.D366), H4 / H5 (the unifier): as ordered. H4: this lane grew `orchestrator-tier3.test.ts` (one fenced `SPINE_MESSAGES` block) and `orchestrator-tier3.json` (re-sized `lb_*`, 21 files, 4 chats, 4 calls, 4 streams — appended); `build-orchestrator-fixture.ts` UNCHANGED. H5: fences in `message_context.rs`, `chat_files.rs`, `provider_failover.rs`, `streaming_provider.rs`, `orchestrator.rs`, `llm_fallback/types.rs`, `cheap_llm_fallback.rs` and four harness files.
+- **NEW H6 (P4.D366 or the unifier):** `orchestrator.rs:3232` / `:3243` comments still name `adaptMessagesForProfile` — outside this lane's carve; a one-word comment fix at union.
+
+### Tier 2
+
+- **16 (`primary_stream_tier3`): MEASURED, the new row OPEN.** The family is red on this branch at its first trace assert (`clean_stream`) — P4.D366's kind-tagged frames (H3), by design. Its one attachment-planted row (`hard_error_vision_skips_understudy`) skips its non-vision understudy, so no chain restream carries images. The new cap-2-understudy row is NOT landed: the harness passes `adapter: None` (no `FallbackDeps`) to the hard-error seam, and the order rules out `NoTransportDescriber` there; landing it needs real describer deps (db + canned completion + transcoder) threaded into that harness. Banked for the follow-ups round. The production path is pinned by `provider_failover`'s `each_understudy_gets_the_transport_budget_for_its_own_profile` (cap, note, from-the-primary's-array), and the describe arm by the new family.
+- **17 (the probe's DEBUG on a failing read): OPEN.** The line is ported with v4's text and keys and fires on the caller's thread; no planted read failure proves it yet (the generated-column plant needs both SELECTs to fail alike). Banked.
+- **18:** green by name from the pin through the sweep driver (`/tmp/p4d367/sweep-results.json`): `danger_routing_equivalence`, `message_context_leaves_equivalence`, `first_message_context_equivalence`, `llm_image_budget_equivalence`, `fallback_engine_equivalence` (the new field is not a comparand), `lantern_loader_transcoder_wiring`, `retry_uncensored_tier3_equivalence` — UNMOVED. `regenerate_swipe_tier3_equivalence` RED (`first_regen` misses its canned key; v4's system message is 2,781 chars) — its corpus carries ZERO attachments, so none of this lane's code can fire there: the sibling prompt drift (P4.D370 / P4.D373 / P4.D375), the same class as `orchestrator_tier3`. `primary_stream_tier3` RED — H3.
+- **19:** `fallback_home_guard` ok (UNMOVED — the probe's `Err` → DEBUG → `false` is not a counted fallback home); `host_zone_sites_census` ok (UNMOVED — `now_unix_ms` is not a zone read); `spelling_guard` red ONLY on the standing survey hit (`2026-11-04-setupphase-vendor-norport.md:295`, fixed on main).
+
+### Gate (final tree)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; the same with `--features quilltap-core/native-transport` clean (`apps/web/dist` APFS-cloned from main — no SPA file moves).
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, `TZ=UTC`, the lane's env: `QT_ORACLE_ITB_PLAN`, `QT_ORACLE_ITB`, `QT_ORACLE_FILE_ATTACHMENT` + `QT_FIXTURE_FILE_ATTACH_MAIN/MOUNT`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **905 binaries / 6,061 passed / 3 failed / 3 ignored** — the three standing reds the round brief names (`spelling_guard`, `builtin_prompt_templates_guard`, `cli_differential`), red since `SCHEMA`. Both lane families ran (not skipped): `image_transport_budget_equivalence` 2 / 2, `file_attachment_tier3_equivalence` 1 / 1.
+- No SPA, no Playwright.
+
+### Regen recipes (lane-private outputs under `/tmp/p4d367/`)
+
+- `image_transport_budget_equivalence`: the `.rs` header recipe (stage under `/tmp/p4d367/itb-oracle-run`, `npx tsx …-plan.ts` → `oracle-itb-plan.ndjson`, `npx jest … -- image-transport-budget.test` with `QT_ORACLE_OUT=/tmp/p4d367/oracle-itb.ndjson`), from the pin. Run with `QT_ORACLE_ITB_PLAN` + `QT_ORACLE_ITB`. (The jest pattern also runs v4's own `image-transport-budget.test.ts` from the pin — 27 tests, green; harmless.)
+- `file_attachment_tier3_equivalence`: its committed header recipe from the pin, outputs re-pointed to `/tmp/p4d367/{fa-main,fa-mount}.db` + `oracle-file-attachment.ndjson` (79 lines, 18 canned).
+- `orchestrator_tier3_equivalence`: its committed header recipe from the pin, re-pointed to `/tmp/p4d367/{orch-main,orch-mount}.db` + `oracle-orchestrator.ndjson`; `TZ=UTC`.
+
+### Fixtures changed (and what they invalidate)
+
+- `harness/oracle/fixtures/file-attachment.json`: +1 file (`budgetBigImage`, a 3.2 MB pattern), +1 profile (`imgCap2`), +4 `adaptCases`. Only `file_attachment_tier3` reads it.
+- `harness/oracle/fixtures/orchestrator-tier3.json`: four `lb_*` sizes re-derived; +21 files, +4 chats, +4 calls, +4 streams. Every `orchestrator_tier3` oracle must be regenerated from this file at the union (H4); no other family reads it.
+- `harness/oracle/fixtures/image-transport-budget.json`: NEW, read only by the new family.
+- No committed DB fixture moves.
+
+### 💸 dogfood rows
+
+As the order lists them (six images to a cap-4 vision profile; the byte budget's skip; a text-only understudy with `kind: "configured"`; the reroute to a lower cap; an image-only send with no `fileProcessing` frame; a non-vision primary's description on the anchor).
+
+**Versions at close:** core 0.0.1430, host 0.0.225; web, cli, tauri, sys, SPA unchanged; harness 0.0.1110 (frozen).
+
+**Status:** LANE COMPLETE except Tier 2 items 16 (the new row) and 17 (the probe-failure plant), both banked by name above.

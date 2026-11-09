@@ -550,6 +550,11 @@ const EXPECTED_EVENT_DIVERGENCES: &[(&str, &str)] = &[
     // deleted in that commit; the frame now compares in the ORDERED trace. The
     // table and its applier stay as the standing mechanism for the next
     // measured frame divergence.
+    // === P4.D367 === and since v4 `29c1e2690` that frame is ABSENT on BOTH
+    // sides for an image-only send: images are no longer decided at load, so
+    // `fallbackResults` (v5 `ProcessedFiles.fallback_results`) holds only
+    // non-images and the orchestrator's `!is_empty()` gate stays shut.
+    // === /P4.D367 ===
 ];
 
 /// Apply [`EXPECTED_EVENT_DIVERGENCES`]: the recorded frame must appear EXACTLY
@@ -1208,7 +1213,18 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                                 quilltap_core::model::stream::StreamMessage::User {
                                     attachments,
                                     ..
-                                } => Value::Array(attachments.clone()),
+                                // === P4.D367 === the recorder stands in for the
+                                // PLUGIN, so it records what a plugin sees: v4
+                                // strips the transport tag in `streamMessage`
+                                // (`streaming.service.ts:519`) below its
+                                // `@/lib/llm` mock, v5 at `stream_with_key`.
+                                } => Value::Array(
+                                    quilltap_core::services::image_transport_budget::strip_transport_tags(
+                                        attachments,
+                                    )
+                                    .into_owned(),
+                                ),
+                                // === /P4.D367 ===
                                 _ => Value::Array(Vec::new()),
                             })
                             .collect(),
@@ -3034,6 +3050,16 @@ fn orchestrator_tier3_matches_oracle() {
                     l["message"].as_str().unwrap()
                 );
                 for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    // === P4.D367 === the transport report is an object: the
+                    // file layer's `…Json` convention (§R.5).
+                    if k == "report" && v.is_object() {
+                        line.push_str(&format!(
+                            " reportJson={}",
+                            serde_json::to_string(v).unwrap()
+                        ));
+                        continue;
+                    }
+                    // === /P4.D367 ===
                     let v = match v {
                         Value::String(s) => s.clone(),
                         other => other.to_string(),
@@ -3043,7 +3069,14 @@ fn orchestrator_tier3_matches_oracle() {
                 spine_mask(&line)
             })
             .collect();
-        const SPINE_TAGS: [&str; 10] = [
+        const SPINE_TAGS: [&str; 15] = [
+            // === P4.D367 ===
+            "[ImageTransport] Images over the request budget were described or omitted",
+            "[ImageTransport] Transport report",
+            "[ImageTransport] Fallback failed for an attachment the profile cannot receive; dropping it",
+            "[ImageTransport] Describing an over-budget image failed; omitting it with a note",
+            "Persisted-description probe failed; treating the image as not describable",
+            // === /P4.D367 ===
             "[Orchestrator] Recording the operator post without a reply",
             "[OperatorPost] User message persisted",
             "[OperatorPost] Pending tool results persisted",
@@ -3553,36 +3586,56 @@ fn orchestrator_tier3_matches_oracle() {
                 "attachment slate at wire mismatch for key:\n{key}"
             );
         }
-        // Stale-oracle floor, now also the bug-151 budget's OUTCOME pin
-        // (P4.D199): every call that reached the wire with attachments, named by
-        // the ordered filenames it carried. The per-key equality above compares
-        // v4 against v5; THIS says what the corpus is supposed to be exercising,
+        // Stale-oracle floor, and the image transport budget's OUTCOME pin
+        // (P4.D199 for bug 151; re-derived by P4.D367 for v4 `29c1e2690`'s ONE
+        // budget — 4 MiB of base64 and the profile's per-request cap, spent
+        // down a ranked list, overflow described or omitted with a note):
+        // every call that reached the wire with attachments, named by the
+        // ordered filenames it carried. The per-key equality above compares v4
+        // against v5; THIS says what the corpus is supposed to be exercising,
         // so an oracle regenerated from a pre-fix tree, a fixture that lost the
         // image rows, or a v5 that stopped budgeting cannot pass vacuously.
         //
+        // === P4.D367 ===
         //   dossier.pdf                  — the bug-121 re-hydration row.
         //   lb_fit_a + lb_fit_b          — `lantern_budget_all_fit`: 0.6 MiB of
-        //                                  base64 against a 2 MiB budget.
+        //                                  base64, well inside 4 MiB.
         //   lb_small + lb_new            — `lantern_budget_drops_oldest`: the
-        //                                  1.5 MiB OLDEST portrait is the one
-        //                                  dropped, and the survivors are
-        //                                  CHRONOLOGICAL. An oldest-first spend
-        //                                  would read `lb_big + lb_small`, and a
-        //                                  missing restore `lb_new + lb_small`.
+        //                                  newest two spend 0.75 MiB; the
+        //                                  OLDEST portrait (3.33 MiB) is past
+        //                                  what is left and is DESCRIBED from
+        //                                  its stored description at the anchor
+        //                                  (ranked newest first — an oldest-
+        //                                  first spend would keep `lb_big`).
         //   lb_half1 + lb_half2          — `lantern_budget_exact_fit`: two halves
-        //                                  summing to exactly 2,097,152, both
+        //                                  summing to exactly 4,194,304, both
         //                                  kept (`>` not `>=`).
         //   lb_fit_a (alone)             — P4.137's
         //                                  `empty_content_image_on_vision_seat`:
-        //                                  an image-only send (`content: ""`)
-        //                                  whose bytes ride the PREVIOUS human
-        //                                  row (v4's anchor preference 2), not
-        //                                  an empty user line.
+        //                                  an image-only send whose bytes ride
+        //                                  the PREVIOUS human row — and since
+        //                                  `29c1e2690` NO `fileProcessing` frame.
+        //   lb_cap2 … lb_cap5            — `image_cap_five_lantern`: five fitting
+        //                                  Lantern images on a cap-4 seat; the
+        //                                  OLDEST is omitted with the note (no
+        //                                  stored description — not describable).
+        //   lb_rank_up + lb_rank_l2 … l4 — `image_rank_upload_over_lantern`: the
+        //                                  upload ranks first, then the newest
+        //                                  three Lantern images.
+        //   b151_up1 … b151_up4          — `image_bug_151`: four 500 KB uploads
+        //                                  beside six Lantern images at the
+        //                                  default cap of 4 — the uploads win,
+        //                                  the six are omitted (the 4 MiB arm of
+        //                                  v4's bug-151 row is
+        //                                  `image_transport_budget_equivalence`'s
+        //                                  `apply_bug_151`).
         //
-        // `lantern_budget_single_over` (one image over the whole budget) and
-        // `lantern_budget_nonvision_seat_unbudgeted` (every image described
-        // instead of transported, so the budget never engages) deliberately
-        // carry NOTHING and are absent from this list.
+        // `lantern_budget_single_over` (one image four bytes past the whole
+        // budget, omitted with the note), `lantern_budget_nonvision_seat_
+        // unbudgeted` (every image described at the anchor by the capability
+        // arm) and `image_upload_nonvision_seat` (an upload described at the
+        // anchor, not in the user message's prefix) carry NOTHING and are absent.
+        // === /P4.D367 ===
         let mut carried: Vec<Vec<String>> = recorded
             .values()
             .flat_map(|v| {
@@ -3612,16 +3665,39 @@ fn orchestrator_tier3_matches_oracle() {
         carried.sort();
         assert_eq!(
             carried,
-            vec![
-                vec!["dossier.pdf".to_string()],
-                vec!["lb_fit_a.webp".to_string()],
-                vec!["lb_fit_a.webp".to_string(), "lb_fit_b.webp".to_string()],
-                vec!["lb_half1.webp".to_string(), "lb_half2.webp".to_string()],
-                vec!["lb_small.webp".to_string(), "lb_new.webp".to_string()],
-            ],
+            // === P4.D367 ===
+            [
+                vec![
+                    "b151_up1.webp",
+                    "b151_up2.webp",
+                    "b151_up3.webp",
+                    "b151_up4.webp"
+                ],
+                vec!["dossier.pdf"],
+                vec![
+                    "lb_cap2.webp",
+                    "lb_cap3.webp",
+                    "lb_cap4.webp",
+                    "lb_cap5.webp"
+                ],
+                vec!["lb_fit_a.webp"],
+                vec!["lb_fit_a.webp", "lb_fit_b.webp"],
+                vec!["lb_half1.webp", "lb_half2.webp"],
+                vec![
+                    "lb_rank_up.webp",
+                    "lb_rank_l2.webp",
+                    "lb_rank_l3.webp",
+                    "lb_rank_l4.webp"
+                ],
+                vec!["lb_small.webp", "lb_new.webp"],
+            ]
+            .into_iter()
+            .map(|v| v.into_iter().map(str::to_string).collect::<Vec<String>>())
+            .collect::<Vec<_>>(),
+            // === /P4.D367 ===
             "the attachment slates reaching the wire are not the corpus's; the \
-             fixture or the oracle has gone stale (or the Lantern byte budget \
-             moved)"
+             fixture or the oracle has gone stale (or the image transport \
+             budget moved)"
         );
     }
 

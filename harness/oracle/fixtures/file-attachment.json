@@ -74,6 +74,13 @@
       "provider": "OLLAMA",
       "modelName": "llava",
       "supportsImageUpload": true
+    },
+    "imgCap2": {
+      "id": "30000000-0000-4000-8000-0000000000a4",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o",
+      "supportsImageUpload": true,
+      "maxImagesPerRequest": 2
     }
   },
   "files": [
@@ -619,6 +626,17 @@
         35,
         36
       ]
+    },
+    {
+      "key": "budgetBigImage",
+      "id": "f0000000-0000-4000-8000-0000000000d1",
+      "originalFilename": "budget-big.png",
+      "mimeType": "image/png",
+      "category": "IMAGE",
+      "fsmBytesPattern": {
+        "len": 3200000
+      },
+      "description": "A sweeping panorama far too large for one request."
     }
   ],
   "mount": {
@@ -1069,6 +1087,126 @@
             },
             {
               "file": "text"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_budget_cap_five_on_vision",
+      "profile": "imgOK",
+      "messages": [
+        {
+          "role": "user",
+          "content": "five pictures",
+          "attachments": [
+            {
+              "file": "keptImage"
+            },
+            {
+              "file": "descImage"
+            },
+            {
+              "file": "adaptImage"
+            },
+            {
+              "file": "refusalImage"
+            },
+            {
+              "file": "reuseRevised"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_budget_profile_cap_two",
+      "profile": "imgCap2",
+      "messages": [
+        {
+          "role": "user",
+          "content": "three pictures",
+          "attachments": [
+            {
+              "file": "keptImage"
+            },
+            {
+              "file": "descImage"
+            },
+            {
+              "file": "reusePrompt"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_budget_bytes_skip_to_smaller",
+      "profile": "imgOK",
+      "messages": [
+        {
+          "role": "user",
+          "content": "one huge, one small",
+          "attachments": [
+            {
+              "file": "budgetBigImage"
+            },
+            {
+              "file": "keptImage"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "adapt_budget_rank_upload_over_lantern",
+      "profile": "imgCap2",
+      "messages": [
+        {
+          "role": "user",
+          "content": "ranked",
+          "attachments": [
+            {
+              "raw": {
+                "id": "lantern-old",
+                "filename": "lantern-old.png",
+                "mimeType": "image/png",
+                "size": 3,
+                "data": "AAAA",
+                "transport": {
+                  "origin": "lantern",
+                  "createdAt": 1000,
+                  "describable": false
+                }
+              }
+            },
+            {
+              "raw": {
+                "id": "lantern-new",
+                "filename": "lantern-new.png",
+                "mimeType": "image/png",
+                "size": 3,
+                "data": "AAAA",
+                "transport": {
+                  "origin": "lantern",
+                  "createdAt": 2000,
+                  "describable": false
+                }
+              }
+            },
+            {
+              "raw": {
+                "id": "upload-now",
+                "filename": "upload-now.png",
+                "mimeType": "image/png",
+                "size": 3,
+                "data": "AAAA",
+                "transport": {
+                  "origin": "upload",
+                  "createdAt": 500,
+                  "describable": true
+                }
+              }
             }
           ]
         }

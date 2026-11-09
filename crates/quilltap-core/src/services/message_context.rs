@@ -34,7 +34,6 @@ use crate::announcement_attribution::{
     CustomAnnouncer,
 };
 use crate::db::runtime::Db;
-use crate::files::llm_image_budget::LANTERN_IMAGE_BASE64_BUDGET;
 use crate::message_formatter::{self, FormattedMessage, MultiCharacterMessage, WireRole};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
@@ -43,6 +42,12 @@ use crate::services::build_context::{
     MessageWithParticipant,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
+// === P4.D367 ===
+use crate::services::image_transport_budget::{
+    has_persisted_image_description, tag_for_transport, ImageTransportOrigin, ImageTransportTag,
+    TransportLogContext,
+};
+// === /P4.D367 ===
 
 /// Number of ASSISTANT messages that must appear *after* a TOOL message before its
 /// result body is elided (v4 `TOOL_RESULT_VERBATIM_TURNS`).
@@ -624,14 +629,17 @@ pub const USER_ATTACHMENT_LOOKBACK: usize = 20;
 // The K file-loading seam (unported wave-4 file subsystem).
 // ===========================================================================
 
-/// The result of the seamed Lantern image load (v4 `loadChatFilesForLLM` +
-/// `processFileAttachmentFallback` + `formatFallbackAsMessagePrefix`): a prefix
-/// string to inject onto the last user message and the attachments to keep.
+// === P4.D367 ===
+/// The result of the seamed Lantern image load (v4 `loadChatFilesForLLM`):
+/// every loaded attachment, in load order. Collect only — the transport budget
+/// decides (v4 `29c1e2690`): no fallback, no prefix, no budget here; the walk
+/// tags each one and [`crate::services::image_transport_budget`] decides, for
+/// the profile actually being called, which are sent, described or omitted.
 #[derive(Clone, Debug, Default)]
 pub struct LanternLoad {
-    pub prefix: String,
     pub attachments: Vec<Value>,
 }
+// === /P4.D367 ===
 
 /// One loaded + fallback-dispatched USER upload (v4's per-file loop body inside
 /// `rehydrateUserAttachments`). The seam does the IO — the load, the fallback
@@ -643,6 +651,13 @@ pub struct UserAttachmentFile {
     /// v4's `fileAttachment` — the loaded `FileAttachment` JSON, pushed onto
     /// `rehydratedAttachmentsToKeep` VERBATIM when the provider takes it natively.
     pub attachment: Value,
+    // === P4.D367 ===
+    /// v4 `isImageFile(fileAttachment.mimeType)` — the LOADED mime. An image
+    /// skips the fallback (`unsupported` / `errored` false, `prefix` empty): it
+    /// goes on whole, tagged `rehydrated`, and the transport budget decides
+    /// capability, count and bytes for it on the final array.
+    pub is_image: bool,
+    // === /P4.D367 ===
     /// `fallbackResult.type === 'unsupported'`.
     pub unsupported: bool,
     /// `!!fallbackResult.error`.
@@ -668,7 +683,7 @@ pub struct UserAttachmentLoad {
 /// [`crate::services::build_context::BuildContextSeams`] — the real body issues a
 /// vision-description call for any unsupported prior image.
 pub trait MessageContextSeams {
-    /// Load + fallback-process the collected Lantern image file ids for a provider.
+    /// Load the collected Lantern image file ids for a provider (collect only).
     fn load_lantern_images(
         &self,
         file_ids: &[String],
@@ -693,6 +708,24 @@ pub trait MessageContextSeams {
         let _ = (file_ids, provider);
         async { Ok(UserAttachmentLoad::default()) }
     }
+
+    // === P4.D367 ===
+    /// The primary pass (v4 `context-builder.service.ts:1356-1375`): one image
+    /// transport budget over the assembled array, for the responding profile,
+    /// BEFORE the multi-character turn anchor. The default hands the array back
+    /// unchanged — the no-op seam holds no profile and no describer (and its
+    /// composition corpora carry no attachments, so the gate never opens);
+    /// [`crate::services::chat_files::RealMessageContextSeams`] runs
+    /// [`crate::services::image_transport_budget::apply_image_transport_budget`].
+    fn apply_image_transport_budget(
+        &self,
+        messages: Vec<FormattedMsg>,
+        log_context: crate::services::image_transport_budget::TransportLogContext,
+    ) -> impl std::future::Future<Output = Vec<FormattedMsg>> + Send {
+        let _ = log_context;
+        async { messages }
+    }
+    // === /P4.D367 ===
 }
 
 /// The default no-op seam.
@@ -749,6 +782,20 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
     // v4's `charactersUsed` — a running sum of what was re-sent (UTF-16 units,
     // JS `text.length`), reported by the DEBUG below.
     let mut characters_used = 0usize;
+    // === P4.D367 ===
+    // v4 `carriedAt`: each row's `Date.parse(createdAt) || 0`, keyed by id (a
+    // later row with the same id overwrites, as `Map.set` does) — the
+    // `createdAt` a re-hydrated image is tagged with.
+    let mut carried_at: std::collections::HashMap<&str, i64> = std::collections::HashMap::new();
+    for m in messages {
+        if let (Some(id), Some(created)) = (
+            m.id.as_deref().filter(|s| !s.is_empty()),
+            m.created_at.as_deref().filter(|s| !s.is_empty()),
+        ) {
+            carried_at.insert(id, crate::episodic::js_date_parse_ms(created).unwrap_or(0));
+        }
+    }
+    // === /P4.D367 ===
 
     for row in &unseen {
         let loaded = match mc_seams
@@ -770,6 +817,25 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
         let mut prefix = String::new();
 
         for file in loaded.files {
+            // === P4.D367 ===
+            // Images go on whole, tagged; the transport budget decides
+            // capability, count and bytes for them on the final array (an image
+            // the profile cannot read is described there, at the anchor).
+            if file.is_image {
+                out.attachments_to_keep.push(tag_for_transport(
+                    file.attachment,
+                    &ImageTransportTag {
+                        origin: ImageTransportOrigin::Rehydrated,
+                        created_at: carried_at
+                            .get(row.message_id.as_str())
+                            .copied()
+                            .unwrap_or(0),
+                        describable: true,
+                    },
+                ));
+                continue;
+            }
+            // === /P4.D367 ===
             // Mirror the `load_and_process_files` filter: keep the raw bytes only
             // when the provider takes them natively. A failed fallback DROPS the
             // file rather than tripping the provider's "no image input" refusal.
@@ -808,94 +874,6 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
     }
 
     out
-}
-
-/// Spend the per-turn image byte budget over the unseen assistant images the
-/// Lantern walk loaded, and hand back the ones the turn will carry — in
-/// CHRONOLOGICAL order (v4 bug 151, `bcd7e4852`).
-///
-/// v4 does this inline in `buildMessageContext`'s Lantern block, wrapped around
-/// the per-file fallback loop it already had: it iterates `[...extra].reverse()`
-/// (NEWEST first), pushes each formatted prefix onto `lanternPrefixesNewestFirst`
-/// and each still-raw attachment onto `lanternAttachmentsToKeep`, then undoes
-/// both orders with a `reverse()` apiece — `lanternPrefixesNewestFirst.reverse()
-/// .join('')` for the prefix and `lanternAttachmentsToKeep.reverse()` for the
-/// slate.
-///
-/// v5 cannot wrap the same loop: the fallback pass lives BELOW the seam, in
-/// `chat_files::load_lantern_images`, which already returns the concatenated
-/// prefix and the raw-kept attachments in v4's PRE-fix (chronological) order.
-/// So the spend is post-hoc, and the equivalence is this:
-///
-///  * **The prefix needs nothing.** v4's two `reverse()`s compose to the
-///    identity — the prefix after the fix is byte-for-byte the prefix before it,
-///    which is exactly what the seam already hands us. (v4's own comment says
-///    the prefix "reads as a narration of what has happened since this character
-///    last spoke"; that reading is the pre-fix order.)
-///  * **The attachments** are the kept subset in chronological order, so
-///    iterating `.rev()` here is v4's `[...extra].reverse()` restricted to the
-///    files that survived its `unsupported && !error` filter — and the filter is
-///    independent of the budget (v4 tests it BEFORE measuring `wireBytes`), so
-///    restricting first and spending second keeps the same membership and the
-///    same drop decisions. `kept.reverse()` at the end is v4's
-///    `lanternAttachmentsToKeep.reverse()`.
-///
-/// RECORDED DIVERGENCE (order of side effects, not of output): because the
-/// fallback pass runs below the seam, v5 still dispatches it oldest-first where
-/// v4 now dispatches newest-first. Every observable this port compares is
-/// unchanged — the prefix bytes, the kept membership, the kept order, the warn
-/// — because each file's fallback result depends only on that file. What does
-/// move is the ORDER of the fallback's own side effects on a non-vision seat
-/// (the per-image describe calls and their `llm_logs` rows). Reordering them
-/// would mean reordering `load_lantern_images`, which is a different unit's
-/// file.
-///
-/// `wire_bytes` is v4's `fileAttachment.data?.length ?? 0` — the length of the
-/// BASE64 STRING the turn will really put on the wire, not the stored `size`. A
-/// missing or non-string `data` counts 0 and is KEPT, exactly as v4's `?? 0`
-/// keeps it. `str::len` is bytes where v4's `.length` is UTF-16 units; `data` is
-/// always `STANDARD.encode` output (ASCII), so the two counts coincide.
-fn spend_lantern_image_budget(
-    attachments: Vec<Value>,
-    character_participant_id: &str,
-) -> Vec<Value> {
-    let mut budget_left = LANTERN_IMAGE_BASE64_BUDGET;
-    let mut dropped_for_budget = 0usize;
-    let mut kept: Vec<Value> = Vec::new();
-
-    // Newest first: when a budget forces a drop, the picture worth keeping is
-    // the one just generated, not the portrait it replaced. (The sibling USER
-    // re-hydration budget deliberately spends OLDEST-first — v4 contrasts the
-    // two in its own comment; do not harmonize them.)
-    for fa in attachments.into_iter().rev() {
-        let wire_bytes = fa
-            .get("data")
-            .and_then(Value::as_str)
-            .map(str::len)
-            .unwrap_or(0);
-        if wire_bytes > budget_left {
-            dropped_for_budget += 1;
-            continue;
-        }
-        budget_left -= wire_bytes;
-        kept.push(fa);
-    }
-
-    if dropped_for_budget > 0 {
-        tracing::warn!(
-            dropped_for_budget,
-            kept = kept.len(),
-            budget = LANTERN_IMAGE_BASE64_BUDGET,
-            budget_used = LANTERN_IMAGE_BASE64_BUDGET - budget_left,
-            character_participant_id,
-            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent"
-        );
-    }
-
-    // Back to chronological: the attachments anchor in the order the narration
-    // reads.
-    kept.reverse();
-    kept
 }
 
 // ===========================================================================
@@ -1462,7 +1440,15 @@ where
         .cloned()
         .chain(rehydrated.attachments_to_keep.iter().cloned())
         .collect();
-    let mut lantern_prefix = String::new();
+    // === P4.D367 ===
+    // The walk only collects candidates (v4 `29c1e2690`). Each is tagged
+    // `lantern` with the time of the message that carried it, and whether
+    // describing it is free (a generated image whose prompt is on file); the
+    // transport budget below decides — for the profile actually being called —
+    // which are sent, which are described, and which are omitted with a note.
+    // That pass spends one count cap and one byte budget over every image on
+    // the request, which is what bug 151 needed and a Lantern-only budget could
+    // not give.
     {
         let ids = collect_lantern_image_file_ids_for_character(
             &filtered,
@@ -1473,17 +1459,46 @@ where
         );
         if !ids.is_empty() {
             let load = mc_seams.load_lantern_images(&ids, params.provider).await;
-            // The prefix is used AS RETURNED: v4's bug-151 fix collects the
-            // prefixes newest-first and then `reverse()`s them back, which is the
-            // order the seam already produced. See
-            // [`spend_lantern_image_budget`] for the whole equivalence argument.
-            lantern_prefix = load.prefix;
             if !load.attachments.is_empty() {
-                merged_attachments
-                    .extend(spend_lantern_image_budget(load.attachments, responding_id));
+                // v4 `carriedAt`: for every ASSISTANT row (EXACT, upper-case)
+                // carrying attachments and a `createdAt`, each string id maps to
+                // the LATEST `Date.parse(createdAt) || 0` that carried it.
+                // (`WhisperMessage.attachments` is already string-only, so v4's
+                // `typeof id === 'string'` filter is structural here.)
+                let mut carried_at: std::collections::HashMap<&str, i64> =
+                    std::collections::HashMap::new();
+                for m in &filtered {
+                    let (Some("ASSISTANT"), Some(atts), Some(created)) = (
+                        m.role.as_deref(),
+                        m.attachments.as_ref(),
+                        m.created_at.as_deref().filter(|c| !c.is_empty()),
+                    ) else {
+                        continue;
+                    };
+                    let at = crate::episodic::js_date_parse_ms(created).unwrap_or(0);
+                    for id in atts {
+                        let e = carried_at.entry(id.as_str()).or_insert(0);
+                        *e = (*e).max(at);
+                    }
+                }
+                // Sequential probes, in LOAD order (v4 awaits each in turn).
+                for fa in load.attachments {
+                    let id = fa
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string();
+                    let tag = ImageTransportTag {
+                        origin: ImageTransportOrigin::Lantern,
+                        created_at: carried_at.get(id.as_str()).copied().unwrap_or(0),
+                        describable: has_persisted_image_description(db, &id).await,
+                    };
+                    merged_attachments.push(tag_for_transport(fa, &tag));
+                }
             }
         }
     }
+    // === /P4.D367 ===
 
     // --- L. Final message construction (prefix injection / attachment merge). ---
     // The anchor is selected against `built_context.messages` (which carries
@@ -1513,12 +1528,25 @@ where
         );
     }
 
-    let mut formatted_messages: Vec<FormattedMsg> = construct_formatted_messages(
-        &intermediate,
-        attachment_anchor_index,
-        &lantern_prefix,
-        &merged_attachments,
-    );
+    // === P4.D367 ===
+    let mut formatted_messages: Vec<FormattedMsg> =
+        construct_formatted_messages(&intermediate, attachment_anchor_index, &merged_attachments);
+
+    // One transport budget for every image on the request: capability, the
+    // profile's per-request image cap and the total byte budget, spent down a
+    // ranked list (uploads, re-hydrated uploads, Lantern images, each newest
+    // first). The failover service runs the same pass for each substitute.
+    // With nothing to change it hands back the same array. BEFORE the
+    // multi-character turn anchor (v4 `:1356-1377`).
+    if !formatted_messages.is_empty() && !merged_attachments.is_empty() {
+        formatted_messages = mc_seams
+            .apply_image_transport_budget(
+                formatted_messages,
+                TransportLogContext::primary(&build_input.chat.id, responding_id),
+            )
+            .await;
+    }
+    // === /P4.D367 ===
 
     // --- M. Multi-character turn anchor. ---
     if is_multi {
@@ -1545,33 +1573,30 @@ struct InterMsg {
     thought_signature: Option<String>,
 }
 
-/// Section L (v4 context-builder.service.ts:952–981) — the final message
-/// construction. The ANCHOR message (bug 95, v4 a14a1811 — previously
-/// "the last message, if role user") gets the Lantern prefix prepended and
-/// carries the merged attachments (its `thought_signature` is dropped in the
-/// attachment arm exactly as v4's object literal omits it); every other
-/// message rides through with `thought_signature` intact and no attachments.
-/// An anchor index of -1 matches no message: nothing is spliced, which the
-/// caller has already warned about.
+// === P4.D367 ===
+/// Section L (v4 `context-builder.service.ts:1340-1355` at `624d0d25c`) — the
+/// final message construction. The ANCHOR message (bug 95, v4 a14a1811 —
+/// previously "the last message, if role user") carries the merged attachments
+/// (its `thought_signature` is dropped in the attachment arm exactly as v4's
+/// object literal omits it); every other message rides through with
+/// `thought_signature` intact and no attachments. An anchor index of -1
+/// matches no message: nothing is spliced, which the caller has already warned
+/// about. The anchor's content is the message's own: v4 `29c1e2690` deleted the
+/// Lantern prefix splice (the transport budget now describes at the anchor),
+/// and the parameter went with it rather than linger as `""`.
 ///
 /// Extracted so the WIRING — that the selected anchor, not "last user",
-/// drives BOTH the prefix and the splice — is unit-pinned (the composition
-/// corpora cannot see it: their Lantern seam is inert and their ops carry no
-/// attachments).
+/// drives the splice — is unit-pinned (the composition corpora cannot see it:
+/// their Lantern seam is inert and their ops carry no attachments).
 fn construct_formatted_messages(
     intermediate: &[InterMsg],
     attachment_anchor_index: i64,
-    lantern_prefix: &str,
     merged_attachments: &[Value],
 ) -> Vec<FormattedMsg> {
     let mut formatted_messages: Vec<FormattedMsg> = Vec::new();
     for (idx, m) in intermediate.iter().enumerate() {
         let is_anchor = idx as i64 == attachment_anchor_index;
-        let content = if is_anchor && !lantern_prefix.is_empty() {
-            format!("{lantern_prefix}{}", m.content)
-        } else {
-            m.content.clone()
-        };
+        let content = m.content.clone();
         if is_anchor && !merged_attachments.is_empty() {
             formatted_messages.push(FormattedMsg {
                 role: m.role.clone(),
@@ -1592,6 +1617,7 @@ fn construct_formatted_messages(
     }
     formatted_messages
 }
+// === /P4.D367 ===
 
 impl InterMsg {
     fn from_formatted(f: &FormattedMessage) -> Self {
@@ -1640,6 +1666,15 @@ mod tests {
         table: std::collections::HashMap<String, (bool, bool, String)>,
         fail_on: Option<String>,
         calls: Mutex<Vec<Vec<String>>>,
+        // === P4.D367 ===
+        /// File ids the canned loader reports as images (`is_image`).
+        images: std::collections::HashSet<String>,
+        /// What `load_lantern_images` answers (collect only).
+        lantern: Vec<Value>,
+        /// Every array handed to the transport pass, in call order (the
+        /// scripted pass hands it back unchanged).
+        passes: Mutex<Vec<Vec<FormattedMsg>>>,
+        // === /P4.D367 ===
     }
     impl CannedSeams {
         fn new(rows: &[(&str, bool, bool, &str)]) -> Self {
@@ -1650,14 +1685,42 @@ mod tests {
                     .collect(),
                 fail_on: None,
                 calls: Mutex::new(Vec::new()),
+                images: std::collections::HashSet::new(),
+                lantern: Vec::new(),
+                passes: Mutex::new(Vec::new()),
             }
         }
         fn failing_on(mut self, id: &str) -> Self {
             self.fail_on = Some(id.to_string());
             self
         }
+        // === P4.D367 ===
+        fn with_images(mut self, ids: &[&str]) -> Self {
+            self.images = ids.iter().map(|s| s.to_string()).collect();
+            self
+        }
+        fn with_lantern(mut self, atts: Vec<Value>) -> Self {
+            self.lantern = atts;
+            self
+        }
+        // === /P4.D367 ===
     }
     impl MessageContextSeams for CannedSeams {
+        // === P4.D367 ===
+        async fn load_lantern_images(&self, _file_ids: &[String], _provider: &str) -> LanternLoad {
+            LanternLoad {
+                attachments: self.lantern.clone(),
+            }
+        }
+        async fn apply_image_transport_budget(
+            &self,
+            messages: Vec<FormattedMsg>,
+            _log_context: crate::services::image_transport_budget::TransportLogContext,
+        ) -> Vec<FormattedMsg> {
+            self.passes.lock().unwrap().push(messages.clone());
+            messages
+        }
+        // === /P4.D367 ===
         async fn load_user_attachments(
             &self,
             file_ids: &[String],
@@ -1674,6 +1737,7 @@ mod tests {
                 if let Some((unsupported, errored, prefix)) = self.table.get(id) {
                     files.push(UserAttachmentFile {
                         attachment: serde_json::json!({ "id": id }),
+                        is_image: self.images.contains(id),
                         unsupported: *unsupported,
                         errored: *errored,
                         prefix: prefix.clone(),
@@ -1953,127 +2017,37 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // The bug-151 Lantern image-byte budget (v4 `bcd7e4852`). The walk that
-    // COLLECTS the ids is oracle-pinned by `message_context_leaves_equivalence`
-    // and the whole section-K composition by `orchestrator_tier3`; these drive
-    // [`spend_lantern_image_budget`] directly so the newest-first spend, the
-    // `>`-not-`>=` boundary, the chronological restore, v4's `?? 0` and both
-    // legs of the warn are each measured on their own.
-    // -----------------------------------------------------------------------
+    // === P4.D367 ===
+    // The bug-151 Lantern-only budget (`spend_lantern_image_budget` and its
+    // five pins) RETIRED with v4 `29c1e2690`: the one transport budget
+    // (`services::image_transport_budget`) spends every image on the request,
+    // and its differential is `image_transport_budget_equivalence`. What stays
+    // here is this module's share: the re-hydration TAG.
 
-    /// One loaded Lantern attachment whose base64 `data` is exactly
-    /// `base64_len` characters — the quantity v4 measures (`data?.length`).
-    fn lantern_att(id: &str, base64_len: usize) -> Value {
-        serde_json::json!({
-            "id": id,
-            "filename": format!("{id}.webp"),
-            "mimeType": "image/webp",
-            "size": base64_len / 4 * 3,
-            "data": "A".repeat(base64_len),
-        })
-    }
-    fn ids_of(atts: &[Value]) -> Vec<&str> {
-        atts.iter()
-            .map(|a| a.get("id").and_then(Value::as_str).unwrap())
-            .collect()
-    }
-
-    /// The budget is spent NEWEST-first, so an oversized OLD portrait is the one
-    /// dropped — and what survives goes back in chronological order. An
-    /// oldest-first spend would have kept `old` and dropped `new`, which is the
-    /// whole point of bug 151's fix.
+    /// v4's "hands an unseen image back whole and tagged": a re-hydrated image
+    /// skips the fallback and rides on `attachments_to_keep` tagged
+    /// `rehydrated` with its carrying row's parsed `createdAt` — and adds no
+    /// text.
     #[test]
-    fn the_image_budget_drops_the_oldest_and_restores_chronological_order() {
-        // Chronological: 1.5 MiB, 0.25 MiB, 0.5 MiB of base64.
-        let atts = vec![
-            lantern_att("old", 1_572_864),
-            lantern_att("mid", 262_144),
-            lantern_att("new", 524_288),
-        ];
-        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
+    fn a_rehydrated_image_is_handed_back_whole_and_tagged() {
+        let seams = CannedSeams::new(&[("img-1", false, false, "")]).with_images(&["img-1"]);
+        let mut carrier = user_msg("u1", "a photo", &["img-1"]);
+        carrier.created_at = Some("2026-01-01T00:00:01.000Z".into());
+        let out = block_on(rehydrate_user_attachments(
+            &seams,
+            &[carrier],
+            "cp",
+            false,
+            None,
+            "ANTHROPIC",
+        ));
+        assert!(out.content_by_message_id.is_empty());
         assert_eq!(
-            ids_of(&kept),
-            vec!["mid", "new"],
-            "the oldest overflowing image is dropped and the rest stay chronological"
-        );
-        let warn = line_with(
-            &lines,
-            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent",
-        );
-        assert!(warn.starts_with("WARN"), "budget line is a warn: {warn}");
-        assert!(warn.contains("dropped_for_budget=1"), "{warn}");
-        assert!(warn.contains("kept=2"), "{warn}");
-        assert!(warn.contains("budget=2097152"), "{warn}");
-        // 2 MiB − (0.5 MiB + 0.25 MiB) spent.
-        assert!(warn.contains("budget_used=786432"), "{warn}");
-        assert!(warn.contains("character_participant_id=\"cp\""), "{warn}");
-    }
-
-    /// v4 drops on `wireBytes > imageBudgetLeft`, so a turn whose images sum to
-    /// EXACTLY the budget carries all of them. `>=` would drop the last one.
-    #[test]
-    fn the_image_budget_fits_a_sum_exactly_equal_to_it() {
-        let half = LANTERN_IMAGE_BASE64_BUDGET / 2;
-        let atts = vec![lantern_att("first", half), lantern_att("second", half)];
-        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
-        assert_eq!(
-            ids_of(&kept),
-            vec!["first", "second"],
-            "a sum exactly equal to the budget fits (`>` not `>=`)"
-        );
-        assert!(
-            !lines
-                .iter()
-                .any(|l| l.contains("exceeded the per-turn byte budget")),
-            "nothing was dropped, so the warn must not fire: {lines:#?}"
+            serde_json::to_string(&out.attachments_to_keep).unwrap(),
+            r#"[{"id":"img-1","transport":{"origin":"rehydrated","createdAt":1767225601000,"describable":true}}]"#
         );
     }
-
-    /// The silence leg: a turn well inside the budget keeps every image, in
-    /// order, and says nothing at all.
-    #[test]
-    fn an_affordable_turn_keeps_every_image_and_logs_nothing() {
-        let atts = vec![
-            lantern_att("a", 307_200),
-            lantern_att("b", 307_200),
-            lantern_att("c", 307_200),
-        ];
-        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
-        assert_eq!(ids_of(&kept), vec!["a", "b", "c"]);
-        assert!(lines.is_empty(), "{lines:#?}");
-    }
-
-    /// v4's `fileAttachment.data?.length ?? 0`: an attachment the loader left
-    /// without a base64 body costs nothing and is KEPT — even once the budget is
-    /// exhausted, because `0 > 0` is false.
-    #[test]
-    fn an_attachment_without_data_costs_nothing_and_is_kept() {
-        let atts = vec![
-            serde_json::json!({ "id": "bodyless", "filename": "x.webp" }),
-            lantern_att("whole", LANTERN_IMAGE_BASE64_BUDGET),
-        ];
-        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
-        assert_eq!(ids_of(&kept), vec!["bodyless", "whole"]);
-        assert!(lines.is_empty(), "{lines:#?}");
-    }
-
-    /// One image bigger than the whole budget is dropped and the turn still
-    /// runs: the warn is a warn, not an error, and it reports an untouched
-    /// budget.
-    #[test]
-    fn a_single_image_over_the_budget_is_dropped_and_the_turn_still_runs() {
-        let atts = vec![lantern_att("enormous", LANTERN_IMAGE_BASE64_BUDGET + 4)];
-        let (kept, lines) = captured(|| spend_lantern_image_budget(atts, "cp"));
-        assert!(kept.is_empty(), "nothing survives: {kept:?}");
-        let warn = line_with(
-            &lines,
-            "Unseen assistant images exceeded the per-turn byte budget; the oldest were not sent",
-        );
-        assert!(warn.contains("dropped_for_budget=1"), "{warn}");
-        assert!(warn.contains("kept=0"), "{warn}");
-        assert!(warn.contains("budget_used=0"), "{warn}");
-    }
+    // === /P4.D367 ===
 
     /// The a14a1811 §3 review's named silent mutation: the id-set predicate is
     /// the middle plumbing between the oracle-pinned selector and the
@@ -2117,13 +2091,13 @@ mod tests {
     }
 
     /// Bug 95's WIRING (v4 a14a1811): the selected anchor — not "the last
-    /// message, if role user" — drives BOTH the Lantern prefix and the
-    /// attachment splice. The composition corpora cannot see this (inert
-    /// Lantern seam, no attachment ops), so the extracted constructor is
-    /// pinned here: flipping `is_anchor` back to the old last-user rule
-    /// reddens both asserts.
+    /// message, if role user" — drives the attachment splice. The composition
+    /// corpora cannot see this (inert Lantern seam, no attachment ops), so the
+    /// extracted constructor is pinned here: flipping `is_anchor` back to the
+    /// old last-user rule reddens both asserts. (P4.D367: the anchor's content
+    /// is its own — the Lantern prefix splice is gone.)
     #[test]
-    fn anchor_not_last_user_drives_prefix_and_splice() {
+    fn anchor_not_last_user_drives_the_splice() {
         // The bug-95 shape: the human's turn at index 1, a whisper wearing
         // role=user after it.
         let msgs = vec![
@@ -2132,11 +2106,12 @@ mod tests {
             inter("user", "[Host] the clock strikes nine"),
         ];
         let atts = vec![serde_json::json!({"id": "att-1"})];
-        let out = construct_formatted_messages(&msgs, 1, "[Image: photo.png]\n", &atts);
+        let out = construct_formatted_messages(&msgs, 1, &atts);
         assert_eq!(out.len(), 3);
-        // The anchor (index 1) carries prefix + attachments, and drops its
-        // thought signature exactly as v4's attachment-arm literal does.
-        assert_eq!(out[1].content, "[Image: photo.png]\nlook at this picture");
+        // The anchor (index 1) carries the attachments with its own content,
+        // and drops its thought signature exactly as v4's attachment-arm
+        // literal does.
+        assert_eq!(out[1].content, "look at this picture");
         assert_eq!(out[1].attachments.as_deref(), Some(&atts[..]));
         assert_eq!(out[1].thought_signature, None);
         // The trailing whisper — the OLD anchor — stays bare.
@@ -2156,9 +2131,8 @@ mod tests {
         // warns) rather than stapled to a wrong message.
         let msgs = vec![inter("system", "s"), inter("assistant", "a")];
         let atts = vec![serde_json::json!({"id": "att-1"})];
-        let out = construct_formatted_messages(&msgs, -1, "prefix", &atts);
+        let out = construct_formatted_messages(&msgs, -1, &atts);
         assert!(out.iter().all(|m| m.attachments.is_none()));
-        assert!(out.iter().all(|m| !m.content.starts_with("prefix")));
     }
 
     fn msg(fields: &[(&str, Value)]) -> WhisperMessage {
@@ -2577,5 +2551,133 @@ mod tests {
                 &format!("WARN {WARN} attachment_count=1 context_message_count=3")
             );
         }
+
+        // === P4.D367 ===
+        /// [`send`] generalised: the seam, the attachments, and the
+        /// multi-character switches are the caller's.
+        async fn send_with(
+            seams: &CannedSeams,
+            history: &[Value],
+            attachments: &[Value],
+            is_multi: bool,
+        ) -> Vec<FormattedMsg> {
+            let dir = tempfile::tempdir().expect("tempdir");
+            crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+                .expect("provision a fresh instance");
+            let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).expect("open main");
+            let transparency = std::collections::HashMap::new();
+            let params = MessageContextParams {
+                is_multi_character: is_multi,
+                provider: "ANTHROPIC",
+                responding_character_name: "Lyra",
+                responding_participant_id: "participant-a",
+                has_history_access: true,
+                character_participant_created_at: None,
+                character_system_transparency: Some(true),
+                use_prefill: is_multi,
+                participants: &[],
+                participant_transparency: &transparency,
+            };
+            build_message_context(
+                &db,
+                &FailingEmbedding,
+                &UnusedCompletion,
+                &CheapLlmTaskExecutor::new(),
+                &NoopSeams,
+                seams,
+                &params,
+                an_empty_send(),
+                history,
+                attachments,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("the turn must build: {e:?}"))
+            .formatted_messages
+        }
+
+        fn lantern_row(id: &str, created_at: &str, atts: &[&str]) -> Value {
+            serde_json::json!({
+                "type": "message", "id": id, "role": "ASSISTANT",
+                "content": "The Lantern hangs a picture.", "systemSender": "lantern",
+                "createdAt": created_at, "attachments": atts,
+            })
+        }
+
+        /// The Lantern walk TAGS and nothing more (v4 `:1299-1316`): an id
+        /// carried on two ASSISTANT rows takes the LATER `createdAt`; a
+        /// non-`ASSISTANT` carrier contributes nothing (`0`); and a file the
+        /// `files` table does not hold is not describable (R5). The pass is
+        /// handed the ANCHOR-bearing array — after the splice — exactly once.
+        #[tokio::test]
+        async fn the_lantern_walk_tags_with_the_latest_carrier_and_the_pass_sees_the_anchor() {
+            let lantern = vec![
+                serde_json::json!({"id": "pic-a", "mimeType": "image/webp", "data": "AA"}),
+                serde_json::json!({"id": "pic-b", "mimeType": "image/webp", "data": "BB"}),
+            ];
+            let seams = CannedSeams::new(&[]).with_lantern(lantern);
+            let history = [
+                row("h1", "USER", "Hang them, please."),
+                lantern_row("l1", "2026-01-01T00:00:01.000Z", &["pic-a"]),
+                lantern_row("l2", "2026-01-01T00:00:05.000Z", &["pic-a"]),
+                // A USER row also naming `pic-b`: not an ASSISTANT carrier.
+                serde_json::json!({"type": "message", "id": "u2", "role": "USER",
+                    "content": "and this", "createdAt": "2026-01-01T00:00:09.000Z",
+                    "attachments": ["pic-b"]}),
+                lantern_row("l3", "", &["pic-b"]),
+            ];
+            let out = send_with(&seams, &history, &[], false).await;
+            let passes = seams.passes.lock().unwrap();
+            assert_eq!(passes.len(), 1, "one pass per build");
+            assert_eq!(
+                passes[0], out,
+                "single-character: the pass's array is the result"
+            );
+            let anchored: Vec<&FormattedMsg> = passes[0]
+                .iter()
+                .filter(|m| m.attachments.is_some())
+                .collect();
+            assert_eq!(anchored.len(), 1, "{:#?}", passes[0]);
+            assert_eq!(
+                serde_json::to_string(anchored[0].attachments.as_ref().unwrap()).unwrap(),
+                concat!(
+                    r#"[{"id":"pic-a","mimeType":"image/webp","data":"AA","transport":{"origin":"lantern","createdAt":1767225605000,"describable":false}},"#,
+                    r#"{"id":"pic-b","mimeType":"image/webp","data":"BB","transport":{"origin":"lantern","createdAt":0,"describable":false}}]"#
+                )
+            );
+        }
+
+        /// The pass runs BEFORE the multi-character turn anchor (v4 `:1356` vs
+        /// `:1377`): the prefill route's `[Lyra]` line is absent from the array
+        /// the pass was handed and present in the result.
+        #[tokio::test]
+        async fn the_pass_runs_before_the_multi_character_anchor() {
+            let seams = CannedSeams::new(&[]);
+            let out = send_with(
+                &seams,
+                &[row("h1", "USER", "Here is the map.")],
+                &[serde_json::json!({"id": "img-1", "mimeType": "image/png"})],
+                true,
+            )
+            .await;
+            let passes = seams.passes.lock().unwrap();
+            assert_eq!(passes.len(), 1);
+            assert_eq!(out.last().map(|m| m.content.as_str()), Some("[Lyra]"));
+            assert!(
+                !passes[0].iter().any(|m| m.content == "[Lyra]"),
+                "{:#?}",
+                passes[0]
+            );
+            assert_eq!(passes[0].len() + 1, out.len());
+        }
+
+        /// No attachments, no pass (v4's `mergedAttachmentsToSend.length > 0`
+        /// gate).
+        #[tokio::test]
+        async fn the_pass_is_not_called_without_attachments() {
+            let seams = CannedSeams::new(&[]);
+            let _ = send_with(&seams, &[row("h1", "USER", "Just words.")], &[], false).await;
+            assert!(seams.passes.lock().unwrap().is_empty());
+        }
+        // === /P4.D367 ===
     }
 }

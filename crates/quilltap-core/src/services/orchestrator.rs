@@ -3703,12 +3703,14 @@ where
                 dangerous: content_was_flagged_dangerous,
                 // What the array carries, not what the user uploaded — see the
                 // same note in `run_primary_stream` (v4 `a1d88aa3a`, bug 106).
+                // === P4.D367 ===
                 needs_vision:
-                    crate::services::message_attachment_adapter::collect_attachment_mime_types(
+                    crate::services::image_transport_budget::collect_attachment_mime_types(
                         &params.messages,
                     )
                     .iter()
                     .any(|m| m.starts_with("image/")),
+                // === /P4.D367 ===
                 needs_tools: !actual_tools.is_empty(),
             }),
         },

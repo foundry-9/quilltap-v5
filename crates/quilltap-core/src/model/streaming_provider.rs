@@ -438,6 +438,16 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
         api_key: &str,
         params: &StreamParams,
     ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send + '_ {
+        // === P4.D367 ===
+        // Provenance is for the transport budget alone; a plugin never sees it
+        // (v4 `streaming.service.ts:518-519`, `stripTransportTags` in
+        // `streamMessage`'s message map). This is the ONE production plugin
+        // boundary — every keyed and unkeyed stream call reaches it — so the
+        // tags survive into `StreamMessage` for the failover pass to rank by,
+        // and leave nowhere past here. No clone when nothing is tagged.
+        let stripped = strip_transport_from_params(params);
+        let params: &StreamParams = stripped.as_ref();
+        // === /P4.D367 ===
         // Prepare synchronously; the async part is only the transport call.
         let prepared = self.prepare(provider, base_url, api_key, params);
         // P4.D83 (v4 `d89babc4`): this call's wall-clock budget. A provider that
@@ -689,6 +699,29 @@ impl<T: ProviderTransport, K: ProviderKeySource> WireStreamingProvider<T, K> {
         }
     }
 }
+
+// === P4.D367 ===
+/// Every message's attachments with the `transport` tag removed —
+/// `Cow::Borrowed` when no attachment carries one (see `stream_with_key`).
+fn strip_transport_from_params(params: &StreamParams) -> std::borrow::Cow<'_, StreamParams> {
+    let tagged = params
+        .messages
+        .iter()
+        .any(|m| m.attachments().iter().any(|a| a.get("transport").is_some()));
+    if !tagged {
+        return std::borrow::Cow::Borrowed(params);
+    }
+    let mut out = params.clone();
+    for m in &mut out.messages {
+        if let crate::model::stream::StreamMessage::User { attachments, .. } = m {
+            *attachments =
+                crate::services::image_transport_budget::strip_transport_tags(attachments)
+                    .into_owned();
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+// === /P4.D367 ===
 
 #[cfg(test)]
 mod tests {
@@ -1873,4 +1906,69 @@ mod tests {
         assert_eq!(done_count, 1, "exactly one terminal chunk");
         assert_eq!(items[0].as_ref().unwrap().content, "hi");
     }
+
+    // === P4.D367 ===
+    /// The plugin boundary strips the transport tag (v4
+    /// `streaming.service.ts:519`): no clone when nothing is tagged; a tagged
+    /// attachment loses `transport` with every other key in order; and the
+    /// request a provider receives is byte-identical to the untagged one.
+    #[tokio::test]
+    async fn the_transport_tag_never_reaches_the_plugin() {
+        use crate::model::stream::StreamMessage;
+        let att = |tagged: bool| {
+            let mut a = serde_json::json!({
+                "id": "f1", "filepath": "/api/v1/files/f1", "filename": "a.png",
+                "mimeType": "image/png", "size": 2, "data": "aGk="
+            });
+            if tagged {
+                a = crate::services::image_transport_budget::tag_for_transport(
+                    a,
+                    &crate::services::image_transport_budget::ImageTransportTag {
+                        origin:
+                            crate::services::image_transport_budget::ImageTransportOrigin::Upload,
+                        created_at: 5,
+                        describable: true,
+                    },
+                );
+            }
+            a
+        };
+        let with = |tagged: bool| {
+            let mut p = params("claude-sonnet-4-5");
+            p.messages = vec![StreamMessage::User {
+                content: "look".into(),
+                cache_control: None,
+                attachments: vec![att(tagged)],
+                name: None,
+            }];
+            p
+        };
+        let untagged = with(false);
+        assert!(matches!(
+            strip_transport_from_params(&untagged),
+            std::borrow::Cow::Borrowed(_)
+        ));
+        let tagged = with(true);
+        let stripped = strip_transport_from_params(&tagged);
+        assert_eq!(
+            serde_json::to_string(&stripped.messages[0].attachments()[0]).unwrap(),
+            serde_json::to_string(&att(false)).unwrap()
+        );
+        let body = |p: StreamParams| async move {
+            let t = FakeStreamTransport::new(vec![]);
+            let sp = WireStreamingProvider::new(
+                t,
+                keys(),
+                TransportPolicy::default(),
+                "Quilltap/test".to_string(),
+            );
+            let _ = drain(sp.stream_message("ANTHROPIC", None, &p).await).await;
+            let seen = sp.transport.seen.lock().unwrap().clone().unwrap();
+            seen.body
+        };
+        let tagged_body = body(tagged.clone()).await;
+        assert_eq!(tagged_body, body(untagged.clone()).await);
+        assert!(!String::from_utf8_lossy(&tagged_body).contains("\"transport\""));
+    }
+    // === /P4.D367 ===
 }

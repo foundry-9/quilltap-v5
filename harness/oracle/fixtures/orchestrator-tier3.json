@@ -391,7 +391,7 @@
    "category": "IMAGE",
    "fsmBytesFill": {
     "byte": 33,
-    "len": 1179648
+    "len": 2621440
    },
    "description": "A tall portrait in oils, the oldest of the three."
   },
@@ -427,7 +427,7 @@
    "category": "IMAGE",
    "fsmBytesFill": {
     "byte": 66,
-    "len": 786432
+    "len": 1572864
    }
   },
   {
@@ -438,7 +438,7 @@
    "category": "IMAGE",
    "fsmBytesFill": {
     "byte": 77,
-    "len": 786432
+    "len": 1572864
    }
   },
   {
@@ -449,8 +449,240 @@
    "category": "IMAGE",
    "fsmBytesFill": {
     "byte": 88,
-    "len": 1572867
+    "len": 3145731
    }
+  },
+  {
+   "key": "lb_cap1",
+   "id": "1f151011-0000-4000-8000-000000000011",
+   "originalFilename": "lb_cap1.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 101,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_cap2",
+   "id": "1f151012-0000-4000-8000-000000000012",
+   "originalFilename": "lb_cap2.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 102,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_cap3",
+   "id": "1f151013-0000-4000-8000-000000000013",
+   "originalFilename": "lb_cap3.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 103,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_cap4",
+   "id": "1f151014-0000-4000-8000-000000000014",
+   "originalFilename": "lb_cap4.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 104,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_cap5",
+   "id": "1f151015-0000-4000-8000-000000000015",
+   "originalFilename": "lb_cap5.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 105,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_rank_l1",
+   "id": "1f151021-0000-4000-8000-000000000021",
+   "originalFilename": "lb_rank_l1.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 111,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_rank_l2",
+   "id": "1f151022-0000-4000-8000-000000000022",
+   "originalFilename": "lb_rank_l2.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 112,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_rank_l3",
+   "id": "1f151023-0000-4000-8000-000000000023",
+   "originalFilename": "lb_rank_l3.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 113,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_rank_l4",
+   "id": "1f151024-0000-4000-8000-000000000024",
+   "originalFilename": "lb_rank_l4.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 114,
+    "len": 3000
+   }
+  },
+  {
+   "key": "lb_rank_up",
+   "id": "1f151025-0000-4000-8000-000000000025",
+   "originalFilename": "lb_rank_up.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 120,
+    "len": 3000
+   }
+  },
+  {
+   "key": "b151_up1",
+   "id": "1f151031-0000-4000-8000-000000000031",
+   "originalFilename": "b151_up1.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 131,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_up2",
+   "id": "1f151032-0000-4000-8000-000000000032",
+   "originalFilename": "b151_up2.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 132,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_up3",
+   "id": "1f151033-0000-4000-8000-000000000033",
+   "originalFilename": "b151_up3.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 133,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_up4",
+   "id": "1f151034-0000-4000-8000-000000000034",
+   "originalFilename": "b151_up4.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 134,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l1",
+   "id": "1f151041-0000-4000-8000-000000000041",
+   "originalFilename": "b151_l1.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 141,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l2",
+   "id": "1f151042-0000-4000-8000-000000000042",
+   "originalFilename": "b151_l2.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 142,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l3",
+   "id": "1f151043-0000-4000-8000-000000000043",
+   "originalFilename": "b151_l3.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 143,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l4",
+   "id": "1f151044-0000-4000-8000-000000000044",
+   "originalFilename": "b151_l4.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 144,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l5",
+   "id": "1f151045-0000-4000-8000-000000000045",
+   "originalFilename": "b151_l5.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 145,
+    "len": 384000
+   }
+  },
+  {
+   "key": "b151_l6",
+   "id": "1f151046-0000-4000-8000-000000000046",
+   "originalFilename": "b151_l6.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 146,
+    "len": 384000
+   }
+  },
+  {
+   "key": "lb_up_nonvision",
+   "id": "1f151050-0000-4000-8000-000000000050",
+   "originalFilename": "lb_up_nonvision.webp",
+   "mimeType": "image/webp",
+   "category": "IMAGE",
+   "fsmBytesFill": {
+    "byte": 150,
+    "len": 3000
+   },
+   "description": "An uploaded sketch of a lighthouse at dusk."
   }
  ],
  "chats": [
@@ -3025,6 +3257,275 @@
    ],
    "messages": [],
    "isPaused": true
+  },
+  {
+   "id": "1e151006-0000-4000-8000-000000000106",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151006-0000-4000-8000-0000000002a6",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151006-0000-4000-8000-0000000002b6",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151006-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida clears a long wall.",
+     "participantId": "1d151006-0000-4000-8000-0000000002a6"
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 1.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151011-0000-4000-8000-000000000011"
+     ]
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 2.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151012-0000-4000-8000-000000000012"
+     ]
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000303",
+     "createdAt": "2026-01-02T03:04:09.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 3.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151013-0000-4000-8000-000000000013"
+     ]
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000304",
+     "createdAt": "2026-01-02T03:04:10.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 4.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151014-0000-4000-8000-000000000014"
+     ]
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000305",
+     "createdAt": "2026-01-02T03:04:11.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 5.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151015-0000-4000-8000-000000000015"
+     ]
+    },
+    {
+     "id": "1b151006-0000-4000-8000-000000000399",
+     "createdAt": "2026-01-02T03:04:40.000Z",
+     "role": "USER",
+     "content": "Five pictures, Lucida; the wall holds four.",
+     "participantId": "1d151006-0000-4000-8000-0000000002b6"
+    }
+   ]
+  },
+  {
+   "id": "1e151007-0000-4000-8000-000000000107",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151007-0000-4000-8000-0000000002a7",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151007-0000-4000-8000-0000000002b7",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151007-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida waits by the easel.",
+     "participantId": "1d151007-0000-4000-8000-0000000002a7"
+    },
+    {
+     "id": "1b151007-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 1.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151021-0000-4000-8000-000000000021"
+     ]
+    },
+    {
+     "id": "1b151007-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 2.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151022-0000-4000-8000-000000000022"
+     ]
+    },
+    {
+     "id": "1b151007-0000-4000-8000-000000000303",
+     "createdAt": "2026-01-02T03:04:09.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 3.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151023-0000-4000-8000-000000000023"
+     ]
+    },
+    {
+     "id": "1b151007-0000-4000-8000-000000000304",
+     "createdAt": "2026-01-02T03:04:10.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 4.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151024-0000-4000-8000-000000000024"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "1e151008-0000-4000-8000-000000000108",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151008-0000-4000-8000-0000000002a8",
+     "character": "1c151000-0000-4000-8000-000000000151",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151008-0000-4000-8000-0000000002b8",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151008-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Lucida rolls out the gallery carpet.",
+     "participantId": "1d151008-0000-4000-8000-0000000002a8"
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000301",
+     "createdAt": "2026-01-02T03:04:07.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 1.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151041-0000-4000-8000-000000000041"
+     ]
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000302",
+     "createdAt": "2026-01-02T03:04:08.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 2.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151042-0000-4000-8000-000000000042"
+     ]
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000303",
+     "createdAt": "2026-01-02T03:04:09.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 3.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151043-0000-4000-8000-000000000043"
+     ]
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000304",
+     "createdAt": "2026-01-02T03:04:10.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 4.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151044-0000-4000-8000-000000000044"
+     ]
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000305",
+     "createdAt": "2026-01-02T03:04:11.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 5.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151045-0000-4000-8000-000000000045"
+     ]
+    },
+    {
+     "id": "1b151008-0000-4000-8000-000000000306",
+     "createdAt": "2026-01-02T03:04:12.000Z",
+     "role": "ASSISTANT",
+     "content": "The Lantern hangs picture 6.",
+     "systemSender": "lantern",
+     "attachments": [
+      "1f151046-0000-4000-8000-000000000046"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "1e151009-0000-4000-8000-000000000109",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "1d151009-0000-4000-8000-0000000002a9",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "1d151009-0000-4000-8000-0000000002b9",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "1b151009-0000-4000-8000-000000000300",
+     "createdAt": "2026-01-02T03:04:06.000Z",
+     "role": "ASSISTANT",
+     "content": "Friday sets the ledger aside.",
+     "participantId": "1d151009-0000-4000-8000-0000000002a9"
+    }
+   ]
   }
  ],
  "calls": [
@@ -4300,6 +4801,59 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "_comment": "P4.D348 (v4 a8214b253, bug 262): a held post is recorded even when the responder's profile has lost its key — the requires gate exempts a held send; the paused chain-complete answers, not an error frame."
+  },
+  {
+   "name": "image_cap_five_lantern",
+   "kind": "single",
+   "chatId": "1e151006-0000-4000-8000-000000000106",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "image_cap_five_lantern",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "1d151006-0000-4000-8000-0000000002a6"
+  },
+  {
+   "name": "image_rank_upload_over_lantern",
+   "kind": "single",
+   "chatId": "1e151007-0000-4000-8000-000000000107",
+   "content": "And one of my own, Lucida.",
+   "continueMode": false,
+   "streamLabel": "image_rank_upload_over_lantern",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "fileIds": [
+    "1f151025-0000-4000-8000-000000000025"
+   ]
+  },
+  {
+   "name": "image_bug_151",
+   "kind": "single",
+   "chatId": "1e151008-0000-4000-8000-000000000108",
+   "content": "Four portraits of mine as well, Lucida.",
+   "continueMode": false,
+   "streamLabel": "image_bug_151",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "fileIds": [
+    "1f151031-0000-4000-8000-000000000031",
+    "1f151032-0000-4000-8000-000000000032",
+    "1f151033-0000-4000-8000-000000000033",
+    "1f151034-0000-4000-8000-000000000034"
+   ]
+  },
+  {
+   "name": "image_upload_nonvision_seat",
+   "kind": "single",
+   "chatId": "1e151009-0000-4000-8000-000000000109",
+   "content": "Have a look at this, Friday.",
+   "continueMode": false,
+   "streamLabel": "image_upload_nonvision_seat",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "fileIds": [
+    "1f151050-0000-4000-8000-000000000050"
+   ]
   }
  ],
  "streams": {
@@ -6548,7 +7102,67 @@
    ]
   ],
   "pause_rich_fair_rotation": [],
-  "pause_keyless_records_post": []
+  "pause_keyless_records_post": [],
+  "image_cap_five_lantern": [
+   [
+    {
+     "content": "Lucida hangs four and asks after the fifth."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "image_rank_upload_over_lantern": [
+   [
+    {
+     "content": "Lucida looks at yours first."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "image_bug_151": [
+   [
+    {
+     "content": "Lucida takes in the four portraits."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ],
+  "image_upload_nonvision_seat": [
+   [
+    {
+     "content": "Friday reads the description of the lighthouse."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 160,
+      "completionTokens": 12,
+      "totalTokens": 172
+     }
+    }
+   ]
+  ]
  },
  "detection": {
   "failover_native_call": [

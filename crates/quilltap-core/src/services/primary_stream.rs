@@ -1569,11 +1569,10 @@ where
     // take was already replaced by its description upstream, and a chain that
     // still called the turn vision-bearing would skip understudies perfectly
     // able to answer it.
-    let needs_vision = crate::services::message_attachment_adapter::collect_attachment_mime_types(
-        &params.messages,
-    )
-    .iter()
-    .any(|m| m.starts_with("image/"));
+    let needs_vision =
+        crate::services::image_transport_budget::collect_attachment_mime_types(&params.messages)
+            .iter()
+            .any(|m| m.starts_with("image/"));
 
     // v4 gates the terminal `logLLMCall` on `if (userId)`.
     let stream_log = (!user_id.is_empty()).then(|| StreamLogCtx {

@@ -122,6 +122,7 @@ pub mod image_job_common;
 pub mod image_job_storage;
 pub mod image_profile_resolution;
 pub mod image_scene_tasks;
+pub mod image_transport_budget;
 pub mod impersonation_voice_legacy;
 pub mod inform_block;
 pub mod initial_greeting;
@@ -145,7 +146,6 @@ pub mod memory_repair; // P4.D297 (R-K)
 pub mod memory_retire; // P4.D288 (C1-7)
 pub mod memory_subject;
 pub mod memory_time_zone;
-pub mod message_attachment_adapter;
 pub mod message_context;
 pub mod message_finalizer;
 pub mod mount_index;

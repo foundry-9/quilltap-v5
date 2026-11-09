@@ -558,5 +558,8 @@ fn blank(id: &str) -> FallbackProfile {
         fallback_profile_id: None,
         allow_tier_fallback: false,
         parameters: None,
+        // === P4.D367 === v4's default cap; the `tierMatches` rows never read it.
+        max_images_per_request: 4,
+        // === /P4.D367 ===
     }
 }

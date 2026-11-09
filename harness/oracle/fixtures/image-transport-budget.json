@@ -1,0 +1,2955 @@
+{
+  "$comment": "P4.D367 \u2014 the image transport budget corpus (v4 `29c1e2690` at the `624d0d25c` pin), read by BOTH sides: `plan` rows drive v4's REAL `planImageTransport` (tsx leaf `image-transport-budget-plan.ts`) and v5's `plan_image_transport` under an explicit policy; `apply` rows drive v4's REAL `applyImageTransportBudget` (jest case `image-transport-budget.test.ts`, the two describers scripted by `scripts`, every other module real) and v5's `apply_image_transport_budget`. An attachment's `$dataLen: n` key is replaced IN PLACE by `data: 'A' x n` on both sides. A script is `{type, text?, error?}` or `{throw}`; an attachment with no script is described as `A description of <id>.`. Every row's `expect` (plan) is asserted on the v4 side so no row passes vacuously.",
+  "plan": [
+    {
+      "label": "plan_count_before_bytes",
+      "rule": "an image over BOTH the cap and the byte budget is a COUNT overflow (count is tested first)",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 10,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 5,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 50,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "keep",
+        "b": "count"
+      }
+    },
+    {
+      "label": "plan_bytes_skip_to_smaller",
+      "rule": "over the byte budget the walk CONTINUES: a smaller later image still fits",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 10,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "big",
+              "filename": "big.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 20,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 3,
+                "describable": true
+              }
+            },
+            {
+              "id": "small",
+              "filename": "small.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 5,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "big": "bytes",
+        "small": "keep"
+      }
+    },
+    {
+      "label": "plan_exact_fit",
+      "rule": "cost == bytesLeft is KEPT (strict >)",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 10,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 6,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "keep",
+        "b": "keep"
+      }
+    },
+    {
+      "label": "plan_one_byte_over",
+      "rule": "one byte past what is left overflows on bytes",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 10,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 7,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "keep",
+        "b": "bytes"
+      }
+    },
+    {
+      "label": "plan_over_count_spends_no_bytes",
+      "rule": "an over-count image consumes no bytes (an equivalent mutant in the plan: count overflow is terminal)",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 10,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 3,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 9,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "keep",
+        "b": "count"
+      }
+    },
+    {
+      "label": "plan_provenance_beats_array_order",
+      "rule": "v4: uploads, then re-hydrated, then Lantern, whatever the array order",
+      "policy": {
+        "maxImages": 2,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "lantern-new",
+              "filename": "lantern-new.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 300,
+                "describable": true
+              }
+            },
+            {
+              "id": "rehydrated",
+              "filename": "rehydrated.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "rehydrated",
+                "createdAt": 100,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload",
+              "filename": "upload.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 50,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "lantern-new": "count",
+        "rehydrated": "keep",
+        "upload": "keep"
+      }
+    },
+    {
+      "label": "plan_newest_of_a_kind_first",
+      "rule": "v4: the newest of a kind first",
+      "policy": {
+        "maxImages": 2,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "old",
+              "filename": "old.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 100,
+                "describable": true
+              }
+            },
+            {
+              "id": "mid",
+              "filename": "mid.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 200,
+                "describable": true
+              }
+            },
+            {
+              "id": "new",
+              "filename": "new.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 300,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "old": "count",
+        "mid": "keep",
+        "new": "keep"
+      }
+    },
+    {
+      "label": "plan_equal_created_at_array_order",
+      "rule": "equal createdAt ties break by array order",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "x",
+              "filename": "x.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 5,
+                "describable": true
+              }
+            },
+            {
+              "id": "y",
+              "filename": "y.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 5,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "x": "keep",
+        "y": "count"
+      }
+    },
+    {
+      "label": "plan_untagged_last",
+      "rule": "untagged ranks after every tagged one, in array order",
+      "policy": {
+        "maxImages": 2,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "u1",
+              "filename": "u1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "l",
+              "filename": "l.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            },
+            {
+              "id": "u2",
+              "filename": "u2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "u1": "keep",
+        "l": "keep",
+        "u2": "count"
+      }
+    },
+    {
+      "label": "plan_v4_count_then_bytes_cap1",
+      "rule": "v4's row, cap 1: the upload first, then the cap",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 500,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "big-new",
+              "filename": "big-new.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 800,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 300,
+                "describable": true
+              }
+            },
+            {
+              "id": "small-old",
+              "filename": "small-old.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 150,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 100,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload",
+              "filename": "upload.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 300,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 50,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "big-new": "count",
+        "small-old": "count",
+        "upload": "keep"
+      }
+    },
+    {
+      "label": "plan_v4_count_then_bytes_cap4",
+      "rule": "v4's row, cap 4: the bytes skip past big-new to small-old",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 500,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "big-new",
+              "filename": "big-new.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 800,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 300,
+                "describable": true
+              }
+            },
+            {
+              "id": "small-old",
+              "filename": "small-old.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 150,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 100,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload",
+              "filename": "upload.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 300,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 50,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "big-new": "bytes",
+        "small-old": "keep",
+        "upload": "keep"
+      }
+    },
+    {
+      "label": "plan_unreceivable_not_counted",
+      "rule": "an image the profile cannot receive takes capability and is NOT counted",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "w",
+              "filename": "w.webp",
+              "mimeType": "image/webp",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "p",
+              "filename": "p.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "w": "capability",
+        "p": "keep"
+      }
+    },
+    {
+      "label": "plan_receivable_non_image_keep",
+      "rule": "a receivable non-image is kept and never counted",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "t",
+              "filename": "t.txt",
+              "mimeType": "text/plain",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "p",
+              "filename": "p.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "t": "keep",
+        "p": "keep"
+      }
+    },
+    {
+      "label": "plan_unreceivable_non_image",
+      "rule": "a non-image the profile cannot receive takes capability",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 4194304,
+        "canReceive": []
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "t",
+              "filename": "t.txt",
+              "mimeType": "text/plain",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "t": "capability"
+      }
+    },
+    {
+      "label": "plan_non_loaded_entries",
+      "rule": "an entry without a string id AND a string mimeType is not a loaded attachment",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": 5,
+              "mimeType": "image/png"
+            },
+            "x",
+            null,
+            {
+              "mimeType": "image/png"
+            },
+            {
+              "id": "y"
+            },
+            {
+              "id": "ok",
+              "filename": "ok.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "ok": "keep"
+      }
+    },
+    {
+      "label": "plan_data_shapes",
+      "rule": "data.length: UTF-16 units for a string, elements for an array, 0 otherwise",
+      "policy": {
+        "maxImages": 10,
+        "maxTotalBase64": 5,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "s",
+              "filename": "s.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "data": "\u00e9\u00e9\u00e9"
+            },
+            {
+              "id": "arr",
+              "filename": "arr.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "data": [
+                1,
+                2
+              ]
+            },
+            {
+              "id": "num",
+              "filename": "num.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "data": 7
+            },
+            {
+              "id": "none",
+              "filename": "none.png",
+              "mimeType": "image/png",
+              "size": 1024
+            },
+            {
+              "id": "nul",
+              "filename": "nul.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "data": null
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "s": "keep",
+        "arr": "keep",
+        "num": "keep",
+        "none": "keep",
+        "nul": "keep"
+      }
+    },
+    {
+      "label": "plan_max_images_zero",
+      "rule": "v4's maxImages 0 row: every image overflows on count",
+      "policy": {
+        "maxImages": 0,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "count"
+      }
+    },
+    {
+      "label": "plan_max_images_fifty",
+      "rule": "a cap of 50 keeps three",
+      "policy": {
+        "maxImages": 50,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "c",
+              "filename": "c.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "a": "keep",
+        "b": "keep",
+        "c": "keep"
+      }
+    },
+    {
+      "label": "plan_empty_array",
+      "rule": "no messages at all",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [],
+      "expect": {}
+    },
+    {
+      "label": "plan_no_attachments_key_and_empty",
+      "rule": "a message with no attachments key and one with []",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look"
+        },
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": []
+        }
+      ],
+      "expect": {}
+    },
+    {
+      "label": "plan_two_messages",
+      "rule": "ranking spans messages; positions are per message",
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "m1",
+              "filename": "m1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "m2",
+              "filename": "m2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "m1": "count",
+        "m2": "keep"
+      }
+    },
+    {
+      "label": "plan_bug_151",
+      "rule": "v4's bug-151 row: four 500 KB uploads and six Lantern images under 4 MiB, newest kept",
+      "policy": {
+        "maxImages": 50,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "upload-1",
+              "filename": "upload-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-2",
+              "filename": "upload-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-3",
+              "filename": "upload-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-4",
+              "filename": "upload-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-1",
+              "filename": "lantern-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-2",
+              "filename": "lantern-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-3",
+              "filename": "lantern-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 3,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-4",
+              "filename": "lantern-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 4,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-5",
+              "filename": "lantern-5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 5,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-6",
+              "filename": "lantern-6.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 6,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "upload-1": "keep",
+        "upload-2": "keep",
+        "upload-3": "keep",
+        "upload-4": "keep",
+        "lantern-6": "keep",
+        "lantern-5": "keep",
+        "lantern-4": "keep",
+        "lantern-3": "keep",
+        "lantern-2": "bytes",
+        "lantern-1": "bytes"
+      }
+    },
+    {
+      "label": "plan_bug_151_cap_4",
+      "rule": "the same request at the default cap of 4: the uploads, then the cap",
+      "policy": {
+        "maxImages": 4,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "upload-1",
+              "filename": "upload-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-2",
+              "filename": "upload-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-3",
+              "filename": "upload-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-4",
+              "filename": "upload-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-1",
+              "filename": "lantern-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-2",
+              "filename": "lantern-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-3",
+              "filename": "lantern-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 3,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-4",
+              "filename": "lantern-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 4,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-5",
+              "filename": "lantern-5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 5,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-6",
+              "filename": "lantern-6.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 6,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "expect": {
+        "upload-1": "keep",
+        "upload-2": "keep",
+        "upload-3": "keep",
+        "upload-4": "keep",
+        "lantern-1": "count",
+        "lantern-2": "count",
+        "lantern-3": "count",
+        "lantern-4": "count",
+        "lantern-5": "count",
+        "lantern-6": "count"
+      }
+    }
+  ],
+  "apply": [
+    {
+      "label": "apply_nothing_no_attachments",
+      "rule": "v4: no attachments \u2192 the same array, no line",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "hello"
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_nothing_reads_the_bytes",
+      "rule": "v4: a substitute that reads the bytes too \u2192 the same array, every image reported kept",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_bug106_described_key_dropped",
+      "rule": "v4: the bytes a text-only profile cannot read become a description and the key is DELETED",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1",
+        "characterParticipantId": "cp-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_bug106_mixed_keep_and_describe",
+      "rule": "v4: keep what the profile reads beside what it cannot (a zip \u2192 unsupported \u2192 dropped)",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "z",
+              "filename": "z.zip",
+              "mimeType": "application/zip",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "z": {
+          "fallback": {
+            "type": "unsupported"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_bug106_non_loaded_passthrough",
+      "rule": "v4: a non-loaded entry is passed through untouched",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "some": "other shape"
+            },
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_bug106_extra_fields_carried",
+      "rule": "v4: every other field of a message rides through",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "name": "Bob",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_bug106_attachment_free_alone",
+      "rule": "v4: attachment-free messages are left alone",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "system",
+          "content": "s"
+        },
+        {
+          "role": "user",
+          "content": "a"
+        },
+        {
+          "role": "assistant",
+          "content": "b"
+        },
+        {
+          "role": "user",
+          "content": "c",
+          "attachments": [
+            {
+              "id": "c",
+              "filename": "c.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": "d",
+          "attachments": []
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_capability_fallback_throws",
+      "rule": "v4: a capability fallback that THROWS \u2192 the WARN and the \u26a0\ufe0f prefix",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "a": {
+          "fallback": {
+            "throw": "vision desk unreachable"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1",
+        "kind": "tier-pick"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_capability_unsupported_with_error",
+      "rule": "a capability fallback answering unsupported WITH an error \u2192 its own \u26a0\ufe0f prefix, dropped, no WARN",
+      "profile": {
+        "id": "text-only",
+        "name": "Text-only stand-in",
+        "provider": "DEEPSEEK",
+        "modelName": "deepseek-chat",
+        "supportsImageUpload": false
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "a": {
+          "fallback": {
+            "type": "unsupported",
+            "error": "no describer"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_overflow_describer_throws",
+      "rule": "v4: an overflow describer that THROWS \u2192 the WARN and the note",
+      "profile": {
+        "id": "vision-cap-1",
+        "name": "Profile vision-cap-1",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 1
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "b": {
+          "describe": {
+            "throw": "describer offline"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1",
+        "characterParticipantId": "cp-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_overflow_describer_unsupported",
+      "rule": "v4: a describer that cannot describe \u2192 the note, no WARN",
+      "profile": {
+        "id": "vision-cap-1",
+        "name": "Profile vision-cap-1",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 1
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "b",
+              "filename": "b.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "b": {
+          "describe": {
+            "type": "unsupported"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_at_or_under",
+      "rule": "v4: at or under the cap \u2192 the same array",
+      "profile": {
+        "id": "vision-cap-4",
+        "name": "Profile vision-cap-4",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 4
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_four_of_six",
+      "rule": "v4: the first four of six untagged images sent, the other two described",
+      "profile": {
+        "id": "vision-cap-4",
+        "name": "Profile vision-cap-4",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 4
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i6",
+              "filename": "i6.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1",
+        "characterParticipantId": "cp-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_cap_absent_reads_four",
+      "rule": "v4: no stored cap \u2192 the default of four",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i6",
+              "filename": "i6.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_unreceivable_not_counted",
+      "rule": "v4: images the profile cannot receive take the ordinary fallback and are not counted",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "g",
+              "filename": "g.gif",
+              "mimeType": "image/gif",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "p1",
+              "filename": "p1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "p2",
+              "filename": "p2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "policy": {
+        "maxImages": 1,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png"
+        ]
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_bytes_describe_or_omit",
+      "rule": "v4: a describable overflow is described, a non-describable one omitted with a note (no describer call)",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "keep",
+              "filename": "keep.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 900,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 300,
+                "describable": true
+              }
+            },
+            {
+              "id": "generated",
+              "filename": "generated.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 400,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 200,
+                "describable": true
+              }
+            },
+            {
+              "id": "vault-avatar",
+              "filename": "vault-avatar.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 400,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 100,
+                "describable": false
+              }
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "policy": {
+        "maxImages": 10,
+        "maxTotalBase64": 1000,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_describer_handed_stripped",
+      "rule": "v4: the describer is handed the attachment WITHOUT its transport tag",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 10,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "policy": {
+        "maxImages": 0,
+        "maxTotalBase64": 10000,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_bug_151",
+      "rule": "v4: four 500 KB uploads and six Lantern images stay under the total, newest kept",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "upload-1",
+              "filename": "upload-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-2",
+              "filename": "upload-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-3",
+              "filename": "upload-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "upload-4",
+              "filename": "upload-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "upload",
+                "createdAt": 1000,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-1",
+              "filename": "lantern-1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 1,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-2",
+              "filename": "lantern-2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 2,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-3",
+              "filename": "lantern-3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 3,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-4",
+              "filename": "lantern-4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 4,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-5",
+              "filename": "lantern-5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 5,
+                "describable": true
+              }
+            },
+            {
+              "id": "lantern-6",
+              "filename": "lantern-6.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 512000,
+              "transport": {
+                "origin": "lantern",
+                "createdAt": 6,
+                "describable": true
+              }
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "policy": {
+        "maxImages": 50,
+        "maxTotalBase64": 4194304,
+        "canReceive": [
+          "image/png",
+          "image/webp",
+          "image/gif",
+          "image/jpeg",
+          "text/plain"
+        ]
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_capability_only_no_info",
+      "rule": "a capability-only call: the DEBUG fires, the INFO does not; a capability text result is reported described",
+      "profile": {
+        "id": "vision-openai",
+        "name": "Profile vision-openai",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "odd",
+              "filename": "odd.odd",
+              "mimeType": "application/x-quilltap-odd",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {
+        "odd": {
+          "fallback": {
+            "type": "text",
+            "text": "[inlined odd file]"
+          }
+        }
+      },
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_vision_profile_provider_cannot_transport",
+      "rule": "a ticked vision box on a plugin that cannot transport images \u2192 capability for images",
+      "profile": {
+        "id": "ollama-vision",
+        "name": "Profile ollama-vision",
+        "provider": "OLLAMA",
+        "modelName": "llava",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "a",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": true
+    },
+    {
+      "label": "apply_cap_edge_absent",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = '$absent' (5 images)",
+      "profile": {
+        "id": "cap-edge-absent",
+        "name": "Profile cap-edge-absent",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_null",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = None (5 images)",
+      "profile": {
+        "id": "cap-edge-null",
+        "name": "Profile cap-edge-null",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": null
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_zero",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 0 (5 images)",
+      "profile": {
+        "id": "cap-edge-zero",
+        "name": "Profile cap-edge-zero",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 0
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_one",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 1 (5 images)",
+      "profile": {
+        "id": "cap-edge-one",
+        "name": "Profile cap-edge-one",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 1
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_integral_float",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 3.0 (5 images)",
+      "profile": {
+        "id": "cap-edge-integral_float",
+        "name": "Profile cap-edge-integral_float",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 3.0
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_fraction",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 2.5 (5 images)",
+      "profile": {
+        "id": "cap-edge-fraction",
+        "name": "Profile cap-edge-fraction",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 2.5
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_fifty",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 50 (5 images)",
+      "profile": {
+        "id": "cap-edge-fifty",
+        "name": "Profile cap-edge-fifty",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 50
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_fifty_one",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = 51 (5 images)",
+      "profile": {
+        "id": "cap-edge-fifty_one",
+        "name": "Profile cap-edge-fifty_one",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": 51
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_string",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = '3' (5 images)",
+      "profile": {
+        "id": "cap-edge-string",
+        "name": "Profile cap-edge-string",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": "3"
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    },
+    {
+      "label": "apply_cap_edge_true",
+      "rule": "resolveMaxImagesPerRequest over maxImagesPerRequest = True (5 images)",
+      "profile": {
+        "id": "cap-edge-true",
+        "name": "Profile cap-edge-true",
+        "provider": "OPENAI",
+        "modelName": "gpt-4o",
+        "supportsImageUpload": true,
+        "maxImagesPerRequest": true
+      },
+      "messages": [
+        {
+          "role": "user",
+          "content": "look",
+          "attachments": [
+            {
+              "id": "i1",
+              "filename": "i1.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i2",
+              "filename": "i2.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i3",
+              "filename": "i3.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i4",
+              "filename": "i4.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            },
+            {
+              "id": "i5",
+              "filename": "i5.png",
+              "mimeType": "image/png",
+              "size": 1024,
+              "$dataLen": 4
+            }
+          ]
+        }
+      ],
+      "scripts": {},
+      "logContext": {
+        "chatId": "chat-1"
+      },
+      "formatted": false
+    }
+  ]
+}

@@ -356,6 +356,11 @@ async function main(): Promise<void> {
     // cannot send them — the describe-fallback fires and the raw bytes do NOT
     // ride in attachmentsToSend.
     { label: 'lap_vision_no_transport', profile: 'visionNoTransport', fileKeys: ['descImage'] },
+    // === P4.D367 === v4 `29c1e2690`: images are tagged `upload` (one shared
+    // `createdAt`) and never decided at load, in load order beside the kept
+    // non-images; only the non-images reach `fallbackResults`.
+    { label: 'lap_images_and_text_in_load_order', profile: 'imgOK', fileKeys: ['keptImage', 'text', 'zip', 'descImage'] },
+    // === /P4.D367 ===
   ];
   for (const c of lapCases) {
     const profile = spec.respProfiles[c.profile];
@@ -370,6 +375,9 @@ async function main(): Promise<void> {
           prefix: result.messageContentPrefix,
           attachedFileIds: result.attachedFiles.map((f: { id: string }) => f.id),
           attachmentsToSend: result.attachmentsToSend,
+          // === P4.D367 === what the `fileProcessing` frame would carry.
+          fallbackResultTypes: result.fallbackResults.map((r: { type: string }) => r.type),
+          // === /P4.D367 ===
         },
       }),
     );

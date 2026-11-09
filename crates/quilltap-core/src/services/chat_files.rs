@@ -44,6 +44,11 @@ use crate::files::llm_image_budget::shrink_image_for_llm_transport;
 use crate::model::completion::CompletionProvider;
 use crate::services::file_fallback::{self, FallbackDeps, FallbackFile, FallbackType};
 use crate::services::message_context::{LanternLoad, UserAttachmentFile, UserAttachmentLoad};
+// === P4.D367 ===
+use crate::services::image_transport_budget::{
+    tag_for_transport, ImageTransportOrigin, ImageTransportTag,
+};
+// === /P4.D367 ===
 
 /// The host byte store (v4 `fileStorageManager.downloadFile(entry)`) — reads a
 /// legacy `files`-table entry's bytes from S3/local disk. `Err` = the download
@@ -478,9 +483,10 @@ pub struct ProcessedFiles {
     pub message_content_prefix: Option<String>,
     /// v4 `attachmentsToSend` — the kept (provider-supported) attachments.
     pub attachments_to_send: Vec<Value>,
-    /// v4 `fallbackResults` — ONE per loaded attachment, pushed unconditionally
-    /// (`context-builder.service.ts:194-210`; the natively-supported case is
-    /// `unsupported` with no `error`). `process_message` sends them as the
+    /// v4 `fallbackResults` — ONE per loaded NON-image attachment, pushed
+    /// unconditionally (the natively-supported case is `unsupported` with no
+    /// `error`). Images are not decided at load since v4 `29c1e2690`, so an
+    /// image-only send leaves this empty and `process_message` sends no
     /// `fileProcessing` frame ([`crate::services::chat_events::ChatEvent::FileProcessing`]).
     pub fallback_results: Vec<file_fallback::FallbackResult>,
 }
@@ -524,10 +530,41 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
     let fallback_deps = deps.fallback_deps();
     let mut message_content_prefix = String::new();
     let mut fallback_results: Vec<file_fallback::FallbackResult> = Vec::new();
-    // Positional pairing (v4's `attachedFiles[i]`), faithfully kept even when a
-    // load failure shortened `file_attachments`.
-    for (i, fa) in file_attachments.iter().enumerate() {
-        let Some(meta) = matched.get(i) else { break };
+    // === P4.D367 ===
+    // Images are not decided here (v4 `29c1e2690`): they are tagged as this
+    // turn's uploads and passed on whole, and the transport budget decides
+    // capability, count and bytes for them once, on the final array, for
+    // whichever profile is called. Everything else (text inlining, unsupported
+    // types) is decided here, because its text belongs in the user's own
+    // message. ONE clock read for the whole send (v4's one `Date.now()` before
+    // the loop), so every upload in it ties on `createdAt` and ranks by array
+    // order.
+    let uploaded_at = crate::clock::now_unix_ms();
+    let mut attachments_to_send: Vec<Value> = Vec::new();
+    for (i, fa) in file_attachments.into_iter().enumerate() {
+        // v4 `attachedFiles.find(f => f.id === fileAttachment.id) ??
+        // attachedFiles[i]` — by id now, the positional pairing as the fallback.
+        let fa_id = fa.get("id").and_then(Value::as_str);
+        let meta = matched
+            .iter()
+            .find(|f| Some(f.id.as_str()) == fa_id)
+            .or_else(|| matched.get(i));
+        // The LOADED attachment's mime (the transport shrink may have changed it).
+        if file_fallback::is_image_file(fa.get("mimeType").and_then(Value::as_str).unwrap_or("")) {
+            attachments_to_send.push(tag_for_transport(
+                fa,
+                &ImageTransportTag {
+                    origin: ImageTransportOrigin::Upload,
+                    created_at: uploaded_at,
+                    describable: true,
+                },
+            ));
+            continue;
+        }
+        // Unreachable: the loader returns at most the files it was asked for,
+        // and each carries its row's id.
+        let Some(meta) = meta else { break };
+        // === /P4.D367 ===
         let file = FallbackFile {
             id: meta.id.clone(),
             filename: meta.original_filename.clone(),
@@ -542,19 +579,17 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
         )
         .await;
         message_content_prefix.push_str(&file_fallback::format_fallback_as_message_prefix(&result));
+        // === P4.D367 ===
+        // Keep the attachment only when the provider natively supports it
+        // (`unsupported` with NO error) — inline now, so kept non-images and
+        // tagged images stay in load order, as v4's single loop leaves them.
+        let keep = result.type_ == FallbackType::Unsupported && result.error.is_none();
         fallback_results.push(result);
+        if keep {
+            attachments_to_send.push(fa);
+        }
+        // === /P4.D367 ===
     }
-
-    // Keep only provider-supported attachments (`unsupported` with NO error).
-    let attachments_to_send: Vec<Value> = file_attachments
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, _)| match fallback_results.get(*idx) {
-            None => true,
-            Some(f) => f.type_ == FallbackType::Unsupported && f.error.is_none(),
-        })
-        .map(|(_, fa)| fa)
-        .collect();
 
     ProcessedFiles {
         attached_file_ids: matched.iter().map(|f| f.id.clone()).collect(),
@@ -578,62 +613,28 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
     }
 }
 
-/// The Lantern K-seam body (v4 `buildMessageContext` section K, 662–757). Loads
-/// the collected prior-image file ids, fallback-dispatches each, and returns the
-/// accumulated description prefix + the kept attachments (v4:
-/// `[...attachmentsToSend, ...lanternAttachmentsToKeep]` is merged by the caller).
+// === P4.D367 ===
+/// The Lantern K-seam body (v4 `buildMessageContext` section K at
+/// `624d0d25c`): load the collected prior-image file ids and return every
+/// loaded attachment. Collect only — the transport budget decides (no
+/// fallback, no prefix, no budget here since v4 `29c1e2690`).
 pub async fn load_lantern_images<CMP: CompletionProvider>(
     deps: &ProcessFilesDeps<'_, CMP>,
-    connection_profile: &Value,
     file_ids: &[String],
     provider: &str,
 ) -> LanternLoad {
     let options = LoadChatFilesOptions::with_provider(Some(provider.to_string()));
-    let extra = load_chat_files_for_llm(deps.db, deps.bytes, deps.transcoder, file_ids, &options);
-    if extra.is_empty() {
-        return LanternLoad::default();
-    }
-
-    let fallback_deps = deps.fallback_deps();
-    let mut lantern_prefix = String::new();
-    let mut keep: Vec<Value> = Vec::new();
-    for fa in extra {
-        let file = FallbackFile {
-            id: fa
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            filename: fa
-                .get("filename")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            // Lantern's fileMetadata carries the LOADED (possibly resized) mime.
-            mime_type: fa
-                .get("mimeType")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            data: fa.get("data").and_then(Value::as_str).map(str::to_string),
-        };
-        let result = file_fallback::process_file_attachment_fallback(
-            &fallback_deps,
-            &file,
-            connection_profile,
-        )
-        .await;
-        lantern_prefix.push_str(&file_fallback::format_fallback_as_message_prefix(&result));
-        if result.type_ == FallbackType::Unsupported && result.error.is_none() {
-            keep.push(fa);
-        }
-    }
-
     LanternLoad {
-        prefix: lantern_prefix,
-        attachments: keep,
+        attachments: load_chat_files_for_llm(
+            deps.db,
+            deps.bytes,
+            deps.transcoder,
+            file_ids,
+            &options,
+        ),
     }
 }
+// === /P4.D367 ===
 
 /// The USER-attachment loader (v4 bug 121, `e288ae2ec`): the body of
 /// `rehydrateUserAttachments`'s per-row load — `loadChatFilesForLLM(fileIds,
@@ -658,6 +659,21 @@ pub async fn load_user_attachments<CMP: CompletionProvider>(
     let fallback_deps = deps.fallback_deps();
     let mut files: Vec<UserAttachmentFile> = Vec::with_capacity(loaded.len());
     for fa in loaded {
+        // === P4.D367 ===
+        // An image (the LOADED mime) skips the fallback: it goes on whole and
+        // the caller tags it `rehydrated` (it alone holds the carrying row's
+        // `createdAt`).
+        if file_fallback::is_image_file(fa.get("mimeType").and_then(Value::as_str).unwrap_or("")) {
+            files.push(UserAttachmentFile {
+                attachment: fa,
+                is_image: true,
+                unsupported: false,
+                errored: false,
+                prefix: String::new(),
+            });
+            continue;
+        }
+        // === /P4.D367 ===
         let file = FallbackFile {
             id: fa
                 .get("id")
@@ -686,6 +702,7 @@ pub async fn load_user_attachments<CMP: CompletionProvider>(
         .await;
         files.push(UserAttachmentFile {
             attachment: fa,
+            is_image: false,
             unsupported: result.type_ == FallbackType::Unsupported,
             errored: result.error.is_some(),
             prefix: file_fallback::format_fallback_as_message_prefix(&result),
@@ -717,8 +734,30 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        load_lantern_images(&self.deps, self.connection_profile, file_ids, &provider).await
+        load_lantern_images(&self.deps, file_ids, &provider).await
     }
+
+    // === P4.D367 ===
+    async fn apply_image_transport_budget(
+        &self,
+        messages: Vec<crate::services::message_context::FormattedMsg>,
+        log_context: crate::services::image_transport_budget::TransportLogContext,
+    ) -> Vec<crate::services::message_context::FormattedMsg> {
+        // v4 passes `connectionProfile` — the responding profile, the row this
+        // seam holds — and `describeOptions: { chatId }` (the deps carry it).
+        let fallback_deps = self.deps.fallback_deps();
+        let (adapted, _report) =
+            crate::services::image_transport_budget::apply_image_transport_budget(
+                &messages,
+                self.connection_profile,
+                &crate::services::image_transport_budget::FallbackDepsDescriber(&fallback_deps),
+                &log_context,
+                None,
+            )
+            .await;
+        adapted.unwrap_or(messages)
+    }
+    // === /P4.D367 ===
 
     async fn load_user_attachments(
         &self,
