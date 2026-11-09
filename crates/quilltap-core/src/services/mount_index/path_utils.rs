@@ -229,18 +229,53 @@ pub(crate) fn path_extname(path: &str) -> String {
 // Public helpers
 // ---------------------------------------------------------------------------
 
+// === P4.D377 ===
+/// v4 `normaliseRelativePath`'s options bag (`{ allowRoot?: boolean }`,
+/// `path-utils.ts:30`, v4 `600c2906f`).
+///
+/// `allow_root` is the database store's form: there the store ROOT is a
+/// legitimate target (listing it, creating a folder "at" it), so an empty /
+/// `.` path answers `''` instead of throwing (v4 `database-store.ts:55-58` —
+/// "The store root is `''` here; the shared rule otherwise").
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NormaliseOpts {
+    pub allow_root: bool,
+}
+
 /// v4 `normaliseRelativePath`: collapse `./` and redundant separators, strip
 /// leading/trailing slashes, and reject `..` traversal. Errors with
 /// `FileOpError('INVALID_PATH')` on an empty or traversing path.
+///
+/// The strict (`allowRoot: false`) form — kept as the one-arg fn so its
+/// callers are untouched; see [`normalise_relative_path_opts`].
 pub fn normalise_relative_path(input: &str) -> Result<String, FileOpError> {
-    // path.normalize FIRST (on the raw input — backslashes are ordinary chars on
-    // posix), THEN backslash→slash, THEN strip leading/trailing slashes.
-    let normalized = path_posix_normalize(input)
+    normalise_relative_path_opts(input, NormaliseOpts { allow_root: false })
+}
+
+/// v4 `normaliseRelativePath(input, { allowRoot })` (`path-utils.ts:30-44`):
+/// collapse `./` and redundant separators, strip leading/trailing slashes, and
+/// reject `..` traversal. Throws `FileOpError('INVALID_PATH')` on a traversing
+/// path, and on an empty one unless `allowRoot` is set — then the store root
+/// comes back as `''`. Trailing slashes are stripped so folder paths match the
+/// form that `folder-paths.ts` writes into `doc_mount_folders.path`.
+pub fn normalise_relative_path_opts(
+    input: &str,
+    opts: NormaliseOpts,
+) -> Result<String, FileOpError> {
+    // `path.normalize(input || '.')` FIRST (on the raw input — backslashes are
+    // ordinary chars on posix), THEN backslash→slash, THEN strip
+    // leading/trailing slashes. (`path_posix_normalize('')` is already `.`,
+    // so the `|| '.'` is carried by the normaliser itself.)
+    let source = if input.is_empty() { "." } else { input };
+    let normalized = path_posix_normalize(source)
         .replace('\\', "/")
         .trim_start_matches('/')
         .trim_end_matches('/')
         .to_string();
     if normalized.is_empty() || normalized == "." {
+        if opts.allow_root {
+            return Ok(String::new());
+        }
         return Err(FileOpError::new(
             format!("Invalid relative path: {input}"),
             FileOpErrorCode::InvalidPath,
@@ -254,6 +289,79 @@ pub fn normalise_relative_path(input: &str) -> Result<String, FileOpError> {
     }
     Ok(normalized)
 }
+
+/// v4 `isSafeRelativePath` (`path-utils.ts:51-62`, moved out of the folders
+/// route by `600c2906f`): true when a normalised relative path is safe to
+/// create as a folder or file name on any backend — no absolute path, no
+/// empty / `.` / `..` segment, no control characters, none of `<>:"|?*\`,
+/// and no segment over 200 characters.
+///
+/// "Characters" is JS `.length` — UTF-16 code units, so an astral character
+/// counts TWO ([`crate::jsstr::utf16_len`]); `path.isAbsolute` on posix is a
+/// leading `/`.
+pub fn is_safe_relative_path(rel: &str) -> bool {
+    if rel.is_empty() {
+        return false;
+    }
+    if rel.starts_with('/') {
+        return false;
+    }
+    for seg in rel.split('/') {
+        if seg.is_empty() || seg == "." || seg == ".." {
+            return false;
+        }
+        if seg.chars().any(|c| ('\x00'..='\x1f').contains(&c)) {
+            return false;
+        }
+        if seg
+            .chars()
+            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\'))
+        {
+            return false;
+        }
+        if crate::jsstr::utf16_len(seg) > 200 {
+            return false;
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod p4d377_tests {
+    use super::*;
+
+    #[test]
+    fn allow_root_answers_the_root_and_strict_refuses_it() {
+        let root = NormaliseOpts { allow_root: true };
+        assert_eq!(normalise_relative_path_opts("", root).unwrap(), "");
+        assert_eq!(normalise_relative_path_opts("./", root).unwrap(), "");
+        let e = normalise_relative_path("").unwrap_err();
+        assert_eq!(e.message, "Invalid relative path: ");
+        assert_eq!(
+            normalise_relative_path_opts("../a", root)
+                .unwrap_err()
+                .message,
+            "Path traversal not allowed: ../a"
+        );
+        assert_eq!(normalise_relative_path("a/./b").unwrap(), "a/b");
+    }
+
+    #[test]
+    fn safe_relative_path_counts_utf16_units() {
+        let astral = "\u{1F600}";
+        assert!(is_safe_relative_path(&format!(
+            "{}{astral}",
+            "x".repeat(198)
+        )));
+        assert!(!is_safe_relative_path(&format!(
+            "{}{astral}",
+            "x".repeat(199)
+        )));
+        assert!(!is_safe_relative_path("a/./b"));
+        assert!(is_safe_relative_path("a/b"));
+    }
+}
+// === P4.D377 ===
 
 /// v4 `detectNativeText`: map a path's extension to a native-text file type, or
 /// `None` when binary / not a chunkable text format.

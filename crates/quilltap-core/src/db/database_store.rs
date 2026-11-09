@@ -51,8 +51,8 @@ use rusqlite::Connection;
 
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::{
-    detect_database_file_type, normalise_relative_path, sha256_of_string,
-    DocMountFileLinksRepository, LinkDocumentInput, LinkUpdate,
+    detect_database_file_type, sha256_of_string, DocMountFileLinksRepository, LinkDocumentInput,
+    LinkUpdate,
 };
 use super::doc_mount_files::{DmfUpdate, DocMountFilesRepository};
 use super::doc_mount_folders::DocMountFoldersRepository;
@@ -109,6 +109,11 @@ pub enum StoreError {
     /// `InventoryRefusal` untouched through the store; each caller renders it
     /// as v4's caller renders a thrown refusal at that layer (R-8).
     TitleLint(InventoryRefusal),
+    /// The shared path rule refused the caller's path (P4.D377, v4
+    /// `600c2906f`): v4's store normaliser IS `path-utils`' with `allowRoot`,
+    /// so a traversing path throws `FileOpError('INVALID_PATH')` — which v4's
+    /// `file-op-status.ts` answers 400 on every route it maps.
+    FileOp(crate::services::mount_index::file_op_error::FileOpError),
 }
 
 impl From<DbError> for StoreError {
@@ -129,6 +134,7 @@ impl std::fmt::Display for StoreError {
             StoreError::Store(e) => write!(f, "{e}"),
             StoreError::Db(e) => write!(f, "{e}"),
             StoreError::TitleLint(r) => f.write_str(&r.message),
+            StoreError::FileOp(e) => f.write_str(&e.message),
         }
     }
 }
@@ -144,6 +150,7 @@ impl StoreError {
             StoreError::Db(d) => d,
             StoreError::Store(s) => DbError::Internal(s.message),
             StoreError::TitleLint(r) => DbError::Internal(r.message),
+            StoreError::FileOp(e) => DbError::Internal(e.message),
         }
     }
 }
@@ -153,6 +160,57 @@ impl From<InventoryRefusal> for StoreError {
         StoreError::TitleLint(r)
     }
 }
+
+// === P4.D377 ===
+/// v4's store-private `normaliseRelativePath` (`database-store.ts:55-58`):
+/// "The store root is `''` here; the shared rule otherwise (`path-utils.ts`)"
+/// — the shared strict rule with `allowRoot: true`, so `.` / `''` name the
+/// store root and a traversal throws v4's `FileOpError` (`Path traversal not
+/// allowed: …`, INVALID_PATH). Shadows the lax `doc_mount_file_links` one,
+/// whose other callers stay on it (P4.D377 Tier 3 item 27).
+fn normalise_relative_path(relative_path: &str) -> Result<String, StoreError> {
+    crate::services::mount_index::path_utils::normalise_relative_path_opts(
+        relative_path,
+        crate::services::mount_index::path_utils::NormaliseOpts { allow_root: true },
+    )
+    .map_err(StoreError::FileOp)
+}
+
+/// The store's three `DbError`-answering fns (`create_database_folder`,
+/// `database_document_exists`, `database_folder_exists`) `?` the normaliser
+/// above: a refusal flattens through [`StoreError::into_db_error`].
+impl From<StoreError> for DbError {
+    fn from(e: StoreError) -> Self {
+        e.into_db_error()
+    }
+}
+
+#[cfg(test)]
+mod p4d377_normaliser_tests {
+    use super::*;
+
+    /// `.` / `''` name the store root (v4 `allowRoot: true`); a traversal is
+    /// v4's FileOpError text, carrying the caller's ORIGINAL path.
+    #[test]
+    fn the_store_normaliser_is_the_shared_rule_with_allow_root() {
+        assert_eq!(normalise_relative_path(".").unwrap(), "");
+        assert_eq!(normalise_relative_path("").unwrap(), "");
+        assert_eq!(normalise_relative_path("a/./b/").unwrap(), "a/b");
+        match normalise_relative_path("../x") {
+            Err(StoreError::FileOp(e)) => {
+                assert_eq!(e.message, "Path traversal not allowed: ../x");
+                assert_eq!(e.code.as_str(), "INVALID_PATH");
+            }
+            other => panic!("expected FileOp, got {other:?}"),
+        }
+        let db: DbError = normalise_relative_path("../x").unwrap_err().into();
+        assert_eq!(
+            db.to_string(),
+            DbError::Internal("Path traversal not allowed: ../x".into()).to_string()
+        );
+    }
+}
+// === P4.D377 ===
 
 /// The Inventory title lint at the document layer (v4 `lintInventoryChange`,
 /// `database-store.ts:44-52`): every write, delete or move of an

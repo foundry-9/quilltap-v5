@@ -36,6 +36,9 @@ fn store_err(e: StoreError) -> MountFileError {
         // v4 rethrows the refusal, which is neither a FileOpError nor a
         // DatabaseStoreError: the route's catch-all 500 (P4.D340 R-8).
         StoreError::TitleLint(r) => MountFileError::Other(r.message),
+        // P4.D377: v4's store throws the shared FileOpError — the route's
+        // `fileOpStatus` answers it (INVALID_PATH → 400).
+        StoreError::FileOp(e) => MountFileError::FileOp(e),
     }
 }
 

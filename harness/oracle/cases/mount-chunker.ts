@@ -15,6 +15,7 @@
 import { chunkDocument, estimateTokens } from '@/lib/mount-index/chunker';
 import {
   normaliseRelativePath,
+  isSafeRelativePath,
   detectNativeText,
   mimeForExtension,
 } from '@/lib/mount-index/path-utils';
@@ -34,7 +35,17 @@ type Row =
   | { kind: 'normalise'; id: string; input: string; out: { ok: string } | { err: string } }
   | { kind: 'nativeText'; id: string; path: string; out: string | null }
   | { kind: 'mime'; id: string; path: string; out: string }
-  | { kind: 'status'; id: string; source: string; code: string; out: number };
+  | { kind: 'status'; id: string; source: string; code: string; out: number }
+  // === P4.D377 ===
+  | {
+      kind: 'normaliseOpts';
+      id: string;
+      input: string;
+      allowRoot: boolean;
+      out: { ok: string } | { err: { name: string; code: string; message: string } };
+    }
+  | { kind: 'safe'; id: string; rel: string; out: boolean };
+  // === P4.D377 ===
 
 const rows: Row[] = [];
 
@@ -101,6 +112,78 @@ for (const [id, input] of normCases) {
   }
   rows.push({ kind: 'normalise', id, input, out });
 }
+
+// === P4.D377 ===
+// `normaliseRelativePath(input, { allowRoot })` (v4 `600c2906f`): the options
+// form the database store uses (`allowRoot: true` → the store root is `''`).
+// Each input × allowRoot true / false, capturing the thrown FileOpError's
+// name + code + message (the message carries the ORIGINAL input).
+const p4d377NormCases: Array<[string, string]> = [
+  ['empty', ''],
+  ['dot', '.'],
+  ['dot-a', './a'],
+  ['double-slash-dot', 'a//b/./c'],
+  ['a-up', 'a/..'],
+  ['up-a', '../a'],
+  ['backslash', 'a\\b'],
+  ['slash-a-slash', '/a/'],
+  ['a-dot-b', 'a/./b'],
+  ['dotdot', '..'],
+  ['a-up-up', 'a/../..'],
+  ['dot-slash', './'],
+  ['slashes', '///'],
+  ['backslash-up', '..\\x'],
+];
+for (const [id, input] of p4d377NormCases) {
+  for (const allowRoot of [true, false]) {
+    let out: { ok: string } | { err: { name: string; code: string; message: string } };
+    try {
+      out = { ok: normaliseRelativePath(input, { allowRoot }) };
+    } catch (e) {
+      if (!(e instanceof FileOpError)) throw e;
+      out = { err: { name: e.name, code: e.code, message: e.message } };
+    }
+    rows.push({ kind: 'normaliseOpts', id: `p4d377_${id}_${allowRoot ? 'root' : 'strict'}`, input, allowRoot, out });
+  }
+}
+
+// `isSafeRelativePath` (moved out of the folders route by `600c2906f`). The
+// 200 limit is JS `.length` — UTF-16 code units, so an astral char counts 2.
+const astral = '\u{1F600}';
+const p4d377SafeCases: Array<[string, string]> = [
+  ['empty', ''],
+  ['abs', '/abs'],
+  ['plain', 'a/b'],
+  ['empty-seg', 'a//b'],
+  ['dot-seg', 'a/./b'],
+  ['dotdot-seg', 'a/../b'],
+  ['trailing-slash', 'a/'],
+  ['ctrl-nul', 'a\u0000b'],
+  ['ctrl-us', 'a/b\u001fc'],
+  ['ctrl-tab', 'a\tb'],
+  ['del-0x7f', 'a\u007fb'],
+  ['lt', 'a<b'],
+  ['gt', 'a>b'],
+  ['colon', 'a:b'],
+  ['dquote', 'a"b'],
+  ['pipe', 'a|b'],
+  ['qmark', 'a?b'],
+  ['star', 'a*b'],
+  ['backslash', 'a\\b'],
+  ['seg-200', 'x'.repeat(200)],
+  ['seg-201', 'x'.repeat(201)],
+  ['nested-seg-201', 'ok/' + 'x'.repeat(201)],
+  // 198 units + one astral (2 units) = 200 code units / 199 code points.
+  ['astral-200', 'x'.repeat(198) + astral],
+  // 199 units + one astral = 201 code units / 200 code points: refused by
+  // `.length` though only 200 code points.
+  ['astral-201', 'x'.repeat(199) + astral],
+  ['unicode-ok', 'caf\u00e9/r\u00e9sum\u00e9'],
+];
+for (const [id, rel] of p4d377SafeCases) {
+  rows.push({ kind: 'safe', id: `p4d377_${id}`, rel, out: isSafeRelativePath(rel) });
+}
+// === P4.D377 ===
 
 // ── detectNativeText / mimeForExtension ────────────────────────────────────
 const pathCases: string[] = [

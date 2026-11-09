@@ -498,6 +498,11 @@ pub fn store_mount_file(
             Err(crate::db::database_store::StoreError::TitleLint(r)) => {
                 return Err(MountFileError::Other(r.message))
             }
+            // P4.D377: v4's store throws the shared FileOpError (INVALID_PATH
+            // → 400 through `fileOpStatus`).
+            Err(crate::db::database_store::StoreError::FileOp(fe)) => {
+                return Err(MountFileError::FileOp(fe))
+            }
         };
         // ...and the parent-side inline chunk pass (v4's why-comment: without
         // it the embedding scheduler finds no chunks and the document stays

@@ -156,6 +156,7 @@ fn store_err(e: StoreError) -> DocError {
         },
         StoreError::Db(d) => DocError::Store(d.to_string()),
         StoreError::TitleLint(r) => DocError::Store(r.message),
+        StoreError::FileOp(e) => DocError::Store(e.message), // P4.D377
     }
 }
 

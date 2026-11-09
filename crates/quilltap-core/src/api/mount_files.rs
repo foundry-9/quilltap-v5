@@ -462,43 +462,13 @@ pub async fn mount_file_update(
     }
 }
 
-/// v4 folders-route `normaliseRelativePath` (the route-LOCAL simple form — no
-/// dot-collapsing, unlike `path_utils::normalise_relative_path`).
-fn folders_route_normalise(input: &str) -> String {
-    input
-        .trim_start_matches('/')
-        .trim_end_matches('/')
-        .replace('\\', "/")
-}
-
-/// v4 folders-route `isPathSafe` — rejects absolute paths, `.`/`..`/empty
-/// segments, control chars, `<>:"|?*\`, and >200-char segments. Unit-pinned.
-pub fn is_path_safe(rel: &str) -> bool {
-    if rel.is_empty() {
-        return false;
-    }
-    if rel.starts_with('/') {
-        return false;
-    }
-    for seg in rel.split('/') {
-        if seg.is_empty() || seg == "." || seg == ".." {
-            return false;
-        }
-        if seg.chars().any(|c| ('\x00'..='\x1f').contains(&c)) {
-            return false;
-        }
-        if seg
-            .chars()
-            .any(|c| matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\\'))
-        {
-            return false;
-        }
-        if seg.chars().count() > 200 {
-            return false;
-        }
-    }
-    true
-}
+// === P4.D377 ===
+// The folders route's route-local `normaliseRelativePath` / `isPathSafe` pair
+// is GONE (v4 `600c2906f`): the route calls the shared
+// `path_utils::normalise_relative_path` (strict — the route's `path` is never
+// the store root) then `path_utils::is_safe_relative_path`, so `a/./b` now
+// normalises to `a/b` and passes where the old pair refused the `.` segment.
+// === P4.D377 ===
 
 /// v4 `POST /api/v1/mount-points/[id]/folders` — create a folder (database →
 /// an explicit `doc_mount_folders` row; fs → mkdir with the escape guard).
@@ -519,13 +489,22 @@ pub async fn mount_folder_create(db: &Db, mount_point_id: &str, path: &str) -> R
     if path.is_empty() || path.chars().count() > 1024 {
         return Response::error(ErrorKind::BadRequest, "Folder path is required");
     }
-    let rel = folders_route_normalise(path);
-    if !is_path_safe(&rel) {
+    // === P4.D377 ===
+    // v4: `normaliseRelativePath(parsed.data.path)` — a FileOpError is the
+    // same 400 as an unsafe path — then `isSafeRelativePath(rel)`.
+    let Ok(rel) = crate::services::mount_index::path_utils::normalise_relative_path(path) else {
+        return Response::error(
+            ErrorKind::BadRequest,
+            "Folder path contains invalid characters or segments",
+        );
+    };
+    if !crate::services::mount_index::path_utils::is_safe_relative_path(&rel) {
         return Response::error(
             ErrorKind::BadRequest,
             "Folder path contains invalid characters or segments",
         );
     }
+    // === P4.D377 ===
     let id = mount_point_id.to_string();
     let out = db
         .write(move |ws| {

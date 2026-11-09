@@ -374,6 +374,7 @@ fn store_error_json(e: &StoreError) -> Value {
         StoreError::TitleLint(r) => refusal_json(r),
         StoreError::Store(s) => json!({ "name": "DatabaseStoreError", "message": s.message }),
         StoreError::Db(d) => json!({ "name": "Error", "message": error_text(d) }),
+        StoreError::FileOp(e) => json!({ "name": "FileOpError", "message": e.message }), // P4.D377
     }
 }
 

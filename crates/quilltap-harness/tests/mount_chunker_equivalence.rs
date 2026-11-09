@@ -18,6 +18,11 @@ use quilltap_core::services::mount_index::file_op_status::file_op_status_for_cod
 use quilltap_core::services::mount_index::path_utils::{
     detect_native_text, mime_for_extension, normalise_relative_path,
 };
+// === P4.D377 ===
+use quilltap_core::services::mount_index::path_utils::{
+    is_safe_relative_path, normalise_relative_path_opts, NormaliseOpts,
+};
+// === P4.D377 ===
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -53,7 +58,7 @@ fn mount_chunker_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 6]; // chunk, estimate, normalise, nativeText, mime, status
+    let mut counts = [0usize; 8]; // chunk, estimate, normalise, nativeText, mime, status, normaliseOpts, safe (P4.D377)
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let kind = row["kind"].as_str().unwrap();
@@ -142,6 +147,62 @@ fn mount_chunker_matches_oracle() {
                 );
                 counts[5] += 1;
             }
+            // === P4.D377 ===
+            // The options form (`allowRoot`) — exact on the ok string and on the
+            // thrown FileOpError's name + code + message.
+            "normaliseOpts" => {
+                let input = row["input"].as_str().unwrap();
+                let allow_root = row["allowRoot"].as_bool().unwrap();
+                let got = normalise_relative_path_opts(input, NormaliseOpts { allow_root });
+                let out = &row["out"];
+                if let Some(ok) = out.get("ok") {
+                    assert_eq!(
+                        got.as_ref().map(|s| s.as_str()).ok(),
+                        ok.as_str(),
+                        "normaliseOpts '{id}' ok (got {got:?})"
+                    );
+                } else {
+                    let err = &out["err"];
+                    assert_eq!(
+                        err["name"].as_str(),
+                        Some("FileOpError"),
+                        "normaliseOpts '{id}' name"
+                    );
+                    let e = got.as_ref().err().unwrap_or_else(|| {
+                        panic!("normaliseOpts '{id}': v4 threw, v5 answered {got:?}")
+                    });
+                    assert_eq!(
+                        Some(e.code.as_str()),
+                        err["code"].as_str(),
+                        "normaliseOpts '{id}' code"
+                    );
+                    assert_eq!(
+                        Some(e.message.as_str()),
+                        err["message"].as_str(),
+                        "normaliseOpts '{id}' message"
+                    );
+                }
+                // The one-arg fn IS the strict form.
+                if !allow_root {
+                    let one = normalise_relative_path(input);
+                    assert_eq!(
+                        one.map_err(|e| e.message),
+                        got.clone().map_err(|e| e.message),
+                        "normaliseOpts '{id}': the one-arg fn diverges from allowRoot:false"
+                    );
+                }
+                counts[6] += 1;
+            }
+            "safe" => {
+                let rel = row["rel"].as_str().unwrap();
+                assert_eq!(
+                    is_safe_relative_path(rel),
+                    row["out"].as_bool().unwrap(),
+                    "safe '{id}'"
+                );
+                counts[7] += 1;
+            }
+            // === P4.D377 ===
             other => panic!("unknown row kind {other}"),
         }
     }

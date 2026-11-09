@@ -323,6 +323,7 @@ pub fn store_error_text(e: &StoreError) -> String {
         StoreError::Db(db) => super::fallback::error_text(db),
         StoreError::Store(store) => store.to_string(),
         StoreError::TitleLint(r) => r.message.clone(),
+        StoreError::FileOp(e) => e.message.clone(), // P4.D377
     }
 }
 

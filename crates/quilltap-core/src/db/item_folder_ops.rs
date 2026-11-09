@@ -360,6 +360,7 @@ fn store_error<T: ItemFolderTree>(
         }
         StoreError::Db(d) => d.into(),
         StoreError::TitleLint(r) => DbError::Internal(r.message).into(),
+        StoreError::FileOp(e) => DbError::Internal(e.message).into(), // P4.D377
     }
 }
 

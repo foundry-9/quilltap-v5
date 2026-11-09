@@ -155,6 +155,7 @@ fn store_to_db(e: StoreError) -> DbError {
         StoreError::Db(db) => db,
         StoreError::Store(s) => DbError::Internal(s.message),
         StoreError::TitleLint(r) => DbError::Internal(r.message),
+        StoreError::FileOp(e) => DbError::Internal(e.message), // P4.D377
     }
 }
 

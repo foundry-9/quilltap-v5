@@ -800,6 +800,7 @@ pub fn store_error_message(e: StoreError) -> String {
         StoreError::Store(s) => s.message,
         StoreError::Db(d) => d.to_string(),
         StoreError::TitleLint(r) => r.message,
+        StoreError::FileOp(e) => e.message, // P4.D377
     }
 }
 
