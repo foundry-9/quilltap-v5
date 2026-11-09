@@ -474,7 +474,12 @@ where
     // (Settings → Chat → Brahma Console); the stuck-loop guard below still stops
     // a repeating loop well before this cap.
     let max_agent_turns = resolve_brahma_max_agent_turns(db);
-    let agent_instructions = build_agent_mode_instructions(max_agent_turns);
+    // === P4.D370 === (v4 `brahma-console/orchestrator.service.ts:264`: an assistant surface is `research`)
+    let agent_instructions = build_agent_mode_instructions(
+        max_agent_turns,
+        crate::characters::kind::AgentModeFlavor::Research,
+    );
+    // === P4.D370 ===
     tool_instructions = if tool_instructions.is_empty() {
         agent_instructions
     } else {
@@ -554,7 +559,12 @@ where
         agent_turn_count += 1;
 
         if agent_turn_count == max_agent_turns {
-            conversation_messages.push(plain_message("user", &build_force_final_message()));
+            // === P4.D370 === (v4 `brahma-console/orchestrator.service.ts:331`: the research force-final)
+            conversation_messages.push(plain_message(
+                "user",
+                &build_force_final_message(crate::characters::kind::AgentModeFlavor::Research),
+            ));
+            // === P4.D370 ===
         }
 
         let turn = stream_turn(

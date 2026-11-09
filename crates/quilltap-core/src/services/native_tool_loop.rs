@@ -641,7 +641,7 @@ where
                 character_id: Some(character_id.clone()),
             }));
 
-            let force_final_message = build_force_final_message();
+            let force_final_message = build_force_final_message(agent_mode.flavor);
             current_messages.push(ThreadedMessage {
                 role: "assistant".to_string(),
                 content: current_response.clone(),
@@ -949,6 +949,8 @@ mod tests {
                     enabled: false,
                     max_turns: 10,
                     enabled_source: crate::services::agent_mode::AgentModeSource::Global,
+                    // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
+                    flavor: crate::characters::kind::AgentModeFlavor::InCharacter,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,
@@ -1066,6 +1068,8 @@ mod tests {
                     enabled: false,
                     max_turns: 10,
                     enabled_source: crate::services::agent_mode::AgentModeSource::Global,
+                    // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
+                    flavor: crate::characters::kind::AgentModeFlavor::InCharacter,
                 },
                 provider: "ANTHROPIC".into(),
                 base_url: None,

@@ -824,7 +824,12 @@ where
         // === P4.D370 ===
     }
     // Agent mode instructions (always enabled for help chats; the fixed budget).
-    let agent_instructions = build_agent_mode_instructions(HELP_MAX_AGENT_TURNS);
+    // === P4.D370 === (v4 `help-chat/orchestrator.service.ts:276`: an assistant surface is `research`)
+    let agent_instructions = build_agent_mode_instructions(
+        HELP_MAX_AGENT_TURNS,
+        crate::characters::kind::AgentModeFlavor::Research,
+    );
+    // === P4.D370 ===
     tool_instructions = if tool_instructions.is_empty() {
         agent_instructions
     } else {
@@ -909,7 +914,12 @@ where
 
         // Force final response if at turn limit.
         if agent_turn_count == HELP_MAX_AGENT_TURNS {
-            conversation.push(msg("user", build_force_final_message()));
+            // === P4.D370 === (v4 `help-chat/orchestrator.service.ts:349`: the research force-final)
+            conversation.push(msg(
+                "user",
+                build_force_final_message(crate::characters::kind::AgentModeFlavor::Research),
+            ));
+            // === P4.D370 ===
         }
 
         // Stream the response.

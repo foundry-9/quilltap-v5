@@ -268,6 +268,8 @@ async fn captured_body_opts(
                 enabled: false,
                 max_turns: 5,
                 enabled_source: AgentModeSource::Global,
+                // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
+                flavor: quilltap_core::characters::kind::AgentModeFlavor::InCharacter,
             },
             provider: provider.to_string(),
             base_url: None,

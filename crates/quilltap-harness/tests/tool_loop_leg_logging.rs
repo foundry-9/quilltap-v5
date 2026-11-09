@@ -213,6 +213,8 @@ async fn native_restream_logs_under_the_understudy_and_charges_the_run() {
                 enabled: false,
                 max_turns: 10,
                 enabled_source: AgentModeSource::Global,
+                // P4.D370: v4's default-kind flavour; inert while `enabled` is false.
+                flavor: quilltap_core::characters::kind::AgentModeFlavor::InCharacter,
             },
             provider: "ANTHROPIC".into(),
             base_url: None,

@@ -80,6 +80,10 @@ pub struct TurnExtrasOptions<'a> {
     pub agent_mode_enabled: bool,
     /// The agent-mode turn ceiling (only read when enabled).
     pub agent_mode_max_turns: i64,
+    /// What Agent Mode means for the responding character — v4
+    /// `agentMode.flavor` (v4 nests the three in `agentMode`; v5 keeps them
+    /// flat — P4.D370 R-P3).
+    pub agent_mode_flavor: crate::characters::kind::AgentModeFlavor,
     /// Whether the user changed tool settings since the last turn.
     pub tool_settings_changed: bool,
     /// The estimator's chars-per-token rate (v4 passes the provider instead).
@@ -111,6 +115,7 @@ pub fn collect_turn_extras(options: TurnExtrasOptions<'_>) -> TurnExtras {
     let agent_mode_instructions = if options.agent_mode_enabled {
         Some(super::agent_mode::build_agent_mode_instructions(
             options.agent_mode_max_turns,
+            options.agent_mode_flavor,
         ))
     } else {
         None

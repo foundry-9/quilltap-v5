@@ -21,6 +21,7 @@
 //!   QT_ORACLE_TURN_EXTRAS=/tmp/oracle-turn-extras.ndjson \
 //!     cargo test -p quilltap-harness --test turn_extras_equivalence
 
+use quilltap_core::characters::kind::AgentModeFlavor;
 use quilltap_core::services::turn_extras::{
     build_tool_change_notice, collect_turn_extras, extract_tool_names, TurnExtrasOptions,
 };
@@ -63,6 +64,11 @@ enum OracleRow {
         agent_mode_enabled: bool,
         #[serde(rename = "agentModeMaxTurns")]
         agent_mode_max_turns: i64,
+        /// P4.D370 (v4 `96156566b`): the responding character's flavour. NO
+        /// serde default — a row without the key fails to parse (a vacuous
+        /// row would silently re-test `research`).
+        #[serde(rename = "agentModeFlavor")]
+        agent_mode_flavor: AgentModeFlavor,
         #[serde(rename = "toolSettingsChanged")]
         tool_settings_changed: bool,
         /// §3 of the 93ed8abf round: the estimator rate is per provider (the
@@ -104,6 +110,7 @@ fn turn_extras_matches_oracle() {
                 tools,
                 agent_mode_enabled,
                 agent_mode_max_turns,
+                agent_mode_flavor,
                 tool_settings_changed,
                 provider,
                 out,
@@ -118,6 +125,7 @@ fn turn_extras_matches_oracle() {
                     tools: &tools,
                     agent_mode_enabled,
                     agent_mode_max_turns,
+                    agent_mode_flavor,
                     tool_settings_changed,
                     chars_per_token: cpt,
                 });

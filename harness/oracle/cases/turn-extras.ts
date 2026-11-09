@@ -136,22 +136,35 @@ const extrasCases: Array<[string, unknown[], boolean, number, boolean, string?]>
   // Rust side maps the row's provider through its manifest registry.
   ['google-rate-both-injections', [OPENAI_STYLE_TOOL, ANTHROPIC_STYLE_TOOL], true, 25, true, 'GOOGLE'],
 ];
-for (const [id, tools, agentModeEnabled, agentModeMaxTurns, toolSettingsChanged, provider] of extrasCases) {
-  rows.push({
-    kind: 'extras',
-    id,
-    tools,
-    agentModeEnabled,
-    agentModeMaxTurns,
-    toolSettingsChanged,
-    provider: (provider ?? 'OPENAI') as string,
-    out: collectTurnExtras({
+// === P4.D370 === (v4 `96156566b`): `agentMode` carries the responding
+// character's `flavor`. tsx strips types, so the old two-key object kept
+// compiling and silently fell through to `research`. Every agent-mode-ON row is
+// emitted TWICE — `<id>` as `research` (its bytes preserved) and
+// `<id>-in-character` — and every OFF row once as `in-character` (inert: no
+// block is built).
+for (const [baseId, tools, agentModeEnabled, agentModeMaxTurns, toolSettingsChanged, provider] of extrasCases) {
+  const flavors: Array<['research' | 'in-character', string]> = agentModeEnabled
+    ? [['research', baseId], ['in-character', `${baseId}-in-character`]]
+    : [['in-character', baseId]];
+  for (const [agentModeFlavor, id] of flavors) {
+    rows.push({
+      kind: 'extras',
+      id,
       tools,
-      agentMode: { enabled: agentModeEnabled, maxTurns: agentModeMaxTurns },
+      agentModeEnabled,
+      agentModeMaxTurns,
+      agentModeFlavor,
       toolSettingsChanged,
-      provider: (provider ?? 'OPENAI') as never,
-    }),
-  });
+      provider: (provider ?? 'OPENAI') as string,
+      out: collectTurnExtras({
+        tools,
+        agentMode: { enabled: agentModeEnabled, maxTurns: agentModeMaxTurns, flavor: agentModeFlavor },
+        toolSettingsChanged,
+        provider: (provider ?? 'OPENAI') as never,
+      }),
+    });
+  }
 }
+// === P4.D370 ===
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

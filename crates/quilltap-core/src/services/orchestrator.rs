@@ -1434,15 +1434,17 @@ where
         }
         None => None,
     };
+    // === P4.D370 === (v4 `orchestrator.service.ts:519`: the RESPONDING
+    // character's row — its kind sets the flavour; the INFO fires inside)
     let agent_mode = crate::services::agent_mode::resolve_agent_mode_setting(
+        Some(chat_id.as_str()),
         chat.get("agentModeEnabled").and_then(Value::as_bool),
         project_agent_default,
-        character
-            .get("defaultAgentModeEnabled")
-            .and_then(Value::as_bool),
+        Some(&character),
         global_agent_mode,
     );
     let agent_mode_enabled = agent_mode.enabled;
+    // === P4.D370 ===
 
     // Reset agent turn count on a new user message (not continue mode). v4
     // `repos.chats.update(chatId, { agentTurnCount: 0 })` (no `updatedAt` bump).
@@ -2454,6 +2456,9 @@ where
             tools: &actual_tools,
             agent_mode_enabled,
             agent_mode_max_turns: agent_mode.max_turns,
+            // === P4.D370 === (v4 `turn-extras.ts:91`: the flavour picks the block)
+            agent_mode_flavor: agent_mode.flavor,
+            // === P4.D370 ===
             tool_settings_changed,
             // v4 passes `streamingState.effectiveProfile.provider` into the
             // estimator, and the registry rate differs by provider (GOOGLE is

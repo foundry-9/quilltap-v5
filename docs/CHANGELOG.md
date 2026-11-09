@@ -153,6 +153,12 @@ _Docs-only change._
 
 The P4.D369 order's status header records `KIND` at `4ff9bff3e` and that `kind_or_default` follows the round block's C5 signature (`Option<&Value>`).
 
+#### 2026-11-09 — feat(agent-mode): the Agent Mode flavour follows the responding character's kind, with v4's resolver INFO (v4 96156566b)
+
+_Versions: core 0.0.1431._
+
+P4.D370 unit B. `ResolvedAgentMode` gains `flavor` (C5's `AgentModeFlavor`). `resolve_agent_mode_setting` now takes the chat id and the responding character's row: it reads the character tier from the row and the flavour from `character_kind_policy` (an assistant is `research`; a roleplay character, a pre-kind vault, or no character is `in-character`), and logs v4's `[AgentMode] Resolved agent mode` INFO (`quilltap::agent_mode`; `chatId`, `enabled`, `maxTurns`, `enabledSource`, `flavor`) from its one home, so the line fires on the Salon turn, the chat GET and the agent-mode toggle. `build_agent_mode_instructions(max_turns, flavor)` adds v4's `## Acting in the scene` block and `build_force_final_message(flavor)` its in-character sentence; the research text is unchanged. `TurnExtrasOptions.agent_mode_flavor` carries the flavour into the measured block; the native loop's force-final message follows the flavour. Brahma, Help chat and the one-shot loop pin `Research`. The chat GET and toggle wires are unchanged. New oracle case `cases/agent-mode-flavor.ts` and family `agent_mode_flavor_equivalence` (72 rows, the captured line compared by bytes; a stored non-boolean `defaultAgentModeEnabled` is the named divergence `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`); `turn-extras.ts` re-aimed (it had silently fallen through to `research`); two path capture tests pin the line on the GET and the toggle.
+
 #### 2026-11-09 — feat(tools): the native tool-rules preamble follows the speaker's kind, with 4.12.1's rule 6 (v4 96156566b + 6121f59b9)
 
 _Versions: core 0.0.1430._

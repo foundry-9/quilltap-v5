@@ -272,13 +272,14 @@ pub async fn chat_toggle_agent_mode(
 
     // v4 picks the FIRST CHARACTER participant carrying a characterId (no
     // active/removed filter) and swallows a failed character read.
-    let character_default = first_character_id(&updated).and_then(|cid| {
+    // P4.D370: the character ROW (its kind sets the flavour; the resolver reads
+    // `defaultAgentModeEnabled` itself).
+    let character = first_character_id(&updated).and_then(|cid| {
         db.read_main(|main| {
             db.read_mount_index(|mount| crate::db::characters_read::find_by_id(main, mount, &cid))
         })
         .ok()
         .flatten()
-        .and_then(|c| c.get("defaultAgentModeEnabled").and_then(Value::as_bool))
     });
 
     let project_default = updated
@@ -306,7 +307,13 @@ pub async fn chat_toggle_agent_mode(
     let global = global_agent_mode_settings(settings.as_ref());
 
     let stored = updated.get("agentModeEnabled").and_then(Value::as_bool);
-    let resolved = resolve_agent_mode_setting(stored, project_default, character_default, global);
+    let resolved = resolve_agent_mode_setting(
+        Some(chat_id),
+        stored,
+        project_default,
+        character.as_ref(),
+        global,
+    );
 
     // v4's message branches on the REQUEST's tri-state, not the stored value.
     let message = match enabled {
@@ -1371,3 +1378,97 @@ mod reclassify_concierge_state_tests {
         assert_eq!(trio(&db), before);
     }
 }
+
+// === P4.D370 ===
+#[cfg(test)]
+mod agent_mode_info_tests {
+    //! P4.D370 (v4 `96156566b`, ruling R-K3): v4's `[AgentMode] Resolved agent
+    //! mode` INFO fires from EVERY resolver caller — the chat GET
+    //! (`handlers/get.ts:348`) and the agent-mode toggle (`actions/agent-mode.ts:75`)
+    //! as well as the turn. v5 logs it from the ONE home in
+    //! `services::agent_mode`, so each path is pinned here: a planted chat → ONE
+    //! line carrying the planted `chatId` and the default-kind flavour (the seed's
+    //! character has no vault `kind`, so `in-character`). The wire of both
+    //! answers is unchanged (`enabled` / `enabledSource` only — v4 never emits
+    //! `flavor`); their route families hold that.
+    use super::rebuild_summary_tests::{provisioned, seed, CHAT};
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    const RESOLVED: &str = "[AgentMode] Resolved agent mode";
+
+    fn expected_line(enabled: bool, source: &str) -> String {
+        format!(
+            "INFO quilltap::agent_mode {RESOLVED} chatId={CHAT} enabled={enabled} \
+             maxTurns=10 enabledSource={source} flavor=in-character"
+        )
+    }
+
+    /// Run `f` under a THREAD-SCOPED capturing subscriber (the guard spans the
+    /// awaits on this current-thread runtime).
+    async fn captured<F: std::future::Future<Output = Response>>(f: F) -> (Response, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber =
+            tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs.clone()));
+        let guard = tracing::subscriber::set_default(subscriber);
+        let resp = f.await;
+        drop(guard);
+        let lines = logs.lock().unwrap().clone();
+        (resp, lines)
+    }
+
+    fn resolved_lines(lines: &[String]) -> Vec<&String> {
+        lines.iter().filter(|l| l.contains(RESOLVED)).collect()
+    }
+
+    #[tokio::test]
+    async fn the_toggle_logs_one_resolved_line_with_the_chat_and_flavour() {
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+        let (resp, lines) = captured(chat_toggle_agent_mode(
+            &db,
+            crate::api::SINGLE_USER_ID,
+            CHAT,
+            Some(Some(true)),
+        ))
+        .await;
+        assert!(matches!(resp, Response::ChatAdmin(_)), "{resp:?}");
+        let got = resolved_lines(&lines);
+        assert_eq!(got.len(), 1, "exactly one resolved line: {lines:#?}");
+        assert_eq!(got[0], &expected_line(true, "chat"));
+    }
+
+    #[tokio::test]
+    async fn the_chat_get_logs_one_resolved_line_with_the_chat_and_flavour() {
+        let (_dir, db) = provisioned();
+        seed(&db).await;
+        let (resp, lines) = captured(crate::api::salon::chat_get(
+            &db,
+            crate::api::SINGLE_USER_ID,
+            CHAT,
+            None,
+            &crate::host_zone::TimeZone::UTC,
+        ))
+        .await;
+        assert!(matches!(resp, Response::Chat(_)), "{resp:?}");
+        let got = resolved_lines(&lines);
+        assert_eq!(got.len(), 1, "exactly one resolved line: {lines:#?}");
+        assert_eq!(got[0], &expected_line(false, "global"));
+    }
+
+    #[tokio::test]
+    async fn a_refused_toggle_resolves_nothing() {
+        // The silence leg: a missing chat answers before the cascade runs.
+        let (_dir, db) = provisioned();
+        let (_resp, lines) = captured(chat_toggle_agent_mode(
+            &db,
+            crate::api::SINGLE_USER_ID,
+            CHAT,
+            Some(Some(true)),
+        ))
+        .await;
+        assert!(resolved_lines(&lines).is_empty(), "{lines:#?}");
+    }
+}
+// === P4.D370 ===

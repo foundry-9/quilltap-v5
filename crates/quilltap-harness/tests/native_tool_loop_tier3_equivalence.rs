@@ -518,6 +518,7 @@ async fn native_tool_loop_tier3_matches_oracle() {
                     enabled: c.agent_mode.enabled,
                     max_turns: c.agent_mode.max_turns,
                     enabled_source: AgentModeSource::Global,
+                    flavor: quilltap_core::characters::kind::AgentModeFlavor::Research,
                 },
                 provider: c.provider.clone(),
                 base_url: None,

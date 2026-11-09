@@ -315,10 +315,14 @@ fn assemble_chat_get(
     let bool_at = |v: Option<&Value>, k: &str| -> Option<bool> {
         v.and_then(|o| o.get(k)).and_then(Value::as_bool)
     };
+    // P4.D370 (v4 `96156566b`): the resolver takes the character ROW — its
+    // kind sets the flavour (never on this wire) and its INFO fires here, as
+    // v4's does from `handlers/get.ts:348`.
     let resolved_agent = crate::services::agent_mode::resolve_agent_mode_setting(
+        Some(chat_id),
         chat.get("agentModeEnabled").and_then(Value::as_bool),
         bool_at(project.as_ref(), "defaultAgentModeEnabled"),
-        bool_at(primary_character.as_ref(), "defaultAgentModeEnabled"),
+        primary_character.as_ref(),
         crate::services::agent_mode::global_agent_mode_settings(settings.as_ref()),
     );
     let (agent_enabled, agent_source) = (
