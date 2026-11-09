@@ -47,8 +47,8 @@ import {
  * General library button, FilesCard Browse All on the official store).
  */
 
-const P4D381_SERVER_LANDED = false;
-const P4D380_SERVER_LANDED = false;
+const P4D381_SERVER_LANDED = true;
+const P4D380_SERVER_LANDED = true;
 const GATE_381 =
   'awaits P4.D381’s C13 wire (folder family, links, render-html 422, per-store mountPoints hints) — flipped at unification';
 const GATE_380 =

@@ -69,7 +69,7 @@ const GATE_REASON =
  * pass there. ACTIVATE-AT-UNIFY (§S.9, H-K): the unifier flips this to `true`
  * on the union and runs this file by itself.
  */
-const P4D384_FRAMES_SPA_LANDED = false;
+const P4D384_FRAMES_SPA_LANDED = true;
 const GATE_REASON_FRAMES =
   'awaits P4.D384’s frames reducer — the seat switch that renders seat-tagged concurrent frames as concurrent bubbles (wired at unification)';
 

@@ -42,17 +42,17 @@ import {
  * - `P4D379_SERVER_LANDED` AND `P4D385_POPUP_H1_LANDED`: (H) — the
  *   `chatCustomToolPresets` verb and the popup's new bindings (P4.D388 H1).
  */
-const P4D369_SERVER_LANDED = false;
+const P4D369_SERVER_LANDED = true;
 const P4D369_REASON = 'awaits P4.D369’s character `kind` on the GET and the PUT (wired at unification)';
-const P4D362_SERVER_LANDED = false;
+const P4D362_SERVER_LANDED = true;
 const P4D362_REASON =
   'awaits P4.D362’s capabilities.samplingParameters on the providers listing and maxImagesPerRequest on the profile DTOs (wired at unification)';
-const P4D374_SERVER_LANDED = false;
+const P4D374_SERVER_LANDED = true;
 const P4D374_REASON =
   'awaits P4.D374’s brahmaConsole.inlineConnectionProfileId and the project brahmaConnectionProfileId (wired at unification)';
-const P4D379_SERVER_LANDED = false;
+const P4D379_SERVER_LANDED = true;
 const P4D379_REASON = 'awaits P4.D379’s chatCustomToolPresets verb (wired at unification)';
-const P4D385_POPUP_H1_LANDED = false;
+const P4D385_POPUP_H1_LANDED = true;
 const P4D385_REASON = 'awaits P4.D388’s HANDOFF H1 applied to custom-tools-popup.ts by P4.D385 (wired at unification)';
 
 const SM_PORT = 4365;

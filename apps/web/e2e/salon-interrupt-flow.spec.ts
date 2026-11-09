@@ -61,7 +61,7 @@ import {
 const P4D335_SERVER_LANDED = true;
 // === P4.D384 (U1) === flips at the union (§S.9) once P4.D385's raised-hand
 // chip — and its `aria-live` status words — are on the tree.
-const P4D385_CHIP_LANDED = false;
+const P4D385_CHIP_LANDED = true;
 // === end P4.D384 ===
 const GATE_REASON =
   'awaits P4.D335’s chatStopTurn / chatRaiseHand variants and the handAnswered / stopped / yielded frames (wired at unification)';

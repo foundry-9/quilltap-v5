@@ -41,7 +41,7 @@ import { expectTooltip } from './support/tooltips';
  * `isEstablishedFact: true`, the optimistic row, the impersonation thread).
  * ACTIVATE-AT-UNIFY (§S.9): the unifier flips `DEUS_WIRE_LANDED` to `true`.
  */
-const DEUS_WIRE_LANDED = false;
+const DEUS_WIRE_LANDED = true;
 const GATE_REASON =
   'awaits P4.D372’s established-fact wire (isEstablishedFact, the {kind:"fact"} announcement) and P4.D384’s H1 send body (wired at unification)';
 

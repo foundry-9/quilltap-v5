@@ -38,8 +38,8 @@ const CHIP_LABEL_SERVER_LANDED = true;
  * new inputs once P4.D388's HANDOFF H1 is applied by P4.D385. Until BOTH land
  * the section renders nothing, so the beat skips. **Unifier: flip both.**
  */
-const P4D379_SERVER_LANDED = false;
-const P4D385_POPUP_H1_LANDED = false;
+const P4D379_SERVER_LANDED = true;
+const P4D385_POPUP_H1_LANDED = true;
 // === end P4.D388 ===
 
 test.describe('Salon custom tools + whispers (P4.6ba)', () => {

@@ -37,9 +37,9 @@ import {
  */
 
 // === gates (flip at the union, §S.9) ===
-const P4D366_FRAMES_LANDED = false;
-const P4D385_CHIP_LANDED = false;
-const P4D372_DEUS_LANDED = false;
+const P4D366_FRAMES_LANDED = true;
+const P4D385_CHIP_LANDED = true;
+const P4D372_DEUS_LANDED = true;
 // === end gates ===
 
 const CS_PORT = 4361;
