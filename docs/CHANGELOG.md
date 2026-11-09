@@ -24,6 +24,12 @@ _Docs-only change._
 
 Records the red-first shapes, the 18-family after-sweep classification and the row-8/9 proofs; the `REAIM` commit is `0eaa5d4fb`.
 
+#### 2026-11-08 — P4.D362: the profile-DTO ripple (R-L3) — the jest provider-validation mock and the 4.12 plant on the pascal and external-prompt oracles
+
+_No crate versions bumped._
+
+Item 15. Regenerated from the pin: `api_keys_tier2`, `chat_rebuild_summary`, `create_wrap_lines`, `title_update_tier3`, `cheap_llm_fallback`, `fallback_engine`, `vision_request_tier3` and `pascal_workbench_route` are green unchanged. `pascal_custom_tools_route` and `pascal_run_custom_handler` could not regenerate: v4's jest.setup mock lacks `acceptsSamplingParameters`, and the committed `pascal-run-custom-*` pair predates `maxImagesPerRequest`. Each now carries the setup's three mocks plus the real function, and plants the two columns once, up front, through the cipher driver (a per-case plant cost the first case its captured log lines). The Rust sides run `ensure_4_12_columns_on` before their profile insert, and both are green. `external_prompt_tier3` now plants per case and regenerates (its recipe copies `lib/v4-migrations.ts`). Three families stay red on drift other lanes own: `external_prompt_tier3` (generator prompt / context-budget text, P4.D371), `file_attachment_tier3` (image `transport` provenance, P4.D367) and `orchestrator_tier3` (kind-tagged stream frames, P4.D366).
+
 #### 2026-11-08 — P4.D362: the `maxImagesPerRequest` route rows on settings-routes
 
 _No crate versions bumped._

@@ -29,7 +29,8 @@
 //! Generate the oracle (v4 @ e8a49597, Node 24 — mirror to /tmp; jest ignores
 //! `.claude/`):
 //!   cd ~/source/quilltap-server
-//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures
+//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures $M/lib
+//!   cp <V5W>/harness/oracle/lib/v4-migrations.ts $M/lib/
 //!   cp <V5W>/harness/oracle/cases/pascal-custom-tools-route.test.ts $M/cases/
 //!   cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
 //!   QT_FIXTURE_PASCAL_MAIN=<V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db \
@@ -140,6 +141,8 @@ fn open(case: &str, profile: bool) -> ScratchDb {
 /// oracle's `CONSULT_PROFILE` (both sides go through their real repos).
 fn insert_consult_profile(main: &std::path::Path) {
     let writer = Writer::open_writable(main, PEPPER).expect("open main for profile insert");
+    // [P4.D362] the two 4.12 columns (the oracle's `plant412Columns`).
+    quilltap_core::test_support::ensure_4_12_columns_on(writer.connection());
     writer
         .connection_profiles()
         .create(

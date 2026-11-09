@@ -24,7 +24,8 @@
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   TMPO=/tmp/qt-external-prompt-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+//!   cp "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/cases/external-prompt-tier3.test.ts" "$TMPO/cases/"
 //!   cp "$V5W/harness/oracle/fixtures/characters.json" "$TMPO/fixtures/"
 //!   cp "$V5W/harness/oracle/fixtures/external-prompt-tier3.json" "$TMPO/fixtures/"
@@ -316,6 +317,12 @@ fn fresh_pair(tag: &str) -> (Db, tempfile::TempDir, String) {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("characters-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("characters-mount.db"), &mount).unwrap();
+    // [P4.D362] the two 4.12 columns (the oracle's `plant412Columns`).
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64)
+            .expect("open the fixture copy writable");
+        quilltap_core::test_support::ensure_4_12_columns_on(w.connection());
+    }
     // A fresh llm-logs partition per case: item 10 compares what each runner's
     // `log_llm_call` wrote against the oracle's own per-case delta, which is
     // impossible with the `None` this family used to pass.

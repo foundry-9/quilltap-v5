@@ -27,6 +27,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+// [P4.D362] the two 4.12 columns, through v4's REAL migrations.
+import { plant412Columns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -285,6 +287,21 @@ async function runCase(
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // === P4.D362 ===
+  // v4 `544c7ab1e`'s repository strip calls `acceptsSamplingParameters`, which
+  // jest.setup's provider-validation mock (three functions) lacks — at the pin
+  // every profile create threw `acceptsSamplingParameters is not a function`.
+  // Keep the setup's three mocks; add the REAL function (the registry is empty
+  // here, so it answers `true` — this corpus creates no Anthropic profile with
+  // a sampling key).
+  jest.doMock('@/lib/plugins/provider-validation', () => ({
+    validateProviderConfig: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+    acceptsApiKey: jest.fn(() => true),
+    requiresApiKey: jest.fn(() => true),
+    acceptsSamplingParameters: jest.requireActual('@/lib/plugins/provider-validation')
+      .acceptsSamplingParameters,
+  }));
+  // === end P4.D362 ===
   // P4.6bd: the consult's provider seam — a recording canned provider (the
   // memory-processor recipe). Only a resolving consult ever reaches it.
   jest.doMock('@/lib/llm', () => {
@@ -534,6 +551,29 @@ async function main(): Promise<void> {
     if (!v || !existsSync(v)) throw new Error(`fixture ${k} missing: ${v}`);
   }
   const meta = JSON.parse(fs.readFileSync(fixtures.main + '.meta.json', 'utf8')) as Meta;
+  // [P4.D362] The committed `pascal-run-custom-*` pair predates the 4.12
+  // columns, and v4's profile insert names `maxImagesPerRequest` (measured at
+  // the pin: `no column named maxImagesPerRequest`). Plant them ONCE on a
+  // scratch copy every case then copies (a per-case plant cost the FIRST case
+  // its captured log lines); the Rust side runs `ensure_4_12_columns_on`
+  // before its profile insert.
+  {
+    const plantDir = mkdtempSync(join(tmpdir(), 'qt-p4d362-plant-'));
+    process.on('exit', () => rmSync(plantDir, { recursive: true, force: true }));
+    const planted = join(plantDir, 'main.db');
+    copyFileSync(fixtures.main, planted);
+    // The migration utils open the copy through `better-sqlite3`: the cipher
+    // driver, exactly as each case's own mock serves it; the registry is reset
+    // after, so no case inherits a module the plant loaded.
+    jest.doMock('better-sqlite3', () =>
+      jest.requireActual(
+        join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+      ),
+    );
+    await plant412Columns(planted, spec.testPepperBase64);
+    jest.resetModules();
+    fixtures.main = planted;
+  }
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
 

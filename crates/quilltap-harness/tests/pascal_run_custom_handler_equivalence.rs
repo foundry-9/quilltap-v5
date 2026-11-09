@@ -49,7 +49,8 @@
 //! run against directly (the oracle's cases write) and the sidecar travels
 //! with the copy:
 //!   cd ~/source/quilltap-server
-//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures $M/db
+//!   M=/tmp/qt-pascal-mirror; mkdir -p $M/cases $M/fixtures $M/db $M/lib
+//!   cp <V5W>/harness/oracle/lib/v4-migrations.ts $M/lib/
 //!   cp <V5W>/harness/oracle/cases/pascal-run-custom-handler.test.ts $M/cases/
 //!   cp <V5W>/harness/oracle/fixtures/pascal-run-custom.json $M/fixtures/
 //!   cp <V5W>/crates/quilltap-web/tests/fixtures/pascal-run-custom-main.db $M/db/
@@ -278,6 +279,8 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
 /// oracle's `CONSULT_PROFILE` (both sides go through their real repos).
 fn insert_consult_profile(main: &std::path::Path, pepper: &str, user_id: &str) {
     let writer = Writer::open_writable(main, pepper).expect("open main for profile insert");
+    // [P4.D362] the two 4.12 columns (the oracle's `plant412Columns`).
+    quilltap_core::test_support::ensure_4_12_columns_on(writer.connection());
     writer
         .connection_profiles()
         .create(

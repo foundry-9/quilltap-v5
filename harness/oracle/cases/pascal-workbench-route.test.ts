@@ -246,6 +246,21 @@ async function runCase(
     jest.requireActual('@/lib/database/repositories'),
   );
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
+  // === P4.D362 ===
+  // v4 `544c7ab1e`'s repository strip calls `acceptsSamplingParameters`, which
+  // jest.setup's provider-validation mock (three functions) lacks — at the pin
+  // every profile create threw `acceptsSamplingParameters is not a function`.
+  // Keep the setup's three mocks; add the REAL function (the registry is empty
+  // here, so it answers `true` — this corpus creates no Anthropic profile with
+  // a sampling key).
+  jest.doMock('@/lib/plugins/provider-validation', () => ({
+    validateProviderConfig: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+    acceptsApiKey: jest.fn(() => true),
+    requiresApiKey: jest.fn(() => true),
+    acceptsSamplingParameters: jest.requireActual('@/lib/plugins/provider-validation')
+      .acceptsSamplingParameters,
+  }));
+  // === end P4.D362 ===
   jest.doMock('@/lib/auth/session', () => ({
     __esModule: true,
     ...jest.requireActual('@/lib/auth/session'),

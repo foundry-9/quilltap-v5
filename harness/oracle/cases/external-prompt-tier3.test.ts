@@ -54,6 +54,8 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+// [P4.D362] the two 4.12 columns, through v4's REAL migrations.
+import { plant412Columns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -216,6 +218,11 @@ async function runCase(
   const mountWork = join(work, 'mount.db');
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
+  // [P4.D362] The committed `characters-*` pair predates the 4.12 columns, and
+  // v4's profile read names `maxImagesPerRequest` (measured at the pin: `no
+  // such column`). Plant them the way a booted instance has them; the Rust side
+  // runs `ensure_4_12_columns_on` on its copy.
+  await plant412Columns(mainWork, spec.testPepperBase64);
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
