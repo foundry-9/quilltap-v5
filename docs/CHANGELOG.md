@@ -251,6 +251,12 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: CandidatePass::EstablishedFact between manual and consolidation (P4.D372 item 20)
+
+_Versions: core 0.0.1430._
+
+Adds v4's `'established-fact'` candidate pass, in schema order, to `CANDIDATE_PASS_VALUES` (now 9), the enum, `as_str` and `from_wire`. The only exhaustive matches on `CandidatePass` are those three, in `memory_candidate.rs`; no pass-keyed admission rule exists, so nothing else changes. `memory_candidate_equivalence` gains an established-fact candidate row. Red-first: v5 refused the pass with the 8-value issue.
+
 #### 2026-11-09 — deus: established_fact.rs + tier-1 family + name-leak guard (P4.D372, v4 624d0d25c)
 
 _Versions: core 0.0.1429._

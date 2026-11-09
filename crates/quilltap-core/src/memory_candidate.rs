@@ -174,13 +174,16 @@ pub fn coerce_importance(raw: Option<&Value>) -> f64 {
 pub const MEMORY_ENTITY_CAP: usize = 12;
 
 /// v4 `CandidatePassEnum`, in schema order (the issue's `values`).
-pub const CANDIDATE_PASS_VALUES: [&str; 8] = [
+pub const CANDIDATE_PASS_VALUES: [&str; 9] = [
     "self-turn",
     "other-turn",
     "other-fold",
     "episode-fold",
     "carina",
     "manual",
+    // P4.D372 (v4 `db6190b44`): the established-fact job's pass, between
+    // `manual` and `consolidation` as v4 orders it.
+    "established-fact",
     "consolidation",
     "import",
 ];
@@ -196,6 +199,8 @@ pub enum CandidatePass {
     EpisodeFold,
     Carina,
     Manual,
+    /// P4.D372: `ESTABLISHED_FACT_MEMORIES` admits one manual memory per seat.
+    EstablishedFact,
     Consolidation,
     Import,
 }
@@ -209,6 +214,7 @@ impl CandidatePass {
             Self::EpisodeFold => "episode-fold",
             Self::Carina => "carina",
             Self::Manual => "manual",
+            Self::EstablishedFact => "established-fact",
             Self::Consolidation => "consolidation",
             Self::Import => "import",
         }
@@ -222,6 +228,7 @@ impl CandidatePass {
             "episode-fold" => Self::EpisodeFold,
             "carina" => Self::Carina,
             "manual" => Self::Manual,
+            "established-fact" => Self::EstablishedFact,
             "consolidation" => Self::Consolidation,
             "import" => Self::Import,
             _ => return None,

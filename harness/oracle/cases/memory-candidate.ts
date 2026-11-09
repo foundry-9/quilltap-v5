@@ -216,6 +216,9 @@ const PARSES: Array<[string, unknown, ResolvedCandidateTime?]> = [
   }, { occurredAt: '2026-10-11T22:00:00.000Z', narrativeTime: null, sourceMessageTimestamp: '2026-10-12T19:00:00.000Z' }],
   ['consolidation digest', { ...BASE, keywords: ['harbour'], targeting: { temporal: 'present', scope: 'narrow', context: 'banter' }, importance: 0.8, subject: { holderId: 'char-holder', aboutId: 'char-other' }, provenance: prov({ pass: 'consolidation', source: 'CONSOLIDATED' }) }, { occurredAt: null, narrativeTime: null }],
   ['import pass', { ...BASE, provenance: { ...P, pass: 'import' } }, { occurredAt: null, narrativeTime: null }],
+  // === P4.D372 === the established-fact job's candidate (v4 `establishedFactCandidate`'s shape).
+  ['established-fact pass', { content: 'The bridge fell.', summary: 'The bridge fell.', keywords: [], targeting: { temporal: 'present', scope: 'wide', context: 'information' }, importance: 0.8, kind: 'semantic', when: null, entities: [], tags: [], subject: { holderId: 'char-holder', aboutId: null }, provenance: { source: 'MANUAL', witnessedContext: 'manual', chatId: 'chat-1', projectId: null, sourceMessageId: 'msg-1', anchorTimeMs: 1760000000000, pass: 'established-fact' } }, { occurredAt: null, narrativeTime: null }],
+  // === /P4.D372 ===
   ['importance 0 / 1 bounds', { ...BASE, importance: 0 }, { occurredAt: null, narrativeTime: null }],
   ['importance 1', { ...BASE, importance: 1, tags: ['t-1', 't-2'], entities: ENT13.slice(0, 12) }, { occurredAt: null, narrativeTime: null }],
   ['unknown keys stripped', { ...BASE, extra: 1, subject: { holderId: 'h', aboutId: 'a', z: 1 }, provenance: { ...P, more: true }, targeting: { temporal: 'past', scope: 'wide', context: 'trivia', x: 1 } }, { occurredAt: null, narrativeTime: null }],
