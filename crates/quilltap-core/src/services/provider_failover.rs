@@ -3350,6 +3350,142 @@ mod tests {
             "{lines:#?}"
         );
     }
+
+    /// The PRODUCTION describer arm (`Some(deps)` → `FallbackDepsDescriber`)
+    /// — every other chain pin passes `None`. A cap-2 understudy over three
+    /// images: the third overflows and is put to the real
+    /// `generate_image_description`, which finds the image's `generationPrompt`
+    /// on its `files` row and REUSES it (no vision call — the canned completion
+    /// provider holds no response, so any call would fail). The restream
+    /// carries v4's description prefix, and no `Describing … failed` WARN fires.
+    #[tokio::test]
+    async fn a_chain_understudy_describes_its_overflow_through_the_real_deps() {
+        use crate::model::stream::StreamMessage;
+        let dir = tempfile::Builder::new()
+            .prefix("qt-failover-describer-")
+            .tempdir()
+            .expect("tempdir");
+        let db = crate::db::runtime::Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let schema: serde_json::Value =
+            serde_json::from_str(include_str!("provisioning/fresh_schema.json")).unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"files\" ("))
+            .unwrap()
+            .to_string();
+        const PLATE: &str = "6f1e2d3c-4b5a-4c6d-8e7f-0a1b2c3d4e5f";
+        db.write(move |w| {
+            let c = w.main().connection();
+            c.execute_batch(&ddl)?;
+            c.execute(
+                "INSERT INTO files (id, userId, sha256, originalFilename, mimeType, size, \
+                 source, category, generationPrompt, createdAt, updatedAt) VALUES (?1, 'u', \
+                 '0000000000000000000000000000000000000000000000000000000000000000', \
+                 'plate.png', 'image/png', 3, 'GENERATED', 'IMAGE', \
+                 '  A brass lantern on a rainy pier  ', '2026-01-01T00:00:00.000Z', \
+                 '2026-01-01T00:00:00.000Z')",
+                rusqlite::params![PLATE],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+        let completion = crate::model::completion::CannedCompletionProvider::new();
+        let transcoder = crate::files::image_processing::NotConfiguredTranscoder;
+        let deps = crate::services::file_fallback::FallbackDeps {
+            db: &db,
+            completion: &completion,
+            transcoder: &transcoder,
+            user_id: "u",
+            now_ms: 0,
+            chat_id: Some("chat-11"),
+            log_context: crate::services::llm_logging::LogContext::none(),
+        };
+
+        let img = |id: &str, name: &str| serde_json::json!({"id": id, "filename": name, "mimeType": "image/png", "data": "AAAA"});
+        let mut failed = chain_profile("p1", "Primary", "ANTHROPIC", "m");
+        failed.fallback_profile_id = Some("ub".into());
+        let mut b = chain_profile("ub", "Understudy B", "ANTHROPIC", "b-model");
+        b.max_images_per_request = 2;
+        let repos = ChainRepos {
+            profiles: vec![failed.clone(), b],
+            keys: Default::default(),
+        };
+        let provider = RecordingChainProvider::default();
+        let sink = RecordingSink::new();
+        let mut params = base_params();
+        params.messages = vec![StreamMessage::User {
+            content: "look".into(),
+            cache_control: None,
+            attachments: vec![
+                img("i1", "i1.png"),
+                img("i2", "i2.png"),
+                img(PLATE, "plate.png"),
+            ],
+            name: None,
+        }];
+        let mut state = StreamingState::default();
+        let mut result = FallbackChainResult::default();
+        let lines = captured_async(async {
+            result = attempt_empty_response_chain_fallback(
+                &provider,
+                &sink,
+                WalkFallbackChainOptions {
+                    state: &mut state,
+                    repos: &repos,
+                    failed,
+                    context: chain_context(),
+                    params,
+                    chat_id: "chat-11".into(),
+                    character_id: "ch".into(),
+                    character_name: "Friday".into(),
+                },
+                None,
+                Some(&deps),
+            )
+            .await;
+        })
+        .await;
+        assert!(result.recovered, "{result:?}");
+        let seen = provider.seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        let ids: Vec<&str> = seen[0].1[0]
+            .attachments()
+            .iter()
+            .map(|a| a["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["i1", "i2"]);
+        assert_eq!(
+            seen[0].1[0].content(),
+            "[Image: plate.png]\n\nImage Description (generated by AI):\n\
+             A brass lantern on a rainy pier\n\nlook"
+        );
+        line(
+            &lines,
+            "[Image Fallback] Reusing persisted description (no vision call)",
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("[ImageTransport] Describing an over-budget image failed")),
+            "{lines:#?}"
+        );
+        let info = line(
+            &lines,
+            "[ImageTransport] Images over the request budget were described or omitted",
+        );
+        assert!(
+            info.contains("described=1") && info.contains("omitted=0"),
+            "{info}"
+        );
+    }
     // === /P4.D367 ===
 
     /// v4 `:632`. The bag names the understudy AND the reason it was passed
