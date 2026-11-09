@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): ProjectStoreBrowser — a project's own store from officialMountPointId, else the primary linked one (P4.D387; v4 c17033f04)
+
+_Versions: SPA 0.5.979._
+
+P4.D387 commit 6 (item 13). New `document-browser/project-store-browser.ts`. `injectProjectStoreId` is v4 `useProjectStoreId`: `projectMountPointList` under `projectStoreKeys.stores(projectId)`, then the server's `officialMountPointId` (C14), else `pickPrimaryProjectStore` over the linked stores, else none. `qt-project-store-browser` shows v4's three texts byte-exact while the store is found, unreachable or absent (a straight apostrophe in "Finding the project's shelves…", a curly one in "The project’s document store could not be reached just now."). Otherwise it passes every input through to `qt-document-store-browser`. The read lives in `document-store.api.ts`, so `screens/prospero/projects.api.ts` is untouched (ruling L-5). New `project-store-browser.spec.ts` (4 cases).
+
 #### 2026-11-08 — feat(spa): the document-store browser — row, read-only viewers (native PDF object, .docx 422 fallback), links / description / destination dialogs, on the shared folder-browser shell (P4.D387; v4 c34986421)
 
 _Versions: SPA 0.5.978._
