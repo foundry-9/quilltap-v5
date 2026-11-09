@@ -45,9 +45,11 @@ export const AUTONOMOUS_ROOMS_KEY: QueryKeyPrefix = ['systemAutonomousRooms'];
  * catch-up sweep — a client that was offline has no idea what it missed, so it
  * re-reads everything the stream could have told it about.
  *
- * v4's list has eight entries (P4.D177 §C.4 added `memories`, v4 `4a9be9878`,
- * bug 128); v5's has seven, because the `mountPoints` row has nothing to
- * target (below) — the standing difference.
+ * v5's has ten: v4's rows in v4's order (P4.D177 §C.4 added `memories`, v4
+ * `4a9be9878`, bug 128; P4.D387 the `mountPoints` row, `mountPointKeys.all`;
+ * P4.D346 `customTools`), with `chatKeys.all` listed a second time for the
+ * memories badge. v4's six `inventory` / `wardrobe` list prefixes have no row
+ * here: v5's item stores are signal-held (P4.D330 R-2), not query keys.
  */
 export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   systemJobsKeys.all,
