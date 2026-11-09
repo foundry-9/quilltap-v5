@@ -201205,21 +201205,11 @@ On the stats columns: none of the eight families dumps `doc_mount_points`, so th
 
 ### Item 19 (R-6): v4's case-sensitive folder sweep
 
-- **Measured half:** `findUnderFolder` is case-sensitive `startsWith` over `findAll()` in rowid order (`chat_documents_tier2`: `Notes` finds `Notes/a.md` and `Notes/sub/c.md`, never `notes/b.md` or `Notesy/d.md`).
-- **Not run:** the folder-move half, as a measurement. By code reading at the pin, `moveDatabaseFolder` rewrites the store's STORED prefix (`database-store.ts`, "the source's STORED path prefix, not necessarily the caller-typed one"). So `doc_move_folder` of `Notes` over a stored `notes/` folder moves `notes/a.md` to `Archive/a.md`, while the sweep's `startsWith('Notes/')` misses an open `chat_documents` row at `notes/a.md`, which then points at a path that no longer exists.
-- Ported verbatim (no fix).
+**Covered by foundry-9/quilltap-server#147**, which P4.D381 filed: folder moves match folder paths case-sensitively. v4 fixed it upstream in `88c9cc81d`, which is past the pin, so it is recorded for `/driftcheck`, and the issue is closed. The lane ported the pin's behaviour verbatim, with no fix.
 
-DRAFT issue for `foundry-9/quilltap-server`. **Not filed**; the human's go-ahead comes first (R-Z):
+The measured half stays on record: `findUnderFolder` is a case-sensitive `startsWith` over `findAll()` in rowid order. In `chat_documents_tier2`, `Notes` finds `Notes/a.md` and `Notes/sub/c.md`, but never `notes/b.md` or `Notesy/d.md`.
 
-> **Title:** Document Mode keeps a stale path after a case-differing folder move
->
-> **What happened:** A document open in Document Mode at `notes/a.md` stays pointed at `notes/a.md` after a character runs `doc_move_folder` with `path: "Notes"`, `new_path: "Archive"`. The folder moves (the store matches folder paths case-insensitively and rewrites its stored `notes/` prefix), but `sweepChatDocumentsAfterFolderMove` finds the rows to update with `ChatDocumentsRepository.findUnderFolder("Notes")`, which is a case-sensitive `startsWith("Notes/")`. The open row is skipped, and its next read 404s.
->
-> **Expected:** The sweep matches open rows under the folder the store actually moved, either by the stored prefix the move used or case-insensitively, as the store does.
->
-> **Where:** `lib/database/repositories/chat-documents.repository.ts` `findUnderFolder`; `lib/documents/core/move.ts` `sweepChatDocumentsAfterFolderMove`.
->
-> **Provenance:** Found by the v5 port (P4.D380, pin `624d0d25c`). `88c9cc81d` (#147, past the pin) makes folder moves case-insensitive, which widens the window.
+The DRAFT issue text this record carried is **SUPERSEDED** by #147 and is dropped. It was never filed.
 
 ### Log lines ported / retired
 
@@ -201316,7 +201306,7 @@ LANE COMPLETE. The **OPEN remainder** (Tier 2):
 
 - **Item 18:** capture pins for the ported-but-unpinned operator ERROR / WARN arms, which need planted store failures that fail on both sides.
 - **The unpinned DEBUG lines** listed above: `openDocumentFile` ×2, `resolveGeneralLibrary`, `doc_open_document: created a blank document`, the tool INFOs `Moved document` / `Deleted document`, and WARN `Failed to find blob by path`.
-- **Item 19:** the folder-move half of the measurement was not run; the issue is drafted and not filed.
+- **Item 19:** covered by #147 (filed by P4.D381, fixed upstream in `88c9cc81d`, past the pin; recorded for `/driftcheck`).
 
 ### Cleanup
 

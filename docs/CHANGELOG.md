@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — docs(porting): P4.D380 item 19 is covered by #147
+
+_Docs-only change._
+
+The lane record and the order's status header now mark item 19 (R-6, the case-sensitive folder sweep) as covered by foundry-9/quilltap-server#147. P4.D381 filed that issue, and v4 fixed it upstream in `88c9cc81d`, which is past the pin and recorded for `/driftcheck`. The lane's draft issue text is dropped as superseded; it was never filed.
+
 #### 2026-11-09 — docs(porting): P4.D380 lane record — DOCCORE complete
 
 _Docs-only change._
