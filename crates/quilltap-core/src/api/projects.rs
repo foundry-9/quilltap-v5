@@ -1346,7 +1346,12 @@ pub async fn project_aesthetic_set(
 // Mount points (v4 [id]/mount-points/route.ts)
 // ===========================================================================
 
-/// v4 GET `/mount-points`: BARE `{ mountPoints }`, dangling links filtered.
+/// v4 GET `/mount-points`: `{ mountPoints, officialMountPointId }`, dangling
+/// links filtered. P4.D380 (v4 `c17033f04`): the project's own store rides
+/// along ("so a browser opens the store the project reads and writes rather
+/// than guessing among its linked ones" — `null` when it has none, read raw),
+/// with v4's DEBUG `[Projects v1] Listed mount points for project` `{projectId,
+/// count, officialMountPointId}` on the caller's thread.
 pub fn project_mount_point_list(db: &Db, project_id: &str) -> Response {
     let pid = project_id.to_string();
     let result = read_both(db, move |main, mount| {
@@ -1362,10 +1367,23 @@ pub fn project_mount_point_list(db: &Db, project_id: &str) -> Response {
                 mps.push(mp);
             }
         }
-        Ok(Some(mps))
+        // === P4.D380 ===
+        let official = crate::db::projects::find_official_mount_point_id_raw(main, &pid)?.flatten();
+        Ok(Some((mps, official)))
+        // === end P4.D380 ===
     });
     match result {
-        Ok(Some(mps)) => Response::Project(json!({ "mountPoints": mps })),
+        // === P4.D380 ===
+        Ok(Some((mps, official))) => {
+            tracing::debug!(
+                projectId = %project_id,
+                count = mps.len() as u64,
+                officialMountPointId = official.as_deref().unwrap_or("null"),
+                "[Projects v1] Listed mount points for project"
+            );
+            Response::Project(json!({ "mountPoints": mps, "officialMountPointId": official }))
+        }
+        // === end P4.D380 ===
         Ok(None) => not_found("Project"),
         Err(e) => db_error_response(e),
     }

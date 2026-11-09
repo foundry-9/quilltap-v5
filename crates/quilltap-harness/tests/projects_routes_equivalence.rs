@@ -743,12 +743,29 @@ fn projects_routes_match_oracle() {
     }
     {
         let db = fresh_db(&spec, "mpi");
-        check(
-            "mount_points_iota",
-            &response_data(&projects::project_mount_point_list(&db, IOTA)),
-            false,
-            &mut failed,
+        // === P4.D380 === (v4 `c17033f04`): `officialMountPointId` rides the
+        // body (compared above, in v4's key order) and v4's DEBUG is logged on
+        // the caller's thread; a missing project logs nothing (its silence leg).
+        let (r, lines) = quilltap_core::test_support::captured_with(|| {
+            projects::project_mount_point_list(&db, IOTA)
+        });
+        let body = response_data(&r);
+        check("mount_points_iota", &body, false, &mut failed);
+        let keys: Vec<&String> = body.as_object().unwrap().keys().collect();
+        assert_eq!(keys, ["mountPoints", "officialMountPointId"], "v4's key order");
+        let official = body["officialMountPointId"].as_str().unwrap().to_string();
+        let want = format!(
+            "DEBUG quilltap_core::api::projects [Projects v1] Listed mount points for project projectId={IOTA} count=1 officialMountPointId={official}"
         );
+        assert!(lines.contains(&want), "{lines:#?}");
+        let (_, lines) = quilltap_core::test_support::captured_with(|| {
+            projects::project_mount_point_list(&db, "00000000-0000-4000-8000-0000000000ff")
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains("Listed mount points")),
+            "{lines:#?}"
+        );
+        // === end P4.D380 ===
     }
     {
         let db = fresh_db(&spec, "mpk");

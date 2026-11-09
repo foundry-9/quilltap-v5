@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(projects): the project mount-points GET answers officialMountPointId (P4.D380, v4 c17033f04)
+
+_Versions: core 0.0.1437._
+
+`GET /api/v1/projects/:id/mount-points` now answers `{mountPoints, officialMountPointId}`, in v4's key order (`app/api/v1/projects/[id]/mount-points/route.ts:49-61` at `624d0d25c`). The official id is read raw, and is `null` when the project has none. The route logs v4's DEBUG `[Projects v1] Listed mount points for project` `{projectId, count, officialMountPointId}` on the caller's thread. `projects_routes_equivalence`: `mount_points_iota` / `_kappa` were regenerated from the pin and are green, with a key-order assert, the DEBUG pin, and its silence leg (a missing project logs nothing). Both fixture projects carry an official store, so the corpus does not reach the `null` arm.
+
 #### 2026-11-09 — feat(documents): Document Mode over the document core — the viewer, the read-only refusal, uploads read and saved, moves follow, generalLibrary (P4.D380, v4 a3d53eae1 / 30a3b4cb7 / 5efe53ea7 / c17033f04)
 
 _Versions: core 0.0.1436._
