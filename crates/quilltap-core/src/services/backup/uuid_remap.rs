@@ -55,6 +55,58 @@ pub const MOUNT_POINT_SETTING_KEYS: [&str; 3] = [
     "generalMountPointId",
 ];
 
+// === P4.D374 === v4 `c539c82e0` (`uuid-remap.ts:88-112`).
+
+/// v4 `BRAHMA_CONSOLE_SETTING_KEY` — the Brahma Console instance setting, a
+/// JSON blob whose `inlineConnectionProfileId` names a connection profile,
+/// remapped like every other profile reference.
+pub const BRAHMA_CONSOLE_SETTING_KEY: &str = "brahmaConsole";
+
+/// v4 `remapBrahmaConsoleSetting(value, remapper)`: V8 `JSON.parse`; when the
+/// result is truthy and its `inlineConnectionProfileId` is a STRING, remap it
+/// through the SAME remapper (its DEBUG even when `to === from`) and answer
+/// `JSON.stringify({...parsed, inlineConnectionProfileId: remapped})` — the
+/// key keeps its ORIGINAL position (a spread overwrite), every other value
+/// re-stringified with JS number formatting / escapes
+/// ([`crate::pascal::js_value::json_stringify`]). Anything else (`null`, a
+/// non-string id, an array, a scalar, a missing key) is the value UNCHANGED
+/// with no line; a parse failure keeps it with v4's WARN and V8's message.
+pub fn remap_brahma_console_setting(value: &str, r: &mut UuidRemapper) -> String {
+    let parsed = match crate::inventory::types::js_json_parse(value) {
+        Ok(v) => v,
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::backup::uuid_remap",
+                module = "backup:uuid-remap",
+                error = %error,
+                "brahmaConsole instance setting is not valid JSON; leaving it as is"
+            );
+            return value.to_string();
+        }
+    };
+    // `parsed && typeof parsed.inlineConnectionProfileId === 'string'` — only
+    // a plain object can carry an own string property here (an array's or a
+    // scalar's is `undefined`).
+    let Value::Object(mut obj) = parsed else {
+        return value.to_string();
+    };
+    let Some(Value::String(from)) = obj.get("inlineConnectionProfileId").cloned() else {
+        return value.to_string();
+    };
+    let to = r.remap_str(&from);
+    tracing::debug!(
+        target: "quilltap::backup::uuid_remap",
+        module = "backup:uuid-remap",
+        from = %from,
+        to = %to,
+        "Remapped inline Brahma connection profile in instance settings"
+    );
+    // `IndexMap::insert` on an existing key keeps its position — the spread.
+    obj.insert("inlineConnectionProfileId".to_string(), Value::String(to));
+    crate::pascal::js_value::json_stringify(&Value::Object(obj))
+}
+// === /P4.D374 ===
+
 /// JS truthiness — the guard v4 writes as `if (x)`.
 fn is_truthy(v: Option<&Value>) -> bool {
     match v {
@@ -281,6 +333,9 @@ pub fn remap_backup_data(
                 "storyBackgroundImageId",
                 "defaultImageProfileId",
                 "defaultRoleplayTemplateId",
+                // P4.D374 (v4 `c539c82e0`): the inline `@Brahma` project
+                // profile, LAST of the list.
+                "brahmaConnectionProfileId",
             ],
             &["characterRoster"],
             target_user_id,
@@ -510,6 +565,25 @@ pub fn remap_backup_data(
             out.insert("key".to_string(), row["key"].clone());
             out.insert("value".to_string(), Value::String(r.remap(&row["value"])));
             Value::Object(out)
+        // === P4.D374 === v4 `c539c82e0` (`uuid-remap.ts:798-800`): the
+        // `brahmaConsole` arm, AFTER the mount-key arm — also rebuilt as
+        // exactly `{key, value}`.
+        } else if row.get("key").and_then(Value::as_str) == Some(BRAHMA_CONSOLE_SETTING_KEY)
+            && is_truthy(row.get("value"))
+        {
+            let mut out = Map::new();
+            out.insert("key".to_string(), row["key"].clone());
+            let value = match &row["value"] {
+                Value::String(text) => Value::String(remap_brahma_console_setting(text, r)),
+                // Unreachable from an archive (`instance_settings.value` is TEXT
+                // NOT NULL); v4's `JSON.parse(String(v))` of a truthy number /
+                // boolean parses to a scalar with no `inlineConnectionProfileId`
+                // and returns the value unchanged — kept as given.
+                other => other.clone(),
+            };
+            out.insert("value".to_string(), value);
+            Value::Object(out)
+        // === /P4.D374 ===
         } else {
             row.clone()
         }

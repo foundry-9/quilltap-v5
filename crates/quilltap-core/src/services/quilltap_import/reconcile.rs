@@ -614,6 +614,21 @@ pub(super) fn reconcile_relationships(
                 patch.insert("defaultImageProfileId".to_string(), Value::String(new_img));
             }
 
+            // === P4.D374 === v4 `c539c82e0` (`reconcile.ts:524-531`): the inline
+            // `@Brahma` project profile through `connectionProfiles`, BETWEEN the
+            // image and template arms (the `updates` key order reaches the
+            // overlay write). A miss leaves the stored id as it was.
+            if let Some(new_brahma) = remap_id(
+                str_of(&project, "brahmaConnectionProfileId"),
+                &id_maps.connection_profiles,
+            ) {
+                patch.insert(
+                    "brahmaConnectionProfileId".to_string(),
+                    Value::String(new_brahma),
+                );
+            }
+            // === /P4.D374 ===
+
             if let Some(new_tpl) = remap_id(
                 str_of(&project, "defaultRoleplayTemplateId"),
                 &id_maps.roleplay_templates,

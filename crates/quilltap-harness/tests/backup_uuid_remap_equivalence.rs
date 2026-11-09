@@ -261,6 +261,23 @@ fn compare_uuid_remap_logs(name: &str, lines: &[String], want: &Value, failures:
                 l["level"].as_str().unwrap().to_uppercase(),
                 l["message"].as_str().unwrap()
             );
+            // === P4.D374 === `remapBrahmaConsoleSetting`'s two lines carry
+            // `{from, to}` (DEBUG) and `{error}` (WARN) — rendered bare, in
+            // v4's key order, as the capture rig renders the twin.
+            let message = l["message"].as_str().unwrap();
+            if message == "Remapped inline Brahma connection profile in instance settings" {
+                s.push_str(&format!(
+                    " from={} to={}",
+                    l["from"].as_str().unwrap(),
+                    l["to"].as_str().unwrap()
+                ));
+                return s;
+            }
+            if message == "brahmaConsole instance setting is not valid JSON; leaving it as is" {
+                s.push_str(&format!(" error={}", l["error"].as_str().unwrap()));
+                return s;
+            }
+            // === /P4.D374 ===
             if let Some(chat_id) = l["chatId"].as_str() {
                 s.push_str(&format!(" chatId={chat_id}"));
             }

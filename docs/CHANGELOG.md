@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(backup): restore remaps the Brahma connection profile ids — project field and brahmaConsole setting; .qtap reconcile the project field (P4.D374)
+
+_Versions: core 0.0.1436._
+
+P4.D374 Tier 1 item 18. A new-account restore now remaps the project's `brahmaConnectionProfileId` (last in the project field list) and the `brahmaConsole` instance setting's `inlineConnectionProfileId`, via v4's `remapBrahmaConsoleSetting`. The id keeps its position in the blob, and the restore logs the DEBUG `Remapped inline Brahma connection profile in instance settings {from, to}` even when the id is unchanged. Invalid JSON logs the WARN `brahmaConsole instance setting is not valid JSON; leaving it as is` with V8's message and keeps the value. A `null`, numeric, array or scalar value passes through silently. The `.qtap` reconcile remaps the project field through `connectionProfiles`, between the image and template arms. That arm has no differential: `qtap_import_equivalence` never reaches project reconcile, and `system_import_*` fails every profile import on its committed fixture. The `.qtap` instance-settings import still does not remap the inline id, as in v4. `backup_uuid_remap_equivalence` grows one case, `brahma_inline_profile`, with ten value shapes.
+
 #### 2026-11-08 — feat(projects): the brahmaConnectionProfileId vault key — three-state, kept on every write, UUID-gated on PUT (P4.D374)
 
 _Versions: core 0.0.1435._

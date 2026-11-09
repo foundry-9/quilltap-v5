@@ -547,6 +547,38 @@ function edgeCases(): Case[] {
       }),
     },
     {
+      // === P4.D374 === (v4 `c539c82e0`)
+      name: 'brahma_inline_profile',
+      note: "the project `brahmaConnectionProfileId` (LAST of the project remapFields — string → remapped, null / absent untouched) and the `brahmaConsole` instance setting's `inlineConnectionProfileId` (remapBrahmaConsoleSetting: a string id is remapped through the SAME remapper with its DEBUG even when unchanged, the blob re-stringified through JSON.stringify with the key in its ORIGINAL position; null / a number / an array / a scalar parse / a missing key pass through with no line; invalid JSON keeps the value with the WARN; an EMPTY value never reaches the arm)",
+      targetUserId: t,
+      data: bag({
+        connectionProfiles: [{ id: 'bp-known', name: 'Inline' }],
+        projects: [
+          { id: 'bproj-1', name: 'One', brahmaConnectionProfileId: 'bp-known' },
+          { id: 'bproj-2', name: 'Two', brahmaConnectionProfileId: null },
+          { id: 'bproj-3', name: 'Three' },
+          { id: 'bproj-4', name: 'Four', brahmaConnectionProfileId: 'bp-unknown-project' },
+        ],
+        instanceSettings: [
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":60,"inlineConnectionProfileId":"bp-known"}' },
+          { key: 'brahmaConsole', value: '{"inlineConnectionProfileId":"bp-unknown","maxAgentTurns":5}' },
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":' },
+          { key: 'brahmaConsole', value: 'null' },
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":50,"inlineConnectionProfileId":7}' },
+          { key: 'brahmaConsole', value: '[1,2]' },
+          { key: 'brahmaConsole', value: '"bp-known"' },
+          { key: 'brahmaConsole', value: '{"inlineConnectionProfileId":null}' },
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":50}' },
+          { key: 'brahmaConsole', value: '' },
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":50.0,"inlineConnectionProfileId":"bp-known"}' },
+          { key: 'brahmaConsole', value: '{"maxAgentTurns":1e21,"inlineConnectionProfileId":"bp-known","note":"caf\\u00e9\\n\\u2028"}' },
+          { key: 'brahmaConsole', value: '{"inlineConnectionProfileId":"x","inlineConnectionProfileId":"bp-known"}' },
+          { key: 'brahmaConsole', value: '{"2":1,"inlineConnectionProfileId":"bp-known","1":0}' },
+          { value: '{"inlineConnectionProfileId":"bp-known"}', key: 'brahmaConsole', updatedAt: 'kept?' },
+        ],
+      }),
+    },
+    {
       name: 'null_and_absent_scalars',
       note: "remapFields' `typeof === 'string'` guard: null, a number, a bool and an absent key are all left exactly as they were",
       targetUserId: t,
@@ -1912,6 +1944,9 @@ async function main(): Promise<void> {
   const UUID_REMAP_LOGGED = new Set([
     'Chat character-keyed columns unreadable; left as given',
     'Remapped character-keyed chat fields',
+    // P4.D374 (v4 `c539c82e0`): `remapBrahmaConsoleSetting`'s two lines.
+    'Remapped inline Brahma connection profile in instance settings',
+    'brahmaConsole instance setting is not valid JSON; leaving it as is',
   ]);
   const { Logger } = await import('@/lib/logger');
   const levels = ['error', 'warn', 'info', 'debug'] as const;
