@@ -707,7 +707,6 @@ fn wardrobe_transfers_tier2_matches_oracle() {
     // fixture-baked id (the literal `expectMintedComponents` arm).
     let spec_text = std::fs::read_to_string(spec_path()).unwrap();
 
-    let mut carved = 0usize;
     for scenario in &spec.scenarios {
         let name = scen_str(scenario, "name")
             .expect("scenario name")
@@ -749,31 +748,6 @@ fn wardrobe_transfers_tier2_matches_oracle() {
             ),
             Err(joined) => Err(TransferError::BadRequest(joined)),
         };
-
-        // P4.D378: a union obligation, carved BOTH WAYS (see
-        // `UNION_PENDING_P4D377_RAW_OWNER`): until P4.D377's move (k) reads the
-        // project owner RAW in `resolve_wardrobe_location`, a project with no
-        // official store fails the probe's official-location READ (a hydrated
-        // `ProjectsRepository::find_by_id` → StoreUnavailable) where v4's
-        // `resolveOwnerStore` answers `null`. The row must keep failing exactly
-        // this way here; once it passes, the carve must go.
-        if UNION_PENDING_P4D377_RAW_OWNER.contains(&name.as_str()) {
-            match &result {
-                Err(TransferError::Internal(m))
-                    if m.contains("StoreUnavailable")
-                        && m.contains("officialMountPointId is null") =>
-                {
-                    eprintln!("RECORDED (union, P4.D377 move (k)): scenario {name}: {m}");
-                    carved += 1;
-                    continue;
-                }
-                other => panic!(
-                    "scenario {name}: the UNION_PENDING_P4D377_RAW_OWNER carve no longer \
-                     holds ({:?}) — P4.D377's raw owner read has landed: delete the carve",
-                    other.as_ref().err()
-                ),
-            }
-        }
 
         // Compare the outcome/error tag against the oracle body.
         let want_ok = want.get("ok").and_then(Value::as_bool).unwrap_or(false);
@@ -965,25 +939,11 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         }
     }
 
-    assert_eq!(
-        carved,
-        UNION_PENDING_P4D377_RAW_OWNER.len(),
-        "every union-pending row ran"
-    );
     eprintln!(
-        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios, 10 tables each; {carved} union-pending).",
+        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios, 10 tables each).",
         spec.scenarios.len()
     );
 }
-
-/// P4.D378 — rows that go green only on the UNION with P4.D377 (HANDOFF H3):
-/// v4 `0c47f4539` move (k) reads a project / group owner RAW under
-/// `resolveWardrobeLocation`; until P4.D377 lands it, v5's
-/// `resolve_wardrobe_location` reads the project HYDRATED, so a store-less
-/// project errors instead of answering no location. Carved both ways: the
-/// row must fail in exactly that shape here, and the carve fails the moment
-/// it passes.
-const UNION_PENDING_P4D377_RAW_OWNER: [&str; 1] = ["probe_project_no_official_store_linked_hit"];
 
 /// P4.D378 (v4 `a0ed5ecad`) census, a test of record: the transfers GET is gone
 /// end to end — its service enumeration, the dispatch handler, the boundary
