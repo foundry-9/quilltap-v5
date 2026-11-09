@@ -520,7 +520,11 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // build `ChatCustomToolIntervention*` by hand; their `id` / `overrides` /
     // `decision` are raw `Option<Value>`s the core Zod twin parses (no typed
     // field to wrong-type).
-    ("custom_tools_routes.rs", 8),
+    // === P4.D379 === +1 — the GET `presets` arm builds `ChatCustomToolPresets`
+    // by hand from two query values (`tool`, `asCharacterId`; a query string
+    // carries no JSON type). Measured red at 9 against 8 in the lane's gate.
+    ("custom_tools_routes.rs", 9),
+    // === end P4.D379 ===
     ("embedding_profiles_routes.rs", 9),
     ("files_routes.rs", 9),
     ("help_routes.rs", 9),
@@ -644,8 +648,11 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 158,
-        "158 = 157 + P4.D377's one (`wardrobe_routes.rs`'s `WardrobeItemDuplicate`, the collection POST's `?action=duplicate`, v4 `600c2906f`). \
+        // === P4.D379 === the union recounts this by NUMBER (H3).
+        total, 159,
+        "159 = 158 + P4.D379's one (`custom_tools_routes.rs`'s GET `presets` arm, \
+         `ChatCustomToolPresets`, v4 `fd165fce0`; summed on the union). \
+         158 = 157 + P4.D377's one (`wardrobe_routes.rs`'s `WardrobeItemDuplicate`, the collection POST's `?action=duplicate`, v4 `600c2906f`). \
          157 = 153 + P4.D345's four (`custom_tools_routes.rs`'s GET `interventions` arm and the \
          three intervention POSTs; summed on the union). \
          153 = 152 + P4.D343's one (`wardrobe_routes.rs`'s `ChatStorytellerRound`, the chat GET's `?action=storyteller-round`, v4 `b15fe9404` — its three POST arms go through `request_envelope` and add none). \

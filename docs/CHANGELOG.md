@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — test(web): the hand-built construction census counts the presets arm (P4.D379)
+
+_No crate versions bumped._
+
+`tri_state_edges_share_the_decoder`'s recorded table moves `custom_tools_routes.rs` 8 → 9 and its total 157 → 158 for the GET `?action=presets` arm, which builds `ChatCustomToolPresets` by hand from two query values. The lane's workspace gate caught it. Test-only; the union recounts by number.
+
 #### 2026-11-09 — fix(pascal): the roster logs v4's Custom-tool listing failed for mount WARN (P4.D379 item 8)
 
 _Versions: core 0.0.1435._
