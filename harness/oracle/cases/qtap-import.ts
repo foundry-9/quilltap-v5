@@ -508,6 +508,100 @@ async function main(): Promise<void> {
     };
   })();
 
+  // ── P4.D369: the character-kind carrier (v4 `b09ca46bb`) ─────────────────
+  //
+  // A bundle of four copies of the bug-75 character (wardrobe stripped), one
+  // per `kind` shape: `assistant`, absent, `robot`, `null`. v4's
+  // `importCharacters` hands the whole character to `repos.characters.create`,
+  // whose `validate` is `CharacterSchema.parse` — a STRICT
+  // `z.enum(CHARACTER_KINDS).default('roleplay')` — so this leg MEASURES what
+  // v4 does with a bad value (refuse with a warning, or not). The bundle itself
+  // is emitted so the Rust side replays identical input. Isolated for the
+  // bug117 reason.
+  const kindLeg = await (async () => {
+    const scratch5 = mkdtempSync(join(tmpdir(), 'qt-qtapimport-kind-'));
+    process.on('exit', () => rmSync(scratch5, { recursive: true, force: true }));
+    mkdirSync(join(scratch5, 'data'), { recursive: true });
+    const main5 = join(scratch5, 'kind-main.db');
+    const mount5 = join(scratch5, 'kind-mount.db');
+    copyFileSync(mainFixture, main5);
+    copyFileSync(mountFixture, mount5);
+    process.env.SQLITE_PATH = main5;
+    process.env.SQLITE_MOUNT_INDEX_PATH = mount5;
+    process.env.QUILLTAP_DATA_DIR = scratch5;
+
+    await initializeDatabase();
+    // Re-arm every repository singleton's first-access ensure, as the
+    // wardrobe-folders leg does (memory note `v4-oracle-reinit-and-throwing-plants`).
+    {
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      for (const repo of Object.values(getRepositories() as unknown as Record<string, unknown>)) {
+        if (repo && typeof repo === 'object' && 'collectionInitialized' in repo) {
+          (repo as { collectionInitialized: boolean }).collectionInitialized = false;
+        }
+      }
+    }
+    const midb5 = getRawMountIndexDatabase();
+    if (!midb5) throw new Error('mount-index DB handle unavailable (kind pair)');
+
+    // Re-read the committed bundle: `executeImport` mutates its input in place
+    // (the bug-75 leg's object no longer carries the bundle's shape).
+    const kindSource = JSON.parse(readFileSync(bug75Path, 'utf8'));
+    const base = { ...kindSource.data.characters[0] } as Record<string, unknown>;
+    delete base.wardrobeItems;
+    delete base.clothingRecords;
+    const shapes: Array<[string, unknown, boolean]> = [
+      ['Kind Assistant', 'assistant', true],
+      ['Kind Absent', undefined, false],
+      ['Kind Robot', 'robot', true],
+      ['Kind Null', null, true],
+    ];
+    const bundle = {
+      manifest: kindSource.manifest,
+      data: {
+        characters: shapes.map(([name, kind, present], i) => {
+          const c: Record<string, unknown> = {
+            ...base,
+            id: `d3690000-0000-4000-8000-00000000000${i + 1}`,
+            name,
+          };
+          if (present) c.kind = kind;
+          return c;
+        }),
+        memories: [],
+      },
+    };
+    const r = await executeImport(SINGLE_USER_ID, bundle as never, {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+    });
+    const rows = (await rawQuery(
+      'SELECT name, characterDocumentMountPointId AS mp FROM characters ORDER BY name'
+    )) as Array<{ name: string; mp: string | null }>;
+    const findProps = midb5.prepare(
+      `SELECT d.content AS content FROM doc_mount_file_links l
+        JOIN doc_mount_documents d ON d.fileId = l.fileId
+       WHERE l.mountPointId = ? AND l.relativePath = 'properties.json'`
+    );
+    const properties = rows.map((row) => ({
+      name: row.name,
+      content: row.mp
+        ? ((findProps.get(row.mp) as { content: string } | undefined)?.content ?? null)
+        : null,
+    }));
+
+    closeMountIndexSQLiteClient();
+    await closeDatabase();
+    return {
+      bundle,
+      success: r.success,
+      warnings: r.warnings,
+      imported: r.imported.characters ?? null,
+      properties,
+    };
+  })();
+
   process.stdout.write(
     JSON.stringify({
       case: 'qtap-import-tier2',
@@ -534,6 +628,7 @@ async function main(): Promise<void> {
       bug158,
       twoLinkBlob,
       wardrobeFolders,
+      kindLeg,
     }) + '\n'
   );
   process.exit(0);

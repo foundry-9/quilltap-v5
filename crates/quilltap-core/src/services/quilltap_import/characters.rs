@@ -319,6 +319,26 @@ pub(super) fn import_characters(
                 }
             }
 
+            // P4.D369 (v4 `b09ca46bb`): v4's `repos.characters.create` runs
+            // `CharacterSchema.parse`, whose `kind` is the STRICT
+            // `z.enum(CHARACTER_KINDS).default('roleplay')` — absent defaults,
+            // `assistant` / `roleplay` pass, anything else present (incl.
+            // `null`) throws the ZodError and the per-item catch warns with its
+            // message. Measured at the pin (`qtap-import.ts`'s kind leg).
+            if let Some(kind) = character.get("kind") {
+                if !kind
+                    .as_str()
+                    .is_some_and(|k| crate::characters::kind::CHARACTER_KINDS.contains(&k))
+                {
+                    return Err(crate::api::zod_issues::zod_error_message(&[
+                        crate::api::zod_issues::ZodIssue::invalid_value(
+                            &crate::characters::kind::CHARACTER_KINDS,
+                            vec![crate::api::zod_issues::key("kind")],
+                        ),
+                    ]));
+                }
+            }
+
             // Build the slim row + the vault-managed inputs from the (migrated)
             // character, then create end-to-end. `create_character` mints a fresh
             // id (v4's `repos.characters.create` strips the source id).

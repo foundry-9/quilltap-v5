@@ -950,6 +950,107 @@ fn qtap_import_tier2_matches_oracle() {
         drop(mount3);
     }
 
+    // ── P4.D369: the character-kind carrier (v4 `b09ca46bb`) ─────────────────
+    //
+    // The oracle emits the bundle it imported (four copies of the bug-75
+    // character, one per `kind` shape), so v5 replays identical input. v4's
+    // `create` runs `CharacterSchema.parse` (a STRICT kind enum): `assistant`
+    // and absent import (properties.json ends `"kind": "assistant"` /
+    // `"roleplay"`), `robot` and `null` are refused with the ZodError message.
+    // Compared: success, the warnings BYTE-exact, the created count, and each
+    // created character's properties.json content.
+    {
+        let scratch_k = tempfile::Builder::new()
+            .prefix("qt-qtapimport-kind-")
+            .tempdir()
+            .expect("tempdir");
+        let main_k_path = scratch_k.path().join("main.db");
+        let mount_k_path = scratch_k.path().join("mount.db");
+        std::fs::copy(&main_fixture, &main_k_path).unwrap_or_else(|e| panic!("copy main_k: {e}"));
+        std::fs::copy(&mount_fixture, &mount_k_path)
+            .unwrap_or_else(|e| panic!("copy mount_k: {e}"));
+        let main_k = Writer::open_writable(&main_k_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open main_k: {e}"));
+        let mount_k = Writer::open_writable(&mount_k_path, &spec.test_pepper_base64)
+            .unwrap_or_else(|e| panic!("open mount_k: {e}"));
+
+        let want_k = &oracle["kindLeg"];
+        assert!(
+            want_k.is_object(),
+            "oracle missing kindLeg — regenerate it (see header)"
+        );
+        let bundle = serde_json::to_string(&want_k["bundle"]).unwrap();
+        let k_export = parse_export_file(&bundle).expect("parse the kind bundle");
+        let got = execute_import(
+            main_k.connection(),
+            mount_k.connection(),
+            SINGLE_USER_ID,
+            &k_export,
+            &ImportOptions::seed_defaults(),
+            &NotConfiguredPixelCodec,
+        )
+        .expect("kind execute_import");
+        assert_eq!(
+            Value::Bool(got.success),
+            want_k["success"],
+            "kind import success"
+        );
+        assert_eq!(
+            serde_json::to_string(&got.warnings).unwrap(),
+            serde_json::to_string(&want_k["warnings"]).unwrap(),
+            "kind import warnings (byte-exact)"
+        );
+        assert_eq!(
+            Value::from(got.imported.characters),
+            want_k["imported"],
+            "kind import: created character count"
+        );
+        let rows: Vec<(String, Option<String>)> = {
+            let mut stmt = main_k
+                .connection()
+                .prepare("SELECT name, characterDocumentMountPointId FROM characters ORDER BY name")
+                .unwrap();
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            rows
+        };
+        let props: Vec<Value> = rows
+            .iter()
+            .map(|(name, mp)| {
+                let content: Option<String> = mp.as_ref().and_then(|mp| {
+                    mount_k
+                        .connection()
+                        .query_row(
+                            "SELECT d.content FROM doc_mount_file_links l \
+                               JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                              WHERE l.mountPointId = ?1 AND l.relativePath = 'properties.json'",
+                            [mp],
+                            |r| r.get(0),
+                        )
+                        .ok()
+                });
+                serde_json::json!({ "name": name, "content": content })
+            })
+            .collect();
+        assert_eq!(
+            serde_json::to_string(&props).unwrap(),
+            serde_json::to_string(&want_k["properties"]).unwrap(),
+            "kind import: each created character's properties.json (byte-exact)"
+        );
+        // The floor: the leg still asks both questions.
+        assert_eq!(want_k["imported"], Value::from(2), "two kinds import");
+        assert_eq!(
+            want_k["warnings"].as_array().map(Vec::len),
+            Some(2),
+            "two kinds are refused"
+        );
+        drop(main_k);
+        drop(mount_k);
+    }
+
     // ── P4.106 item 10: the two-link blob (the P4.D209 OPEN row) ───────────
     //
     // `qtap-import-two-link-blob.qtap` is v4's REAL exporter's NDJSON (built at
