@@ -57,15 +57,11 @@ const ACTIONS: [&str; 5] = [
 /// v4's GET `withActionDispatch` map — `handleList` is the fallback.
 const GET_ACTIONS: [&str; 1] = ["save-targets"];
 const ROUTE: &str = "/api/v1/inventory/[itemId]/images";
-/// v4 `containerQuerySchema`'s scope enum. Since v4 `0276d10d9` ("Refactor:
-/// Inventory chokepoints", absorbed at the `236c04e35` unification) the route
-/// reads `InventoryScopeSchema` (`lib/schemas/inventory.types.ts:286` —
-/// `character, group, project, general`) where it used to inline the wardrobe
-/// route's `character, project, group, general`; Zod's sentence follows the
-/// enum's ORDER, so the two edges' sentences now differ.
-pub(crate) const SCOPE_ISSUE: &str =
-    "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\"";
-const LOG_TAG: &str = "[Inventory Images v1]";
+/// v4 `containerQuerySchema`'s scope enum — the shared images route's
+/// `ItemImagesScopeSchema` at the pin (`600c2906f`, P4.D377): `character,
+/// project, group, general`, the same sentence as the wardrobe edge's (the
+/// Inventory's `InventoryScopeSchema` order, `0276d10d9`, is retired here).
+pub(crate) const SCOPE_ISSUE: &str = quilltap_core::api::item_images_route::SCOPE_ISSUE;
 
 fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
     (
@@ -168,7 +164,7 @@ pub async fn inventory_item_images_get(
     };
     match action {
         None => rendered(false, list_on_home(&db, &home), StatusCode::OK),
-        Some(_) => rendered(false, save_targets_on_home(&db), StatusCode::OK),
+        Some(_) => rendered(false, save_targets_on_home(&db, &home), StatusCode::OK),
     }
 }
 
@@ -206,27 +202,20 @@ pub async fn inventory_item_images_post(
             };
             let text = String::from_utf8_lossy(&bytes);
             // v4: `if (text.trim())` — an empty / whitespace body is `{}`.
-            let image_profile_id = if quilltap_core::jsstr::js_trim(&text).is_empty() {
-                None
-            } else {
-                let json: Value = match serde_json::from_str(&text) {
-                    Ok(v) => v,
-                    Err(_) => {
-                        tracing::debug!(
-                            itemId = %item_id,
-                            context = "inventory",
-                            "{LOG_TAG} Generate body is not valid JSON"
-                        );
-                        return error_json(
-                            StatusCode::BAD_REQUEST,
-                            "Request body is not valid JSON",
-                        );
-                    }
-                };
-                match parse_generate_body(&json) {
-                    Ok(id) => id,
-                    Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
-                }
+            // v4 `handleGenerate`: an empty / whitespace body is `{}`; a
+            // non-JSON one the shared DEBUG + `Request body is not valid JSON`.
+            let json = match quilltap_core::api::item_images_route::generate_body(
+                &quilltap_core::api::item_images_route::INVENTORY_IMAGES,
+                &item_id,
+                container.scope.tier().as_str(),
+                &text,
+            ) {
+                Ok(v) => v,
+                Err(r) => return rendered(false, r, StatusCode::OK),
+            };
+            let image_profile_id = match parse_generate_body(&json) {
+                Ok(id) => id,
+                Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
             };
             let seams =
                 quilltap_host::wardrobe_item_image::wardrobe_item_image_seams(&state.version);
@@ -234,6 +223,7 @@ pub async fn inventory_item_images_post(
                 &db,
                 &seams,
                 quilltap_core::api::engine::SINGLE_USER_ID,
+                container.id.as_deref(),
                 &home,
                 image_profile_id.as_deref(),
             )
@@ -379,13 +369,11 @@ mod tests {
     }
 
     #[test]
-    fn the_scope_sentence_is_inventory_scope_schemas() {
-        // v4 `0276d10d9`: the route's `containerQuerySchema` reads
-        // `InventoryScopeSchema` (`character, group, project, general`), no
-        // longer the wardrobe route's inline order.
+    fn the_scope_sentence_is_the_shared_item_images_schemas() {
+        // v4 `600c2906f`: ONE `ItemImagesScopeSchema` for both kinds.
         assert_eq!(
             SCOPE_ISSUE,
-            "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\""
+            "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\""
         );
     }
 

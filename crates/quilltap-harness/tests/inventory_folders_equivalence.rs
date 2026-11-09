@@ -22,10 +22,9 @@
 
 use quilltap_core::inventory::folders::{
     folder_of_inventory_path, is_inventory_item_document_path, is_safe_inventory_folder_path,
-    is_valid_inventory_folder_path, normalize_inventory_folder_name,
-    normalize_inventory_folder_path_or_root, resolve_inventory_folder, InventoryFolderError,
-    INVENTORY_FOLDER, INVENTORY_FOLDER_MAX_DEPTH, INVENTORY_FOLDER_RULES,
-    INVENTORY_FOLDER_SCHEMA_MESSAGE, INVENTORY_RESERVED_FOLDER_SEGMENTS,
+    is_valid_inventory_folder_path, normalize_inventory_folder_path_or_root,
+    resolve_inventory_folder, InventoryFolderError, INVENTORY_FOLDER, INVENTORY_FOLDER_MAX_DEPTH,
+    INVENTORY_FOLDER_RULES, INVENTORY_FOLDER_SCHEMA_MESSAGE, INVENTORY_RESERVED_FOLDER_SEGMENTS,
 };
 use quilltap_core::inventory::item_folders::{
     self, folder_crumb, folder_name, folder_of_item_path, folder_segments, folder_under_item_root,
@@ -276,7 +275,16 @@ fn item_folders_match_oracle() {
                 row["out"].clone(),
             ),
             "inv_normalize_name" => (
-                inv_outcome(normalize_inventory_folder_name(opt(&row, "input"))),
+                // v4 `134961572`: `normalizeInventoryFolderName` is gone; the
+                // shared `normalizeItemFolderName(INVENTORY_FOLDER_RULES, …)`
+                // answers (REAIM re-aimed the oracle the same way).
+                inv_outcome(
+                    quilltap_core::inventory::item_folders::normalize_item_folder_name(
+                        &INVENTORY_FOLDER_RULES,
+                        opt(&row, "input"),
+                    )
+                    .map_err(InventoryFolderError::Path),
+                ),
                 row["out"].clone(),
             ),
             "inv_safe" => (

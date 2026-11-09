@@ -32,6 +32,16 @@
  * keys. `plants` run raw SQL on the MAIN copy pre-init (the unprovisioned
  * General: `DELETE FROM instance_settings WHERE key = 'generalMountPointId'`).
  *
+ * === P4.D377 (v4 `600c2906f`, the pin `624d0d25c`) ===
+ * Three more step ops — `instructions` (`GET ?action=instructions`),
+ * `list-group` (the character tier's `GET ?scope=group`) and `duplicate`
+ * (`POST ?action=duplicate`, `{ itemId }` from `item` unless `body` is given)
+ * — and the dump GROWS by `mountPoints` (the `doc_mount_points` row count) and
+ * `owners` (every project / group id with whether it points at a store): the
+ * "store table UNTOUCHED after a GET" assertion of v4 #135 (no GET provisions
+ * a store or mints a `Wardrobe/` folder).
+ * === end P4.D377 ===
+ *
  * Run (Node 24, from the PINNED v4 worktree — cp to a /tmp mirror; jest
  * ignores `.claude/` paths):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -212,6 +222,19 @@ async function runCase(
         case 'list':
           response = await r.coll.GET(mockRequest(B, 'GET'), collCtx);
           break;
+        // === P4.D377 ===
+        case 'instructions':
+          response = await r.coll.GET(mockRequest(`${B}?action=instructions`, 'GET'), collCtx);
+          break;
+        case 'list-group':
+          response = await r.coll.GET(mockRequest(`${B}?scope=group`, 'GET'), collCtx);
+          break;
+        case 'duplicate': {
+          const body = s.body !== undefined ? s.body : { itemId: itemId(s.item ?? '') };
+          response = await r.coll.POST(mockRequest(`${B}?action=duplicate`, 'POST', body), collCtx);
+          break;
+        }
+        // === end P4.D377 ===
         case 'create-folder':
         case 'rename-folder':
         case 'delete-folder':
@@ -258,7 +281,27 @@ async function runCase(
     const folders = midb
       .prepare('SELECT "mountPointId", "path" FROM "doc_mount_folders" ORDER BY "mountPointId", "path"')
       .all();
-    return { name: c.name, steps, links, folders };
+    // === P4.D377: the store table and the owners' pointers (v4 #135) ===
+    const mountPoints = (midb.prepare('SELECT COUNT(*) AS n FROM "doc_mount_points"').get() as { n: number }).n;
+    const nodeRequire = require('node:module').createRequire(join(process.cwd(), 'noop.js'));
+    const Database = nodeRequire(cipherDriverPath);
+    const mainConn = new Database(mainWork, { readonly: true });
+    let owners: unknown[];
+    try {
+      mainConn.pragma(`key = "x'${Buffer.from(seed.testPepperBase64, 'base64').toString('hex')}'"`);
+      owners = mainConn
+        .prepare(
+          `SELECT 'group' AS "kind", "id", ("officialMountPointId" IS NOT NULL) AS "hasStore" FROM "groups"
+           UNION ALL
+           SELECT 'project', "id", ("officialMountPointId" IS NOT NULL) FROM "projects"
+           ORDER BY 1, 2`,
+        )
+        .all();
+    } finally {
+      mainConn.close();
+    }
+    // === end P4.D377 ===
+    return { name: c.name, steps, links, folders, mountPoints, owners };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();

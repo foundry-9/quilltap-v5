@@ -549,9 +549,10 @@ async fn inventory_item_images_routes_equivalence() {
     assert!(direct_ran > 20);
 }
 
-/// R-10: the `[Inventory Images v1]` lines core logs — DEBUG `Listed object
-/// images` `{itemId, count, current}` and INFO `Uploaded object image`
-/// `{itemId, fileId}` (`images/route.ts:69,151`) — capture-pinned on the
+/// R-10: the `[Inventory Images v1]` lines core logs — DEBUG `Listed item
+/// images` `{itemId, scope, count, current, context}` and INFO `Uploaded item
+/// image` `{itemId, scope, kind, context, fileId, bytes}` (the shared
+/// `item-images-route.ts` at the `624d0d25c` pin, P4.D377) — capture-pinned on the
 /// calling thread (the served host logs off it), with the silence leg: a
 /// refused upload (an archived character's object) logs no upload line.
 /// `Saved object picture to a store` has no success row on this pair and the
@@ -603,7 +604,9 @@ fn the_route_lines_are_v4s() {
         body["current"].as_str().unwrap().to_string(),
     );
     let want = format!(
-        "DEBUG quilltap_core::api::inventory_item_images [Inventory Images v1] Listed object images itemId={SWORD} count={n} current={current} context=inventory"
+        // P4.D377 (v4 `600c2906f`): the shared images route's line — `scope`
+        // joins the meta.
+        "DEBUG quilltap_core::api::item_images_route [Inventory Images v1] Listed item images itemId={SWORD} scope=character count={n} current={current} context=inventory"
     );
     assert!(lines.contains(&want), "{want}\n{lines:#?}");
 
@@ -638,10 +641,14 @@ fn the_route_lines_are_v4s() {
         panic!("{r:?}")
     };
     let file_id = body["current"].as_str().unwrap().to_string();
+    // P4.D377: `{ ...metaOf(itemId, found, { kind }), fileId, bytes }`.
     let want = format!(
-        "INFO quilltap_core::api::inventory_item_images [Inventory Images v1] Uploaded object image itemId={SWORD} fileId={file_id} context=inventory"
+        "INFO quilltap_core::api::item_images_route [Inventory Images v1] Uploaded item image itemId={SWORD} scope=character kind=uploaded context=inventory fileId={file_id} bytes="
     );
-    assert!(lines.contains(&want), "{want}\n{lines:#?}");
+    assert!(
+        lines.iter().any(|l| l.starts_with(&want)),
+        "{want}\n{lines:#?}"
+    );
     let zc = InventoryContainer {
         scope: InventoryScope::Character,
         id: Some(Z.into()),
@@ -652,7 +659,7 @@ fn the_route_lines_are_v4s() {
         "{r:?}"
     );
     assert!(
-        !lines.iter().any(|l| l.contains("Uploaded object image")),
+        !lines.iter().any(|l| l.contains("Uploaded item image")),
         "{lines:#?}"
     );
 }

@@ -3216,6 +3216,21 @@ pub enum Request {
         #[serde(flatten)]
         body: serde_json::Value,
     },
+    // === P4.D377 ===
+    /// v4 `POST <tier>/wardrobe?action=duplicate` `{ itemId }` (`600c2906f`) → 201 `{
+    /// wardrobeItem }` — a copy of one of the tier's items beside the original, titled by
+    /// `nextCopyTitle` against the TIER's titles (archived included), serialized with
+    /// `origin` + `wear`; 404 per-tier item label; 400 `Validation error`. The R-D scoped
+    /// family: the body rides RAW (R-L2) so v4's flat Zod 400 is reachable over dispatch.
+    #[serde(rename_all = "camelCase")]
+    WardrobeItemDuplicate {
+        scope: WardrobeContainerScope,
+        #[serde(default)]
+        container_id: Option<String>,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === end P4.D377 ===
     /// v4 `POST /wardrobe/[itemId]/images?scope=…&id=…&action=link-image` `{ fileId }`
     /// (`9ecebf986`, PORT-NEW) → 201 `{ image, current }`; 400 `That picture cannot be
     /// linked` on `UnlinkableWardrobeImageError`. P4.D281.

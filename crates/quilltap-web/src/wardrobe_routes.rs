@@ -212,13 +212,15 @@ pub(crate) const COLLECTION_GET_ACTIONS: [&str; 2] = ["instructions", "folders"]
 
 /// v4's collection POST action map, in its literal order; no action is the
 /// create.
-pub(crate) const COLLECTION_POST_ACTIONS: [&str; 6] = [
+// === P4.D377 === `duplicate` LAST (v4 `600c2906f`'s POST map order).
+pub(crate) const COLLECTION_POST_ACTIONS: [&str; 7] = [
     "instructions",
     "create-folder",
     "rename-folder",
     "delete-folder",
     "move-items",
     "copy-items",
+    "duplicate",
 ];
 
 /// The folder write verb for a collection POST action (C2 — the body rides
@@ -258,6 +260,13 @@ fn folder_write_request(
             container_id,
             body,
         },
+        // === P4.D377 ===
+        "duplicate" => CoreRequest::WardrobeItemDuplicate {
+            scope,
+            container_id,
+            body,
+        },
+        // === end P4.D377 ===
         _ => return None,
     })
 }
@@ -358,8 +367,11 @@ pub(crate) async fn collection_post(
         }
         // Both filing verbs answer 200 — a copy is NOT a 201 (v4
         // `successResponse`).
+        // === P4.D377 === `duplicate` answers v4's `created(…)` — 201.
         Some(folder_action) => match folder_write_request(folder_action, scope, container_id, body)
         {
+            Some(req) if folder_action == "duplicate" => (req, StatusCode::CREATED),
+            // === end P4.D377 ===
             Some(req) => (req, StatusCode::OK),
             None => {
                 return crate::query::unknown_action_response(

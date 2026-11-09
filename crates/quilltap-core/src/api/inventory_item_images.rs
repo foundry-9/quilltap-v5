@@ -16,14 +16,25 @@
 //! (refused) or v4's 502 (carried as `Internal` + `details` — the web edge
 //! restores the 502). The `[Inventory Images v1]` lines run on the caller's
 //! thread after the write returns.
+//!
+//! **The Inventory's ADAPTER (v4 `600c2906f`, P4.D377 item 11).** The texts,
+//! keys and shared refusals are [`super::item_images_route`]'s
+//! ([`INVENTORY_IMAGES`]) — which GIVES the Inventory the lines v4's shared
+//! factory logs (`Item not in the named container`, `Generated item image`,
+//! `Generation failed`, `Set current item image`, `Deleted item image`,
+//! `Listed save targets`, both save refusals, `Save to store rejected`) and
+//! moves its own (`Listed object images` → `Listed item images`, `Uploaded
+//! object image` → `Uploaded item image`, `Saved object picture to a store` →
+//! `Saved item picture to a store`), `scope` in every meta. Its error mapping
+//! stays [`inventory_error_response`] and its list keeps the archetype
+//! fall-through (`inherited`); the default caption is `title || name` (JS `||`:
+//! an EMPTY title falls through).
 
 use serde_json::{json, Map, Value};
 
-use super::inventory_route_factory::{
-    escaped, inventory_error_response, not_found, validation_error,
-};
+use super::inventory_route_factory::{escaped, inventory_error_response, validation_error};
+use super::item_images_route::{self as images, INVENTORY_IMAGES};
 use super::types::{ErrorKind, InventoryContainer, InventoryScope, Response};
-use super::wardrobe_item_images::CONTAINER_ID_EMPTY_ISSUE;
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::inventory::item_image_generation::{
@@ -40,22 +51,18 @@ use crate::services::wardrobe_image_bridge::WardrobeImageKind;
 use crate::services::wardrobe_item_image_generation::WardrobeItemImageSeams;
 use crate::services::wardrobe_item_images::service::{to_wardrobe_image_summary, ImageMint};
 
-const LOG_TAG: &str = "[Inventory Images v1]";
-
 /// v4 `containerQuerySchema`'s two id checks the typed verb can still fail:
 /// `id: z.string().min(1).optional()` and the refine `scope === 'general' ||
 /// !!id`. Zod 4 runs the refine after the non-fatal `min(1)` issue, so an
 /// EMPTY id on a non-General scope answers both sentences, joined `'; '` (the
 /// wardrobe twin's measurement — one shared `min(1)` sentence).
 pub fn container_query_issue(scope: InventoryScope, container_id: Option<&str>) -> Option<String> {
-    let mut issues: Vec<&str> = Vec::new();
-    if container_id == Some("") {
-        issues.push(CONTAINER_ID_EMPTY_ISSUE);
-    }
-    if scope != InventoryScope::General && container_id.is_none_or(str::is_empty) {
-        issues.push("id is required for this scope");
-    }
-    (!issues.is_empty()).then(|| issues.join("; "))
+    images::container_query_issue(scope == InventoryScope::General, container_id)
+}
+
+/// The query's scope as v4's `metaOf` logs it (the home resolved in that tier).
+fn scope_of(home: &InventoryItemHome) -> &'static str {
+    home.location.scope.as_str()
 }
 
 fn bad_request(msg: impl Into<String>) -> Response {
@@ -98,7 +105,11 @@ pub async fn resolve_home(
     });
     match found {
         Ok(Some(home)) => Ok(home),
-        Ok(None) => Err(not_found("Inventory object")),
+        Ok(None) => Err(images::item_not_found(
+            &INVENTORY_IMAGES,
+            item_id,
+            scope.as_str(),
+        )),
         Err(e) => Err(escaped(e)),
     }
 }
@@ -124,37 +135,18 @@ pub fn list_on_home(db: &Db, home: &InventoryItemHome) -> Response {
             .iter()
             .any(|image| image.get("fileId").and_then(Value::as_str) == Some(*wanted))
     });
-    tracing::debug!(
-        itemId = %home.record.id(),
-        count = images.len(),
-        current = current.unwrap_or("null"),
-        context = "inventory",
-        "{LOG_TAG} Listed object images"
+    images::log_listed(
+        &INVENTORY_IMAGES,
+        home.record.id(),
+        scope_of(home),
+        images.len(),
+        current,
     );
     Response::Inventory(json!({ "current": current, "images": images }))
 }
 
-/// v4 `generateBodySchema` — `{ imageProfileId: z.string().min(1).nullable()
-/// .optional() }` (an object; unknown keys stripped); the issues joined `'; '`.
-pub fn parse_generate_body(v: &Value) -> Result<Option<String>, String> {
-    let Some(obj) = v.as_object() else {
-        return Err(format!(
-            "Invalid input: expected object, received {}",
-            super::zod_issues::zod_parsed_type(Some(v))
-        ));
-    };
-    match obj.get("imageProfileId") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) if s.is_empty() => {
-            Err("Too small: expected string to have >=1 characters".to_string())
-        }
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(other) => Err(format!(
-            "Invalid input: expected string, received {}",
-            super::zod_issues::zod_parsed_type(Some(other))
-        )),
-    }
-}
+/// v4 `generateBodySchema` — the shared images route's.
+pub use super::item_images_route::parse_generate_body;
 
 /// v4 `fileIdBodySchema` — `{ fileId: z.string().min(1, 'fileId is required') }`,
 /// parsed with `.parse` INSIDE the action's try: the ZodError reaches
@@ -199,6 +191,7 @@ pub async fn generate(
         db,
         &WardrobeItemImageSeams::from_images_generate(seams),
         user_id,
+        container.id.as_deref(),
         &home,
         image_profile_id,
     )
@@ -216,6 +209,7 @@ pub async fn generate_on_home(
     db: &Db,
     seams: &WardrobeItemImageSeams,
     user_id: &str,
+    container_id: Option<&str>,
     home: &InventoryItemHome,
     image_profile_id: Option<&str>,
 ) -> Response {
@@ -245,6 +239,13 @@ pub async fn generate_on_home(
                 Ok(rows) => rows.into_iter().find(|f| f.id == r.file_id),
                 Err(e) => return escaped(e),
             };
+            images::log_generated(
+                &INVENTORY_IMAGES,
+                home.record.id(),
+                scope_of(home),
+                container_id,
+                &r.file_id,
+            );
             let mut body = Map::new();
             body.insert(
                 "image".into(),
@@ -270,27 +271,15 @@ pub async fn generate_on_home(
             message,
             trail,
             refused,
-        }) => {
-            let (kind, text) = if refused {
-                (
-                    ErrorKind::Unprocessable,
-                    "The image provider declined to draw this object".to_string(),
-                )
-            } else {
-                (
-                    ErrorKind::Internal,
-                    format!("Image generation failed: {message}"),
-                )
-            };
-            let mut response = Response::error(kind, text);
-            if let Response::Error(e) = &mut response {
-                e.details = Some(Box::new(json!({
-                    "trail": trail_value(&trail),
-                    "refused": refused,
-                })));
-            }
-            response
-        }
+        }) => images::generation_failed(
+            &INVENTORY_IMAGES,
+            home.record.id(),
+            scope_of(home),
+            container_id,
+            &message,
+            trail_value(&trail),
+            refused,
+        ),
         Err(InventoryImageGenerationFailure::Item(e)) => inventory_error_response(e),
     }
 }
@@ -337,11 +326,13 @@ pub async fn upload_on_home(
         .await;
     match written {
         Ok(Ok(added)) => {
-            tracing::info!(
-                itemId = %home.record.id(),
-                fileId = %added.file.id,
-                context = "inventory",
-                "{LOG_TAG} Uploaded object image"
+            images::log_uploaded(
+                &INVENTORY_IMAGES,
+                home.record.id(),
+                scope_of(home),
+                kind.as_str(),
+                &added.file.id,
+                added.file.size,
             );
             Response::Inventory(json!({
                 "image": to_wardrobe_image_summary(&added.file),
@@ -372,19 +363,27 @@ pub async fn set_current_on_home(db: &Db, home: &InventoryItemHome, body: &Value
         Ok(id) => id,
         Err(r) => return r,
     };
-    let h = home.clone();
+    let (h, fid) = (home.clone(), file_id.clone());
     let result = db
         .write(move |ws| {
             Ok(set_current_inventory_item_image(
                 ws.main().connection(),
                 mount_conn(ws)?,
                 &h,
-                &file_id,
+                &fid,
             ))
         })
         .await;
     match result {
-        Ok(Ok(current)) => Response::Inventory(json!({ "current": current })),
+        Ok(Ok(current)) => {
+            images::log_set_current(
+                &INVENTORY_IMAGES,
+                home.record.id(),
+                scope_of(home),
+                &file_id,
+            );
+            Response::Inventory(json!({ "current": current }))
+        }
         Ok(Err(e)) => inventory_error_response(e),
         Err(e) => escaped(e),
     }
@@ -409,35 +408,51 @@ pub async fn delete_on_home(db: &Db, home: &InventoryItemHome, body: &Value) -> 
         Ok(id) => id,
         Err(r) => return r,
     };
-    let h = home.clone();
+    let (h, fid) = (home.clone(), file_id.clone());
     let result = db
         .write(move |ws| {
             Ok(delete_inventory_item_image(
                 ws.main().connection(),
                 mount_conn(ws)?,
                 &h,
-                &file_id,
+                &fid,
             ))
         })
         .await;
     match result {
-        Ok(Ok(current)) => Response::Inventory(json!({ "current": current })),
+        Ok(Ok(current)) => {
+            images::log_deleted(
+                &INVENTORY_IMAGES,
+                home.record.id(),
+                scope_of(home),
+                &file_id,
+                current.as_deref(),
+            );
+            Response::Inventory(json!({ "current": current }))
+        }
         Ok(Err(e)) => inventory_error_response(e),
         Err(e) => escaped(e),
     }
 }
 
-/// `GET …/images?action=save-targets` → `{ albums }` (no route line).
+/// `GET …/images?action=save-targets` → `{ albums }`.
 pub async fn save_targets(db: &Db, container: &InventoryContainer, item_id: &str) -> Response {
     match resolve_home(db, container, item_id).await {
-        Ok(_) => save_targets_on_home(db),
+        Ok(home) => save_targets_on_home(db, &home),
         Err(r) => r,
     }
 }
 
-/// [`save_targets`] past the gate.
-pub fn save_targets_on_home(db: &Db) -> Response {
+/// [`save_targets`] past the gate — DEBUG `Listed save targets` (the shared
+/// factory's, `600c2906f`).
+pub fn save_targets_on_home(db: &Db, home: &InventoryItemHome) -> Response {
     let albums = crate::photos::photo_album_options::list_all_photo_album_options(db);
+    images::log_save_targets(
+        &INVENTORY_IMAGES,
+        home.record.id(),
+        scope_of(home),
+        albums.len(),
+    );
     Response::Inventory(json!({ "albums": albums }))
 }
 
@@ -475,8 +490,8 @@ pub async fn save_to_store(
 /// `saveImageToAlbum` with `caption ?? (title || name)`, `tags ?? []` and the
 /// operator's byline → INFO → the shared 200 body; a `SaveImageToAlbumError`
 /// is the shared error response (409 `ALREADY_SAVED` with its riders, else
-/// 400); anything else v4's middleware 500. (v4's Inventory handler logs none
-/// of the wardrobe twin's refusal lines.)
+/// 400); anything else v4's middleware 500. Every line is the shared images
+/// route's (at the pin the Inventory logs the refusals too).
 pub async fn save_to_store_on_home(
     db: &Db,
     bytes: std::sync::Arc<dyn crate::photos::save_image_to_album::FileBytesStore>,
@@ -500,7 +515,13 @@ pub async fn save_to_store_on_home(
         .iter()
         .any(|image| image.get("fileId").and_then(Value::as_str) == Some(file_id.as_str()))
     {
-        return bad_request("That picture does not belong to this object");
+        return images::refuse_foreign_picture(
+            &INVENTORY_IMAGES,
+            &item_id,
+            scope_of(home),
+            &file_id,
+            &mount_point_id,
+        );
     }
     // v4's `getArchivedCharacterVaultMountPointIds()` — its `_findAll` read
     // answers `[]` on a failure.
@@ -510,9 +531,12 @@ pub async fn save_to_store_on_home(
         )
     });
     if archived.contains(&mount_point_id) {
-        return Response::error(
-            ErrorKind::Conflict,
-            "That store belongs to an archived character and cannot be written to",
+        return images::refuse_archived_vault(
+            &INVENTORY_IMAGES,
+            &item_id,
+            scope_of(home),
+            &file_id,
+            &mount_point_id,
         );
     }
     let attribution = match db.read_main(|c| {
@@ -557,16 +581,29 @@ pub async fn save_to_store_on_home(
         .await;
     match result {
         Ok(Ok(saved)) => {
-            tracing::info!(
-                itemId = %item_id,
-                fileId = %file_id,
-                mountPointId = %mount_point_id,
-                context = "inventory",
-                "{LOG_TAG} Saved object picture to a store"
+            images::log_saved(
+                &INVENTORY_IMAGES,
+                &item_id,
+                scope_of(home),
+                &file_id,
+                &mount_point_id,
+                &saved.relative_path,
+                &saved.link_id,
             );
             Response::Inventory(saved_image_body(&saved))
         }
-        Ok(Err(err)) => save_image_error_response(err),
+        Ok(Err(err)) => {
+            images::log_save_rejected(
+                &INVENTORY_IMAGES,
+                &item_id,
+                scope_of(home),
+                &file_id,
+                &mount_point_id,
+                crate::photos::save_image_response::save_image_error_code(err.code),
+                &err.message,
+            );
+            save_image_error_response(err)
+        }
         // v4 rethrows a non-`SaveImageToAlbumError`: a broken store is the
         // middleware's 503, anything else the generic 500 (`escaped`).
         Err(e) => escaped(e),

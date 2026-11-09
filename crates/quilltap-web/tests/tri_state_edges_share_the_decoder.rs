@@ -605,7 +605,9 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // tri-state).
     // P4.D343 (+1): `GET ?action=storyteller-round`'s `ChatStorytellerRound`
     // (path id only — no body, no tri-state key).
-    ("wardrobe_routes.rs", 33),
+    // P4.D377 (+1): `POST ?action=duplicate`'s `WardrobeItemDuplicate` (the
+    // `{ itemId }` body rides raw — no tri-state key).
+    ("wardrobe_routes.rs", 34),
 ];
 
 #[test]
@@ -642,8 +644,9 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 157,
-        "157 = 153 + P4.D345's four (`custom_tools_routes.rs`'s GET `interventions` arm and the \
+        total, 158,
+        "158 = 157 + P4.D377's one (`wardrobe_routes.rs`'s `WardrobeItemDuplicate`, the collection POST's `?action=duplicate`, v4 `600c2906f`). \
+         157 = 153 + P4.D345's four (`custom_tools_routes.rs`'s GET `interventions` arm and the \
          three intervention POSTs; summed on the union). \
          153 = 152 + P4.D343's one (`wardrobe_routes.rs`'s `ChatStorytellerRound`, the chat GET's `?action=storyteller-round`, v4 `b15fe9404` — its three POST arms go through `request_envelope` and add none). \
          152 = 150 + P4.170's two (`wardrobe_routes.rs`'s chat-first `ChatInformsList` probe and \

@@ -2572,6 +2572,15 @@ const CENSUS: &[Row] = &[
         v4: V4::Query,
         note: "`?action=copy-items`; the `{ itemIds, folder, components? }` body rides as a flattened `Value` parsed by v4's `copyWardrobeItemsSchema` inside the handler — `bbbcd2388` (P4.D309)",
     },
+    // === P4.D377 ===
+    Row {
+        variant: "WardrobeItemDuplicate",
+        field: "scope",
+        rust_type: "WardrobeContainerScope",
+        v4: V4::Query,
+        note: "`?action=duplicate`; the `{ itemId }` body rides as a flattened `Value` parsed by v4's `duplicateWardrobeItemSchema` inside the handler — `600c2906f` (P4.D377)",
+    },
+    // === end P4.D377 ===
     Row {
         variant: "WardrobeItemImageLink",
         field: "scope",
@@ -2973,7 +2982,12 @@ fn is_route_identifier(field: &str) -> bool {
 // `decision`) are raw `Option<Value>`s the core's Zod twin parses, so no typed
 // field can wrong-type. Measured red at 519 against 515 first; the unifier
 // re-measures on the union (H11).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 523;
+//
+// **P4.D377 (+1): 523 → 524** — v4 `600c2906f`'s `WardrobeItemDuplicate.
+// container_id` (the owner's `[id]` segment, as on `WardrobeItemsCopy`); its
+// `scope` is the census's one new ROW; the `{ itemId }` body rides raw.
+// Measured red at 524 against 523 first; the unifier sums the lanes' moves.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 524;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

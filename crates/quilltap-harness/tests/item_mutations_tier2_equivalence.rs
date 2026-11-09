@@ -1,6 +1,6 @@
 //! Tier-2 read-back differential for the wardrobe ITEM + FOLDER MUTATIONS
 //! (P4.D279 keystone C1 §11): `quilltap_core::services::wardrobe_item_mutations`
-//! and `::wardrobe_folder_mutations` vs v4's REAL `lib/wardrobe/item-mutations.ts`
+//! and ``inventory::item_folder_location` (the shared folder layer, P4.D377) vs v4's REAL `lib/wardrobe/item-mutations.ts`
 //! (+ `create-body.ts`) and `lib/wardrobe/folder-mutations.ts`, each side over
 //! its REAL `resolveWardrobeLocation`.
 //!
@@ -8,7 +8,7 @@
 //! General, four seeded items — `fixtures/item-mutations-tier2.json`), run the
 //! corpus `ops` and after EVERY op record `{ op, result | error, items:
 //! readItems(true), folders: listFolders(), logs }` — `logs` being the
-//! `[ItemMutations]` / `[FolderMutations]` DEBUG lines (message + fields as
+//! `[ItemMutations]` / `[FolderMutations]` / (P4.D377, v4 `a0ed5ecad`) `[ItemFolders]` DEBUG lines (message + fields as
 //! strings; v5's are captured with `test_support::captured_with`).
 //!
 //! NORMALISATION (both sides, here): a create without `preserve` mints a uuid —
@@ -19,7 +19,7 @@
 //! sentences, counts — exact.
 //!
 //! RED-FIRST: on main before this lane the two service modules did not exist
-//! (`services::wardrobe_item_mutations` / `::wardrobe_folder_mutations` were
+//! (`services::wardrobe_item_mutations` / the retired `::wardrobe_folder_mutations` were
 //! stubs); this family could not compile, let alone pass.
 //!
 //! Generate the fixtures + oracle (Node 24, from the v4 checkout):
@@ -46,13 +46,13 @@ use quilltap_core::db::wardrobe_location::{
     resolve_wardrobe_location, ResolveWardrobeLocationOptions, WardrobeLocation,
 };
 use quilltap_core::db::Writer;
-use quilltap_core::services::wardrobe_folder_mutations::{
-    create_wardrobe_folder, delete_wardrobe_folder, rename_wardrobe_folder,
+use quilltap_core::inventory::item_folder_location::{
+    create_item_folder, delete_item_folder, rename_item_folder,
 };
 use quilltap_core::services::wardrobe_item_mutations::{
     component_lookup_for, create_item, move_items_to_folder, set_item_archived,
     update_item_with_origin, validate_component_refs, CreateItemOptions, ItemPatch, PatchOrigin,
-    PreservedIdentity, WardrobeCreateBody,
+    PreservedIdentity, WardrobeCreateBody, WARDROBE_FOLDER_KIND,
 };
 use quilltap_core::test_support::captured_with;
 use quilltap_core::vault_overlay::WardrobeItem;
@@ -189,7 +189,7 @@ fn item_json(item: &WardrobeItem) -> Value {
 /// `=` and every compared field value is space-free, so the first `k=v` token
 /// ends the message and the rest split on spaces.
 fn parse_log_line(line: &str) -> Option<Value> {
-    let start = ["[ItemMutations]", "[FolderMutations]"]
+    let start = ["[ItemMutations]", "[FolderMutations]", "[ItemFolders]"]
         .iter()
         .filter_map(|p| line.find(&format!(" {p} ")))
         .min()?;
@@ -597,12 +597,19 @@ fn run_op(
             Err(e) => err_json(e),
         },
         "createFolder" => {
-            match create_wardrobe_folder(mc, xc, location, op.path.as_deref().unwrap_or("")) {
+            match create_item_folder(
+                &WARDROBE_FOLDER_KIND,
+                mc,
+                xc,
+                location,
+                op.path.as_deref().unwrap_or(""),
+            ) {
                 Ok(folder) => json!({ "kind": "ok", "folder": folder }),
                 Err(e) => err_json(e),
             }
         }
-        "renameFolder" => match rename_wardrobe_folder(
+        "renameFolder" => match rename_item_folder(
+            &WARDROBE_FOLDER_KIND,
             mc,
             xc,
             location,
@@ -613,9 +620,15 @@ fn run_op(
             Err(e) => err_json(e),
         },
         "deleteFolder" => {
-            match delete_wardrobe_folder(mc, xc, location, op.path.as_deref().unwrap_or("")) {
-                Ok((moved_items, moved_folders)) => {
-                    json!({ "kind": "ok", "movedItems": moved_items, "movedFolders": moved_folders })
+            match delete_item_folder(
+                &WARDROBE_FOLDER_KIND,
+                mc,
+                xc,
+                location,
+                op.path.as_deref().unwrap_or(""),
+            ) {
+                Ok(d) => {
+                    json!({ "kind": "ok", "movedItems": d.moved_items, "movedFolders": d.moved_folders })
                 }
                 Err(e) => err_json(e),
             }

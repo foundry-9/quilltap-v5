@@ -34,9 +34,7 @@ use serde_json::Value;
 
 use crate::db::archetype_wardrobe::read_general_wardrobe;
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
-use crate::db::vault_wardrobe_public::{
-    UpdateManyOptions, WardrobeItemPatch, WardrobePatch, WardrobeScope,
-};
+use crate::db::vault_wardrobe_public::{WardrobePatch, WardrobeScope};
 use crate::db::wardrobe_location::{WardrobeLocation, WardrobeLocationError};
 use crate::db::DbError;
 use crate::vault_overlay::WardrobeItem;
@@ -583,8 +581,9 @@ pub fn set_item_archived(
 /// be an item of this location — a borrowed item (one shown in a character's
 /// view from a shared tier) refuses the batch
 /// ([`WardrobeLocationError::ItemNotInLocation`]), naming it, before anything
-/// moves. Returns the moved items as written. DEBUG `[ItemMutations] Moved
-/// wardrobe items to folder`.
+/// moves. Returns the moved items as written. The shared
+/// `move_items_to_folder_in` under [`WARDROBE_FOLDER_KIND`] (v4 `a0ed5ecad`):
+/// its DEBUG is `[ItemFolders] Moved items to folder`.
 pub fn move_items_to_folder(
     main: &Connection,
     mount: &Connection,
@@ -592,35 +591,28 @@ pub fn move_items_to_folder(
     item_ids: &[String],
     folder: &str,
 ) -> Result<Vec<WardrobeItem>, WardrobeLocationError> {
-    let target = location.resolve_folder(mount, folder)?;
-    let unique_ids = unique_in_order(item_ids);
-    let patches: Vec<WardrobeItemPatch> = unique_ids
-        .iter()
-        .map(|id| WardrobeItemPatch {
-            id: id.clone(),
-            patch: WardrobePatch {
-                folder: Some(target.clone()),
-                ..WardrobePatch::default()
-            },
-        })
-        .collect();
-    let moved = location.update_many(
+    crate::inventory::item_folder_location::move_items_to_folder_in(
+        &WARDROBE_FOLDER_KIND,
         main,
         mount,
-        &patches,
-        UpdateManyOptions { require_all: true },
-    )?;
-    tracing::debug!(
-        scope = location.scope.as_str(),
-        mountPointId = %location.mount_point_id,
-        folder = %target,
-        requested = unique_ids.len(),
-        moved = moved.len(),
-        context = "wardrobe",
-        "[ItemMutations] Moved wardrobe items to folder"
-    );
-    Ok(moved)
+        location,
+        item_ids,
+        folder,
+    )
 }
+
+/// The wardrobe's folder kind — its rules and its path error — as the shared
+/// item-folder mutations (`inventory::item_folder_location`) take it (v4
+/// `WARDROBE_FOLDER_KIND`, `a0ed5ecad`). Folder create / rename / delete run
+/// through those mutations from the route preamble's folder actions.
+pub const WARDROBE_FOLDER_KIND: crate::inventory::item_folder_location::ItemFolderKind<
+    WardrobeLocationError,
+> = crate::inventory::item_folder_location::ItemFolderKind {
+    rules: &crate::wardrobe_folders::WARDROBE_FOLDER_RULES,
+    path_error: |message| {
+        WardrobeLocationError::FolderPath(crate::wardrobe_folders::WardrobeFolderPathError(message))
+    },
+};
 
 #[cfg(test)]
 mod tests {

@@ -28,19 +28,33 @@
 //! the folder some other way — refuses with [`WardrobeLocationError::CharacterArchived`].
 //! Writes re-resolve a character's mount AT WRITE TIME so the tombstone check
 //! sees the character as it is now.
+//!
+//! **Every write tells the open browsers (v4 `600c2906f`, P4.D377 item 8).**
+//! One private [`WardrobeLocation::write`] (v4's `write(op, fn, landed)`) sits
+//! under every write method: it runs the write against the writable mount,
+//! publishes the collection-wide `wardrobe` realtime topic only when something
+//! LANDED (a batch or delete that matched nothing changed nothing), and logs
+//! the DEBUG `[WardrobeLocation] Location write {op, mountPointId, scope,
+//! published, context}` on every write that returned — published or not. A
+//! write that throws (the tombstone, a refusal) logs nothing and publishes
+//! nothing. The publish is a synchronous, coalescing, fire-and-forget call,
+//! safe inside a write closure (the Inventory's `landed()` precedent); in v4's
+//! job child the publish is a no-op and the commit hook names the topic
+//! instead (`writesWardrobeFile` in `realtime::job_topics`).
+//!
+//! **Owners are read RAW (v4 `resolveOwnerStore`, `0c47f4539`; P4.D377 item
+//! 9, the survey's R-F):** a project / group whose row fails hydration still
+//! resolves its store; the folder heal on an ensuring resolve is reach's, and
+//! its failure is reach's `[Reach] Failed to ensure Wardrobe folder` WARN.
 
 use rusqlite::Connection;
 
-use super::archetype_wardrobe::{
-    ensure_shared_wardrobe_folder, general_wardrobe_origin, WardrobeOrigin, WardrobeOriginScope,
+use super::archetype_wardrobe::{general_wardrobe_origin, WardrobeOrigin, WardrobeOriginScope};
+use super::reach::{
+    group_mounts_for, group_origin_map, resolve_owner_store, Archived, EnsureFolder,
+    OwnerFolderFailure, OwnerScope, ResolveOwnerStoreOptions,
 };
-use super::characters_read;
-use super::doc_mount_file_links::DocMountFileLinksRepository;
-use super::ensure_official_store::{ensure_owner_official_store, StoreOwnerKind};
-use super::groups::GroupsRepository;
-use super::instance_settings;
-use super::projects::ProjectsRepository;
-use super::tiered_mount_pool::resolve_group_mounts_for_character;
+use super::tiered_mount_pool::GroupMountsOptions;
 use super::vault_wardrobe_public::{
     create_folder_in_mount, create_in_mount, delete_folder_in_mount, delete_in_mount,
     list_folder_paths_in_mount, list_folders_in_mount, read_mount_items, rename_folder_in_mount,
@@ -49,12 +63,12 @@ use super::vault_wardrobe_public::{
 };
 pub use super::vault_wardrobe_public::{WardrobeMount, WardrobeScope};
 use super::DbError;
+use crate::inventory::item_folder_location::{ItemFilingLocation, ItemFolderLocation};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe_folders::{
     conflict_default_message, not_found_message, not_in_location_message, resolve_wardrobe_folder,
     WardrobeFolder, WardrobeFolderPathError,
 };
-use serde_json::Value;
 
 /// A failure on a location's write path — v4's thrown error classes, each with
 /// its sentence ([`Self::message`]). The route factory's write-error map is
@@ -245,13 +259,47 @@ impl WardrobeLocation {
             .find(|item| item.id == id))
     }
 
+    /// v4's `write(op, fn, landed)`: run a write against the current writable
+    /// mount, publish `wardrobe` when it landed, and log the location-write
+    /// DEBUG on every write that returned (see the module doc).
+    fn write<T>(
+        &self,
+        main: &Connection,
+        op: &'static str,
+        f: impl FnOnce(&WardrobeMount) -> Result<T, WardrobeLocationError>,
+        landed: impl FnOnce(&T) -> bool,
+    ) -> Result<T, WardrobeLocationError> {
+        let result = f(&self.writable_mount(main)?)?;
+        let published = landed(&result);
+        if published {
+            crate::realtime::bus::publish_realtime(
+                crate::realtime::types::RealtimeTopic::Wardrobe,
+                None,
+            );
+        }
+        tracing::debug!(
+            op,
+            mountPointId = %self.mount.mount_point_id,
+            scope = self.mount.scope.as_str(),
+            published,
+            context = "wardrobe",
+            "[WardrobeLocation] Location write"
+        );
+        Ok(result)
+    }
+
     pub fn create(
         &self,
         main: &Connection,
         mount: &Connection,
         item: &WardrobeItem,
     ) -> Result<WardrobeItem, WardrobeLocationError> {
-        create_in_mount(main, mount, &self.writable_mount(main)?, item)
+        self.write(
+            main,
+            "create",
+            |target| create_in_mount(main, mount, target, item),
+            |_| true,
+        )
     }
 
     /// `update_many` with one patch.
@@ -289,7 +337,12 @@ impl WardrobeLocation {
         patches: &[WardrobeItemPatch],
         opts: UpdateManyOptions,
     ) -> Result<Vec<WardrobeItem>, WardrobeLocationError> {
-        update_many_in_mount(main, mount, &self.writable_mount(main)?, patches, opts)
+        self.write(
+            main,
+            "updateMany",
+            |target| update_many_in_mount(main, mount, target, patches, opts),
+            |updated| !updated.is_empty(),
+        )
     }
 
     pub fn delete(
@@ -298,7 +351,12 @@ impl WardrobeLocation {
         mount: &Connection,
         id: &str,
     ) -> Result<bool, WardrobeLocationError> {
-        delete_in_mount(main, mount, &self.writable_mount(main)?, id)
+        self.write(
+            main,
+            "delete",
+            |target| delete_in_mount(main, mount, target, id),
+            |deleted| *deleted,
+        )
     }
 
     /// Every folder under `Wardrobe/` (empty ones included), with direct item
@@ -332,7 +390,12 @@ impl WardrobeLocation {
         mount: &Connection,
         path: &str,
     ) -> Result<WardrobeFolder, WardrobeLocationError> {
-        create_folder_in_mount(mount, &self.writable_mount(main)?, path)
+        self.write(
+            main,
+            "createFolder",
+            |target| create_folder_in_mount(mount, target, path),
+            |_| true,
+        )
     }
 
     /// Rename a folder in place to `new_name` (one normalised segment).
@@ -343,7 +406,12 @@ impl WardrobeLocation {
         path: &str,
         new_name: &str,
     ) -> Result<WardrobeFolder, WardrobeLocationError> {
-        rename_folder_in_mount(mount, &self.writable_mount(main)?, path, new_name)
+        self.write(
+            main,
+            "renameFolder",
+            |target| rename_folder_in_mount(mount, target, path, new_name),
+            |_| true,
+        )
     }
 
     /// Delete a folder, sending its items and subfolders up to its parent.
@@ -353,7 +421,12 @@ impl WardrobeLocation {
         mount: &Connection,
         path: &str,
     ) -> Result<DeletedFolder, WardrobeLocationError> {
-        delete_folder_in_mount(main, mount, &self.writable_mount(main)?, path)
+        self.write(
+            main,
+            "deleteFolder",
+            |target| delete_folder_in_mount(main, mount, target, path),
+            |_| true,
+        )
     }
 
     /// The mount, checked for writing: `CharacterArchived` for an archived
@@ -366,6 +439,82 @@ impl WardrobeLocation {
         Ok(self.writable_mount(main)?.mount_point_id)
     }
 }
+
+// === P4.D377 === the shared folder layer (`inventory::item_folder_location`).
+impl ItemFolderLocation for WardrobeLocation {
+    type Error = WardrobeLocationError;
+
+    fn scope(&self) -> &'static str {
+        self.scope.as_str()
+    }
+    fn mount_point_id(&self) -> &str {
+        &self.mount_point_id
+    }
+    fn list_folders(
+        &self,
+        mount: &Connection,
+    ) -> Result<Vec<crate::inventory::item_folders::ItemFolder>, DbError> {
+        WardrobeLocation::list_folders(self, mount)
+    }
+    fn resolve_folder(&self, mount: &Connection, requested: &str) -> Result<String, Self::Error> {
+        Ok(WardrobeLocation::resolve_folder(self, mount, requested)?)
+    }
+    fn create_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+    ) -> Result<WardrobeFolder, Self::Error> {
+        WardrobeLocation::create_folder(self, main, mount, path)
+    }
+    fn rename_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+        new_name: &str,
+    ) -> Result<WardrobeFolder, Self::Error> {
+        WardrobeLocation::rename_folder(self, main, mount, path, new_name)
+    }
+    fn delete_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+    ) -> Result<DeletedFolder, Self::Error> {
+        WardrobeLocation::delete_folder(self, main, mount, path)
+    }
+}
+
+impl ItemFilingLocation for WardrobeLocation {
+    type Item = WardrobeItem;
+
+    fn refile_items(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        item_ids: &[String],
+        folder: &str,
+    ) -> Result<Vec<WardrobeItem>, WardrobeLocationError> {
+        let patches: Vec<WardrobeItemPatch> = item_ids
+            .iter()
+            .map(|id| WardrobeItemPatch {
+                id: id.clone(),
+                patch: WardrobePatch {
+                    folder: Some(folder.to_string()),
+                    ..WardrobePatch::default()
+                },
+            })
+            .collect();
+        self.update_many(
+            main,
+            mount,
+            &patches,
+            UpdateManyOptions { require_all: true },
+        )
+    }
+}
+// === P4.D377 ===
 
 /// v4 `resolveWardrobeLocation(scope, id, repos, userId, { ensure })` —
 /// resolve `{ scope, id }` to a location, or `None` when the owner is missing
@@ -399,6 +548,23 @@ pub fn resolve_wardrobe_location(
     Ok(location)
 }
 
+/// v4 `SHARED_WARDROBE_FOLDER` — the folder an ensuring resolve heals.
+const SHARED_WARDROBE_FOLDER: &str = "Wardrobe";
+
+fn owner_scope(scope: WardrobeScope) -> OwnerScope {
+    match scope {
+        WardrobeScope::Character => OwnerScope::Character,
+        WardrobeScope::Group => OwnerScope::Group,
+        WardrobeScope::Project => OwnerScope::Project,
+        WardrobeScope::General => OwnerScope::General,
+    }
+}
+
+/// v4 `resolve` over `resolveOwnerStore(scope, id, repos, userId, { ensure:
+/// ensure ? { folder: 'Wardrobe', onFolderFailure: 'swallow' } : undefined,
+/// archived: 'allow', context: 'wardrobe' })` — raw owner reads (R-F); General
+/// → `GENERAL_WARDROBE_ORIGIN`; else the origin `{scope, id: ownerId, name:
+/// store.owner.name}` (the RAW name).
 fn resolve(
     main: &Connection,
     mount: &Connection,
@@ -407,17 +573,28 @@ fn resolve(
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<WardrobeLocation>, DbError> {
-    let links = DocMountFileLinksRepository::new(mount);
-    if scope == WardrobeScope::General {
-        let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
-            return Ok(None);
-        };
-        if ensure {
-            ensure_shared_folder_soft(&links, &mount_point_id);
-        }
+    let Some(store) = resolve_owner_store(
+        main,
+        mount,
+        owner_scope(scope),
+        id,
+        user_id,
+        &ResolveOwnerStoreOptions {
+            ensure: ensure.then_some(EnsureFolder {
+                folder: SHARED_WARDROBE_FOLDER,
+                on_folder_failure: OwnerFolderFailure::Swallow,
+            }),
+            archived: Archived::Allow,
+            context: Some("wardrobe"),
+        },
+    )?
+    else {
+        return Ok(None);
+    };
+    if store.scope == OwnerScope::General {
         return Ok(Some(location_for_mount(
             WardrobeMount {
-                mount_point_id,
+                mount_point_id: store.mount_point_id,
                 scope: WardrobeScope::General,
                 character_id: None,
             },
@@ -425,157 +602,46 @@ fn resolve(
             general_wardrobe_origin(),
         )));
     }
-
-    // v4 `if (!id) return null` — an empty string is falsy too.
-    let Some(id) = id.filter(|s| !s.is_empty()) else {
-        return Ok(None);
+    let owner_id = store.owner.id.clone().unwrap_or_default();
+    let origin_scope = match scope {
+        WardrobeScope::Character => WardrobeOriginScope::Character,
+        WardrobeScope::Project => WardrobeOriginScope::Project,
+        _ => WardrobeOriginScope::Group,
     };
-
-    if scope == WardrobeScope::Character {
-        let Some(character) = characters_read::find_by_id_raw(main, id)? else {
-            return Ok(None);
-        };
-        // The ownership gate (R-E).
-        if character.get("userId").and_then(Value::as_str) != Some(user_id) {
-            return Ok(None);
-        }
-        let Some(mount_point_id) = character
-            .get("characterDocumentMountPointId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        else {
-            return Ok(None);
-        };
-        let character_id = character
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or(id)
-            .to_string();
-        let name = character
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        return Ok(Some(location_for_mount(
-            WardrobeMount {
-                mount_point_id: mount_point_id.to_string(),
-                scope: WardrobeScope::Character,
-                character_id: Some(character_id.clone()),
-            },
-            Some(&character_id),
-            WardrobeOrigin::new(WardrobeOriginScope::Character, &character_id, name),
-        )));
-    }
-
-    let (owner, kind, fallback_name, origin_scope) = if scope == WardrobeScope::Project {
-        (
-            ProjectsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?,
-            StoreOwnerKind::Project,
-            "Project",
-            WardrobeOriginScope::Project,
-        )
-    } else {
-        (
-            GroupsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?,
-            StoreOwnerKind::Group,
-            "Group",
-            WardrobeOriginScope::Group,
-        )
-    };
-    let Some(owner) = owner else {
-        return Ok(None);
-    };
-    let owner_id = owner
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or(id)
-        .to_string();
-    // The RAW name goes on the origin; the fallback only names the store.
-    let raw_name = owner
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let name = if raw_name.is_empty() {
-        fallback_name
-    } else {
-        raw_name
-    };
-
-    let mount_point_id = if ensure {
-        let Some(ensured) = ensure_owner_official_store(main, mount, kind, &owner_id, name)? else {
-            return Ok(None);
-        };
-        ensure_shared_folder_soft(&links, &ensured.mount_point_id);
-        Some(ensured.mount_point_id)
-    } else {
-        owner
-            .get("officialMountPointId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-    let Some(mount_point_id) = mount_point_id else {
-        return Ok(None);
-    };
-
     Ok(Some(location_for_mount(
         WardrobeMount {
-            mount_point_id,
+            mount_point_id: store.mount_point_id,
             scope,
-            character_id: None,
+            character_id: (scope == WardrobeScope::Character).then(|| owner_id.clone()),
         },
         Some(&owner_id),
-        WardrobeOrigin::new(origin_scope, &owner_id, raw_name),
+        WardrobeOrigin::new(origin_scope, &owner_id, &store.owner.name),
     )))
-}
-
-/// v4 `ensureSharedWardrobeFolder(mountPointId)` as the location calls it: the
-/// folder ensure is best-effort — a failure is WARNed (`[SharedWardrobe] Failed
-/// to ensure Wardrobe folder`, v4's keys and order) and the resolve goes on to
-/// answer the location; the write that follows will surface the store's state
-/// itself. (`archetype_wardrobe::ensure_shared_wardrobe_folder` is the bare
-/// ensure; v4's catch lives in `shared-wardrobe.ts`, so it is carried here at
-/// the one caller that must not fail on it.)
-fn ensure_shared_folder_soft(links: &DocMountFileLinksRepository, mount_point_id: &str) {
-    if let Err(error) = ensure_shared_wardrobe_folder(links, mount_point_id) {
-        tracing::warn!(
-            mountPointId = %mount_point_id,
-            context = "wardrobe",
-            error = %crate::db::fallback::error_text(&error),
-            "[SharedWardrobe] Failed to ensure Wardrobe folder"
-        );
-    }
 }
 
 /// v4 `groupLocationsForCharacter(characterId)` — every group store a
 /// character can wear from, as locations: one per mount, each tagged with its
-/// group's origin, in the order the group tier shadows (later wins). The read
-/// probe the transfer route and the pool both use.
+/// group's origin, STRONGEST FIRST (membership order; the first group to claim
+/// a shared store keeps it — `groupOriginMap(await groupMountsFor(id))`,
+/// P4.D377 item 9). The read probe the transfer route uses.
 pub fn group_locations_for_character(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
 ) -> Vec<WardrobeLocation> {
-    resolve_group_mounts_for_character(main, mount, character_id)
+    let groups = group_mounts_for(main, mount, character_id, GroupMountsOptions::default());
+    group_origin_map(&groups)
         .into_iter()
-        .flat_map(|g| {
-            g.mount_point_ids
-                .into_iter()
-                .map(move |mount_point_id| {
-                    location_for_mount(
-                        WardrobeMount {
-                            mount_point_id,
-                            scope: WardrobeScope::Group,
-                            character_id: None,
-                        },
-                        Some(&g.group.id),
-                        WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name),
-                    )
-                })
-                .collect::<Vec<_>>()
+        .map(|(mount_point_id, origin)| {
+            location_for_mount(
+                WardrobeMount {
+                    mount_point_id,
+                    scope: WardrobeScope::Group,
+                    character_id: None,
+                },
+                Some(&origin.id),
+                WardrobeOrigin::new(WardrobeOriginScope::Group, &origin.id, &origin.name),
+            )
         })
         .collect()
 }
@@ -585,11 +651,14 @@ mod tests {
     use super::*;
     use crate::test_support::captured_with;
 
-    /// v4 `shared-wardrobe.ts`: a failed `Wardrobe/` ensure is WARNed and the
-    /// location is still answered — the resolve never fails on it. Posed with a
-    /// mount index that has no folder table at all (the ensure's INSERT fails).
+    /// A failed `Wardrobe/` heal on an ensuring resolve is reach's WARN
+    /// (`[Reach] Failed to ensure Wardrobe folder {mountPointId, folder,
+    /// context, error}` — v4 `resolveOwnerStore`'s `onFolderFailure:
+    /// 'swallow'`, P4.D377 item 9) and the location is still answered. Posed
+    /// with a mount index that has no folder table at all (the ensure's INSERT
+    /// fails). The old `[SharedWardrobe]` line is gone.
     #[test]
-    fn a_failed_folder_ensure_warns_and_still_resolves_general() {
+    fn a_failed_folder_ensure_warns_through_reach_and_still_resolves_general() {
         let main = Connection::open_in_memory().unwrap();
         main.execute_batch(
             "CREATE TABLE instance_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -614,13 +683,14 @@ mod tests {
         assert_eq!(loc.mount_point_id, "general-mp");
         let warn = lines
             .iter()
-            .find(|l| l.contains("[SharedWardrobe] Failed to ensure Wardrobe folder"))
+            .find(|l| l.contains("[Reach] Failed to ensure Wardrobe folder"))
             .expect("the WARN fires");
         assert!(warn.starts_with("WARN "), "{warn}");
         assert!(
-            warn.contains(" mountPointId=general-mp context=wardrobe error="),
+            warn.contains(" mountPointId=general-mp folder=Wardrobe context=wardrobe error="),
             "{warn}"
         );
+        assert!(!lines.iter().any(|l| l.contains("[SharedWardrobe]")));
         assert!(
             lines.iter().any(
                 |l| l.contains("[WardrobeLocation] Resolved wardrobe location")
@@ -640,6 +710,257 @@ mod tests {
                 ResolveWardrobeLocationOptions { ensure: false },
             )
         });
-        assert!(!quiet.iter().any(|l| l.contains("[SharedWardrobe]")));
+        assert!(!quiet.iter().any(|l| l.contains("[Reach]")));
+    }
+}
+
+#[cfg(test)]
+mod publish_tests {
+    //! P4.D377 item 8 (v4 `600c2906f`, `lib/wardrobe/location.ts`
+    //! `write(op, fn, landed)`): every write through a location logs the DEBUG
+    //! `[WardrobeLocation] Location write {op, mountPointId, scope, published,
+    //! context}`, and announces the collection-wide `wardrobe` topic ONLY when
+    //! something landed (`published: true` ⇔ one hint); a batch or delete that
+    //! matched nothing logs `published=false` and announces nothing; a write
+    //! that THROWS (a vanished vault, the tombstone) logs nothing and announces
+    //! nothing. The DEBUG runs on the writer thread, so the process-global
+    //! capture reads it (memory note `capture-rig-writer-thread`).
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::realtime::publish_sites::HintCapture;
+    use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const ITEM: &str = "a0000001-0000-4000-8000-0000000000bb";
+
+    fn db() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// Run `op` over General's location inside one write.
+    async fn in_general<F>(db: &Db, op: F) -> (String, String)
+    where
+        F: FnOnce(&Connection, &Connection, &WardrobeLocation) -> String + Send + 'static,
+    {
+        db.write(move |ws| {
+            let main = ws.main().connection();
+            let mount = ws.mount_index().expect("mount index").connection();
+            let loc = resolve_wardrobe_location(
+                main,
+                mount,
+                WardrobeScope::General,
+                None,
+                "u-1",
+                ResolveWardrobeLocationOptions::default(),
+            )?
+            .expect("a provisioned instance has Quilltap General");
+            Ok((op(main, mount, &loc), loc.mount_point_id.clone()))
+        })
+        .await
+        .unwrap()
+    }
+
+    fn writes(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[WardrobeLocation] Location write"))
+            .map(|l| l[l.find("[WardrobeLocation]").unwrap()..].to_string())
+            .collect()
+    }
+
+    fn wardrobe() -> (String, Option<String>) {
+        ("wardrobe".to_string(), None)
+    }
+
+    /// The location ops on DIRECT connections on the test thread — the DEBUG
+    /// runs where the write runs, and the thread-local capture only sees this
+    /// thread (memory note `capture-rig-writer-thread`, third trap).
+    fn direct(dir: &tempfile::TempDir) -> (crate::db::Writer, crate::db::Writer) {
+        let data = dir.path().join("data");
+        (
+            crate::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap(),
+            crate::db::Writer::open_writable_in(
+                crate::db::table_shape::Partition::MountIndex,
+                &data.join("quilltap-mount-index.db"),
+                PEPPER,
+            )
+            .unwrap(),
+        )
+    }
+
+    fn general(main: &Connection, mount: &Connection) -> WardrobeLocation {
+        resolve_wardrobe_location(
+            main,
+            mount,
+            WardrobeScope::General,
+            None,
+            "u-1",
+            ResolveWardrobeLocationOptions::default(),
+        )
+        .unwrap()
+        .expect("a provisioned instance has Quilltap General")
+    }
+
+    fn item() -> WardrobeItem {
+        WardrobeItem::from_read_value(&json!({
+            "id": ITEM, "title": "Bowler", "types": ["accessories"], "folder": "",
+            "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z",
+        }))
+    }
+
+    #[test]
+    fn every_write_logs_its_op_and_whether_it_published() {
+        crate::test_support::global_capture::install();
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let (m, x) = direct(&dir);
+        let (main, mount) = (m.connection(), x.connection());
+        let loc = general(main, mount);
+        let mp = loc.mount_point_id.clone();
+        let line = |op: &str, published: bool| {
+            format!(
+                "[WardrobeLocation] Location write op={op} mountPointId={mp} scope=general \
+                 published={published} context=wardrobe"
+            )
+        };
+        let (out, lines) = crate::test_support::global_capture::capture(|| {
+            let created = loc.create(main, mount, &item()).map(|i| i.id);
+            let updated = loc
+                .update_many(
+                    main,
+                    mount,
+                    &[WardrobeItemPatch {
+                        id: "nope".into(),
+                        patch: WardrobePatch::default(),
+                    }],
+                    UpdateManyOptions::default(),
+                )
+                .map(|u| u.len());
+            let missed = loc.delete(main, mount, "nope");
+            let moved = loc
+                .update(
+                    main,
+                    mount,
+                    ITEM,
+                    &WardrobePatch {
+                        folder: Some("Hats".to_string()),
+                        ..WardrobePatch::default()
+                    },
+                )
+                .map(|u| u.map(|i| i.folder));
+            let made = loc.create_folder(main, mount, "Caps").map(|f| f.path);
+            let renamed = loc
+                .rename_folder(main, mount, "Caps", "Bonnets")
+                .map(|f| f.path);
+            let dropped = loc
+                .delete_folder(main, mount, "Bonnets")
+                .map(|d| d.moved_items);
+            let deleted = loc.delete(main, mount, ITEM);
+            format!(
+                "{created:?} {updated:?} {missed:?} {moved:?} {made:?} {renamed:?} {dropped:?} {deleted:?}"
+            )
+        });
+        assert_eq!(
+            out,
+            format!(
+                "Ok({ITEM:?}) Ok(0) Ok(false) Ok(Some(\"Hats\")) Ok(\"Caps\") Ok(\"Bonnets\") Ok(0) Ok(true)"
+            )
+        );
+        assert_eq!(
+            writes(&lines),
+            vec![
+                line("create", true),
+                line("updateMany", false),
+                line("delete", false),
+                line("updateMany", true),
+                line("createFolder", true),
+                line("renameFolder", true),
+                line("deleteFolder", true),
+                line("delete", true),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_landed_write_announces_wardrobe_and_a_miss_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = db();
+        cap.arm_writer_thread(&db).await;
+        let (created, _) = in_general(&db, |main, mount, loc| {
+            format!("{:?}", loc.create(main, mount, &item()).map(|i| i.id))
+        })
+        .await;
+        assert_eq!(created, format!("Ok({ITEM:?})"));
+        assert_eq!(cap.drain_expecting(1).await, vec![wardrobe()]);
+        let (missed, _) = in_general(&db, |main, mount, loc| {
+            let updated = loc
+                .update_many(
+                    main,
+                    mount,
+                    &[WardrobeItemPatch {
+                        id: "nope".into(),
+                        patch: WardrobePatch::default(),
+                    }],
+                    UpdateManyOptions::default(),
+                )
+                .map(|u| u.len());
+            let deleted = loc.delete(main, mount, "nope");
+            format!("{updated:?} {deleted:?}")
+        })
+        .await;
+        assert_eq!(missed, "Ok(0) Ok(false)");
+        assert_eq!(cap.drain().await, Vec::<(String, Option<String>)>::new());
+        let (made, _) = in_general(&db, |main, mount, loc| {
+            format!(
+                "{:?}",
+                loc.create_folder(main, mount, "Caps").map(|f| f.path)
+            )
+        })
+        .await;
+        assert_eq!(made, "Ok(\"Caps\")");
+        assert_eq!(cap.drain_expecting(1).await, vec![wardrobe()]);
+    }
+
+    #[test]
+    fn a_write_that_throws_logs_nothing() {
+        crate::test_support::global_capture::install();
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let (m, x) = direct(&dir);
+        // A character location whose vault is gone: the write-time re-resolve
+        // throws `Character … has no linked vault` before anything is written.
+        let loc = location_for_mount(
+            WardrobeMount {
+                mount_point_id: "mp-gone".into(),
+                scope: WardrobeScope::Character,
+                character_id: Some("c-gone".into()),
+            },
+            Some("c-gone"),
+            WardrobeOrigin::new(WardrobeOriginScope::Character, "c-gone", "Gone"),
+        );
+        let (out, lines) = crate::test_support::global_capture::capture(|| {
+            loc.create_folder(m.connection(), x.connection(), "Hats")
+                .map(|f| f.path)
+                .map_err(|e| e.message())
+        });
+        assert_eq!(out, Err("Character c-gone has no linked vault".to_string()));
+        assert!(writes(&lines).is_empty(), "{lines:?}");
     }
 }

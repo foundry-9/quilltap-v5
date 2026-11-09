@@ -462,21 +462,6 @@ impl EntityRef {
     }
 }
 
-/// The tier factories' entity: a project / group tier resolves its owner
-/// through the overlay first (`findById` — v4's 503 on a degraded mount, as
-/// measured on the project wardrobe list / inventory create and the group
-/// wardrobe create); the character tier resolves its vault from the RAW row
-/// and General reads `instance_settings`, so neither has an entity gate (a
-/// mount write there is the neutral refusal — v4's 500, measured on the
-/// character wardrobe create).
-pub(crate) fn tier_entity(project_or_group: Option<bool>, id: Option<&str>) -> Option<EntityRef> {
-    let id = id?.to_string();
-    match project_or_group? {
-        true => Some(EntityRef::Project(id)),
-        false => Some(EntityRef::Group(id)),
-    }
-}
-
 /// [`with_both_conns_for`] when the route has an entity gate, else
 /// [`with_both_conns`] (the tier factories, [`tier_entity`]).
 pub(crate) async fn with_both_conns_maybe_for<T, F>(

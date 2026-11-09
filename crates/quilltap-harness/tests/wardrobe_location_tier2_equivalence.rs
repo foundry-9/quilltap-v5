@@ -734,14 +734,24 @@ fn wardrobe_location_matches_oracle() {
         json!(["wardrobe"]),
         "ensure:true must create exactly the Wardrobe/ folder"
     );
+    // P4.D377 item 9 (R-F, v4 `0c47f4539` at the `624d0d25c` pin): owners are
+    // read RAW, so the NULL-pointer project no longer throws through the
+    // hydrating repository — an ensuring resolve ANSWERS, re-linking the
+    // store its create made (no new `doc_mount_points` row); the read probe
+    // still finds nothing.
     let null_probe = find("project Null Abbey (ensure)");
     assert!(
-        null_probe["result"]["threw"].is_string(),
-        "the NULL-pointer project must throw through the real repository"
+        null_probe["result"]["location"].is_object(),
+        "the NULL-pointer project's ensuring resolve must answer under the raw read"
     );
     assert_eq!(
         null_probe["pointsBefore"], null_probe["pointsAfter"],
-        "nothing may be provisioned for a project the repository cannot hydrate"
+        "the ensure re-links Null Abbey's existing store; no store is minted"
+    );
+    assert_eq!(
+        find("project Null Abbey (read probe)")["result"]["location"],
+        Value::Null,
+        "a read probe never provisions"
     );
     assert!(
         find("archived Zed (reads, refuses writes)")["extra"]["create"]["threw"].is_string(),

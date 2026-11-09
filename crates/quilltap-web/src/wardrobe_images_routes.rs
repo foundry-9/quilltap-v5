@@ -74,8 +74,7 @@ const ACTIONS: [&str; 6] = [
 /// fallback.
 const GET_ACTIONS: [&str; 1] = ["save-targets"];
 const ROUTE: &str = "/api/v1/wardrobe/[itemId]/images";
-const SCOPE_ISSUE: &str =
-    "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\"";
+const SCOPE_ISSUE: &str = quilltap_core::api::item_images_route::SCOPE_ISSUE;
 
 fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
     (
@@ -253,17 +252,20 @@ pub async fn wardrobe_item_images_post(
             };
             let text = String::from_utf8_lossy(&bytes);
             // v4: `if (text.trim())` — an empty / whitespace body is `{}`.
-            let image_profile_id = if quilltap_core::jsstr::js_trim(&text).is_empty() {
-                None
-            } else {
-                let json: Value = match serde_json::from_str(&text) {
-                    Ok(v) => v,
-                    Err(_) => return error_json(StatusCode::BAD_REQUEST, "Invalid JSON body"),
-                };
-                match parse_generate_body(&json) {
-                    Ok(id) => id,
-                    Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
-                }
+            // v4 `handleGenerate`: an empty / whitespace body is `{}`; a
+            // non-JSON one the shared DEBUG + `Invalid JSON body`.
+            let json = match quilltap_core::api::item_images_route::generate_body(
+                &quilltap_core::api::item_images_route::WARDROBE_IMAGES,
+                &item_id,
+                quilltap_core::services::wardrobe_container::scope_str(scope),
+                &text,
+            ) {
+                Ok(v) => v,
+                Err(r) => return rendered(false, r, StatusCode::OK),
+            };
+            let image_profile_id = match parse_generate_body(&json) {
+                Ok(id) => id,
+                Err(msg) => return error_json(StatusCode::BAD_REQUEST, &msg),
             };
             let seams =
                 quilltap_host::wardrobe_item_image::wardrobe_item_image_seams(&state.version);

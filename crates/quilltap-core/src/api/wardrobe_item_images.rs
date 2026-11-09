@@ -19,9 +19,17 @@
 //! `[Wardrobe Images v1]` lines run on the caller's thread (after the write
 //! returns); the module's lines (`[WardrobeImages]`, `[WardrobeImageBridge]`)
 //! are the service's.
+//!
+//! **The wardrobe's ADAPTER (v4 `600c2906f`, P4.D377 item 11).** The texts,
+//! keys and shared refusals are [`super::item_images_route`]'s
+//! ([`WARDROBE_IMAGES`]); this file keeps the wardrobe's own: `link-image` and
+//! its `Linked an existing picture…` INFO, and `mapWriteError` (INFO `Refused a
+//! picture write on an archived character` + 409 `This character is archived;
+//! their wardrobe cannot be changed`).
 
 use serde_json::{json, Map, Value};
 
+use super::item_images_route::{self as images, WARDROBE_IMAGES};
 use super::types::{ErrorKind, Response, WardrobeContainerScope};
 use crate::db::runtime::Db;
 use crate::db::DbError;
@@ -42,8 +50,8 @@ use crate::services::wardrobe_item_images::service::{
 const LOG_TAG: &str = "[Wardrobe Images v1]";
 
 /// Zod 4's `min(1)` sentence for an EMPTY `id` (shared with the web edge's
-/// scope-failure arm).
-pub const CONTAINER_ID_EMPTY_ISSUE: &str = "Too small: expected string to have >=1 characters";
+/// scope-failure arm) — the shared images route's.
+pub use super::item_images_route::CONTAINER_ID_EMPTY_ISSUE;
 
 /// v4 `containerQuerySchema`'s two checks the typed verb can still fail:
 /// `id: z.string().min(1).optional()` and the refine `scope === 'general' ||
@@ -54,23 +62,11 @@ pub fn container_query_issue(
     scope: WardrobeContainerScope,
     container_id: Option<&str>,
 ) -> Option<String> {
-    let mut issues: Vec<&str> = Vec::new();
-    if container_id == Some("") {
-        issues.push(CONTAINER_ID_EMPTY_ISSUE);
-    }
-    if scope != WardrobeContainerScope::General && container_id.is_none_or(str::is_empty) {
-        issues.push("id is required for this scope");
-    }
-    (!issues.is_empty()).then(|| issues.join("; "))
+    images::container_query_issue(scope == WardrobeContainerScope::General, container_id)
 }
 
 fn bad_request(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::BadRequest, msg)
-}
-
-fn not_found() -> Response {
-    // v4 `notFound('Wardrobe item')`.
-    Response::error(ErrorKind::NotFound, "Wardrobe item not found")
 }
 
 /// v4's middleware 500 for anything a handler rethrows.
@@ -126,7 +122,11 @@ pub async fn resolve_home(
     }
     match find_home(db, scope, container_id, item_id).await {
         Ok(Some(home)) => Ok(home),
-        Ok(None) => Err(not_found()),
+        Ok(None) => Err(images::item_not_found(
+            &WARDROBE_IMAGES,
+            item_id,
+            scope_str(scope),
+        )),
         Err(e) => Err(super::types::db_error_response(e)),
     }
 }
@@ -149,9 +149,11 @@ impl WriteMeta<'_> {
     fn log_archived(&self) {
         let message = format!("{LOG_TAG} Refused a picture write on an archived character");
         match self.extra {
+            // v4 `metaOf(itemId, found, extra)` — `context` closes it (`600c2906f`).
             MetaExtra::None => tracing::info!(
                 itemId = %self.item_id,
                 scope = scope_str(self.scope),
+                context = "wardrobe",
                 "{}",
                 message
             ),
@@ -159,6 +161,7 @@ impl WriteMeta<'_> {
                 itemId = %self.item_id,
                 scope = scope_str(self.scope),
                 containerId = c.unwrap_or("null"),
+                context = "wardrobe",
                 "{}",
                 message
             ),
@@ -166,6 +169,7 @@ impl WriteMeta<'_> {
                 itemId = %self.item_id,
                 scope = scope_str(self.scope),
                 kind = k,
+                context = "wardrobe",
                 "{}",
                 message
             ),
@@ -218,12 +222,12 @@ pub async fn list_on_home(
     let current = home
         .image_file_id()
         .filter(|id| images.iter().any(|f| f.id == *id));
-    tracing::debug!(
-        itemId = %item_id,
-        scope = scope_str(scope),
-        count = images.len(),
-        current = current.unwrap_or("null"),
-        "{LOG_TAG} Listed wardrobe item images"
+    images::log_listed(
+        &WARDROBE_IMAGES,
+        item_id,
+        scope_str(scope),
+        images.len(),
+        current,
     );
     Response::WardrobeItemImages(json!({
         "current": current,
@@ -298,6 +302,13 @@ pub async fn generate_on_home(
     };
     match result {
         Ok(r) => {
+            images::log_generated(
+                &WARDROBE_IMAGES,
+                home.item_id(),
+                scope_str(scope),
+                container_id,
+                &r.file_id,
+            );
             let mut body = Map::new();
             body.insert("image".into(), to_wardrobe_image_summary(&r.file));
             body.insert("current".into(), json!(r.file_id));
@@ -318,27 +329,15 @@ pub async fn generate_on_home(
             message,
             trail,
             refused,
-        }) => {
-            let (kind, text) = if refused {
-                (
-                    ErrorKind::Unprocessable,
-                    "The image provider declined to draw this garment".to_string(),
-                )
-            } else {
-                (
-                    ErrorKind::Internal,
-                    format!("Image generation failed: {message}"),
-                )
-            };
-            let mut response = Response::error(kind, text);
-            if let Response::Error(e) = &mut response {
-                e.details = Some(Box::new(json!({
-                    "trail": trail_value(&trail),
-                    "refused": refused,
-                })));
-            }
-            response
-        }
+        }) => images::generation_failed(
+            &WARDROBE_IMAGES,
+            home.item_id(),
+            scope_str(scope),
+            container_id,
+            &message,
+            trail_value(&trail),
+            refused,
+        ),
         Err(WardrobeImageGenerationFailure::Item(e)) => map_write_error(
             e,
             &WriteMeta {
@@ -401,13 +400,13 @@ pub async fn upload_on_home(
     };
     match written {
         Ok(Ok(added)) => {
-            tracing::info!(
-                itemId = %item_id,
-                scope = scope_str(scope),
-                kind = kind.as_str(),
-                fileId = %added.file.id,
-                bytes = added.file.size,
-                "{LOG_TAG} Uploaded wardrobe item image"
+            images::log_uploaded(
+                &WARDROBE_IMAGES,
+                item_id,
+                scope_str(scope),
+                kind.as_str(),
+                &added.file.id,
+                added.file.size,
             );
             Response::WardrobeItemImages(json!({
                 "image": to_wardrobe_image_summary(&added.file),
@@ -470,12 +469,7 @@ pub async fn set_current_on_home(
     };
     match result {
         Ok(Ok(current)) => {
-            tracing::info!(
-                itemId = %item_id,
-                scope = scope_str(scope),
-                fileId = %file_id,
-                "{LOG_TAG} Set current wardrobe item image"
-            );
+            images::log_set_current(&WARDROBE_IMAGES, item_id, scope_str(scope), file_id);
             Response::WardrobeItemImages(json!({ "current": current }))
         }
         Ok(Err(e)) => map_write_error(e, &meta),
@@ -527,12 +521,12 @@ pub async fn delete_on_home(
     };
     match result {
         Ok(Ok(current)) => {
-            tracing::info!(
-                itemId = %item_id,
-                scope = scope_str(scope),
-                fileId = %file_id,
-                current = current.as_deref().unwrap_or("null"),
-                "{LOG_TAG} Deleted wardrobe item image"
+            images::log_deleted(
+                &WARDROBE_IMAGES,
+                item_id,
+                scope_str(scope),
+                file_id,
+                current.as_deref(),
             );
             Response::WardrobeItemImages(json!({ "current": current }))
         }
@@ -547,7 +541,7 @@ pub async fn delete_on_home(
 
 /// The foreign-picture refusal — one sentence for the write actions'
 /// `mapWriteError` arm and the save's own guard (v4 `route.ts:132` / `:312`).
-const NOT_THE_ITEMS_PICTURE: &str = "That picture does not belong to this wardrobe item";
+const NOT_THE_ITEMS_PICTURE: &str = WARDROBE_IMAGES.foreign_picture;
 
 /// `GET …/images?scope=&id=&action=save-targets` → `{ albums }` (v4
 /// `handleSaveTargets`, `route.ts:288-294`): the item's home (the 400 / 404
@@ -573,11 +567,11 @@ pub fn save_targets_on_home(
     home: &WardrobeItemHome,
 ) -> Response {
     let albums = crate::photos::photo_album_options::list_all_photo_album_options(db);
-    tracing::debug!(
-        itemId = %home.item_id(),
-        scope = scope_str(scope),
-        count = albums.len(),
-        "{LOG_TAG} Listed save targets"
+    images::log_save_targets(
+        &WARDROBE_IMAGES,
+        home.item_id(),
+        scope_str(scope),
+        albums.len(),
     );
     Response::WardrobeItemImages(json!({ "albums": albums }))
 }
@@ -684,19 +678,18 @@ pub async fn save_to_store_on_home(
     let item_id = home.item_id();
     let (file_id, mount_point_id) = (parsed.file_id.as_str(), parsed.mount_point_id.as_str());
 
-    let images = match db.read_main(|c| list_wardrobe_item_images(c, item_id)) {
+    let pictures = match db.read_main(|c| list_wardrobe_item_images(c, item_id)) {
         Ok(images) => images,
         Err(_) => return internal(),
     };
-    if !images.iter().any(|f| f.id == file_id) {
-        tracing::info!(
-            itemId = %item_id,
-            scope = scope_str(scope),
-            fileId = %file_id,
-            mountPointId = %mount_point_id,
-            "{LOG_TAG} Refused to save a picture that is not the item's"
+    if !pictures.iter().any(|f| f.id == file_id) {
+        return images::refuse_foreign_picture(
+            &WARDROBE_IMAGES,
+            item_id,
+            scope_str(scope),
+            file_id,
+            mount_point_id,
         );
-        return bad_request(NOT_THE_ITEMS_PICTURE);
     }
 
     // v4's `getArchivedCharacterVaultMountPointIds()` — its `_findAll` read
@@ -707,16 +700,12 @@ pub async fn save_to_store_on_home(
         )
     });
     if archived.iter().any(|id| id == mount_point_id) {
-        tracing::info!(
-            itemId = %item_id,
-            scope = scope_str(scope),
-            fileId = %file_id,
-            mountPointId = %mount_point_id,
-            "{LOG_TAG} Refused to save into an archived character's vault"
-        );
-        return Response::error(
-            ErrorKind::Conflict,
-            "That store belongs to an archived character and cannot be written to",
+        return images::refuse_archived_vault(
+            &WARDROBE_IMAGES,
+            item_id,
+            scope_str(scope),
+            file_id,
+            mount_point_id,
         );
     }
 
@@ -761,28 +750,26 @@ pub async fn save_to_store_on_home(
         .await;
     match result {
         Ok(Ok(saved)) => {
-            tracing::info!(
-                itemId = %item_id,
-                scope = scope_str(scope),
-                fileId = %file_id,
-                mountPointId = %mount_point_id,
-                relativePath = %saved.relative_path,
-                linkId = %saved.link_id,
-                "{LOG_TAG} Saved wardrobe picture to a store"
+            images::log_saved(
+                &WARDROBE_IMAGES,
+                item_id,
+                scope_str(scope),
+                file_id,
+                mount_point_id,
+                &saved.relative_path,
+                &saved.link_id,
             );
             Response::WardrobeItemImages(saved_image_body(&saved))
         }
         Ok(Err(err)) => {
-            tracing::info!(
-                itemId = %item_id,
-                scope = scope_str(scope),
-                fileId = %file_id,
-                mountPointId = %mount_point_id,
-                code = save_image_error_code(err.code),
-                // v4's `message` key through the `…Json` suffix rule — see
-                // `chat_media`'s `[SaveImage] rejected` (P4.170 D.1).
-                messageJson = %serde_json::to_string(&err.message).unwrap_or_default(),
-                "{LOG_TAG} Save to store rejected"
+            images::log_save_rejected(
+                &WARDROBE_IMAGES,
+                item_id,
+                scope_str(scope),
+                file_id,
+                mount_point_id,
+                save_image_error_code(err.code),
+                &err.message,
             );
             save_image_error_response(err)
         }
@@ -847,9 +834,11 @@ pub async fn link_image_on_home(
     };
     match linked {
         Ok(Ok(added)) => {
+            // `{ ...meta, sourceFileId, fileId }` — meta closes with `context`.
             tracing::info!(
                 itemId = %item_id,
                 scope = scope_str(scope),
+                context = "wardrobe",
                 sourceFileId = %file_id,
                 fileId = %added.file.id,
                 "{LOG_TAG} Linked an existing picture to a wardrobe item"

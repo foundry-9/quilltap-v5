@@ -56,7 +56,9 @@ pub mod chat_inventory;
 pub mod inventory;
 pub mod inventory_item_images;
 pub mod inventory_route_factory;
-// === end P4.D325 ===
+pub mod item_folder_routes; // P4.D377
+pub mod item_images_route; // P4.D377
+                           // === end P4.D325 ===
 pub mod embedding_profiles;
 pub mod groups;
 pub mod image_profiles;

@@ -70,6 +70,7 @@ use quilltap_core::inventory::equip::{
 use quilltap_core::inventory::equipped_set::read_equipped_set;
 use quilltap_core::inventory::errors::{InventoryError, InventoryRefusal, InventoryRefusalCode};
 use quilltap_core::inventory::folders::InventoryFolderError;
+use quilltap_core::inventory::item_folder_location;
 use quilltap_core::inventory::item_images::{
     add_inventory_item_image, delete_inventory_item_image, list_inventory_images_with_fallthrough,
     list_inventory_item_images, resolve_inventory_item_home, set_current_inventory_item_image,
@@ -872,13 +873,15 @@ impl Ops<'_> {
                 )?;
                 to_text(&copies.iter().map(record_value).collect::<Vec<_>>())
             }
-            "createFolder" => to_text(&mutations::create_inventory_folder(
+            "createFolder" => to_text(&item_folder_location::create_item_folder(
+                &mutations::INVENTORY_FOLDER_KIND,
                 main,
                 mount,
                 &self.loc(&op["at"])?,
                 &s("path"),
             )?),
-            "renameFolder" => to_text(&mutations::rename_inventory_folder(
+            "renameFolder" => to_text(&item_folder_location::rename_item_folder(
+                &mutations::INVENTORY_FOLDER_KIND,
                 main,
                 mount,
                 &self.loc(&op["at"])?,
@@ -886,7 +889,8 @@ impl Ops<'_> {
                 &s("newName"),
             )?),
             "deleteFolder" => {
-                let d = mutations::delete_inventory_folder(
+                let d = item_folder_location::delete_item_folder(
+                    &mutations::INVENTORY_FOLDER_KIND,
                     main,
                     mount,
                     &self.loc(&op["at"])?,

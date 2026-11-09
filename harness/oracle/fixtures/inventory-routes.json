@@ -1839,6 +1839,157 @@
       "action": "inventory-equip",
       "rawBody": "{",
       "httpOnly": true
+    },
+    {
+      "name": "p4d377_grp_item_get_missing",
+      "kind": "itemGet",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "p4d377_proj_item_get_missing",
+      "kind": "itemGet",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "p4d377_gen_item_get_missing",
+      "kind": "itemGet",
+      "scope": "general",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "p4d377_proj_item_put_missing",
+      "kind": "itemPut",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000",
+      "body": {
+        "title": "x"
+      }
+    },
+    {
+      "name": "p4d377_grp_item_delete_missing",
+      "kind": "itemDelete",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "p4d377_grp_duplicate_missing",
+      "kind": "collectionPost",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": "a0000099-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "p4d377_gen_create_folder",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "create-folder",
+      "body": {
+        "path": "Shelves/Top"
+      },
+      "dump": true
+    },
+    {
+      "name": "p4d377_gen_folders_after_create",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "folders"
+    },
+    {
+      "name": "p4d377_proj_create_folder",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "action": "create-folder",
+      "body": {
+        "path": "Crates"
+      },
+      "dump": true
+    },
+    {
+      "name": "p4d377_proj_rename_folder_missing",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "action": "rename-folder",
+      "body": {
+        "path": "Nowhere",
+        "name": "Elsewhere"
+      }
+    },
+    {
+      "name": "p4d377_proj_delete_folder_missing",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "action": "delete-folder",
+      "body": {
+        "path": "Nowhere"
+      }
+    },
+    {
+      "name": "p4d377_gen_folders_unprovisioned",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "folders",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "p4d377_gen_list_unprovisioned",
+      "kind": "collectionGet",
+      "scope": "general",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "p4d377_storeless_group_folders",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "e3000000-0000-4000-8000-000000000003",
+      "action": "folders",
+      "dump": true
+    },
+    {
+      "name": "p4d377_storeless_project_list",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "dump": true
+    },
+    {
+      "name": "p4d377_char_archived_create_folder",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "action": "create-folder",
+      "body": {
+        "path": "Shelf"
+      },
+      "dump": true
+    },
+    {
+      "name": "p4d377_char_archived_rename_folder",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "action": "rename-folder",
+      "body": {
+        "path": "x",
+        "name": "y"
+      }
     }
   ]
 }

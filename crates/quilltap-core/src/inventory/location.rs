@@ -13,6 +13,13 @@
 //! character's location still reads, but every write through it refuses with
 //! [`InventoryError::CharacterArchived`] (the write-time re-resolve).
 //!
+//! Owners are read RAW through `db::reach::resolve_owner_store` (v4
+//! `0c47f4539`; P4.D377 item 9, the survey's R-F); an ensuring resolve's
+//! folder heal is reach's, and its failure is reach's `[Reach] Failed to
+//! ensure Inventory folder` WARN (the old `[InventoryLocation]` WARN is gone).
+//! The folder half implements the shared
+//! [`ItemFolderLocation`](super::item_folder_location::ItemFolderLocation).
+//!
 //! Every op takes the connections it touches (`main` for the tombstone
 //! re-resolve, `mount` for the document store) — v4's closures over the
 //! repository container become explicit arguments.
@@ -22,10 +29,8 @@ use serde_json::Value;
 
 use super::errors::InventoryError;
 use super::folders::{resolve_inventory_folder, InventoryFolder, INVENTORY_FOLDER};
+use super::item_folder_location::{ItemFilingLocation, ItemFolderLocation};
 use super::types::{InventoryFields, InventoryOrigin, InventoryRecord, InventoryScope};
-use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-use crate::db::ensure_official_store::{ensure_owner_official_store, StoreOwnerKind};
-use crate::db::groups::GroupsRepository;
 use crate::db::inventory_writes::{
     create_inventory_folder_in_mount, create_inventory_in_mount, delete_inventory_folder_in_mount,
     delete_inventory_in_mount, list_inventory_folder_paths_in_mount,
@@ -33,9 +38,12 @@ use crate::db::inventory_writes::{
     resolve_inventory_mount, update_inventory_many_in_mount, InventoryMount, InventoryRecordPatch,
 };
 use crate::db::item_folder_ops::{DeletedFolder, VaultFolderMountScope};
-use crate::db::projects::ProjectsRepository;
-use crate::db::tiered_mount_pool::resolve_group_mounts_for_character;
-use crate::db::{characters_read, instance_settings, DbError};
+use crate::db::reach::{
+    group_mounts_for, group_origin_map, resolve_owner_store, Archived, EnsureFolder,
+    OwnerFolderFailure, OwnerScope, ResolveOwnerStoreOptions,
+};
+use crate::db::tiered_mount_pool::GroupMountsOptions;
+use crate::db::DbError;
 
 impl InventoryScope {
     /// The folder mount's scope for this tier.
@@ -89,22 +97,6 @@ pub struct InventoryLocation {
 /// `locationKey` — `${scope}:${mountPointId}`).
 pub fn location_key(loc: &InventoryLocation) -> String {
     format!("{}:{}", loc.scope.as_str(), loc.mount_point_id)
-}
-
-/// Idempotent: ensure a mount's `Inventory/` folder exists; a failure is
-/// logged, not thrown (v4 `ensureInventoryFolder` — WARN `[InventoryLocation]
-/// Failed to ensure Inventory folder {mountPointId, context, error}`).
-pub fn ensure_inventory_folder(mount: &Connection, mount_point_id: &str) {
-    if let Err(error) =
-        DocMountFileLinksRepository::new(mount).ensure_folder_path(mount_point_id, INVENTORY_FOLDER)
-    {
-        tracing::warn!(
-            mountPointId = %mount_point_id,
-            context = "inventory",
-            error = %crate::db::fallback::error_text(&error),
-            "[InventoryLocation] Failed to ensure Inventory folder"
-        );
-    }
 }
 
 /// Identity and timestamps are the writer's, never a patch's (v4
@@ -366,6 +358,10 @@ pub fn resolve_inventory_location(
     Ok(location)
 }
 
+/// v4 `resolve` over `resolveOwnerStore(scope, id, repos, userId, { ensure:
+/// ensure ? { folder: INVENTORY_FOLDER, onFolderFailure: 'swallow' } :
+/// undefined, archived: 'allow', context: 'inventory' })` — raw owner reads
+/// (R-F); the origin carries the RAW owner name.
 fn resolve(
     main: &Connection,
     mount: &Connection,
@@ -374,16 +370,34 @@ fn resolve(
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<InventoryLocation>, DbError> {
-    if scope == InventoryScope::General {
-        let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
-            return Ok(None);
-        };
-        if ensure {
-            ensure_inventory_folder(mount, &mount_point_id);
-        }
+    let owner_scope = match scope {
+        InventoryScope::Character => OwnerScope::Character,
+        InventoryScope::Group => OwnerScope::Group,
+        InventoryScope::Project => OwnerScope::Project,
+        InventoryScope::General => OwnerScope::General,
+    };
+    let Some(store) = resolve_owner_store(
+        main,
+        mount,
+        owner_scope,
+        id,
+        user_id,
+        &ResolveOwnerStoreOptions {
+            ensure: ensure.then_some(EnsureFolder {
+                folder: INVENTORY_FOLDER,
+                on_folder_failure: OwnerFolderFailure::Swallow,
+            }),
+            archived: Archived::Allow,
+            context: Some("inventory"),
+        },
+    )?
+    else {
+        return Ok(None);
+    };
+    if store.scope == OwnerScope::General {
         return Ok(Some(inventory_location_for_mount(
             InventoryMount {
-                mount_point_id,
+                mount_point_id: store.mount_point_id,
                 scope: VaultFolderMountScope::General,
                 character_id: None,
             },
@@ -391,152 +405,124 @@ fn resolve(
             general_inventory_origin(),
         )));
     }
-
-    // v4 `if (!id) return null` — an empty string is falsy too.
-    let Some(id) = id.filter(|s| !s.is_empty()) else {
-        return Ok(None);
-    };
-
-    if scope == InventoryScope::Character {
-        // `repos.characters.findByIdRaw` — the fallback `_findById`.
-        let Some(character) = characters_read::find_by_id_raw_or_none(main, id) else {
-            return Ok(None);
-        };
-        if character.get("userId").and_then(Value::as_str) != Some(user_id) {
-            return Ok(None);
-        }
-        let Some(mount_point_id) = character
-            .get("characterDocumentMountPointId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-        else {
-            return Ok(None);
-        };
-        let character_id = character
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or(id)
-            .to_string();
-        let name = character
-            .get("name")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        return Ok(Some(inventory_location_for_mount(
-            InventoryMount {
-                mount_point_id: mount_point_id.to_string(),
-                scope: VaultFolderMountScope::Character,
-                character_id: Some(character_id.clone()),
-            },
-            Some(&character_id),
-            InventoryOrigin {
-                scope: InventoryScope::Character,
-                id: Some(character_id.clone()),
-                name,
-            },
-        )));
-    }
-
-    let (owner, kind, fallback_name) = if scope == InventoryScope::Project {
-        (
-            ProjectsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?,
-            StoreOwnerKind::Project,
-            "Project",
-        )
-    } else {
-        (
-            GroupsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?,
-            StoreOwnerKind::Group,
-            "Group",
-        )
-    };
-    let Some(owner) = owner else {
-        return Ok(None);
-    };
-    let owner_id = owner
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or(id)
-        .to_string();
-    // The RAW name goes on the origin; the fallback only names the store.
-    let raw_name = owner
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let name = if raw_name.is_empty() {
-        fallback_name.to_string()
-    } else {
-        raw_name.clone()
-    };
-    let mount_point_id = if ensure {
-        let Some(ensured) = ensure_owner_official_store(main, mount, kind, &owner_id, &name)?
-        else {
-            return Ok(None);
-        };
-        ensure_inventory_folder(mount, &ensured.mount_point_id);
-        Some(ensured.mount_point_id)
-    } else {
-        owner
-            .get("officialMountPointId")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    };
-    let Some(mount_point_id) = mount_point_id else {
-        return Ok(None);
-    };
+    let owner_id = store.owner.id.clone().unwrap_or_default();
     Ok(Some(inventory_location_for_mount(
         InventoryMount {
-            mount_point_id,
+            mount_point_id: store.mount_point_id,
             scope: scope.mount_scope(),
-            character_id: None,
+            character_id: (scope == InventoryScope::Character).then(|| owner_id.clone()),
         },
         Some(&owner_id),
         InventoryOrigin {
             scope,
             id: Some(owner_id.clone()),
-            name: raw_name,
+            name: store.owner.name,
         },
     )))
 }
 
 /// Every group store a character can reach, as locations — one per mount,
-/// tagged with its group, in the order the group tier shadows (later wins)
-/// (v4 `groupLocationsForCharacter`).
+/// tagged with its group, STRONGEST FIRST (membership order; the first group
+/// to claim a shared store keeps it) (v4 `groupLocationsForCharacter` =
+/// `groupOriginMap(await groupMountsFor(id))`, P4.D377 item 9).
 pub fn group_locations_for_character(
     main: &Connection,
     mount: &Connection,
     character_id: &str,
 ) -> Vec<InventoryLocation> {
-    resolve_group_mounts_for_character(main, mount, character_id)
+    let groups = group_mounts_for(main, mount, character_id, GroupMountsOptions::default());
+    group_origin_map(&groups)
         .into_iter()
-        .flat_map(|g| {
-            g.mount_point_ids
-                .into_iter()
-                .map(|mount_point_id| {
-                    inventory_location_for_mount(
-                        InventoryMount {
-                            mount_point_id,
-                            scope: VaultFolderMountScope::Group,
-                            character_id: None,
-                        },
-                        Some(&g.group.id),
-                        InventoryOrigin {
-                            scope: InventoryScope::Group,
-                            id: Some(g.group.id.clone()),
-                            name: g.group.name.clone(),
-                        },
-                    )
-                })
-                .collect::<Vec<_>>()
+        .map(|(mount_point_id, origin)| {
+            inventory_location_for_mount(
+                InventoryMount {
+                    mount_point_id,
+                    scope: VaultFolderMountScope::Group,
+                    character_id: None,
+                },
+                Some(&origin.id),
+                InventoryOrigin {
+                    scope: InventoryScope::Group,
+                    id: Some(origin.id.clone()),
+                    name: origin.name,
+                },
+            )
         })
         .collect()
 }
+
+// === P4.D377 === the shared folder layer.
+impl ItemFolderLocation for InventoryLocation {
+    type Error = InventoryError;
+
+    fn scope(&self) -> &'static str {
+        self.scope.as_str()
+    }
+    fn mount_point_id(&self) -> &str {
+        &self.mount_point_id
+    }
+    fn list_folders(
+        &self,
+        mount: &Connection,
+    ) -> Result<Vec<crate::inventory::item_folders::ItemFolder>, DbError> {
+        InventoryLocation::list_folders(self, mount)
+    }
+    fn resolve_folder(&self, mount: &Connection, requested: &str) -> Result<String, Self::Error> {
+        InventoryLocation::resolve_folder(self, mount, requested)
+    }
+    fn create_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+    ) -> Result<InventoryFolder, Self::Error> {
+        InventoryLocation::create_folder(self, main, mount, path)
+    }
+    fn rename_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+        new_name: &str,
+    ) -> Result<InventoryFolder, Self::Error> {
+        InventoryLocation::rename_folder(self, main, mount, path, new_name)
+    }
+    fn delete_folder(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        path: &str,
+    ) -> Result<DeletedFolder, Self::Error> {
+        InventoryLocation::delete_folder(self, main, mount, path)
+    }
+}
+
+impl ItemFilingLocation for InventoryLocation {
+    type Item = InventoryRecord;
+
+    fn refile_items(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        item_ids: &[String],
+        folder: &str,
+    ) -> Result<Vec<InventoryRecord>, InventoryError> {
+        let patches: Vec<InventoryRecordPatch> = item_ids
+            .iter()
+            .map(|id| {
+                let mut patch = serde_json::Map::new();
+                patch.insert("folder".into(), Value::String(folder.to_string()));
+                InventoryRecordPatch {
+                    id: id.clone(),
+                    patch,
+                    remove: Vec::new(),
+                }
+            })
+            .collect();
+        self.update_many(main, mount, &patches, true)
+    }
+}
+// === P4.D377 ===
 
 #[cfg(test)]
 mod publish_tests {

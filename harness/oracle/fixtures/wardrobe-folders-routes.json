@@ -3400,6 +3400,445 @@
           "op": "list"
         }
       ]
+    },
+    {
+      "name": "p4d377_list_project_bare_no_mint",
+      "tier": "project",
+      "owner": "bare",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_instructions_project_bare_no_mint",
+      "tier": "project",
+      "owner": "bare",
+      "steps": [
+        {
+          "op": "instructions"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_project_null_store",
+      "tier": "project",
+      "owner": "null",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_instructions_project_null_store",
+      "tier": "project",
+      "owner": "null",
+      "steps": [
+        {
+          "op": "instructions"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_storeless_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "UPDATE groups SET officialMountPointId = NULL WHERE id = ?",
+          "params": [
+            "90000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p4d377_instructions_storeless_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "instructions"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "UPDATE groups SET officialMountPointId = NULL WHERE id = ?",
+          "params": [
+            "90000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p4d377_folders_storeless_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "folders"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "UPDATE groups SET officialMountPointId = NULL WHERE id = ?",
+          "params": [
+            "90000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_unprovisioned_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+          "params": []
+        }
+      ]
+    },
+    {
+      "name": "p4d377_instructions_unprovisioned_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "instructions"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+          "params": []
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_instructions_char",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "instructions"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_group_missing",
+      "tier": "group",
+      "owner": "missing",
+      "steps": [
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_cf_project_null_store",
+      "tier": "project",
+      "owner": "null",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Hats"
+          }
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_cf_storeless_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "create-folder",
+          "body": {
+            "path": "Hats"
+          }
+        },
+        {
+          "op": "folders"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "UPDATE groups SET officialMountPointId = NULL WHERE id = ?",
+          "params": [
+            "90000000-0000-4000-8000-000000000001"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_character_item",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "rootCoat"
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_group_item",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "groupCloak"
+        },
+        {
+          "op": "list"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_project_item",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "projectLivery"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_general_item",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "generalWatch"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_title_chain",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "create",
+          "body": {
+            "title": "Tweed Coat (copy)",
+            "types": [
+              "top"
+            ]
+          }
+        },
+        {
+          "op": "duplicate",
+          "item": "rootCoat"
+        },
+        {
+          "op": "duplicate",
+          "item": "rootCoat"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_archived_source",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "archivedHat"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_composite",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "composite"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_in_subfolder",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "filedGown"
+        },
+        {
+          "op": "folders"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_missing_item",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "d9000000-0000-4000-8000-0000000000ee"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_missing_item_project",
+      "tier": "project",
+      "owner": "full",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "d9000000-0000-4000-8000-0000000000ee"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_missing_item_group",
+      "tier": "group",
+      "owner": "guild",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "d9000000-0000-4000-8000-0000000000ee"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_missing_item_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "d9000000-0000-4000-8000-0000000000ee"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_borrowed_item",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "groupCloak"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_missing_item_id",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "body": {}
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_empty_item_id",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "duplicate",
+          "body": {
+            "itemId": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_storeless_project",
+      "tier": "project",
+      "owner": "null",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "projectLivery"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_unprovisioned_general",
+      "tier": "general",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "generalWatch"
+        }
+      ],
+      "plants": [
+        {
+          "sql": "DELETE FROM instance_settings WHERE key = 'generalMountPointId'",
+          "params": []
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_archived_character",
+      "tier": "character",
+      "owner": "zed",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "archivedCape"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_duplicate_foreign_character",
+      "tier": "character",
+      "owner": "bo",
+      "steps": [
+        {
+          "op": "duplicate",
+          "item": "rootCoat"
+        }
+      ]
+    },
+    {
+      "name": "p4d377_list_group_tier",
+      "tier": "character",
+      "owner": "ada",
+      "steps": [
+        {
+          "op": "list-group"
+        }
+      ]
     }
   ]
 }

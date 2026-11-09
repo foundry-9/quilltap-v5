@@ -40,6 +40,19 @@
 //! `Quilltap General store is not provisioned yet`); everything else never
 //! provisions.
 //!
+//! **The shared preamble (v4 `600c2906f` / `a0ed5ecad`; P4.D377 item 5).**
+//! The owner / item labels (a missing object is `Inventory object` / `Group
+//! inventory object` / `Project inventory object` / `General inventory
+//! object` per tier), the resolver, the read probe (with its `General not
+//! provisioned; nothing to read` / `No store yet; nothing to read` DEBUGs),
+//! `?action=folders` (`Listed inventory folders` now carries `mountPointId`),
+//! the three folder writes with v4's `Created|Renamed|Deleted inventory
+//! folder` INFOs, and the shared refusals — the archived-character INFO is
+//! `[Item routes] Refused a inventory write to an archived character` ("a
+//! inventory", v4's grammar, VERBATIM — R-E) — are
+//! [`super::item_folder_routes`]'s; [`InventoryKind`] is what the Inventory
+//! tells it.
+//!
 //! **Log lines.** v4 keys each line by the tier's `logIdKey` (`characterId` /
 //! `groupId` / `projectId` / `generalId`); tracing field names are static, so
 //! [`tier_line!`] is the match. Each line runs on the CALLING thread after the
@@ -50,8 +63,6 @@
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
-use crate::db::groups::GroupsRepository;
-use crate::db::projects::ProjectsRepository;
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::inventory::dependents::find_dependents;
@@ -59,9 +70,8 @@ use crate::inventory::errors::InventoryError;
 use crate::inventory::folders::InventoryFolderError;
 use crate::inventory::item_images::assert_inventory_image_choice;
 use crate::inventory::item_mutations::{
-    clear_overrides, copy_inventory_items_to_folder, create_inventory_folder,
-    create_inventory_item, delete_inventory_folder, delete_inventory_item, detach,
-    duplicate_inventory_item, instantiate, move_inventory_items_to_folder, rename_inventory_folder,
+    clear_overrides, copy_inventory_items_to_folder, create_inventory_item, delete_inventory_item,
+    detach, duplicate_inventory_item, instantiate, move_inventory_items_to_folder,
     update_inventory_item, CreateInventoryItemOptions, InstantiateOptions,
 };
 use crate::inventory::location::{
@@ -77,8 +87,12 @@ use crate::inventory::types::{
     parse_inventory_folder_path_body, parse_rename_inventory_folder_body,
     parse_update_inventory_body, InventoryFields, InventoryRecord, InventoryScope,
 };
-use crate::services::image_job_common::{tier_entity, with_both_conns_maybe_for, EntityRef};
+use crate::services::image_job_common::with_both_conns_maybe_for;
 
+use super::item_folder_routes::{
+    self as preamble, item_error_response, ItemKindTag, ItemRouteConfig, ItemRouteKind,
+    ItemTierScope, Probed as Probe, SharedRefusal,
+};
 use super::types::{db_error_response, ErrorKind, InventoryContainer, Response};
 use super::zod_issues::ZodIssue;
 
@@ -94,28 +108,97 @@ pub struct InventoryRouteConfig {
 }
 
 impl InventoryRouteConfig {
-    /// v4 `LABELS[scope]` — the 404 a missing owner answers.
+    /// v4 `OWNER_LABELS[scope]` — the 404 a missing owner answers.
     pub fn owner_label(&self) -> &'static str {
-        match self.scope {
-            InventoryScope::Character => "Character",
-            InventoryScope::Group => "Group",
-            InventoryScope::Project => "Project",
-            InventoryScope::General => "Quilltap General",
+        preamble::owner_label(self.scope.into())
+    }
+
+    /// v4 `INVENTORY_ROUTE_KIND.itemLabels[scope]` — the 404 a missing object
+    /// answers, per tier.
+    pub fn item_label(&self) -> &'static str {
+        InventoryKind::item_label(self.scope.into())
+    }
+
+    /// The preamble's config shape.
+    fn item_cfg(&self) -> ItemRouteConfig {
+        ItemRouteConfig {
+            scope: self.scope.into(),
+            log_tag: self.log_tag,
         }
     }
 }
 
-/// P4.166 (dogfood #156): the tier's entity gate — see [`tier_entity`] (the
-/// project inventory create measured at v4's 503; the character tier at the
-/// neutral 500).
-fn store_entity(scope: InventoryScope, id: Option<&str>) -> Option<EntityRef> {
-    let project_or_group = match scope {
-        InventoryScope::Project => Some(true),
-        InventoryScope::Group => Some(false),
-        InventoryScope::Character | InventoryScope::General => None,
-    };
-    tier_entity(project_or_group, id)
+/// v4 `INVENTORY_ROUTE_KIND` — what the shared preamble needs to know about the
+/// Inventory (P4.D377 item 5).
+pub struct InventoryKind;
+
+impl ItemRouteKind for InventoryKind {
+    type Location = InventoryLocation;
+    const TAG: ItemKindTag = ItemKindTag::Inventory;
+
+    fn folder_kind(
+    ) -> &'static crate::inventory::item_folder_location::ItemFolderKind<InventoryError> {
+        &crate::inventory::item_mutations::INVENTORY_FOLDER_KIND
+    }
+    fn item_label(scope: ItemTierScope) -> &'static str {
+        match scope {
+            ItemTierScope::Character => "Inventory object",
+            ItemTierScope::Group => "Group inventory object",
+            ItemTierScope::Project => "Project inventory object",
+            ItemTierScope::General => "General inventory object",
+        }
+    }
+    fn resolve(
+        main: &Connection,
+        mount: &Connection,
+        scope: ItemTierScope,
+        id: Option<&str>,
+        user_id: &str,
+        ensure: bool,
+    ) -> Result<Option<InventoryLocation>, DbError> {
+        let scope = match scope {
+            ItemTierScope::Character => InventoryScope::Character,
+            ItemTierScope::Group => InventoryScope::Group,
+            ItemTierScope::Project => InventoryScope::Project,
+            ItemTierScope::General => InventoryScope::General,
+        };
+        resolve_inventory_location(
+            main,
+            mount,
+            scope,
+            id,
+            user_id,
+            ResolveInventoryLocationOptions { ensure },
+        )
+    }
+    fn location_id(location: &InventoryLocation) -> Option<&str> {
+        location.id.as_deref()
+    }
+    fn error_response(error: InventoryError) -> Response {
+        inventory_error_response(error)
+    }
+    fn wrap(_scope: ItemTierScope, body: Value) -> Response {
+        Response::Inventory(body)
+    }
+    fn parse_path_body(body: &Value) -> Result<String, Response> {
+        parse_inventory_folder_path_body(body)
+            .map(|b| str_field(&b, "path"))
+            .map_err(|issues| validation_error(&issues))
+    }
+    fn parse_rename_body(body: &Value) -> Result<(String, String), Response> {
+        parse_rename_inventory_folder_body(body)
+            .map(|b| (str_field(&b, "path"), str_field(&b, "name")))
+            .map_err(|issues| validation_error(&issues))
+    }
 }
+
+// P4.166 (dogfood #156) gated project / group item writes on the owner's
+// overlay read (v4's 503 when the owner was HYDRATED to resolve a location).
+// RETIRED by measurement at the `624d0d25c` pin (P4.D377, R-L5): v4's
+// locations read owners RAW through `resolveOwnerStore`, so a degraded mount
+// index no longer surfaces as the owner's 503 — a write fails at the store as
+// the neutral 500 (`degraded_mount_routes`' `project_inventory_create` /
+// `group_wardrobe_create`). No tier has an entity gate now.
 
 /// The tier's factory config for a wire scope (the four route files' configs:
 /// `characters.rs`, `groups.rs`, `projects.rs`, `inventory.rs`).
@@ -188,9 +271,11 @@ pub(crate) fn escaped(e: DbError) -> Response {
     }
 }
 
-/// v4 `inventoryErrorResponse(error)` (`responses.ts`) — the response for an
-/// Inventory refusal. v4 rethrows anything else into the middleware (its
-/// generic 500; a broken store its contextful 503).
+/// v4 `inventoryErrorResponse(error)` (`responses.ts`) =
+/// `itemErrorResponse(INVENTORY_ITEM_ERRORS, error)` — the Inventory's own
+/// refusals first, then the shared folder refusals and the archived-character
+/// INFO + 409 ([`item_error_response`]). v4 rethrows anything else into the
+/// middleware (its generic 500; a broken store its contextful 503).
 ///
 /// The refusal's `code` is NESTED under `details` (`errorResponse(message,
 /// status, { code, ...details })`) and the body is `{error, details}`, so the
@@ -209,27 +294,23 @@ pub fn inventory_error_response(error: InventoryError) -> Response {
         }
         // `badRequest(message, { code: 'INVALID_SVG' })`.
         InventoryError::Svg(e) => with_details(bad_request(e.0), json!({ "code": "INVALID_SVG" })),
-        InventoryError::Folder(e) => match e {
-            InventoryFolderError::Path(message) => bad_request(message),
-            e @ InventoryFolderError::NotInLocation(_) => bad_request(e.to_string()),
-            // `notFound('Inventory folder')` — the error's own message is not used.
-            InventoryFolderError::NotFound(_) => not_found("Inventory folder"),
-            InventoryFolderError::Conflict(message) => {
-                Response::error(ErrorKind::Conflict, message)
-            }
-        },
+        InventoryError::Folder(e) => item_error_response(
+            "inventory",
+            match e {
+                InventoryFolderError::Path(message) => SharedRefusal::FolderPath(message),
+                e @ InventoryFolderError::NotInLocation(_) => {
+                    SharedRefusal::NotInLocation(e.to_string())
+                }
+                // `notFound('Inventory folder')` — the error's own message is not used.
+                InventoryFolderError::NotFound(_) => SharedRefusal::FolderNotFound,
+                InventoryFolderError::Conflict(message) => SharedRefusal::FolderConflict(message),
+            },
+        ),
         InventoryError::ForeignImage { .. } => {
             bad_request("imageFileId must name one of this object's own pictures")
         }
         InventoryError::CharacterArchived { .. } => {
-            tracing::info!(
-                context = "inventory",
-                "[Inventory routes] Refused a write to an archived character"
-            );
-            Response::error(
-                ErrorKind::Conflict,
-                "An archived character's inventory cannot be changed",
-            )
+            item_error_response("inventory", SharedRefusal::CharacterArchived)
         }
         InventoryError::Db(e) => escaped(e),
         InventoryError::Other(_) => internal_server_error(),
@@ -265,9 +346,9 @@ fn read_main_mount<T>(
     db.read_main(|main| db.read_mount_index(|mount| f(main, mount)))
 }
 
-/// v4 `makeResolver(config)(ctx, params, ensure)` — the tier's location, or
-/// the response to answer: General unprovisioned → 500 `Quilltap General store
-/// is not provisioned yet`; every other tier → 404 owner.
+/// v4 `resolveLocation(ctx, params, ensure)` — the preamble's resolver for this
+/// tier (its `No inventory location` DEBUG; General unprovisioned → 500; every
+/// other tier → 404 owner).
 fn resolve_location(
     main: &Connection,
     mount: &Connection,
@@ -276,75 +357,18 @@ fn resolve_location(
     user_id: &str,
     ensure: bool,
 ) -> Result<Result<InventoryLocation, Response>, DbError> {
-    Ok(
-        match resolve_inventory_location(
-            main,
-            mount,
-            cfg.scope,
-            id,
-            user_id,
-            ResolveInventoryLocationOptions { ensure },
-        )? {
-            Some(location) => Ok(location),
-            None if cfg.scope == InventoryScope::General => Err(Response::error(
-                ErrorKind::Internal,
-                "Quilltap General store is not provisioned yet",
-            )),
-            None => Err(not_found(cfg.owner_label())),
-        },
-    )
+    preamble::resolve_location::<InventoryKind>(main, mount, &cfg.item_cfg(), id, user_id, ensure)
 }
 
-/// What a read probe found (v4 `probe` — `InventoryLocation | null |
-/// NextResponse`).
-enum Probe {
-    Found(InventoryLocation),
-    /// No store yet: the empty shape.
-    Empty,
-    Respond(Response),
-}
-
-/// v4 `probe` — "a read probe never provisions a store: a tier with no store
-/// has nothing yet". General unprovisioned → empty; a project / group that
-/// exists but has no store → empty; else the 404 owner.
+/// v4 `probe` — the preamble's read probe for this tier.
 fn probe(
     main: &Connection,
     mount: &Connection,
     cfg: &InventoryRouteConfig,
     id: Option<&str>,
     user_id: &str,
-) -> Result<Probe, DbError> {
-    let location = resolve_inventory_location(
-        main,
-        mount,
-        cfg.scope,
-        id,
-        user_id,
-        ResolveInventoryLocationOptions { ensure: false },
-    )?;
-    if let Some(location) = location {
-        return Ok(Probe::Found(location));
-    }
-    if cfg.scope == InventoryScope::General {
-        return Ok(Probe::Empty);
-    }
-    if let Some(id) = id.filter(|s| !s.is_empty()) {
-        let owner = match cfg.scope {
-            InventoryScope::Project => ProjectsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?
-                .is_some(),
-            InventoryScope::Group => GroupsRepository::new(main, mount)
-                .find_by_id(id)
-                .map_err(|e| e.into_db())?
-                .is_some(),
-            _ => false,
-        };
-        if owner {
-            return Ok(Probe::Empty);
-        }
-    }
-    Ok(Probe::Respond(not_found(cfg.owner_label())))
+) -> Result<Probe<InventoryLocation>, DbError> {
+    preamble::probe::<InventoryKind>(main, mount, &cfg.item_cfg(), id, user_id)
 }
 
 /// v4 `serialize(pool, location, record)` — `pool.resolve({ ...record, origin:
@@ -572,28 +596,10 @@ fn list(
     }
 }
 
-/// `GET ?action=folders` → `{ folders }` (`{ folders: [] }` with no store).
+/// `GET ?action=folders` → `{ folders }` (`{ folders: [] }` with no store) —
+/// the preamble's `getFolders`.
 fn folders(db: &Db, cfg: InventoryRouteConfig, id: Option<String>, user_id: &str) -> Response {
-    let out = read_main_mount(db, |main, mount| {
-        let location = match probe(main, mount, &cfg, id.as_deref(), user_id)? {
-            Probe::Found(l) => l,
-            Probe::Empty => return Ok(Err(Response::Inventory(json!({ "folders": [] })))),
-            Probe::Respond(r) => return Ok(Err(r)),
-        };
-        let folders = location.list_folders(mount)?;
-        Ok(Ok((location, folders)))
-    });
-    match out {
-        Ok(Ok((location, folders))) => {
-            tier_line!(debug, cfg, id_of(&location), "Listed inventory folders";
-                count = folders.len(),
-                context = "inventory",
-            );
-            Response::Inventory(json!({ "folders": folders }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => escaped(e),
-    }
+    preamble::get_folders::<InventoryKind>(db, cfg.item_cfg(), id.as_deref(), user_id)
 }
 
 /// `GET ?action=archetypes` → `{ items }` — the archetypes reachable from this
@@ -654,20 +660,16 @@ async fn collection_write<T: Send + 'static>(
         + 'static,
 ) -> Response2<(InventoryLocation, T)> {
     let uid = user_id.to_string();
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
-                Ok(l) => l,
-                Err(r) => return Ok(Err(Fail::from(r))),
-            };
-            match op(main, mount, &location) {
-                Ok(v) => Ok(Ok((location, v))),
-                Err(e) => Ok(Err(Fail::Refused(e))),
-            }
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
+            Ok(l) => l,
+            Err(r) => return Ok(Err(Fail::from(r))),
+        };
+        match op(main, mount, &location) {
+            Ok(v) => Ok(Ok((location, v))),
+            Err(e) => Ok(Err(Fail::Refused(e))),
+        }
+    })
     .await;
     match out {
         Ok(r) => r.map_err(Fail::answer),
@@ -823,7 +825,9 @@ async fn instantiate_action(
     }
 }
 
-/// `POST ?action=create-folder` `{ path }` → `{ folder }` (`ensure: true`).
+/// `POST ?action=create-folder` `{ path }` → `{ folder }` (`ensure: true`) —
+/// the preamble's folder action (v4 `600c2906f`: the Inventory GAINS v4's
+/// `Created inventory folder` INFO).
 async fn folder_create(
     db: &Db,
     cfg: InventoryRouteConfig,
@@ -831,19 +835,7 @@ async fn folder_create(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let body = match parse_inventory_folder_path_body(body) {
-        Ok(b) => b,
-        Err(issues) => return validation_error(&issues),
-    };
-    let path = str_field(&body, "path");
-    match collection_write(db, cfg, id, user_id, true, move |main, mount, location| {
-        create_inventory_folder(main, mount, location, &path)
-    })
-    .await
-    {
-        Ok((_, folder)) => Response::Inventory(json!({ "folder": folder })),
-        Err(r) => r,
-    }
+    preamble::folder_create::<InventoryKind>(db, cfg.item_cfg(), id.as_deref(), user_id, body).await
 }
 
 /// `POST ?action=rename-folder` `{ path, name }` → `{ folder }`.
@@ -854,19 +846,7 @@ async fn folder_rename(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let body = match parse_rename_inventory_folder_body(body) {
-        Ok(b) => b,
-        Err(issues) => return validation_error(&issues),
-    };
-    let (path, name) = (str_field(&body, "path"), str_field(&body, "name"));
-    match collection_write(db, cfg, id, user_id, false, move |main, mount, location| {
-        rename_inventory_folder(main, mount, location, &path, &name)
-    })
-    .await
-    {
-        Ok((_, folder)) => Response::Inventory(json!({ "folder": folder })),
-        Err(r) => r,
-    }
+    preamble::folder_rename::<InventoryKind>(db, cfg.item_cfg(), id.as_deref(), user_id, body).await
 }
 
 /// `POST ?action=delete-folder` `{ path }` → `{ movedItems, movedFolders }`.
@@ -877,22 +857,7 @@ async fn folder_delete(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let body = match parse_inventory_folder_path_body(body) {
-        Ok(b) => b,
-        Err(issues) => return validation_error(&issues),
-    };
-    let path = str_field(&body, "path");
-    match collection_write(db, cfg, id, user_id, false, move |main, mount, location| {
-        delete_inventory_folder(main, mount, location, &path)
-    })
-    .await
-    {
-        Ok((_, deleted)) => Response::Inventory(json!({
-            "movedItems": deleted.moved_items,
-            "movedFolders": deleted.moved_folders,
-        })),
-        Err(r) => r,
-    }
+    preamble::folder_delete::<InventoryKind>(db, cfg.item_cfg(), id.as_deref(), user_id, body).await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -981,30 +946,25 @@ async fn duplicate(
         Err(issues) => return validation_error(&issues),
     };
     let uid = user_id.to_string();
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, false)? {
-                Ok(l) => l,
-                Err(r) => return Ok(Err(Fail::from(r))),
-            };
-            let Some(current) = location.find_item(mount, &item_id)? else {
-                return Ok(Err(Fail::from(not_found("Inventory object"))));
-            };
-            let made = (|| -> Result<(InventoryRecord, Value), InventoryError> {
-                let record = duplicate_inventory_item(main, mount, &location, &current)?;
-                let pool =
-                    load_pool_for_location(main, mount, &location, LoadPoolContext::default())?;
-                let item = serialize(&pool, &location, &record);
-                Ok((record, item))
-            })();
-            Ok(match made {
-                Ok((record, item)) => Ok((location, current, record, item)),
-                Err(e) => Err(Fail::Refused(e)),
-            })
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, false)? {
+            Ok(l) => l,
+            Err(r) => return Ok(Err(Fail::from(r))),
+        };
+        let Some(current) = location.find_item(mount, &item_id)? else {
+            return Ok(Err(Fail::from(not_found(cfg.item_label()))));
+        };
+        let made = (|| -> Result<(InventoryRecord, Value), InventoryError> {
+            let record = duplicate_inventory_item(main, mount, &location, &current)?;
+            let pool = load_pool_for_location(main, mount, &location, LoadPoolContext::default())?;
+            let item = serialize(&pool, &location, &record);
+            Ok((record, item))
+        })();
+        Ok(match made {
+            Ok((record, item)) => Ok((location, current, record, item)),
+            Err(e) => Err(Fail::Refused(e)),
+        })
+    })
     .await;
     match out {
         Ok(Ok((location, current, record, item))) => {
@@ -1092,7 +1052,7 @@ fn find_record(
     };
     match location.find_item(mount, item_id)? {
         Some(record) => Ok(Ok((location, record))),
-        None => Ok(Err(not_found("Inventory object"))),
+        None => Ok(Err(not_found(cfg.item_label()))),
     }
 }
 
@@ -1101,11 +1061,12 @@ fn find_record(
 fn respond_with(
     main: &Connection,
     mount: &Connection,
+    item_label: &str,
     location: &InventoryLocation,
     record: Option<&InventoryRecord>,
 ) -> Result<Response, DbError> {
     let Some(record) = record else {
-        return Ok(not_found("Inventory object"));
+        return Ok(not_found(item_label));
     };
     let pool = load_pool_for_location(main, mount, location, LoadPoolContext::default())?;
     Ok(Response::Inventory(
@@ -1127,7 +1088,7 @@ fn item_get(
                 Ok(found) => found,
                 Err(r) => return Ok(r),
             };
-        respond_with(main, mount, &location, Some(&record))
+        respond_with(main, mount, cfg.item_label(), &location, Some(&record))
     }) {
         Ok(r) => r,
         Err(e) => escaped(e),
@@ -1184,7 +1145,7 @@ async fn item_update(
     body: Value,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns_maybe_for(db, store_entity(cfg.scope, id.as_deref()), move |main, mount| {
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
         let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
             Ok(found) => found,
             Err(r) => return Ok(Err(Fail::from(r))),
@@ -1218,7 +1179,7 @@ async fn item_update(
         })();
         match edited {
             Ok(record) => {
-                let response = respond_with(main, mount, &location, record.as_ref())?;
+                let response = respond_with(main, mount, cfg.item_label(), &location, record.as_ref())?;
                 Ok(Ok((location, current, response)))
             }
             Err(e) => Ok(Err(Fail::Refused(e))),
@@ -1249,40 +1210,36 @@ async fn item_clear_override(
     body: Value,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let (location, current) =
-                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-                    Ok(found) => found,
-                    Err(r) => return Ok(Fail::from(r)),
-                };
-            let body = match parse_clear_inventory_override_body(&body) {
-                Ok(b) => b,
-                Err(issues) => return Ok(Fail::from(validation_error(&issues))),
-            };
-            let fields: Vec<String> = body
-                .get("fields")
-                .and_then(Value::as_array)
-                .map(|a| {
-                    a.iter()
-                        .filter_map(Value::as_str)
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default();
-            match clear_overrides(main, mount, &location, &current, &fields) {
-                Ok(record) => Ok(Fail::from(respond_with(
-                    main,
-                    mount,
-                    &location,
-                    record.as_ref(),
-                )?)),
-                Err(e) => Ok(Fail::Refused(e)),
-            }
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+            Ok(found) => found,
+            Err(r) => return Ok(Fail::from(r)),
+        };
+        let body = match parse_clear_inventory_override_body(&body) {
+            Ok(b) => b,
+            Err(issues) => return Ok(Fail::from(validation_error(&issues))),
+        };
+        let fields: Vec<String> = body
+            .get("fields")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        match clear_overrides(main, mount, &location, &current, &fields) {
+            Ok(record) => Ok(Fail::from(respond_with(
+                main,
+                mount,
+                cfg.item_label(),
+                &location,
+                record.as_ref(),
+            )?)),
+            Err(e) => Ok(Fail::Refused(e)),
+        }
+    })
     .await;
     match out {
         Ok(f) => f.answer(),
@@ -1299,24 +1256,20 @@ async fn item_detach(
     item_id: &str,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let (location, current) =
-                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-                    Ok(found) => found,
-                    Err(r) => return Ok(Err(Fail::from(r))),
-                };
-            match detach(main, mount, &location, &current, None) {
-                Ok(record) => {
-                    let response = respond_with(main, mount, &location, record.as_ref())?;
-                    Ok(Ok((location, current, response)))
-                }
-                Err(e) => Ok(Err(Fail::Refused(e))),
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+            Ok(found) => found,
+            Err(r) => return Ok(Err(Fail::from(r))),
+        };
+        match detach(main, mount, &location, &current, None) {
+            Ok(record) => {
+                let response =
+                    respond_with(main, mount, cfg.item_label(), &location, record.as_ref())?;
+                Ok(Ok((location, current, response)))
             }
-        },
-    )
+            Err(e) => Ok(Err(Fail::Refused(e))),
+        }
+    })
     .await;
     match out {
         Ok(Ok((location, current, response))) => {
@@ -1341,22 +1294,17 @@ async fn item_delete(
     force: bool,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let (location, current) =
-                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-                    Ok(found) => found,
-                    Err(r) => return Ok(Err(Fail::from(r))),
-                };
-            match delete_inventory_item(main, mount, &location, &current, force) {
-                Ok(result) if !result.deleted => Ok(Err(Fail::from(not_found("Inventory object")))),
-                Ok(result) => Ok(Ok((location, current, result.detached))),
-                Err(e) => Ok(Err(Fail::Refused(e))),
-            }
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+            Ok(found) => found,
+            Err(r) => return Ok(Err(Fail::from(r))),
+        };
+        match delete_inventory_item(main, mount, &location, &current, force) {
+            Ok(result) if !result.deleted => Ok(Err(Fail::from(not_found(cfg.item_label())))),
+            Ok(result) => Ok(Ok((location, current, result.detached))),
+            Err(e) => Ok(Err(Fail::Refused(e))),
+        }
+    })
     .await;
     match out {
         Ok(Ok((location, current, detached))) => {

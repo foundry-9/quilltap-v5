@@ -6112,6 +6112,25 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D377 ===
+            Request::WardrobeItemDuplicate {
+                scope,
+                container_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::wardrobe_route_factory::duplicate_action(
+                        &db,
+                        scope,
+                        container_id.as_deref(),
+                        SINGLE_USER_ID,
+                        &body,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D377 ===
             Request::WardrobeItemImageLink {
                 scope,
                 container_id,

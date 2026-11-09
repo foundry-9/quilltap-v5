@@ -25,14 +25,25 @@
 //!   - a character must be the requesting user's (the location checks — R-E);
 //!   - a write to an archived character's vault is a 409.
 //!
-//! **Provisioning (v4's own `ensure` flags, ported as written).** The list GET
-//! and the instructions GET resolve with `ensure: scope !== 'character'` — a
-//! project / group list provisions its store and `Wardrobe/` folder, and
-//! General ensures the folder — so those two run on the WRITER for the three
-//! store tiers (the read pool is read-only); the character tier stays a read.
+//! **Provisioning: no GET provisions a store (v4 `600c2906f`; P4.D377 item 4,
+//! v4 #135 FIXED).** Every GET — the list, `?scope=group`,
+//! `?action=instructions`, `?action=folders` — runs the shared preamble's READ
+//! probe ([`super::item_folder_routes::probe`]) on the read pool: a project /
+//! group with no store yet, or an unprovisioned General, answers `{
+//! mountPointId: null, wardrobeItems: [] }` / `{ instructions: null }` / `{
+//! folders: [] }` and mints NOTHING (before the pin the list and instructions
+//! GETs resolved with `ensure: scope !== 'character'` and provisioned a
+//! `Project Files:` / `Group Files:` store and a `Wardrobe/` folder on a read).
 //! Create, the instructions POST and `create-folder` ensure; every item route,
-//! `?action=folders`, `rename-folder`, `delete-folder`, `move-items` and
-//! `copy-items` never provision.
+//! `rename-folder`, `delete-folder`, `move-items`, `copy-items` and `duplicate`
+//! never provision.
+//!
+//! **The shared preamble** ([`super::item_folder_routes`], v4
+//! `item-folder-routes.ts`): the owner / item labels, the location resolver,
+//! the probe, `?action=folders` and the three folder writes, and the shared
+//! refusals (incl. the archived-character INFO `[Item routes] Refused a
+//! wardrobe write to an archived character`) live there once, for this
+//! factory and the Inventory's; [`WardrobeKind`] is what the wardrobe tells it.
 //!
 //! **Log lines.** v4 keys each line by the tier's `logIdKey` (`characterId` /
 //! `generalId` / `projectId` / `groupId`); tracing field names are static, so
@@ -51,26 +62,20 @@ use serde_json::{json, Map, Value};
 use crate::db::archetype_wardrobe::{with_origin, WardrobeOrigin, WardrobeOriginScope};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::doc_mount_file_links::DocMountFileLinksRepository;
-use crate::db::groups::GroupsRepository;
-use crate::db::projects::ProjectsRepository;
+use crate::db::reach::{group_mounts_for, group_origin_map};
 use crate::db::runtime::Db;
-use crate::db::tiered_mount_pool::resolve_group_mounts_for_character;
+use crate::db::tiered_mount_pool::GroupMountsOptions;
 use crate::db::wardrobe_location::{
     resolve_wardrobe_location, ResolveWardrobeLocationOptions, WardrobeLocation,
     WardrobeLocationError, WardrobeScope,
 };
 use crate::db::wardrobe_read::read_shared_tiers;
 use crate::db::DbError;
-use crate::services::image_job_common::{
-    tier_entity, with_both_conns, with_both_conns_maybe_for, EntityRef,
-};
+use crate::services::image_job_common::{with_both_conns, with_both_conns_maybe_for};
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
 use crate::services::wardrobe_folder_filing::{
     file_items_to_folder, FileItemsToFolderRequest, FolderComponentMode, FolderFilingAction,
     FolderFilingError,
-};
-use crate::services::wardrobe_folder_mutations::{
-    create_wardrobe_folder, delete_wardrobe_folder, rename_wardrobe_folder,
 };
 use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
@@ -89,18 +94,19 @@ use crate::wardrobe_instructions::{
     read_wardrobe_instructions_file, write_wardrobe_instructions_file,
 };
 
+use super::item_folder_routes::{
+    self as preamble, item_error_response, ItemKindTag, ItemRouteConfig, ItemRouteKind,
+    ItemTierScope, Probed, SharedRefusal,
+};
 use super::types::{db_error_response, ErrorKind, Response};
 
-/// P4.166 (dogfood #156): the tier's entity gate — see
-/// [`tier_entity`].
-fn store_entity(scope: WardrobeScope, id: Option<&str>) -> Option<EntityRef> {
-    let project_or_group = match scope {
-        WardrobeScope::Project => Some(true),
-        WardrobeScope::Group => Some(false),
-        WardrobeScope::Character | WardrobeScope::General => None,
-    };
-    tier_entity(project_or_group, id)
-}
+// P4.166 (dogfood #156) gated project / group item writes on the owner's
+// overlay read (v4's 503 when the owner was HYDRATED to resolve a location).
+// RETIRED by measurement at the `624d0d25c` pin (P4.D377, R-L5): v4's
+// locations read owners RAW through `resolveOwnerStore`, so a degraded mount
+// index no longer surfaces as the owner's 503 — a write fails at the store as
+// the neutral 500 (`degraded_mount_routes`' `project_inventory_create` /
+// `group_wardrobe_create`). No tier has an entity gate now.
 
 /// v4 `WardrobeRouteConfig` — the tier, and its log prefix (the `logIdKey`
 /// follows from the tier; [`tier_line!`]).
@@ -137,23 +143,22 @@ pub const GROUP_WARDROBE: WardrobeRouteConfig = WardrobeRouteConfig {
 };
 
 impl WardrobeRouteConfig {
-    /// v4 `LABELS[scope].owner` — the 404 a missing owner answers.
+    /// v4 `OWNER_LABELS[scope]` — the 404 a missing owner answers.
     pub fn owner_label(&self) -> &'static str {
-        match self.scope {
-            WardrobeScope::Character => "Character",
-            WardrobeScope::Group => "Group",
-            WardrobeScope::Project => "Project",
-            WardrobeScope::General => "Quilltap General",
-        }
+        preamble::owner_label(self.scope.into())
     }
 
-    /// v4 `LABELS[scope].item` — the 404 a missing item answers.
+    /// v4 `WARDROBE_ROUTE_KIND.itemLabels[scope]` — the 404 a missing item
+    /// answers.
     pub fn item_label(&self) -> &'static str {
-        match self.scope {
-            WardrobeScope::Character => "Wardrobe item",
-            WardrobeScope::Group => "Group wardrobe item",
-            WardrobeScope::Project => "Project wardrobe item",
-            WardrobeScope::General => "Archetype wardrobe item",
+        WardrobeKind::item_label(self.scope.into())
+    }
+
+    /// The preamble's config shape.
+    fn item_cfg(&self) -> ItemRouteConfig {
+        ItemRouteConfig {
+            scope: self.scope.into(),
+            log_tag: self.log_tag,
         }
     }
 
@@ -263,33 +268,102 @@ impl WriteRefusal for FolderFilingError {
     }
 }
 
-/// v4 `writeErrorResponse` — the write-side refusals every tier shares; any
-/// other error is v4's rethrow into the middleware's generic 500.
+/// v4 `itemErrorResponse(WARDROBE_ITEM_ERRORS, error)` — the wardrobe's own
+/// refusals first (a component cycle is a 400; `FolderFilingRequestError` is
+/// [`FolderFilingError`]'s arm), then the shared folder refusals and the
+/// archived-character INFO + 409 ([`item_error_response`]); any other error is
+/// v4's rethrow into the middleware's generic 500 (a broken store its
+/// contextful 503).
 pub fn write_error_response(error: WardrobeLocationError) -> Response {
-    match error {
-        WardrobeLocationError::Cycle(m) => bad_request(m),
-        WardrobeLocationError::FolderPath(e) => bad_request(e.0),
-        e @ WardrobeLocationError::ItemNotInLocation { .. } => bad_request(e.message()),
-        // `notFound('Wardrobe folder')` — the error's own message is not used.
-        WardrobeLocationError::FolderNotFound { .. } => not_found("Wardrobe folder"),
+    let shared = match error {
+        WardrobeLocationError::Cycle(m) => return bad_request(m),
+        WardrobeLocationError::FolderPath(e) => SharedRefusal::FolderPath(e.0),
+        e @ WardrobeLocationError::ItemNotInLocation { .. } => {
+            SharedRefusal::NotInLocation(e.message())
+        }
+        WardrobeLocationError::FolderNotFound { .. } => SharedRefusal::FolderNotFound,
         WardrobeLocationError::FolderConflict { message, .. } => {
-            Response::error(ErrorKind::Conflict, message)
+            SharedRefusal::FolderConflict(message)
         }
-        WardrobeLocationError::CharacterArchived { .. } => Response::error(
-            ErrorKind::Conflict,
-            "An archived character's wardrobe cannot be changed",
-        ),
+        WardrobeLocationError::CharacterArchived { .. } => SharedRefusal::CharacterArchived,
         // A broken store is v4's contextful 503 (the middleware's mapping).
-        WardrobeLocationError::Db(e @ DbError::StoreUnavailable { .. }) => db_error_response(e),
-        WardrobeLocationError::NoLinkedVault { .. } | WardrobeLocationError::Db(_) => {
-            internal_server_error()
+        WardrobeLocationError::Db(e @ DbError::StoreUnavailable { .. }) => {
+            return db_error_response(e)
         }
+        WardrobeLocationError::NoLinkedVault { .. } | WardrobeLocationError::Db(_) => {
+            return internal_server_error()
+        }
+    };
+    item_error_response("wardrobe", shared)
+}
+
+/// v4 `WARDROBE_ROUTE_KIND` — what the shared preamble needs to know about the
+/// wardrobe (P4.D377 item 3).
+pub struct WardrobeKind;
+
+impl ItemRouteKind for WardrobeKind {
+    type Location = WardrobeLocation;
+    const TAG: ItemKindTag = ItemKindTag::Wardrobe;
+
+    fn folder_kind(
+    ) -> &'static crate::inventory::item_folder_location::ItemFolderKind<WardrobeLocationError>
+    {
+        &crate::services::wardrobe_item_mutations::WARDROBE_FOLDER_KIND
+    }
+    fn item_label(scope: ItemTierScope) -> &'static str {
+        match scope {
+            ItemTierScope::Character => "Wardrobe item",
+            ItemTierScope::Group => "Group wardrobe item",
+            ItemTierScope::Project => "Project wardrobe item",
+            ItemTierScope::General => "Archetype wardrobe item",
+        }
+    }
+    fn resolve(
+        main: &Connection,
+        mount: &Connection,
+        scope: ItemTierScope,
+        id: Option<&str>,
+        user_id: &str,
+        ensure: bool,
+    ) -> Result<Option<WardrobeLocation>, DbError> {
+        let scope = match scope {
+            ItemTierScope::Character => WardrobeScope::Character,
+            ItemTierScope::Group => WardrobeScope::Group,
+            ItemTierScope::Project => WardrobeScope::Project,
+            ItemTierScope::General => WardrobeScope::General,
+        };
+        resolve_wardrobe_location(
+            main,
+            mount,
+            scope,
+            id,
+            user_id,
+            ResolveWardrobeLocationOptions { ensure },
+        )
+    }
+    fn location_id(location: &WardrobeLocation) -> Option<&str> {
+        location.id.as_deref()
+    }
+    fn error_response(error: WardrobeLocationError) -> Response {
+        write_error_response(error)
+    }
+    /// The folder answers are `Response::Wardrobe` on every tier (C2); the
+    /// list / instructions answers wrap per tier through
+    /// [`WardrobeRouteConfig::wrap`] instead.
+    fn wrap(_scope: ItemTierScope, body: Value) -> Response {
+        Response::Wardrobe(body)
+    }
+    fn parse_path_body(body: &Value) -> Result<String, Response> {
+        parse_path_body(body).map_err(|()| validation_error())
+    }
+    fn parse_rename_body(body: &Value) -> Result<(String, String), Response> {
+        parse_rename_body(body).map_err(|()| validation_error())
     }
 }
 
-/// v4 `makeResolver(config)(ctx, params, ensure)` — the tier's location, or
-/// the response to answer: General unprovisioned → 500 `Quilltap General store
-/// is not provisioned yet`; every other tier → 404 owner.
+/// v4 `resolveLocation(ctx, params, ensure)` — the preamble's resolver for this
+/// tier (its `No wardrobe location` DEBUG; General unprovisioned → 500; every
+/// other tier → 404 owner).
 fn resolve_location(
     main: &Connection,
     mount: &Connection,
@@ -298,23 +372,7 @@ fn resolve_location(
     user_id: &str,
     ensure: bool,
 ) -> Result<Result<WardrobeLocation, Response>, DbError> {
-    Ok(
-        match resolve_wardrobe_location(
-            main,
-            mount,
-            cfg.scope,
-            id,
-            user_id,
-            ResolveWardrobeLocationOptions { ensure },
-        )? {
-            Some(location) => Ok(location),
-            None if cfg.scope == WardrobeScope::General => Err(Response::error(
-                ErrorKind::Internal,
-                "Quilltap General store is not provisioned yet",
-            )),
-            None => Err(not_found(cfg.owner_label())),
-        },
-    )
+    preamble::resolve_location::<WardrobeKind>(main, mount, &cfg.item_cfg(), id, user_id, ensure)
 }
 
 // ===========================================================================
@@ -626,49 +684,35 @@ fn list_in(
     group_scope: bool,
     include_archived: bool,
 ) -> Result<Result<Listed, Response>, DbError> {
-    let Some(location) = resolve_wardrobe_location(
-        main,
-        mount,
-        cfg.scope,
-        id,
-        user_id,
-        ResolveWardrobeLocationOptions {
-            ensure: cfg.scope != WardrobeScope::Character,
-        },
-    )?
-    else {
-        // An unprovisioned General simply has nothing in it yet.
-        if cfg.scope == WardrobeScope::General {
-            return Ok(Err(cfg.wrap(json!({ "wardrobeItems": [] }))));
+    // A read probe never provisions: a tier with no store yet lists as empty.
+    let location = match preamble::probe::<WardrobeKind>(main, mount, &cfg.item_cfg(), id, user_id)?
+    {
+        Probed::Found(l) => l,
+        Probed::Empty => {
+            return Ok(Err(
+                cfg.wrap(json!({ "mountPointId": null, "wardrobeItems": [] }))
+            ))
         }
-        return Ok(Err(not_found(cfg.owner_label())));
+        Probed::Respond(r) => return Ok(Err(r)),
     };
     if cfg.scope == WardrobeScope::Character && group_scope {
         // v4 `listGroupTier`: the group tier, each item tagged with its group.
-        // `originByMount` is a Map — a mount keeps its FIRST position, a later
-        // group overwrites its origin.
+        // `groupOriginMap(await groupMountsFor(id))` keeps the tier's order,
+        // the FIRST group to claim a shared store keeping it; strongest first
+        // in the tier, while the repository shadows later-over-earlier — so the
+        // mounts are read REVERSED (v4 `:237`, behaviour move (d), P4.D377
+        // item 10: a same-id item in two group stores resolves to the EARLIER
+        // group's).
         let character_id = location.character_id.clone().unwrap_or_default();
-        let groups = resolve_group_mounts_for_character(main, mount, &character_id);
-        let mut mounts: Vec<String> = Vec::new();
-        let mut origin_by_mount: std::collections::HashMap<String, WardrobeOrigin> =
-            std::collections::HashMap::new();
-        for g in &groups {
-            for mp in &g.mount_point_ids {
-                if !origin_by_mount.contains_key(mp) {
-                    mounts.push(mp.clone());
-                }
-                origin_by_mount.insert(
-                    mp.clone(),
-                    WardrobeOrigin::new(WardrobeOriginScope::Group, &g.group.id, &g.group.name),
-                );
-            }
-        }
+        let groups = group_mounts_for(main, mount, &character_id, GroupMountsOptions::default());
+        let origin_by_mount = group_origin_map(&groups);
+        let mounts: Vec<String> = origin_by_mount.keys().rev().cloned().collect();
         let docs = DocMountDocumentsRepository::new(mount);
         let items = read_shared_tiers(&docs, &mounts, include_archived, &|mp: &str| {
-            origin_by_mount
+            let origin = origin_by_mount
                 .get(mp)
-                .cloned()
-                .expect("every read mount has an origin")
+                .expect("every read mount has an origin");
+            WardrobeOrigin::new(WardrobeOriginScope::Group, &origin.id, &origin.name)
         });
         let items = attach_wear(main, items);
         return Ok(Ok(Listed::GroupTier {
@@ -754,8 +798,40 @@ pub fn list_character_items(
     }
 }
 
-/// A store tier's collection GET (General / project / group) — `ensure:
-/// true`, so it runs on the writer.
+/// The store pointer a non-character tier's location reads from the MAIN
+/// database alone (v4's raw `resolveOwnerStore`): General's
+/// `instance_settings` pointer, or a project's / group's
+/// `officialMountPointId`.
+fn degraded_store_pointer(
+    main: &Connection,
+    scope: WardrobeScope,
+    id: Option<&str>,
+) -> Result<Option<String>, DbError> {
+    let raw = |row: Option<Map<String, Value>>| {
+        row.and_then(|r| {
+            r.get("officialMountPointId")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        })
+    };
+    Ok(match (scope, id.filter(|s| !s.is_empty())) {
+        (WardrobeScope::General, _) => {
+            crate::db::instance_settings::get_general_mount_point_id(main)?
+        }
+        (WardrobeScope::Project, Some(id)) => {
+            raw(crate::db::projects::find_by_id_raw_or_none(main, id))
+        }
+        (WardrobeScope::Group, Some(id)) => {
+            raw(crate::db::groups::find_by_id_raw_or_none(main, id))
+        }
+        _ => None,
+    })
+}
+
+/// A store tier's collection GET (General / project / group) — a READ probe
+/// that never provisions (v4 #135), on the read pool. `async` for its callers'
+/// shape only.
 pub async fn list_store_items(
     db: &Db,
     cfg: WardrobeRouteConfig,
@@ -763,32 +839,23 @@ pub async fn list_store_items(
     user_id: &str,
     include_archived: bool,
 ) -> Response {
-    let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    match with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            list_in(
-                main,
-                mount,
-                &cfg,
-                id.as_deref(),
-                &uid,
-                false,
-                include_archived,
-            )
-        },
-    )
-    .await
-    {
+    match read_main_mount(db, |main, mount| {
+        list_in(main, mount, &cfg, id, user_id, false, include_archived)
+    }) {
         Ok(Ok(listed)) => listed_response(&cfg, listed),
         Ok(Err(r)) => r,
         // P4.166 (dogfood #156, ruling R-A — measured): on a DEGRADED mount
         // index v4's General list still resolves its location (the pointer
-        // lives in `instance_settings`; the folder ensure fails soft), then
-        // reads the folder through the fallback overlay — 200 with no items.
-        Err(DbError::PartitionUnavailable(_)) if cfg.scope == WardrobeScope::General => {
-            match db.read_main(crate::db::instance_settings::get_general_mount_point_id) {
+        // lives in `instance_settings`) and reads the folder through the
+        // fallback overlay — 200 with no items. Re-measured at the pin
+        // (P4.D377 R-L5): the probe passes `ensure: false`, so no folder
+        // ensure is attempted at all.
+        // P4.D377 (R-L5, measured): the PROJECT / GROUP tiers too — at the pin
+        // the owner's store pointer is read RAW from the main database, so a
+        // degraded mount index still finds the location and lists `[]`
+        // (`degraded_mount_routes`' `project_wardrobe_list`).
+        Err(DbError::PartitionUnavailable(_)) if cfg.scope != WardrobeScope::Character => {
+            match db.read_main(|main| degraded_store_pointer(main, cfg.scope, id)) {
                 Ok(Some(mount_point_id)) => {
                     // The folder's two fallback reads (its documents, the
                     // legacy JSON), one quiet DEBUG apiece.
@@ -801,7 +868,7 @@ pub async fn list_store_items(
                             &degraded,
                         );
                     }
-                    tier_line!(debug, cfg, "null", "Listed wardrobe items";
+                    tier_line!(debug, cfg, id.unwrap_or("null"), "Listed wardrobe items";
                         mountPointId = mount_point_id.as_str(),
                         count = 0usize,
                         context = "wardrobe",
@@ -811,8 +878,13 @@ pub async fn list_store_items(
                         "wardrobeItems": [],
                     }))
                 }
-                // An unprovisioned General has nothing in it yet (`list_in`).
-                Ok(None) => cfg.wrap(json!({ "wardrobeItems": [] })),
+                // An unprovisioned General simply has nothing in it yet.
+                Ok(None) if cfg.scope == WardrobeScope::General => {
+                    cfg.wrap(json!({ "mountPointId": null, "wardrobeItems": [] }))
+                }
+                Ok(None) => db_error_response(DbError::PartitionUnavailable(
+                    crate::write_partition::WriteDbTarget::MountIndex,
+                )),
                 Err(e) => db_error_response(e),
             }
         }
@@ -835,19 +907,13 @@ fn instructions_get_in(
     id: Option<&str>,
     user_id: &str,
 ) -> Result<Result<InstructionsRead, Response>, DbError> {
-    let location = resolve_wardrobe_location(
-        main,
-        mount,
-        cfg.scope,
-        id,
-        user_id,
-        ResolveWardrobeLocationOptions {
-            ensure: cfg.scope != WardrobeScope::Character,
-        },
-    )?;
-    if location.is_none() && cfg.scope != WardrobeScope::General {
-        return Ok(Err(not_found(cfg.owner_label())));
-    }
+    // A read probe: a tier with no store yet simply has no instructions.
+    let location = match preamble::probe::<WardrobeKind>(main, mount, &cfg.item_cfg(), id, user_id)?
+    {
+        Probed::Found(l) => Some(l),
+        Probed::Empty => None,
+        Probed::Respond(r) => return Ok(Err(r)),
+    };
     let instructions = location
         .as_ref()
         .and_then(|l| read_wardrobe_instructions_file(mount, &l.mount_point_id));
@@ -883,21 +949,17 @@ pub fn instructions_get_character(db: &Db, user_id: &str, character_id: &str) ->
     }
 }
 
-/// A store tier's `GET ?action=instructions` (`ensure: true` — the writer).
+/// A store tier's `GET ?action=instructions` — a READ probe that never
+/// provisions (v4 #135), on the read pool.
 pub async fn instructions_get_store(
     db: &Db,
     cfg: WardrobeRouteConfig,
     id: Option<&str>,
     user_id: &str,
 ) -> Response {
-    let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    match with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| instructions_get_in(main, mount, &cfg, id.as_deref(), &uid),
-    )
-    .await
-    {
+    match read_main_mount(db, |main, mount| {
+        instructions_get_in(main, mount, &cfg, id, user_id)
+    }) {
         Ok(Ok((location, instructions))) => {
             instructions_read_response(&cfg, location, instructions)
         }
@@ -922,35 +984,31 @@ pub async fn instructions_set(
     };
     let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
-                Ok(l) => l,
-                Err(r) => {
-                    if cleared && cfg.scope == WardrobeScope::General {
-                        return Ok(Err(cfg.wrap(json!({ "instructions": null }))));
-                    }
-                    return Ok(Err(r));
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
+            Ok(l) => l,
+            Err(r) => {
+                if cleared && cfg.scope == WardrobeScope::General {
+                    return Ok(Err(cfg.wrap(json!({ "instructions": null }))));
                 }
-            };
-            let mount_point_id = match location.writable_mount_point_id(main) {
-                Ok(mp) => mp,
-                Err(WardrobeLocationError::CharacterArchived { .. }) => {
-                    return Ok(Err(Response::error(
-                        ErrorKind::Conflict,
-                        "Character is archived; dressing instructions cannot be edited",
-                    )))
-                }
-                Err(WardrobeLocationError::Db(e)) => return Err(e),
-                Err(_) => return Ok(Err(internal_server_error())),
-            };
-            let links = DocMountFileLinksRepository::new(mount);
-            write_wardrobe_instructions_file(&links, &mount_point_id, instructions.as_deref())?;
-            Ok(Ok((location, mount_point_id)))
-        },
-    )
+                return Ok(Err(r));
+            }
+        };
+        let mount_point_id = match location.writable_mount_point_id(main) {
+            Ok(mp) => mp,
+            Err(WardrobeLocationError::CharacterArchived { .. }) => {
+                return Ok(Err(Response::error(
+                    ErrorKind::Conflict,
+                    "Character is archived; dressing instructions cannot be edited",
+                )))
+            }
+            Err(WardrobeLocationError::Db(e)) => return Err(e),
+            Err(_) => return Ok(Err(internal_server_error())),
+        };
+        let links = DocMountFileLinksRepository::new(mount);
+        write_wardrobe_instructions_file(&links, &mount_point_id, instructions.as_deref())?;
+        Ok(Ok((location, mount_point_id)))
+    })
     .await;
     match out {
         Ok(Ok((location, mount_point_id))) => {
@@ -971,76 +1029,16 @@ pub async fn instructions_set(
 // Folders — the operator's filing under this tier's `Wardrobe/`
 // ===========================================================================
 
-/// `GET ?action=folders` — a read probe that NEVER provisions: a project or
-/// group with no store yet (or an unprovisioned General) simply has no
-/// folders. Answers `Response::Wardrobe` (C2).
+/// `GET ?action=folders` — the preamble's `getFolders`: a read probe that
+/// NEVER provisions (a project or group with no store yet, or an unprovisioned
+/// General, simply has no folders). Answers `Response::Wardrobe` (C2).
 pub fn folders_list(
     db: &Db,
     cfg: WardrobeRouteConfig,
     id: Option<&str>,
     user_id: &str,
 ) -> Response {
-    enum Out {
-        Listed(
-            WardrobeLocation,
-            Vec<crate::wardrobe_folders::WardrobeFolder>,
-        ),
-        NoStore(String),
-        Respond(Response),
-    }
-    let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    let out = read_main_mount(db, move |main, mount| {
-        let Some(location) = resolve_wardrobe_location(
-            main,
-            mount,
-            cfg.scope,
-            id.as_deref(),
-            &uid,
-            ResolveWardrobeLocationOptions { ensure: false },
-        )?
-        else {
-            if cfg.scope == WardrobeScope::General {
-                return Ok(Out::Respond(Response::Wardrobe(json!({ "folders": [] }))));
-            }
-            if let Some(id) = id.as_deref().filter(|s| !s.is_empty()) {
-                let owner_exists = match cfg.scope {
-                    WardrobeScope::Project => ProjectsRepository::new(main, mount)
-                        .find_by_id(id)
-                        .map_err(|e| e.into_db())?
-                        .is_some(),
-                    WardrobeScope::Group => GroupsRepository::new(main, mount)
-                        .find_by_id(id)
-                        .map_err(|e| e.into_db())?
-                        .is_some(),
-                    _ => false,
-                };
-                if owner_exists {
-                    return Ok(Out::NoStore(id.to_string()));
-                }
-            }
-            return Ok(Out::Respond(not_found(cfg.owner_label())));
-        };
-        let folders = location.list_folders(mount)?;
-        Ok(Out::Listed(location, folders))
-    });
-    match out {
-        Ok(Out::Listed(location, folders)) => {
-            tier_line!(debug, cfg, id_of(&location), "Listed wardrobe folders";
-                mountPointId = location.mount_point_id.as_str(),
-                count = folders.len(),
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({ "folders": folders }))
-        }
-        Ok(Out::NoStore(id)) => {
-            tier_line!(debug, cfg, id.as_str(), "No store yet; no wardrobe folders";
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({ "folders": [] }))
-        }
-        Ok(Out::Respond(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    preamble::get_folders::<WardrobeKind>(db, cfg.item_cfg(), id, user_id)
 }
 
 /// The shape every folder write shares: parse (before resolve) → resolve →
@@ -1054,24 +1052,21 @@ async fn folder_write<T: Send + 'static, E: WriteRefusal>(
     op: impl FnOnce(&Connection, &Connection, &WardrobeLocation) -> Result<T, E> + Send + 'static,
 ) -> Result<Result<(WardrobeLocation, T), Response>, DbError> {
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
-                Ok(l) => l,
-                Err(r) => return Ok(Err(r)),
-            };
-            match op(main, mount, &location) {
-                Ok(v) => Ok(Ok((location, v))),
-                Err(e) => Ok(Err(e.into_response())),
-            }
-        },
-    )
+    with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
+            Ok(l) => l,
+            Err(r) => return Ok(Err(r)),
+        };
+        match op(main, mount, &location) {
+            Ok(v) => Ok(Ok((location, v))),
+            Err(e) => Ok(Err(e.into_response())),
+        }
+    })
     .await
 }
 
-/// `POST ?action=create-folder` `{ path }` → `{ folder }` (`ensure: true`).
+/// `POST ?action=create-folder` `{ path }` → `{ folder }` (`ensure: true`) —
+/// the preamble's folder action.
 pub async fn folder_create(
     db: &Db,
     cfg: WardrobeRouteConfig,
@@ -1079,26 +1074,7 @@ pub async fn folder_create(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let Ok(path) = parse_path_body(body) else {
-        return validation_error();
-    };
-    match folder_write(db, cfg, id, user_id, true, move |main, mount, loc| {
-        create_wardrobe_folder(main, mount, loc, &path)
-    })
-    .await
-    {
-        Ok(Ok((location, folder))) => {
-            tier_line!(info, cfg, id_of(&location), "Created wardrobe folder";
-                userId = user_id,
-                mountPointId = location.mount_point_id.as_str(),
-                folder = folder.path.as_str(),
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({ "folder": folder }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    preamble::folder_create::<WardrobeKind>(db, cfg.item_cfg(), id, user_id, body).await
 }
 
 /// `POST ?action=rename-folder` `{ path, name }` → `{ folder }`.
@@ -1109,28 +1085,7 @@ pub async fn folder_rename(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let Ok((path, name)) = parse_rename_body(body) else {
-        return validation_error();
-    };
-    let from = path.clone();
-    match folder_write(db, cfg, id, user_id, false, move |main, mount, loc| {
-        rename_wardrobe_folder(main, mount, loc, &path, &name)
-    })
-    .await
-    {
-        Ok(Ok((location, folder))) => {
-            tier_line!(info, cfg, id_of(&location), "Renamed wardrobe folder";
-                userId = user_id,
-                mountPointId = location.mount_point_id.as_str(),
-                from = from.as_str(),
-                to = folder.path.as_str(),
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({ "folder": folder }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    preamble::folder_rename::<WardrobeKind>(db, cfg.item_cfg(), id, user_id, body).await
 }
 
 /// `POST ?action=delete-folder` `{ path }` → `{ movedItems, movedFolders }`
@@ -1142,32 +1097,7 @@ pub async fn folder_delete(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let Ok(path) = parse_path_body(body) else {
-        return validation_error();
-    };
-    let requested = path.clone();
-    match folder_write(db, cfg, id, user_id, false, move |main, mount, loc| {
-        delete_wardrobe_folder(main, mount, loc, &path)
-    })
-    .await
-    {
-        Ok(Ok((location, (moved_items, moved_folders)))) => {
-            tier_line!(info, cfg, id_of(&location), "Deleted wardrobe folder";
-                userId = user_id,
-                mountPointId = location.mount_point_id.as_str(),
-                folder = requested.as_str(),
-                movedItems = moved_items,
-                movedFolders = moved_folders,
-                context = "wardrobe",
-            );
-            Response::Wardrobe(json!({
-                "movedItems": moved_items,
-                "movedFolders": moved_folders,
-            }))
-        }
-        Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
-    }
+    preamble::folder_delete::<WardrobeKind>(db, cfg.item_cfg(), id, user_id, body).await
 }
 
 /// `POST ?action=move-items` `{ itemIds, folder, components? }` → 200 `{ items,
@@ -1331,40 +1261,36 @@ pub async fn create(
         pronoun_guidance: fields.pronoun_guidance.map(|g| json!(g)),
     };
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
-                Ok(l) => l,
-                Err(r) => return Ok(Err(r)),
-            };
-            let has_components = create_body
-                .component_item_ids
-                .as_ref()
-                .is_some_and(|c| !c.is_empty());
-            let lookup = if has_components {
-                Some(component_lookup_for(main, mount, &location, &[])?)
-            } else {
-                None
-            };
-            let stored = match create_item(
-                main,
-                mount,
-                &location,
-                &create_body,
-                CreateItemOptions {
-                    lookup: lookup.as_ref(),
-                    preserve: None,
-                },
-            ) {
-                Ok(s) => s,
-                Err(e) => return Ok(Err(write_error_response(e))),
-            };
-            let echo = serialize_one(main, item_create_value(&stored), &location.origin);
-            Ok(Ok((location, stored, echo)))
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
+            Ok(l) => l,
+            Err(r) => return Ok(Err(r)),
+        };
+        let has_components = create_body
+            .component_item_ids
+            .as_ref()
+            .is_some_and(|c| !c.is_empty());
+        let lookup = if has_components {
+            Some(component_lookup_for(main, mount, &location, &[])?)
+        } else {
+            None
+        };
+        let stored = match create_item(
+            main,
+            mount,
+            &location,
+            &create_body,
+            CreateItemOptions {
+                lookup: lookup.as_ref(),
+                preserve: None,
+            },
+        ) {
+            Ok(s) => s,
+            Err(e) => return Ok(Err(write_error_response(e))),
+        };
+        let echo = serialize_one(main, item_create_value(&stored), &location.origin);
+        Ok(Ok((location, stored, echo)))
+    })
     .await;
     match out {
         Ok(Ok((location, stored, echo))) => {
@@ -1380,6 +1306,162 @@ pub async fn create(
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
+}
+
+// ===========================================================================
+// Collection POST `?action=duplicate` (v4 `600c2906f`, P4.D377 item 6)
+// ===========================================================================
+
+/// v4 `duplicateWardrobeItemSchema` — `{ itemId: z.string().min(1, 'itemId is
+/// required') }` (unknown keys stripped). A refusal is the middleware's flat
+/// `Validation error`.
+fn parse_duplicate_body(body: &Value) -> Result<String, ()> {
+    match body.as_object().and_then(|o| o.get("itemId")) {
+        Some(Value::String(s)) if crate::jsstr::zod_len_min_ok(s, 1) => Ok(s.clone()),
+        _ => Err(()),
+    }
+}
+
+/// v4 `handleDuplicate` — `{ itemId }`: a copy of one of this tier's items
+/// beside the original — the same folder, every editable field, titled by
+/// `nextCopyTitle` against the TIER's titles (archived ones included). A
+/// composite's component ids are copied verbatim; the members are not cloned.
+/// Step for step: parse `{ itemId }` FIRST → resolve WITHOUT provisioning →
+/// `findItem` (archived included; none → 404 the tier's item label) → the
+/// title → `createWardrobeSchema.parse(draftToPayload({ ...draftFromItem(current),
+/// title }))` (a refusal is the flat `Validation error` — the copy of an item
+/// the create schema would no longer accept 400s faithfully, R-D) → DEBUG
+/// `Duplicating wardrobe item` → `createItem` (the component lookup only for a
+/// composite; refusals through [`write_error_response`]) → INFO `Duplicated
+/// wardrobe item` → 201 `{ wardrobeItem }` serialized with `origin` + `wear`.
+pub async fn duplicate(
+    db: &Db,
+    cfg: WardrobeRouteConfig,
+    id: Option<&str>,
+    user_id: &str,
+    body: &Value,
+) -> Response {
+    let Ok(item_id) = parse_duplicate_body(body) else {
+        return validation_error();
+    };
+    let (id, uid, iid) = (id.map(str::to_string), user_id.to_string(), item_id.clone());
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, false)? {
+            Ok(l) => l,
+            Err(r) => return Ok(Err((r, None))),
+        };
+        let Some(current) = location.find_item(mount, &iid)? else {
+            return Ok(Err((not_found(cfg.item_label()), None)));
+        };
+        let titles: Vec<String> = location
+            .read_items(mount, true)?
+            .into_iter()
+            .map(|i| i.title)
+            .collect();
+        let title = crate::wardrobe::next_copy_title(&current.title, &titles);
+        let mut draft = crate::wardrobe::item_draft::draft_from_item(&current);
+        draft.title = title.clone();
+        let payload = crate::wardrobe::item_draft::draft_to_payload(&draft);
+        let Ok(fields) = parse_item_fields(&payload, false) else {
+            return Ok(Err((validation_error(), None)));
+        };
+        // v4's DEBUG `Duplicating wardrobe item` precedes `createItem` and
+        // fires whether or not the create lands; it is LOGGED on the
+        // calling thread (after the writer answers) so a capture can see
+        // it — the order against the INFO is v4's.
+        let dup = (
+            id_of(&location).to_string(),
+            title.clone(),
+            fields.folder.clone().unwrap_or_default(),
+        );
+        let create_body = WardrobeCreateBody {
+            title: fields.title.unwrap_or_default(),
+            description: fields.description.flatten(),
+            image_prompt: fields.image_prompt.flatten(),
+            types: fields.types.unwrap_or_default(),
+            appropriateness: fields.appropriateness.flatten(),
+            is_default: fields.is_default,
+            component_item_ids: fields.component_item_ids,
+            replace: fields.replace,
+            folder: fields.folder,
+            pronoun_guidance: fields.pronoun_guidance.map(|g| json!(g)),
+        };
+        let has_components = create_body
+            .component_item_ids
+            .as_ref()
+            .is_some_and(|c| !c.is_empty());
+        let lookup = if has_components {
+            Some(component_lookup_for(main, mount, &location, &[])?)
+        } else {
+            None
+        };
+        let stored = match create_item(
+            main,
+            mount,
+            &location,
+            &create_body,
+            CreateItemOptions {
+                lookup: lookup.as_ref(),
+                preserve: None,
+            },
+        ) {
+            Ok(s) => s,
+            Err(e) => return Ok(Err((write_error_response(e), Some(dup)))),
+        };
+        let echo = serialize_one(main, item_create_value(&stored), &location.origin);
+        Ok(Ok((location, stored, echo, dup)))
+    })
+    .await;
+    let log_dup = |(owner, title, folder): &(String, String, String)| {
+        tier_line!(debug, cfg, owner.as_str(), "Duplicating wardrobe item";
+            itemId = item_id.as_str(),
+            title = title.as_str(),
+            folder = folder.as_str(),
+            context = "wardrobe",
+        );
+    };
+    match out {
+        Ok(Ok((location, stored, echo, dup))) => {
+            log_dup(&dup);
+            tier_line!(info, cfg, id_of(&location), "Duplicated wardrobe item";
+                userId = user_id,
+                mountPointId = location.mount_point_id.as_str(),
+                itemId = item_id.as_str(),
+                copyId = stored.id.as_str(),
+                title = stored.title.as_str(),
+                context = "wardrobe",
+            );
+            cfg.wrap(json!({ "wardrobeItem": echo }))
+        }
+        Ok(Err((r, dup))) => {
+            if let Some(dup) = &dup {
+                log_dup(dup);
+            }
+            r
+        }
+        Err(e) => db_error_response(e),
+    }
+}
+
+/// The `wardrobeItemDuplicate` dispatch verb (C12): the scoped family's
+/// container check, then [`duplicate`] for the tier.
+pub async fn duplicate_action(
+    db: &Db,
+    scope: super::types::WardrobeContainerScope,
+    container_id: Option<&str>,
+    user_id: &str,
+    body: &Value,
+) -> Response {
+    if let Some(r) = container_id_issue(scope, container_id) {
+        return r;
+    }
+    let cfg = config_for(scope);
+    let id = if cfg.scope == WardrobeScope::General {
+        None
+    } else {
+        container_id
+    };
+    duplicate(db, cfg, id, user_id, body).await
 }
 
 // ===========================================================================
@@ -1489,72 +1571,67 @@ pub async fn item_update(
         user_id.to_string(),
         item_id.to_string(),
     );
-    let out = with_both_conns_maybe_for(
-        db,
-        store_entity(cfg.scope, id.as_deref()),
-        move |main, mount| {
-            let (location, current) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)?
-            {
-                Ok(found) => found,
-                Err(r) => return Ok(Err(r)),
-            };
-            let Ok(fields) = parse_item_fields(&body, true) else {
-                return Ok(Err(validation_error()));
-            };
-            match image_choice_error(
-                main,
-                &current.id,
-                fields.image_file_id.as_ref().and_then(|o| o.as_deref()),
-            ) {
-                Ok(None) => {}
-                Ok(Some(message)) => return Ok(Err(bad_request(message))),
-                Err(_) => return Ok(Err(internal_server_error())),
-            }
-            // Only a composite whose composition is being edited needs its parts.
-            let composite = !fields
-                .component_item_ids
-                .as_deref()
-                .unwrap_or(&current.component_item_ids)
-                .is_empty();
-            let touches_composition = fields.component_item_ids.is_some() || fields.types.is_some();
-            let lookup = if composite && touches_composition {
-                Some(component_lookup_for(main, mount, &location, &[])?)
-            } else {
-                None
-            };
-            let archived = fields.archived;
-            let patch = ItemPatch {
-                title: fields.title,
-                types: fields.types,
-                component_item_ids: fields.component_item_ids,
-                description: fields.description,
-                image_prompt: fields.image_prompt,
-                appropriateness: fields.appropriateness,
-                is_default: fields.is_default,
-                replace: fields.replace,
-                image_file_id: fields.image_file_id,
-                migrated_from_clothing_record_id: None,
-                folder: fields.folder,
-                archived,
-                pronoun_guidance: fields.pronoun_guidance,
-            };
-            let item = match update_item_with_origin(
-                main,
-                mount,
-                &location,
-                &current,
-                &patch,
-                lookup.as_ref(),
-                PatchOrigin::Route,
-            ) {
-                Ok(Some(item)) => item,
-                Ok(None) => return Ok(Err(not_found(cfg.item_label()))),
-                Err(e) => return Ok(Err(write_error_response(e))),
-            };
-            let echo = serialize_one(main, item_read_value(&item), &location.origin);
-            Ok(Ok((location, item, archived, echo)))
-        },
-    )
+    let out = with_both_conns_maybe_for(db, None, move |main, mount| {
+        let (location, current) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+            Ok(found) => found,
+            Err(r) => return Ok(Err(r)),
+        };
+        let Ok(fields) = parse_item_fields(&body, true) else {
+            return Ok(Err(validation_error()));
+        };
+        match image_choice_error(
+            main,
+            &current.id,
+            fields.image_file_id.as_ref().and_then(|o| o.as_deref()),
+        ) {
+            Ok(None) => {}
+            Ok(Some(message)) => return Ok(Err(bad_request(message))),
+            Err(_) => return Ok(Err(internal_server_error())),
+        }
+        // Only a composite whose composition is being edited needs its parts.
+        let composite = !fields
+            .component_item_ids
+            .as_deref()
+            .unwrap_or(&current.component_item_ids)
+            .is_empty();
+        let touches_composition = fields.component_item_ids.is_some() || fields.types.is_some();
+        let lookup = if composite && touches_composition {
+            Some(component_lookup_for(main, mount, &location, &[])?)
+        } else {
+            None
+        };
+        let archived = fields.archived;
+        let patch = ItemPatch {
+            title: fields.title,
+            types: fields.types,
+            component_item_ids: fields.component_item_ids,
+            description: fields.description,
+            image_prompt: fields.image_prompt,
+            appropriateness: fields.appropriateness,
+            is_default: fields.is_default,
+            replace: fields.replace,
+            image_file_id: fields.image_file_id,
+            migrated_from_clothing_record_id: None,
+            folder: fields.folder,
+            archived,
+            pronoun_guidance: fields.pronoun_guidance,
+        };
+        let item = match update_item_with_origin(
+            main,
+            mount,
+            &location,
+            &current,
+            &patch,
+            lookup.as_ref(),
+            PatchOrigin::Route,
+        ) {
+            Ok(Some(item)) => item,
+            Ok(None) => return Ok(Err(not_found(cfg.item_label()))),
+            Err(e) => return Ok(Err(write_error_response(e))),
+        };
+        let echo = serialize_one(main, item_read_value(&item), &location.origin);
+        Ok(Ok((location, item, archived, echo)))
+    })
     .await;
     match out {
         Ok(Ok((location, item, archived, echo))) => {
@@ -1606,7 +1683,7 @@ pub async fn item_delete(
         user_id.to_string(),
         item_id.to_string(),
     );
-    let cleaned = with_both_conns_maybe_for(db, store_entity(cfg.scope, id.as_deref()), {
+    let cleaned = with_both_conns_maybe_for(db, None, {
         let iid = iid.clone();
         move |main, mount| {
             let (location, _) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)? {

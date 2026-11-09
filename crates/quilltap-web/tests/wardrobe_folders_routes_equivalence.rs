@@ -30,6 +30,12 @@
 //! Then the case's mount-index write-set: every `doc_mount_file_links`
 //! relative path and every `doc_mount_folders` path, per mount.
 //!
+//! P4.D377 (v4 `600c2906f`): three more step ops — `instructions`,
+//! `list-group` and `duplicate` — and the dump grows by `mountPoints` (the
+//! `doc_mount_points` row count) and `owners` (each project / group id with
+//! whether it points at a store): v4 #135's "no GET provisions a store or mints
+//! a `Wardrobe/` folder" is the dump left untouched by a GET.
+//!
 //! Generate the fixture + oracle (see the .ts header), then:
 //!   QT_ORACLE_WARDROBE_FOLDERS_ROUTES=/tmp/oracle-wardrobe-folders-routes.ndjson \
 //!   QT_FIXTURE_WFR_MAIN=/tmp/qt-wfr-main.db QT_FIXTURE_WFR_MOUNT=/tmp/qt-wfr-mount.db \
@@ -120,7 +126,14 @@ fn answer(op: &str, resp: &Response) -> (i64, Value) {
         Response::Character(v)
         | Response::Wardrobe(v)
         | Response::Project(v)
-        | Response::Group(v) => (if op == "create" { 201 } else { 200 }, v.clone()),
+        | Response::Group(v) => (
+            if op == "create" || op == "duplicate" {
+                201
+            } else {
+                200
+            },
+            v.clone(),
+        ),
         other => panic!("unexpected response variant: {other:?}"),
     }
 }
@@ -231,6 +244,45 @@ fn config(tier: &str) -> WardrobeRouteConfig {
         "group" => GROUP_WARDROBE,
         other => panic!("unknown tier {other}"),
     }
+}
+
+/// P4.D377: `doc_mount_points`' row count and every project / group owner with
+/// whether it points at a store (`hasStore` 0 / 1, v4's SQLite boolean).
+fn dump_stores(
+    main_path: &std::path::Path,
+    mount_path: &std::path::Path,
+    pepper: &str,
+) -> (Value, Value) {
+    let m = Writer::open_writable(mount_path, pepper).expect("open mount for the dump");
+    let count: i64 = m
+        .connection()
+        .query_row("SELECT COUNT(*) FROM \"doc_mount_points\"", [], |r| {
+            r.get(0)
+        })
+        .expect("count mount points");
+    drop(m);
+    let w = Writer::open_writable(main_path, pepper).expect("open main for the dump");
+    let mut stmt = w
+        .connection()
+        .prepare(
+            "SELECT 'group' AS \"kind\", \"id\", (\"officialMountPointId\" IS NOT NULL) AS \"hasStore\" FROM \"groups\" \
+             UNION ALL \
+             SELECT 'project', \"id\", (\"officialMountPointId\" IS NOT NULL) FROM \"projects\" \
+             ORDER BY 1, 2",
+        )
+        .expect("prepare owners");
+    let owners: Vec<Value> = stmt
+        .query_map([], |r| {
+            Ok(json!({
+                "kind": r.get::<_, String>(0)?,
+                "id": r.get::<_, String>(1)?,
+                "hasStore": r.get::<_, i64>(2)?,
+            }))
+        })
+        .expect("owners query")
+        .map(|r| r.expect("owner row"))
+        .collect();
+    (json!(count), Value::Array(owners))
 }
 
 fn dump(mount_path: &std::path::Path, pepper: &str) -> (Value, Value) {
@@ -448,6 +500,27 @@ async fn wardrobe_folders_routes_match_oracle() {
                     factory::folder_action(&db, action, scope, owner, user, &body, refusing()).await
                 }
                 "create" => factory::create(&db, cfg, owner, user, &body).await,
+                // === P4.D377 ===
+                "instructions" => {
+                    if case.tier == "character" {
+                        factory::instructions_get_character(&db, user, owner.unwrap())
+                    } else {
+                        factory::instructions_get_store(&db, cfg, owner, user).await
+                    }
+                }
+                "list-group" => {
+                    factory::list_character_items(&db, user, owner.unwrap(), Some("group"), false)
+                }
+                "duplicate" => {
+                    let body = match &step.body {
+                        Some(b) => b.clone(),
+                        None => {
+                            json!({ "itemId": item_id(step.item.as_deref().unwrap_or_default()) })
+                        }
+                    };
+                    factory::duplicate(&db, cfg, owner, user, &body).await
+                }
+                // === end P4.D377 ===
                 "update" => {
                     let iid = item_id(step.item.as_deref().unwrap_or_default());
                     factory::item_update(&db, cfg, owner, user, &iid, body.clone()).await
@@ -487,6 +560,21 @@ async fn wardrobe_folders_routes_match_oracle() {
         drop(db);
 
         let (links, folders) = dump(&mount_path, &seed.test_pepper_base64);
+        // === P4.D377 ===
+        let (mount_points, owners) = dump_stores(&main_path, &mount_path, &seed.test_pepper_base64);
+        if mount_points != want["mountPoints"] {
+            failed.push(format!(
+                "{}: mountPoints {mount_points} vs oracle {}",
+                case.name, want["mountPoints"]
+            ));
+        }
+        if owners != want["owners"] {
+            failed.push(format!(
+                "{}: owners diverged\n  rust:   {owners}\n  oracle: {}",
+                case.name, want["owners"]
+            ));
+        }
+        // === end P4.D377 ===
         if links != want["links"] {
             failed.push(format!(
                 "{}: links diverged\n  rust:   {links}\n  oracle: {}",

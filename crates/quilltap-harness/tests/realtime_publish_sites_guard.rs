@@ -178,6 +178,26 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          `delete_folder`).",
     ),
     // === end P4.D350 ===
+    // === P4.D377: the wardrobe location's one publish (v4 `600c2906f`) ===
+    (
+        "crates/quilltap-core/src/db/wardrobe_location.rs",
+        "crate::realtime::types::RealtimeTopic::Wardrobe,",
+        1,
+        "P4.D377 item 8 (v4 `lib/wardrobe/location.ts` `write(op, fn, landed)`): the \
+         ONE private `write` helper every location write goes through publishes the \
+         collection-wide `wardrobe` topic when the write LANDED (create, a non-empty \
+         `updateMany` — `update` rides it — a delete that deleted, the three folder \
+         writes). Safe inside the caller's writer closure (the trailing-edge flush runs \
+         on a spawned task). The behavioural half is the location's `publish_tests`.",
+    ),
+    (
+        "crates/quilltap-core/src/db/wardrobe_location.rs",
+        "self.write(",
+        6,
+        "P4.D377 item 8: the six write ops that call the helper (`create`, \
+         `updateMany`, `delete`, `createFolder`, `renameFolder`, `deleteFolder`).",
+    ),
+    // === end P4.D377 ===
     (
         "crates/quilltap-core/src/api/memories.rs",
         "publish_realtime",

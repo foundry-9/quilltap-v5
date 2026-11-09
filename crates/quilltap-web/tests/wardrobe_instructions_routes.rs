@@ -244,7 +244,9 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
                 "rename-folder",
                 "delete-folder",
                 "move-items",
-                "copy-items"
+                "copy-items",
+                // P4.D377 (v4 `600c2906f`): `duplicate`, LAST.
+                "duplicate"
             ],
         })
     );
@@ -296,7 +298,9 @@ async fn the_instructions_action_resolves_on_the_registered_edges() {
                 "rename-folder",
                 "delete-folder",
                 "move-items",
-                "copy-items"
+                "copy-items",
+                // P4.D377 (v4 `600c2906f`): `duplicate`, LAST.
+                "duplicate"
             ],
         })
     );

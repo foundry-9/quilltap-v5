@@ -87,14 +87,6 @@ pub fn normalize_inventory_folder_path_or_root(input: Option<&str>) -> String {
     item_folders::normalize_item_folder_path_or_root(&INVENTORY_FOLDER_RULES, input)
 }
 
-/// Normalise a folder *name* — one segment, as a rename takes it.
-pub fn normalize_inventory_folder_name(
-    input: Option<&str>,
-) -> Result<String, InventoryFolderError> {
-    item_folders::normalize_item_folder_name(&INVENTORY_FOLDER_RULES, input)
-        .map_err(InventoryFolderError::Path)
-}
-
 /// True when `path` is structurally safe to write under `Inventory/`.
 pub fn is_safe_inventory_folder_path(path: &str) -> bool {
     item_folders::is_safe_item_folder_path(&INVENTORY_FOLDER_RULES, path)

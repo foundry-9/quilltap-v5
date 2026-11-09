@@ -1035,7 +1035,12 @@ fn inventory_route_lines_are_v4s() {
     let n = body["folders"].as_array().unwrap().len();
     line(
         &lines,
-        &format!("[Inventory General v1] Listed inventory folders generalId=null count={n} context=inventory"),
+        // P4.D377 (v4 `600c2906f`): the shared preamble's line carries
+        // `mountPointId`.
+        &format!(
+            "[Inventory General v1] Listed inventory folders generalId=null \
+             mountPointId=f1000000-0000-4000-8000-000000000001 count={n} context=inventory"
+        ),
         "DEBUG",
     );
 
@@ -1154,7 +1159,9 @@ fn inventory_route_lines_are_v4s() {
         &format!("[Characters v1] Duplicated inventory object characterId={V} itemId={KIN} copyId={copy} context=inventory"),
         "INFO",
     );
-    // No line for the folder writes or the item GET.
+    // P4.D377 (v4 `600c2906f`): the shared preamble GIVES the Inventory's
+    // folder writes v4's INFO (`[logIdKey]`, `userId`, `mountPointId`,
+    // `folder`, `context`); the item GET still logs none.
     let (r, lines) = rt.block_on(capture_async(collection_action(
         &db,
         CollectionAction::FolderCreate {
@@ -1164,7 +1171,13 @@ fn inventory_route_lines_are_v4s() {
         SINGLE_USER_ID,
     )));
     ok(&r);
-    none(&lines, "[Characters v1]");
+    let created = line(&lines, "[Characters v1] Created inventory folder", "INFO");
+    assert!(
+        created.contains(&format!(
+            "characterId={V} userId={SINGLE_USER_ID} mountPointId="
+        )) && created.ends_with(" folder=Quiet context=inventory"),
+        "{created}"
+    );
 
     // The item routes.
     let (r, lines) = rt.block_on(capture_async(item_action(
@@ -1263,7 +1276,9 @@ fn inventory_route_lines_are_v4s() {
     assert!(matches!(r, Response::Error(_)), "{r:?}");
     line(
         &lines,
-        "[Inventory routes] Refused a write to an archived character context=inventory",
+        // P4.D377 (v4 `600c2906f`): the shared `[Item routes]` line — "a
+        // inventory", v4's grammar verbatim (R-E).
+        "[Item routes] Refused a inventory write to an archived character context=inventory",
         "INFO",
     );
     none(&lines, "Created inventory object");

@@ -33,9 +33,7 @@ use serde_json::{json, Map, Value};
 
 use super::dependents::{find_dependents, find_records_anywhere, InventoryDependent, MountScope};
 use super::errors::{ArchivedDependent, DependentHolder, InventoryError, InventoryRefusal};
-use super::folders::{
-    is_same_folder, normalize_inventory_folder_name, InventoryFolder, InventoryFolderError,
-};
+use super::folders::{is_same_folder, InventoryFolderError};
 use super::location::InventoryLocation;
 use super::pool::{load_pool_for_location, InventoryPool, LoadPoolContext};
 use super::resolve::{resolve_item, with_inventory_defaults};
@@ -1268,7 +1266,9 @@ pub fn duplicate_inventory_item(
 }
 
 /// File several objects of this location into one folder (one projection; v4
-/// `moveInventoryItemsToFolder`). Every id must be here (`require_all`).
+/// `moveInventoryItemsToFolder`). Every id must be here (`require_all`). The
+/// shared `move_items_to_folder_in` under [`INVENTORY_FOLDER_KIND`] (v4
+/// `a0ed5ecad`): its DEBUG is `[ItemFolders] Moved items to folder`.
 pub fn move_inventory_items_to_folder(
     main: &Connection,
     mount: &Connection,
@@ -1276,28 +1276,26 @@ pub fn move_inventory_items_to_folder(
     item_ids: &[String],
     folder: &str,
 ) -> Result<Vec<InventoryRecord>, InventoryError> {
-    let target = location.resolve_folder(mount, folder)?;
-    let unique_ids = unique(item_ids);
-    let patches: Vec<InventoryRecordPatch> = unique_ids
-        .iter()
-        .map(|id| {
-            let mut patch = Map::new();
-            patch.insert("folder".into(), json!(target));
-            InventoryRecordPatch {
-                id: id.clone(),
-                patch,
-                remove: Vec::new(),
-            }
-        })
-        .collect();
-    let moved = location.update_many(main, mount, &patches, true)?;
-    log_op!("Moved objects to folder", location;
-        folder = %target,
-        requested = unique_ids.len(),
-        moved = moved.len(),
-    );
-    Ok(moved)
+    crate::inventory::item_folder_location::move_items_to_folder_in(
+        &INVENTORY_FOLDER_KIND,
+        main,
+        mount,
+        location,
+        item_ids,
+        folder,
+    )
 }
+
+/// The Inventory's folder kind — its rules and its path error — as the shared
+/// item-folder mutations take it (v4 `INVENTORY_FOLDER_KIND`, `a0ed5ecad`).
+/// Folder create / rename / delete run through those mutations from the route
+/// preamble; v4 `134961572` deleted the Inventory's own three wrappers.
+pub const INVENTORY_FOLDER_KIND: crate::inventory::item_folder_location::ItemFolderKind<
+    InventoryError,
+> = crate::inventory::item_folder_location::ItemFolderKind {
+    rules: &crate::inventory::folders::INVENTORY_FOLDER_RULES,
+    path_error: |message| InventoryError::Folder(InventoryFolderError::Path(message)),
+};
 
 /// Copy several objects of this location into one folder; any not copyable
 /// refuses the batch (v4 `copyInventoryItemsToFolder`). A missing id is the
@@ -1358,81 +1356,4 @@ pub fn copy_inventory_items_to_folder(
         count = copies.len(),
     );
     Ok(copies)
-}
-
-// ============================================================================
-// Folders — the operator's filing under `Inventory/`
-// ============================================================================
-
-/// `path.trim().replace(/^\/+|\/+$/g, '')`.
-fn strip_slashes(path: &str) -> String {
-    crate::jsstr::js_trim(path).trim_matches('/').to_string()
-}
-
-/// Create a folder at a location (an existing one, in any casing, is
-/// answered) (v4 `createInventoryFolder`).
-pub fn create_inventory_folder(
-    main: &Connection,
-    mount: &Connection,
-    location: &InventoryLocation,
-    path: &str,
-) -> Result<InventoryFolder, InventoryError> {
-    let resolved = location.resolve_folder(mount, path)?;
-    if resolved.is_empty() {
-        return Err(InventoryFolderError::Path("A folder needs a name".to_string()).into());
-    }
-    let folder = location.create_folder(main, mount, &resolved)?;
-    log_op!("Created folder", location;
-        requested = %path,
-        folder = %folder.path,
-    );
-    Ok(folder)
-}
-
-/// Rename a folder in place; its objects follow because the path is the
-/// truth (v4 `renameInventoryFolder`).
-pub fn rename_inventory_folder(
-    main: &Connection,
-    mount: &Connection,
-    location: &InventoryLocation,
-    path: &str,
-    name: &str,
-) -> Result<InventoryFolder, InventoryError> {
-    let from = strip_slashes(path);
-    let new_name = normalize_inventory_folder_name(Some(name))?;
-    let folder = location.rename_folder(main, mount, &from, &new_name)?;
-    log_op!("Renamed folder", location;
-        from = %from,
-        to = %folder.path,
-    );
-    Ok(folder)
-}
-
-/// v4 `deleteInventoryFolder`'s `{ movedItems, movedFolders }`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DeletedInventoryFolder {
-    pub moved_items: usize,
-    pub moved_folders: usize,
-}
-
-/// Delete a folder, sending its objects and subfolders up to its parent (v4
-/// `deleteInventoryFolder`).
-pub fn delete_inventory_folder(
-    main: &Connection,
-    mount: &Connection,
-    location: &InventoryLocation,
-    path: &str,
-) -> Result<DeletedInventoryFolder, InventoryError> {
-    let folder = strip_slashes(path);
-    let deleted = location.delete_folder(main, mount, &folder)?;
-    log_op!("Deleted folder", location;
-        folder = %folder,
-        parent = %deleted.parent,
-        movedItems = deleted.moved_items,
-        movedFolders = deleted.moved_folders,
-    );
-    Ok(DeletedInventoryFolder {
-        moved_items: deleted.moved_items,
-        moved_folders: deleted.moved_folders,
-    })
 }

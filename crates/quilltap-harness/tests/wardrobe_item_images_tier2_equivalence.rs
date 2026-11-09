@@ -581,7 +581,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "DEBUG [Wardrobe Images v1] Listed wardrobe item images itemId={coat} scope=character count=3 current={newest}"
+            "DEBUG [Wardrobe Images v1] Listed item images itemId={coat} scope=character count=3 current={newest} context=wardrobe"
         )]
     );
     // …a DANGLING pointer lists `current=null`.
@@ -590,10 +590,11 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "DEBUG [Wardrobe Images v1] Listed wardrobe item images itemId={scarf} scope=character count=2 current=null"
+            "DEBUG [Wardrobe Images v1] Listed item images itemId={scarf} scope=character count=2 current=null context=wardrobe"
         )]
     );
-    // Silence: a 404 lists nothing.
+    // Silence: a 404 lists nothing — at the pin (`600c2906f`, P4.D377) it logs
+    // ONLY the shared factory's `Item not in the named container` DEBUG.
     let (_, lines) = captured_with(|| {
         rt.block_on(list(
             &db,
@@ -602,7 +603,12 @@ fn the_route_lines_are_v4s() {
             &coat,
         ))
     });
-    assert!(lines_of(lines).is_empty());
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "DEBUG [Wardrobe Images v1] Item not in the named container itemId={coat} scope=group context=wardrobe"
+        )]
+    );
 
     // set-current → ONE INFO; a foreign pick is a SILENT 400.
     let (_d, db) = fresh();
@@ -615,7 +621,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Set current wardrobe item image itemId={coat} scope=character fileId={older}"
+            "INFO [Wardrobe Images v1] Set current item image itemId={coat} scope=character context=wardrobe fileId={older}"
         )]
     );
     let foreign = db
@@ -638,7 +644,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Deleted wardrobe item image itemId={coat} scope=character fileId={gone} current={next}"
+            "INFO [Wardrobe Images v1] Deleted item image itemId={coat} scope=character context=wardrobe fileId={gone} current={next}"
         )]
     );
 
@@ -656,7 +662,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character"
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character context=wardrobe"
         )]
     );
     let home = rt
@@ -680,7 +686,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character containerId={archived}"
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character containerId={archived} context=wardrobe"
         )]
     );
     let webp: Vec<u8> = {
@@ -708,7 +714,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character kind=uploaded"
+            "INFO [Wardrobe Images v1] Refused a picture write on an archived character itemId={cloak} scope=character kind=uploaded context=wardrobe"
         )]
     );
 
@@ -737,7 +743,7 @@ fn the_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Uploaded wardrobe item image itemId={bare} scope=character kind=imported fileId={file_id} bytes={}",
+            "INFO [Wardrobe Images v1] Uploaded item image itemId={bare} scope=character kind=imported context=wardrobe fileId={file_id} bytes={}",
             webp.len()
         )]
     );
@@ -845,7 +851,7 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "DEBUG [Wardrobe Images v1] Listed save targets itemId={coat} scope=character count={count}"
+            "DEBUG [Wardrobe Images v1] Listed save targets itemId={coat} scope=character count={count} context=wardrobe"
         )]
     );
     let (_, lines) = captured_with(|| {
@@ -856,7 +862,14 @@ fn the_save_route_lines_are_v4s() {
             &coat,
         ))
     });
-    assert!(lines_of(lines).is_empty(), "a 404 lists nothing");
+    // A 404 lists nothing — only the shared `Item not in the named container`.
+    assert_eq!(
+        lines_of(lines),
+        vec![format!(
+            "DEBUG [Wardrobe Images v1] Item not in the named container itemId={coat} scope=group context=wardrobe"
+        )],
+        "a 404 lists nothing"
+    );
 
     // A picture not the item's → the refusal INFO.
     let foreign = pic(&scarf);
@@ -868,7 +881,7 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Refused to save a picture that is not the item's itemId={coat} scope=character fileId={foreign} mountPointId={general}"
+            "INFO [Wardrobe Images v1] Refused to save a picture that is not the item's itemId={coat} scope=character fileId={foreign} mountPointId={general} context=wardrobe"
         )]
     );
     // An archived character's vault → its refusal INFO.
@@ -881,7 +894,7 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Refused to save into an archived character's vault itemId={coat} scope=character fileId={own} mountPointId={archived_vault}"
+            "INFO [Wardrobe Images v1] Refused to save into an archived character's vault itemId={coat} scope=character fileId={own} mountPointId={archived_vault} context=wardrobe"
         )]
     );
     // Silence: a refused body logs nothing.
@@ -901,7 +914,7 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Saved wardrobe picture to a store itemId={coat} scope=character fileId={own} mountPointId={general} relativePath={} linkId={}",
+            "INFO [Wardrobe Images v1] Saved item picture to a store itemId={coat} scope=character fileId={own} mountPointId={general} context=wardrobe relativePath={} linkId={}",
             saved["relativePath"].as_str().unwrap(),
             saved["linkId"].as_str().unwrap()
         )]
@@ -914,7 +927,7 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Save to store rejected itemId={coat} scope=character fileId={own} mountPointId={general} code=ALREADY_SAVED messageJson={}",
+            "INFO [Wardrobe Images v1] Save to store rejected itemId={coat} scope=character fileId={own} mountPointId={general} context=wardrobe code=ALREADY_SAVED messageJson={}",
             serde_json::to_string(&e.message).unwrap()
         )]
     );
@@ -943,8 +956,9 @@ fn the_save_route_lines_are_v4s() {
         ),
         "an archived character's item is copied out: {resp:?}"
     );
-    assert!(lines_of(lines)[0]
-        .starts_with("INFO [Wardrobe Images v1] Saved wardrobe picture to a store "));
+    assert!(
+        lines_of(lines)[0].starts_with("INFO [Wardrobe Images v1] Saved item picture to a store ")
+    );
 }
 
 /// A provider no pin may reach (the archived gate refuses first).

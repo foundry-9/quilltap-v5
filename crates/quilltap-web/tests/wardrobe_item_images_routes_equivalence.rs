@@ -788,31 +788,35 @@ async fn direct_request(
 /// file record — a bare `message` field would replace the envelope message;
 /// P4.170 D.1).
 /// P4.D281 — v4's `handleLinkImage` INFO and its meta keys (in order).
-const V4_LINK_LINE: (&str, [&str; 4]) = (
+/// P4.D377 (v4 `600c2906f`): `{ itemId, scope, context }` then the action's keys.
+const V4_LINK_LINE: (&str, [&str; 5]) = (
     "[Wardrobe Images v1] Linked an existing picture to a wardrobe item",
-    ["itemId", "scope", "sourceFileId", "fileId"],
+    ["itemId", "scope", "context", "sourceFileId", "fileId"],
 );
 
+// P4.D377 (v4 `600c2906f`): the shared images route's `metaOf` — `context`
+// closes the meta; the saved line is the kind-neutral `Saved item picture…`.
 const V4_SAVE_LINE_KEYS: [(&str, &[&str]); 5] = [
     (
         "[Wardrobe Images v1] Listed save targets",
-        &["itemId", "scope", "count"],
+        &["itemId", "scope", "count", "context"],
     ),
     (
         "[Wardrobe Images v1] Refused to save a picture that is not the item's",
-        &["itemId", "scope", "fileId", "mountPointId"],
+        &["itemId", "scope", "fileId", "mountPointId", "context"],
     ),
     (
         "[Wardrobe Images v1] Refused to save into an archived character's vault",
-        &["itemId", "scope", "fileId", "mountPointId"],
+        &["itemId", "scope", "fileId", "mountPointId", "context"],
     ),
     (
-        "[Wardrobe Images v1] Saved wardrobe picture to a store",
+        "[Wardrobe Images v1] Saved item picture to a store",
         &[
             "itemId",
             "scope",
             "fileId",
             "mountPointId",
+            "context",
             "relativePath",
             "linkId",
         ],
@@ -824,6 +828,7 @@ const V4_SAVE_LINE_KEYS: [(&str, &[&str]); 5] = [
             "scope",
             "fileId",
             "mountPointId",
+            "context",
             "code",
             "message",
         ],
@@ -1164,7 +1169,7 @@ async fn p4d281_link_lines_are_v4s() {
     assert!(line.starts_with("INFO "), "{line}");
     assert!(
         line.ends_with(&format!(
-            "[Wardrobe Images v1] Linked an existing picture to a wardrobe item itemId={bare} scope=character sourceFileId={picture} fileId={file_id}"
+            "[Wardrobe Images v1] Linked an existing picture to a wardrobe item itemId={bare} scope=character context=wardrobe sourceFileId={picture} fileId={file_id}"
         )),
         "{line}"
     );
