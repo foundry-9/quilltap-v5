@@ -33,12 +33,11 @@ use crate::db::tiered_mount_pool::{
     TierContext, TierResolveOptions, TieredMountPool,
 };
 // === end P4.D376 ===
+use crate::db::reach::{bucket_mounts, BucketScope};
 use crate::db::{characters_read, doc_mount_points, js_number_to_json, DbError};
 use crate::doc_edit::uri_producers::DocStoreUriResolver;
 use crate::jsnum::to_fixed;
-use crate::literal_boost::{
-    LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GLOBAL, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
-};
+use crate::literal_boost::LITERAL_BOOST_GLOBAL;
 use crate::memory_scoring::{importance_band, ImportanceBand, TOOL_MIN_IMPORTANCE};
 use crate::memory_time::calendar::zoned_day_bounds_iso;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
@@ -843,7 +842,19 @@ fn flatten_scope(scope: &str) -> FlattenScope {
     }
 }
 
-/// v4 `buildKnowledgeTiers`.
+/// v4 `KnowledgeBucket.tier`'s wire spelling.
+fn knowledge_tier_str(tier: crate::db::reach::KnowledgeTier) -> &'static str {
+    use crate::db::reach::KnowledgeTier as T;
+    match tier {
+        T::Character => "character",
+        T::Group => "group",
+        T::Project => "project",
+        T::Global => "global",
+    }
+}
+
+/// v4 `buildKnowledgeTiers`: one all-stores `global` tier on the operator
+/// surface, otherwise [`bucket_mounts`] (the knowledge injector's bucketing).
 fn build_knowledge_tiers(
     scope: &str,
     operator_wide: bool,
@@ -862,52 +873,24 @@ fn build_knowledge_tiers(
             }]
         };
     }
-    let mut tiers = Vec::new();
-    let want_character = scope == "all" || scope == "character";
-    let want_group = scope == "all" || scope == "group";
-    let want_project = scope == "all" || scope == "project";
-    let want_global = scope == "all";
-    if want_character {
-        if let Some(id) = &pool.character_mount_point_id {
-            tiers.push(KnowledgeTier {
-                tier: "character",
-                mount_point_ids: vec![id.clone()],
-                boost: LITERAL_BOOST_CHARACTER,
-            });
-        }
-    }
-    // Pre-built pool: the cast vaults stand where the character tier would.
-    if want_character && prebuilt && !pool.participant_mount_point_ids.is_empty() {
-        tiers.push(KnowledgeTier {
-            tier: "character",
-            mount_point_ids: pool.participant_mount_point_ids.clone(),
-            boost: LITERAL_BOOST_CHARACTER,
-        });
-    }
-    if want_group && !pool.group_mount_point_ids.is_empty() {
-        tiers.push(KnowledgeTier {
-            tier: "group",
-            mount_point_ids: pool.group_mount_point_ids.clone(),
-            boost: LITERAL_BOOST_GROUP,
-        });
-    }
-    if want_project && !pool.project_mount_point_ids.is_empty() {
-        tiers.push(KnowledgeTier {
-            tier: "project",
-            mount_point_ids: pool.project_mount_point_ids.clone(),
-            boost: LITERAL_BOOST_PROJECT,
-        });
-    }
-    if want_global {
-        if let Some(id) = &pool.global_mount_point_id {
-            tiers.push(KnowledgeTier {
-                tier: "global",
-                mount_point_ids: vec![id.clone()],
-                boost: LITERAL_BOOST_GLOBAL,
-            });
-        }
-    }
-    tiers
+    // The shared bucketing (v4 `bucketMounts`): tiers nearest first, each with
+    // its literal-phrase boost; a pre-built pool's cast vaults stand where the
+    // character tier would. Its singleton guards are JS truthiness (an empty
+    // id is no tier).
+    let bucket_scope = match scope {
+        "character" => BucketScope::Character,
+        "group" => BucketScope::Group,
+        "project" => BucketScope::Project,
+        _ => BucketScope::All,
+    };
+    bucket_mounts(pool, bucket_scope, prebuilt)
+        .into_iter()
+        .map(|b| KnowledgeTier {
+            tier: knowledge_tier_str(b.tier),
+            mount_point_ids: b.mount_point_ids,
+            boost: b.boost,
+        })
+        .collect()
 }
 
 // ---- result Value builders (v4 field order + JS-number rendering) ----------
@@ -1496,6 +1479,70 @@ fn capitalize(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// v4's `buildKnowledgeTiers` (`search-scriptorium-handler.ts:234-249` at
+    /// `624d0d25c`) is the shared `bucketMounts` (`reach.ts:399`) off the
+    /// operator surface, whose singleton guards are JS truthiness: an EMPTY
+    /// character / global id is no tier. v5's copy pushed a tier for `""`.
+    #[test]
+    fn knowledge_tiers_are_the_shared_bucketing_and_drop_empty_singletons() {
+        use crate::literal_boost::{
+            LITERAL_BOOST_CHARACTER, LITERAL_BOOST_GROUP, LITERAL_BOOST_PROJECT,
+        };
+        let pool = TieredMountPool {
+            character_mount_point_id: Some(String::new()),
+            participant_mount_point_ids: vec!["p-1".into()],
+            group_mount_point_ids: vec!["g-1".into()],
+            project_mount_point_ids: vec!["pr-1".into()],
+            global_mount_point_id: Some(String::new()),
+        };
+        let tiers = build_knowledge_tiers("all", false, true, &pool, &[]);
+        let shape: Vec<(&str, Vec<String>, f64)> = tiers
+            .iter()
+            .map(|t| (t.tier, t.mount_point_ids.clone(), t.boost))
+            .collect();
+        assert_eq!(
+            shape,
+            vec![
+                (
+                    "character",
+                    vec!["p-1".to_string()],
+                    LITERAL_BOOST_CHARACTER
+                ),
+                ("group", vec!["g-1".to_string()], LITERAL_BOOST_GROUP),
+                ("project", vec!["pr-1".to_string()], LITERAL_BOOST_PROJECT),
+            ]
+        );
+
+        // Every scope, both pool shapes, against `bucket_mounts` itself.
+        let full = TieredMountPool {
+            character_mount_point_id: Some("c-1".into()),
+            participant_mount_point_ids: vec!["p-1".into()],
+            group_mount_point_ids: vec!["g-1".into(), "g-2".into()],
+            project_mount_point_ids: vec!["pr-1".into()],
+            global_mount_point_id: Some("gl".into()),
+        };
+        for (scope, bucket_scope) in [
+            ("all", BucketScope::All),
+            ("character", BucketScope::Character),
+            ("group", BucketScope::Group),
+            ("project", BucketScope::Project),
+        ] {
+            for prebuilt in [false, true] {
+                let ours: Vec<(&str, Vec<String>, f64)> =
+                    build_knowledge_tiers(scope, false, prebuilt, &full, &[])
+                        .into_iter()
+                        .map(|t| (t.tier, t.mount_point_ids, t.boost))
+                        .collect();
+                let shared: Vec<(&str, Vec<String>, f64)> =
+                    bucket_mounts(&full, bucket_scope, prebuilt)
+                        .into_iter()
+                        .map(|b| (knowledge_tier_str(b.tier), b.mount_point_ids, b.boost))
+                        .collect();
+                assert_eq!(ours, shared, "scope={scope} prebuilt={prebuilt}");
+            }
+        }
+    }
 
     /// The smalls unification (P4.114 review): v4's outer `catch`
     /// (`search-scriptorium-handler.ts:544-549`) logs ERROR `Search scriptorium
