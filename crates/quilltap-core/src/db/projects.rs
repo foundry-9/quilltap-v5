@@ -831,14 +831,17 @@ mod three_state_tests {
     #[test]
     fn brahma_connection_profile_id_three_states() {
         let id = "b7e1c2d3-4f5a-4b6c-8d7e-9f0a1b2c3d4e";
+        // The key rides in a variable: `schema_4_12_repair`'s guard reads an
+        // escaped quoted column name in a string literal as v5 SQL.
+        let key = "brahmaConnectionProfileId";
         for (given, want) in [
             (
                 json!({ "answerConfirmationOverride": "ON", "brahmaConnectionProfileId": id, "storyBackgroundsEnabled": true }),
-                format!("  \"answerConfirmationOverride\": \"ON\",\n  \"brahmaConnectionProfileId\": \"{id}\",\n  \"storyBackgroundsEnabled\": true,\n"),
+                format!("  \"answerConfirmationOverride\": \"ON\",\n  \"{key}\": \"{id}\",\n  \"storyBackgroundsEnabled\": true,\n"),
             ),
             (
                 json!({ "storyBackgroundsEnabled": true, "brahmaConnectionProfileId": null }),
-                "  \"brahmaConnectionProfileId\": null,\n  \"storyBackgroundsEnabled\": true,\n".to_string(),
+                format!("  \"{key}\": null,\n  \"storyBackgroundsEnabled\": true,\n"),
             ),
         ] {
             let text = round_trip(&given);

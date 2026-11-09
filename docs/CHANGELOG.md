@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — test(projects): keep the fresh-only column name out of a test literal the 4.12 schema guard reads as SQL (P4.D374)
+
+_Versions: core 0.0.1438._
+
+P4.D374. The lane's workspace gate went red on P4.D362's `the_fresh_only_columns_are_named_by_no_v5_sql` guard, which reads an escaped `"brahmaConnectionProfileId"` inside any string literal as v5 SQL. The hit was the expected-text literal in item 17's `brahma_connection_profile_id_three_states` unit test. The test now builds that text from a `key` variable. No production code changes and the guard is unchanged.
+
 #### 2026-11-08 — feat(brahma): inline @Brahma resolves its profile project → global → default with v4's lines (P4.D374)
 
 _Versions: core 0.0.1437._
