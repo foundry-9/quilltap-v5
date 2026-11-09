@@ -627,7 +627,10 @@ fn to_cheap_llm_config(settings: &CheapLlmSettings) -> CheapLlmConfig {
 /// ids, so the row is reconstructed from the full message list via
 /// `rows_by_id` — the same rows the turn was partitioned from (and the row
 /// carries the `participantId` the label is resolved from).
-fn turns_to_chat_messages(
+///
+/// `pub` for the tier-1 `context_summary_equivalence` family (P4.D372 — v4
+/// exports `turnsToChatMessages` for its tests at the pin).
+pub fn turns_to_chat_messages(
     turns: &[FoldedTurn],
     rows_by_id: &HashMap<&str, &Value>,
     names: &SpeakerNames,
@@ -637,15 +640,31 @@ fn turns_to_chat_messages(
         for id in &t.ids {
             if let Some(m) = rows_by_id.get(id.as_str()) {
                 let role = m.get("role").and_then(Value::as_str).unwrap_or("");
+                let content = m.get("content").and_then(Value::as_str).unwrap_or("");
+                // P4.D372 (v4 `db6190b44`): a machine fact rides under the fixed
+                // `Established fact` label as a `user` line, UNFRAMED; a seat line
+                // keeps its speaker and gets the seat frame.
+                let kind = crate::established_fact::established_fact_kind_of(
+                    &crate::established_fact::EstablishedFactFields::from_value(m),
+                );
+                use crate::established_fact::EstablishedFactKind as K;
                 result.push(FoldTurn {
                     // v4 `speakerLabel(m, names)` over the FULL row (P4.D372 R2).
                     speaker: speaker_label(&SpeakerRow::from_value(m), names),
-                    role: role.to_lowercase(),
-                    content: m
-                        .get("content")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
+                    role: if kind == Some(K::Announcement) {
+                        "user".to_string()
+                    } else {
+                        role.to_lowercase()
+                    },
+                    content: if kind == Some(K::Seat) {
+                        crate::established_fact::frame_established_fact(
+                            content,
+                            K::Seat,
+                            crate::established_fact::EstablishedFactVoice::Plain,
+                        )
+                    } else {
+                        content.to_string()
+                    },
                     // v4 `m.createdAt ?? null`.
                     created_at: m
                         .get("createdAt")
@@ -684,20 +703,30 @@ fn log_resolved_speaker_names(chat_id: &str, participants: &[Value], names: &Spe
     );
 }
 
-/// v4 `PartitionInputMessage` view of a `getMessages` row.
+/// v4 `PartitionInputMessage` view of a `getMessages` row (P4.D372: the ONE
+/// raw-row read, which carries `systemKind`).
 fn to_partition_input(m: &Value) -> PartitionInputMessage {
-    PartitionInputMessage {
-        id: m
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        role: m.get("role").and_then(Value::as_str).map(str::to_string),
-        message_type: m.get("type").and_then(Value::as_str).map(str::to_string),
-        system_sender: m
-            .get("systemSender")
-            .and_then(Value::as_str)
-            .map(str::to_string),
+    PartitionInputMessage::from_event(m)
+}
+
+/// v4's `[Context Summary] Folding established facts` DEBUG (`db6190b44`,
+/// `context-summary.ts:423-430`): counted over the folded turns' messages,
+/// logged only when a fact is among them.
+fn log_folded_facts(chat_id: &str, turns: &[FoldedTurn], rows_by_id: &HashMap<&str, &Value>) {
+    let (seat_lines, machine_facts) = crate::established_fact::count_established_facts(
+        turns
+            .iter()
+            .flat_map(|t| t.ids.iter())
+            .filter_map(|id| rows_by_id.get(id.as_str()))
+            .map(|m| crate::established_fact::EstablishedFactFields::from_value(m)),
+    );
+    if seat_lines + machine_facts > 0 {
+        tracing::debug!(
+            chatId = chat_id,
+            seatLines = seat_lines,
+            machineFacts = machine_facts,
+            "[Context Summary] Folding established facts"
+        );
     }
 }
 
@@ -846,6 +875,7 @@ async fn generate_inner<C: CompletionProvider, S: ContextSummarySeams>(
         .unwrap_or_default();
     log_resolved_speaker_names(&chat_id, &participants, &speaker_names);
     let new_turns_content = turns_to_chat_messages(turns_to_fold, &rows_by_id, &speaker_names);
+    log_folded_facts(&chat_id, turns_to_fold, &rows_by_id);
 
     if new_turns_content.is_empty() {
         return Ok(SummaryGenerationResult::fail("No content in turns to fold"));

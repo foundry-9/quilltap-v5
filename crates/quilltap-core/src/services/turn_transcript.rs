@@ -390,11 +390,22 @@ pub fn build_turn_transcript(
             if m.get("id").and_then(Value::as_str) == options.turn_opener_message_id.as_deref()
                 && m.get("role").and_then(Value::as_str) == Some("USER")
             {
-                let content = m
-                    .get("content")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
+                let raw_content = m.get("content").and_then(Value::as_str).unwrap_or_default();
+                // P4.D372 (v4 `db6190b44`): an opener posted as established
+                // fact reaches the extractor framed, so it is remembered as a
+                // fact of the world, not as the user's claim. v4 tests the RAW
+                // row's `m.isEstablishedFact` for TRUTHINESS (not the strict
+                // seat predicate), and the promoted slice's `text` follows
+                // (`userMessage ?? m.content`, `userMessage` always set here).
+                let content = if crate::inventory::types::js_truthy(m.get("isEstablishedFact")) {
+                    crate::established_fact::frame_established_fact(
+                        raw_content,
+                        crate::established_fact::EstablishedFactKind::Seat,
+                        crate::established_fact::EstablishedFactVoice::Plain,
+                    )
+                } else {
+                    raw_content.to_string()
+                };
                 user_message = Some(content.clone());
                 scanning = true;
                 if let Some(ts) = m.get("createdAt").and_then(Value::as_str) {

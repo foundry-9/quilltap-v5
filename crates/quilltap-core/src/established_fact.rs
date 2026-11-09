@@ -529,6 +529,119 @@ pub(crate) mod leak_tests {
     }
 }
 
+#[cfg(test)]
+mod leak_tests_read_paths {
+    //! The rest of v4's leak walk (`established-fact-leaks.test.ts`): the
+    //! cheap-LLM transcripts, the fold, the extraction window and the turn
+    //! transcript. (The context frame pass rides `message_context`'s own
+    //! `established_fact_pass` tests; attribution and the rehearsal theirs.)
+    use super::leak_tests::*;
+    use super::*;
+    use serde_json::Value;
+
+    fn rows() -> Vec<Value> {
+        vec![seat_line(), machine_fact(), reply()]
+    }
+
+    #[test]
+    fn extract_visible_conversation_frames_both_kinds_in_the_plain_voice() {
+        let raw: Vec<_> = rows()
+            .iter()
+            .map(crate::chat_tasks::RawMessage::from_event)
+            .collect();
+        let visible = crate::chat_tasks::extract_visible_conversation(&raw);
+        expect_facts_framed(
+            &format!("{visible:?}").replace("\\n", "\n"),
+            EstablishedFactVoice::Plain,
+        );
+        let m = visible
+            .iter()
+            .find(|m| m.content.contains(MACHINE_FACT))
+            .unwrap();
+        assert_eq!(m.role, "user");
+    }
+
+    #[test]
+    fn the_fold_labels_the_machine_fact_and_the_prompt_carries_the_rule() {
+        use crate::context_summary::{partition_messages_into_turns, PartitionInputMessage};
+        let all = rows();
+        let input: Vec<_> = all.iter().map(PartitionInputMessage::from_event).collect();
+        let turns = partition_messages_into_turns(&input, None);
+        let ids: Vec<_> = turns.iter().flat_map(|t| t.ids.clone()).collect();
+        assert_eq!(ids, ["m-seat", "m-fact", "m-reply"]);
+        assert_eq!(turns.len(), 2);
+        let by_id: std::collections::HashMap<&str, &Value> =
+            all.iter().map(|m| (m["id"].as_str().unwrap(), m)).collect();
+        let names = crate::services::speaker_names::SpeakerNames::from_pairs([
+            ("p-user".to_string(), "Captain".to_string()),
+            ("p-alice".to_string(), "Alice".to_string()),
+        ]);
+        let lines =
+            crate::services::context_summary::turns_to_chat_messages(&turns, &by_id, &names);
+        let machine = lines.iter().find(|l| l.content == MACHINE_FACT).unwrap();
+        assert_eq!(machine.speaker, ESTABLISHED_FACT_SPEAKER_LABEL);
+        let seat = lines
+            .iter()
+            .find(|l| l.content.contains(SEAT_FACT))
+            .unwrap();
+        assert_eq!(seat.speaker, "Captain");
+        assert!(seat.content.contains(ESTABLISHED_FACT_SEAT_FRAME));
+        let prompt = crate::services::context_summary::prompt_text::FOLD_SUMMARY_PROMPT;
+        assert!(prompt.contains(ESTABLISHED_FACT_TRANSCRIPT_RULE));
+        assert!(!names_the_feature(prompt));
+        assert!(!lines
+            .iter()
+            .any(|l| names_the_feature(&l.content) || names_the_feature(&l.speaker)));
+    }
+
+    #[test]
+    fn a_stretch_frames_the_seat_line_too() {
+        let names = crate::services::speaker_names::SpeakerNames::from_pairs([(
+            "p-user".to_string(),
+            "Captain".to_string(),
+        )]);
+        let w = crate::memory_extraction::window::stretch_window(
+            vec![seat_line(), reply()],
+            &names,
+            Some("m-reply".to_string()),
+            0.0,
+        );
+        let rendered = crate::memory_extraction::window::render_stretch(&w.rendered);
+        assert!(
+            rendered.contains(&format!("Captain: {ESTABLISHED_FACT_SEAT_FRAME}")),
+            "{rendered}"
+        );
+        assert!(!names_the_feature(&rendered));
+    }
+
+    #[test]
+    fn the_turn_transcript_frames_a_seat_line_opener() {
+        let participants = vec![
+            serde_json::json!({"id": "p-alice", "characterId": "c-alice", "type": "CHARACTER", "controlledBy": "llm", "status": "active"}),
+            serde_json::json!({"id": "p-user", "characterId": null, "type": "CHARACTER", "controlledBy": "user", "status": "active"}),
+        ];
+        let characters = std::collections::HashMap::from([(
+            "c-alice".to_string(),
+            serde_json::json!({"id": "c-alice", "name": "Alice", "pronouns": null}),
+        )]);
+        let t = crate::services::turn_transcript::build_turn_transcript(
+            &rows(),
+            &participants,
+            &characters,
+            &crate::services::turn_transcript::BuildTurnTranscriptOptions {
+                turn_opener_message_id: Some("m-seat".to_string()),
+                ..Default::default()
+            },
+        );
+        let rendered = crate::memory_extraction::window::render_turn_context(&t);
+        assert!(
+            rendered.contains(SEAT_FACT) && rendered.contains(ESTABLISHED_FACT_SEAT_FRAME),
+            "{rendered}"
+        );
+        assert!(!names_the_feature(&rendered));
+    }
+}
+
 /// Leak rows that need a sibling lane's file on the union (§S.4 / H4). The
 /// unifier un-ignores them once P4.D373's extraction prompt bodies carry the
 /// `ESTABLISHED FACTS` block.

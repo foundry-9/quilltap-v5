@@ -17,6 +17,7 @@ import {
   calculateInterchangeCount,
   shouldCheckTitleAtInterchange,
   partitionMessagesIntoTurns,
+  turnsToChatMessages,
 } from '@/lib/chat/context-summary';
 import type { ChatEvent } from '@/lib/schemas/types';
 
@@ -24,7 +25,7 @@ type Row =
   | { kind: 'gate'; id: string; currentTurn: number; lastFoldedTurn: number; lastFullRebuildTurn: number; out: string }
   | { kind: 'interchange'; id: string; messages: Array<{ role?: string; type?: string; systemSender?: string | null }>; chatType?: string; out: number }
   | { kind: 'title'; id: string; current: number; lastChecked: number; chatType?: string; out: boolean }
-  | { kind: 'partition'; id: string; messages: Array<Record<string, unknown>>; chatType?: string; out: Array<{ turnNumber: number; ids: string[] }> };
+  | { kind: 'partition'; id: string; messages: Array<Record<string, unknown>>; chatType?: string; out: Array<{ turnNumber: number; ids: string[] }>; foldLines?: unknown[] };
 
 const rows: Row[] = [];
 
@@ -93,6 +94,9 @@ for (const [id, current, lastChecked, chatType] of titles) {
 // ---- partitionMessagesIntoTurns ------------------------------------------
 const ev = (id: string, role: string, type = 'message', systemSender: string | null = null): Record<string, unknown> =>
   ({ id, role, type, content: `c-${id}`, systemSender });
+// P4.D372: a machine fact, as `postEstablishedFact` writes it.
+const fact = (id: string): Record<string, unknown> =>
+  ({ id, role: 'ASSISTANT', type: 'message', content: `fact-${id}`, systemSender: 'host', systemKind: 'established-fact', participantId: null });
 const partitions: Array<[string, Array<Record<string, unknown>>, string | undefined]> = [
   ['empty', [], undefined],
   ['two-turns', [ev('u1', 'USER'), ev('a1', 'ASSISTANT'), ev('u2', 'USER'), ev('a2', 'ASSISTANT')], undefined],
@@ -102,10 +106,27 @@ const partitions: Array<[string, Array<Record<string, unknown>>, string | undefi
   ['assistant-only-no-flush', [ev('a1', 'ASSISTANT'), ev('a2', 'ASSISTANT')], undefined],
   ['autonomous-each-assistant', [ev('a1', 'ASSISTANT'), ev('a2', 'ASSISTANT'), ev('a3', 'ASSISTANT')], 'autonomous'],
   ['autonomous-whisper-excluded', [ev('a1', 'ASSISTANT'), ev('w1', 'ASSISTANT', 'message', 'librarian'), ev('a2', 'ASSISTANT')], 'autonomous'],
+  // === P4.D372 (v4 `db6190b44`) === a machine fact passes the Staff skip
+  // and starts a turn of its own; a seat line is an ordinary USER row.
+  ['deus-machine-fact-mid-turn', [ev('u1', 'USER'), ev('a1', 'ASSISTANT'), fact('f1'), ev('a2', 'ASSISTANT')], undefined],
+  ['deus-machine-fact-leading', [ev('a0', 'ASSISTANT'), fact('f1'), ev('a1', 'ASSISTANT')], undefined],
+  ['deus-machine-fact-after-staff', [ev('u1', 'USER'), ev('w1', 'ASSISTANT', 'message', 'host'), fact('f1'), ev('a1', 'ASSISTANT')], undefined],
+  ['deus-seat-line', [{ ...ev('u1', 'USER'), participantId: 'p-user', isEstablishedFact: true }, { ...ev('a1', 'ASSISTANT'), participantId: 'p-alice' }], undefined],
+  ['deus-autonomous', [ev('a1', 'ASSISTANT'), fact('f1'), ev('a2', 'ASSISTANT')], 'autonomous'],
+  ['deus-wrong-kind-host-skipped', [ev('u1', 'USER'), { ...ev('h1', 'ASSISTANT', 'message', 'host'), systemKind: 'inform' }, ev('a1', 'ASSISTANT')], undefined],
+  ['deus-kind-without-host-skipped', [ev('u1', 'USER'), { ...ev('h1', 'ASSISTANT', 'message', 'aurora'), systemKind: 'established-fact' }], undefined],
+  // === /P4.D372 ===
 ];
+// P4.D372: the fold's line render over a fixed name map (v4 exports
+// `turnsToChatMessages` at the pin).
+const FOLD_NAMES = new Map([['p-user', 'Captain'], ['p-alice', 'Alice']]);
 for (const [id, messages, chatType] of partitions) {
   const turns = partitionMessagesIntoTurns(messages as unknown as ChatEvent[], chatType);
-  rows.push({ kind: 'partition', id, messages, chatType, out: turns.map(t => ({ turnNumber: t.turnNumber, ids: t.ids })) });
+  rows.push({
+    kind: 'partition', id, messages, chatType,
+    out: turns.map(t => ({ turnNumber: t.turnNumber, ids: t.ids })),
+    foldLines: turnsToChatMessages(turns, FOLD_NAMES),
+  });
 }
 
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

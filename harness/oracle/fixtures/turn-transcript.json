@@ -1198,6 +1198,116 @@
         "turnOpenerMessageId": "m1",
         "extractAfterMessageId": "m2"
       }
+    },
+    {
+      "id": "deus_fact_opener",
+      "messages": [
+        {
+          "type": "message",
+          "id": "d1",
+          "role": "USER",
+          "content": "The bridge to Ashford collapsed.",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T10:00:00.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "type": "message",
+          "id": "d2",
+          "role": "ASSISTANT",
+          "content": "Then we take the ferry.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T10:00:05.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "d1",
+        "userCharacterId": "u-1",
+        "userCharacterName": "Charlie"
+      }
+    },
+    {
+      "id": "deus_fact_opener_user_controlled_slice",
+      "messages": [
+        {
+          "type": "message",
+          "id": "d1",
+          "role": "USER",
+          "content": "The lamp was lit at dusk.",
+          "participantId": "pd000000-0000-4000-8000-00000000000d",
+          "createdAt": "2026-07-01T10:00:00.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "type": "message",
+          "id": "d2",
+          "role": "ASSISTANT",
+          "content": "I saw it from the quay.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T10:00:05.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "d1"
+      }
+    },
+    {
+      "id": "deus_fact_opener_truthy_numeric_flag",
+      "messages": [
+        {
+          "type": "message",
+          "id": "d1",
+          "role": "USER",
+          "content": "A numeric flag still frames here.",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T10:00:00.000Z",
+          "isEstablishedFact": 1
+        },
+        {
+          "type": "message",
+          "id": "d2",
+          "role": "ASSISTANT",
+          "content": "Noted.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T10:00:05.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "d1"
+      }
+    },
+    {
+      "id": "deus_non_opener_fact",
+      "messages": [
+        {
+          "type": "message",
+          "id": "d0",
+          "role": "USER",
+          "content": "An earlier fact.",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T09:59:00.000Z",
+          "isEstablishedFact": true
+        },
+        {
+          "type": "message",
+          "id": "d1",
+          "role": "USER",
+          "content": "What now?",
+          "participantId": "pu000000-0000-4000-8000-000000000001",
+          "createdAt": "2026-07-01T10:00:00.000Z"
+        },
+        {
+          "type": "message",
+          "id": "d2",
+          "role": "ASSISTANT",
+          "content": "We wait.",
+          "participantId": "pa000000-0000-4000-8000-00000000000a",
+          "createdAt": "2026-07-01T10:00:05.000Z"
+        }
+      ],
+      "options": {
+        "turnOpenerMessageId": "d1"
+      }
     }
   ],
   "turnLists": [

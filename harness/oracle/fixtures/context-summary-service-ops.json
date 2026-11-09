@@ -172,6 +172,21 @@
       "op": "*",
       "kind": "fold-other",
       "response": "[]"
+    },
+    {
+      "op": "deus_fold_facts",
+      "kind": "fold",
+      "response": "Active threads: the lighthouse. Resolved decisions: none. Emotional state: steady. Open questions: the tide tables."
+    },
+    {
+      "op": "deus_fold_facts",
+      "kind": "fold-episode",
+      "response": "[]"
+    },
+    {
+      "op": "deus_fold_facts",
+      "kind": "title",
+      "response": "The Keeper's Daughter"
     }
   ],
   "ops": [
@@ -269,6 +284,12 @@
       "name": "fold_queues_background",
       "kind": "generate",
       "chatId": "c0000010-0000-4000-8000-000000000010",
+      "forceRegenerate": false
+    },
+    {
+      "name": "deus_fold_facts",
+      "kind": "generate",
+      "chatId": "c0000011-0000-4000-8000-000000000011",
       "forceRegenerate": false
     }
   ]

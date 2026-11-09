@@ -61,6 +61,14 @@ impl SpeakerNames {
     pub fn entries(&self) -> &[(String, String)] {
         &self.entries
     }
+
+    /// A map built from pairs in insertion order (v4 `new Map(pairs)`) — for
+    /// the differential families that hand v4's label function a fixed map.
+    pub fn from_pairs(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
+        SpeakerNames {
+            entries: pairs.into_iter().collect(),
+        }
+    }
 }
 
 fn str_field<'a>(v: &'a Value, key: &str) -> Option<&'a str> {

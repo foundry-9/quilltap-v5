@@ -253,9 +253,36 @@ fn expected_speaker_names_line(op: &str) -> Option<(usize, usize, &'static str)>
         // P4.D215's two chats: one seat each on a character with no row.
         "fold_hand_renamed" => Some((1, 0, r#"["ee000000-0000-4000-8000-00000000000f"]"#)),
         "fold_queues_background" => Some((1, 0, r#"["ee000000-0000-4000-8000-000000000010"]"#)),
+        // P4.D372: c000000c's two seats, renumbered.
+        "deus_fold_facts" => Some((2, 2, "[]")),
         // `Not enough turns to fold` returns BEFORE the resolution; the gate
         // skips and the invalidates never fold.
         _ => None,
+    }
+}
+
+/// P4.D372 (v4 `db6190b44`): `[Context Summary] Folding established facts`
+/// fires on exactly the op whose folded turns hold a fact (one seat line, one
+/// machine fact) — and on no other op (the silence leg).
+fn assert_folding_facts_line(op: &str, chat_id: &str, lines: &[String]) {
+    let hits: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains("[Context Summary] Folding established facts"))
+        .collect();
+    if op == "deus_fold_facts" {
+        assert_eq!(hits.len(), 1, "{op}: one folding-facts line: {lines:#?}");
+        assert_eq!(
+            hits[0].as_str(),
+            format!(
+                "DEBUG quilltap_core::services::context_summary [Context Summary] Folding established facts chatId={chat_id} seatLines=1 machineFacts=1"
+            ),
+            "{op}"
+        );
+    } else {
+        assert!(
+            hits.is_empty(),
+            "{op}: no fact folded, so no line: {hits:?}"
+        );
     }
 }
 
@@ -630,8 +657,13 @@ fn seed_ids_of(dump: &Value) -> Vec<String> {
 /// identically, update the number). P4.D296 re-measured 5 → 4 after the fold
 /// hook moved onto ONE extraction context and v4's `83334b9a5` prompts (the
 /// logged requests changed); every row still decodes identically (asserted
-/// above).
-const STORED_BYTE_DIVERGENCES: usize = 4;
+/// above). P4.D372 re-measured 4 → 6: the corpus grew one op
+/// (`deus_fold_facts`), whose fold-grain OTHER calls add two such rows —
+/// MEASURED on the union shape (P4.D373's `624d0d25c` extraction prompts
+/// overlaid, H4), where every row still decodes identically; on the P4.D372
+/// branch alone the family stops earlier, at the memories rows (those prompts'
+/// `ESTABLISHED FACTS` bytes are P4.D373's).
+const STORED_BYTE_DIVERGENCES: usize = 6;
 
 /// A dumped compressed BLOB cell (hex) → the text it stores.
 fn decoded_cell(v: &Value) -> Option<String> {
@@ -903,6 +935,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                 ))
                 .await;
                 assert_speaker_names_line(&op.name, &op.chat_id, &lines);
+                assert_folding_facts_line(&op.name, &op.chat_id, &lines);
                 assert_fold_title_lines(&op.name, &op.chat_id, &lines);
                 // Match v4's result shape: undefined keys are dropped by
                 // JSON.stringify, so `summary`/`error`/`usage` only appear when set.
@@ -935,6 +968,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                 ))
                 .await;
                 assert_speaker_names_line(&op.name, &op.chat_id, &lines);
+                assert_folding_facts_line(&op.name, &op.chat_id, &lines);
                 json!(r)
             }
             "check" => {
@@ -968,6 +1002,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                     ))
                     .await;
                 assert_speaker_names_line(&op.name, &op.chat_id, &lines);
+                assert_folding_facts_line(&op.name, &op.chat_id, &lines);
                 let outcome =
                     outcome.unwrap_or_else(|e| panic!("{}: check failed: {e:?}", op.name));
                 // Reconstruct the same observable shape as the oracle: enqueue

@@ -2453,6 +2453,237 @@
       ],
       "imageProfileId": "ab000000-0000-4000-8000-000000000001",
       "_note": "P4.D215 (v4 00c290c9a, bug 163): the ONLY chat whose image profile resolves (its own imageProfileId; the settings row names no default) \u2014 a changed fold title queues one story background here and nowhere else."
+    },
+    {
+      "id": "c0000011-0000-4000-8000-000000000011",
+      "title": "Deus Facts",
+      "chatType": "salon",
+      "contextSummary": null,
+      "compactionGeneration": 0,
+      "lastSummaryTurn": 0,
+      "lastFullRebuildTurn": 0,
+      "lastRenameCheckInterchange": 0,
+      "summaryAnchorMessageIds": [],
+      "_note": "P4.D372: c000000c's seats and cadence, with part 12's USER line posted as an established fact (a seat line) and part 13's ASSISTANT line replaced by a machine fact (a Host row) \u2014 both inside the folded range: the fold's partition, labels and seat frame.",
+      "participants": [
+        {
+          "id": "ee000011-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000012",
+          "controlledBy": "user",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        },
+        {
+          "id": "ee000011-0000-4000-8000-000000000002",
+          "type": "CHARACTER",
+          "characterId": "aa000000-0000-4000-8000-000000000011",
+          "controlledBy": "llm",
+          "status": "active",
+          "talkativeness": 0.5,
+          "createdAt": "2026-03-01T00:00:00.000Z",
+          "updatedAt": "2026-03-01T00:00:00.000Z"
+        }
+      ],
+      "messages": [
+        {
+          "id": "dd000011-0000-4000-8000-000000000000",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 0",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000001",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 0",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000002",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 1",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000003",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 1",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000004",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 2",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000005",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 2",
+          "participantId": null
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000006",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 3",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000007",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 3",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000008",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 4",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000009",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 4",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000010",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 5",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000011",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 5",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000012",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 6",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000013",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 6",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000014",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 7",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000015",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 7",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000016",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 8",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000017",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 8",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000018",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 9",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000019",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 9",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000020",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 10",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000021",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 10",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000022",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 11",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000023",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 11",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000024",
+          "role": "USER",
+          "content": "The lighthouse lamp was lit by the first keeper's daughter, part 12",
+          "participantId": "ee000011-0000-4000-8000-000000000001",
+          "isEstablishedFact": true
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000025",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 12",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000026",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 13",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000027",
+          "role": "ASSISTANT",
+          "content": "The tide tables were rewritten after the storm of 1911.",
+          "participantId": null,
+          "systemSender": "host",
+          "systemKind": "established-fact"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000028",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 14",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000029",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 14",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000030",
+          "role": "USER",
+          "content": "Pell asks about the lighthouse, part 15",
+          "participantId": "ee000011-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "dd000011-0000-4000-8000-000000000031",
+          "role": "ASSISTANT",
+          "content": "Wren answers about the lamp, part 15",
+          "participantId": "ee000011-0000-4000-8000-000000000002"
+        }
+      ]
     }
   ],
   "_invalidateHitTarget": "dd00000a-0000-4000-8000-000000000004",

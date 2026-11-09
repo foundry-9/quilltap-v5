@@ -56,6 +56,10 @@ interface MessageSeed {
   role?: 'USER' | 'ASSISTANT';
   content: string;
   systemSender?: string;
+  /** P4.D372: a machine fact's `systemKind: 'established-fact'`. */
+  systemKind?: string;
+  /** P4.D372: a seat line posted as established fact. */
+  isEstablishedFact?: boolean;
   summaryAnchor?: { compactionGeneration: number };
   /** P4.D212: the seat the line is attributed to (`null` = unattributed). */
   participantId?: string | null;
@@ -317,6 +321,8 @@ async function main(): Promise<void> {
             createdAt: TS,
           };
           if (m.systemSender !== undefined) base.systemSender = m.systemSender;
+          if (m.systemKind !== undefined) base.systemKind = m.systemKind; // P4.D372
+          if (m.isEstablishedFact !== undefined) base.isEstablishedFact = m.isEstablishedFact; // P4.D372
           if (m.participantId !== undefined) base.participantId = m.participantId;
           if (m.summaryAnchor !== undefined) base.summaryAnchor = m.summaryAnchor;
           return base;

@@ -140,7 +140,13 @@ pub fn stretch_window(
         .map(|m| StretchMessage {
             // v4 `speakerLabel(m, names)` over the FULL row (P4.D372 R2).
             speaker: speaker_label(&SpeakerRow::from_value(m), speaker_names),
-            content: str_field(m, "content").unwrap_or_default().to_string(),
+            // P4.D372 (v4 `db6190b44`): a seat line posted as established
+            // fact is framed, here as in history (either kind, plain voice).
+            content: crate::established_fact::framed_established_fact_body_of_value(
+                m,
+                crate::established_fact::EstablishedFactVoice::Plain,
+            )
+            .unwrap_or_else(|| str_field(m, "content").unwrap_or_default().to_string()),
             created_at: str_field(m, "createdAt").map(str::to_string),
         })
         .collect();

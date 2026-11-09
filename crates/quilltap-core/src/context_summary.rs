@@ -188,7 +188,33 @@ pub struct PartitionInputMessage {
     pub role: Option<String>,
     pub message_type: Option<String>,
     pub system_sender: Option<String>,
+    /// P4.D372 (v4 `db6190b44`): `systemKind`, so a machine-delivered
+    /// established fact (a Host row) is recognised past the Staff skip.
+    pub system_kind: Option<String>,
 }
+
+// === P4.D372 ===
+impl PartitionInputMessage {
+    /// The ONE read of a raw `getMessages` row into this shape — v4's two
+    /// callers (`generateContextSummary`, the recall replay) pass RAW rows,
+    /// so `systemKind` must survive to the partition (the `RawMessage::
+    /// from_event` idiom, R-L1).
+    pub fn from_event(m: &serde_json::Value) -> Self {
+        let s = |k: &str| {
+            m.get(k)
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        };
+        PartitionInputMessage {
+            id: s("id").unwrap_or_default(),
+            role: s("role"),
+            message_type: s("type"),
+            system_sender: s("systemSender"),
+            system_kind: s("systemKind"),
+        }
+    }
+}
+// === /P4.D372 ===
 
 /// One turn produced by [`partition_messages_into_turns`]: a 1-indexed number
 /// and the IDs of the USER + non-staff ASSISTANT messages composing it,
@@ -230,11 +256,22 @@ pub fn partition_messages_into_turns(
         if role != Some("USER") && role != Some("ASSISTANT") {
             continue;
         }
-        if msg.system_sender.as_deref().is_some_and(|s| !s.is_empty()) {
+        // P4.D372 (v4 `db6190b44`): a machine-delivered established fact is a
+        // Host row, but it is settled truth the summary must carry — kept, as
+        // a turn of its own.
+        let is_machine_fact = crate::established_fact::is_established_fact_announcement(
+            &crate::established_fact::EstablishedFactFields {
+                is_established_fact: None,
+                system_sender: msg.system_sender.as_deref(),
+                system_kind: msg.system_kind.as_deref(),
+            },
+        );
+        if msg.system_sender.as_deref().is_some_and(|s| !s.is_empty()) && !is_machine_fact {
             continue;
         }
 
-        let starts_new_turn = role == Some("USER") || (is_autonomous && role == Some("ASSISTANT"));
+        let starts_new_turn =
+            role == Some("USER") || is_machine_fact || (is_autonomous && role == Some("ASSISTANT"));
 
         if starts_new_turn {
             let turn_number = turns.len() + 1;

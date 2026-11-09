@@ -380,19 +380,10 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
     };
     let partition_input: Vec<PartitionInputMessage> = all_messages
         .iter()
-        .map(|m| PartitionInputMessage {
-            id: m
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            role: m.get("role").and_then(Value::as_str).map(str::to_string),
-            message_type: m.get("type").and_then(Value::as_str).map(str::to_string),
-            system_sender: m
-                .get("systemSender")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-        })
+        // === P4.D372 === the ONE raw-row read (v4's replay passes raw rows,
+        // so a machine fact starts a turn here too).
+        .map(PartitionInputMessage::from_event)
+        // === /P4.D372 ===
         .collect();
     let chat_type = chat.get("chatType").and_then(Value::as_str);
     let turns = partition_messages_into_turns(&partition_input, chat_type);

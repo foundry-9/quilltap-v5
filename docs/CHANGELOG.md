@@ -251,6 +251,18 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the summary fold, FOLD_SUMMARY_PROMPT's rule, the extraction stretch + turn transcript frames (P4.D372 items 8, 10, R-L4)
+
+_Versions: core 0.0.1434._
+
+**The fold.** `partition_messages_into_turns` keeps a machine fact past the Staff skip, and the fact starts a turn of its own. `PartitionInputMessage` gains `system_kind` and ONE `from_event`. The fold and the recall replay both read through it; the replay is converted with a fenced one-line edit, because v4's replay passes raw rows too. `turns_to_chat_messages` (now `pub`) labels a machine fact `Established fact` as a `user` line, unframed, and gives a seat line its speaker plus the seat frame. v4's `[Context Summary] Folding established facts` DEBUG is pinned on the fact op with a silence leg on every other op.
+
+**The prompt.** `harness/tools/extract-prompt-text.cjs` learns ONE allow-listed cross-module interpolation (`ESTABLISHED_FACT_TRANSCRIPT_RULE`). It takes an optional third argument and resolves the value with a literal-only tokenizer; anything else still throws. Regenerated from the pin, only `FOLD_SUMMARY_PROMPT` moves, by the rule plus one space. `236c04e35`'s file still reproduces byte for byte.
+
+**Extraction.** The stretch window frames either kind in the plain voice. `build_turn_transcript` frames an opener whose raw `isEstablishedFact` is truthy (v4 does not use the strict predicate here), and the promoted slice's `text` follows.
+
+**Tests.** `context_summary_equivalence` gains seven partition rows and a `foldLines` comparand. `turn_transcript_equivalence` gains four opener cases. `context_summary_service_tier3_equivalence` gains `deus_fold_facts` (seat line plus machine fact inside the folded range). All three were red first. The service family is green on the union shape (P4.D373's prompts overlaid). On this branch alone it stops at the memories rows, because the extraction prompt bytes belong to P4.D373 (H4). `STORED_BYTE_DIVERGENCES` was re-measured 4 → 6 there. `leak_tests_read_paths` walks visible conversation, the fold, the stretch and the turn transcript.
+
 #### 2026-11-09 — deus: to_visible_conversation_message frames facts; ONE RawMessage::from_event (P4.D372 item 7, R-L1)
 
 _Versions: core 0.0.1433._

@@ -20,7 +20,6 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 struct WireMsg {
-    id: Option<String>,
     role: Option<String>,
     #[serde(rename = "type")]
     message_type: Option<String>,
@@ -70,10 +69,14 @@ enum Row {
     #[serde(rename = "partition")]
     Partition {
         id: String,
-        messages: Vec<WireMsg>,
+        // P4.D372: the raw rows, read through `PartitionInputMessage::from_event`.
+        messages: Vec<serde_json::Value>,
         #[serde(rename = "chatType", default)]
         chat_type: Option<String>,
         out: Vec<WireTurn>,
+        // P4.D372: v4 `turnsToChatMessages(turns, FOLD_NAMES)`.
+        #[serde(rename = "foldLines")]
+        fold_lines: Vec<serde_json::Value>,
     },
 }
 
@@ -140,15 +143,11 @@ fn context_summary_matches_oracle() {
                 messages,
                 chat_type,
                 out,
+                fold_lines,
             } => {
                 let msgs: Vec<PartitionInputMessage> = messages
                     .iter()
-                    .map(|m| PartitionInputMessage {
-                        id: m.id.clone().unwrap_or_default(),
-                        role: m.role.clone(),
-                        message_type: m.message_type.clone(),
-                        system_sender: m.system_sender.clone(),
-                    })
+                    .map(PartitionInputMessage::from_event)
                     .collect();
                 let got = partition_messages_into_turns(&msgs, chat_type.as_deref());
                 let want: Vec<FoldedTurn> = out
@@ -159,6 +158,38 @@ fn context_summary_matches_oracle() {
                     })
                     .collect();
                 assert_eq!(got, want, "partition '{id}'");
+                // P4.D372: the fold's line render (label / role / frame).
+                let rows_by_id: std::collections::HashMap<&str, &serde_json::Value> = messages
+                    .iter()
+                    .filter_map(|m| {
+                        m.get("id")
+                            .and_then(serde_json::Value::as_str)
+                            .map(|i| (i, m))
+                    })
+                    .collect();
+                let names = quilltap_core::services::speaker_names::SpeakerNames::from_pairs([
+                    ("p-user".to_string(), "Captain".to_string()),
+                    ("p-alice".to_string(), "Alice".to_string()),
+                ]);
+                let lines = quilltap_core::services::context_summary::turns_to_chat_messages(
+                    &got,
+                    &rows_by_id,
+                    &names,
+                );
+                let lines_json: Vec<serde_json::Value> = lines
+                    .iter()
+                    .map(|l| {
+                        serde_json::json!({
+                            "speaker": l.speaker, "role": l.role,
+                            "content": l.content, "createdAt": l.created_at,
+                        })
+                    })
+                    .collect();
+                assert_eq!(
+                    serde_json::to_string(&lines_json).unwrap(),
+                    serde_json::to_string(&fold_lines).unwrap(),
+                    "partition '{id}' foldLines"
+                );
             }
         }
         count += 1;
