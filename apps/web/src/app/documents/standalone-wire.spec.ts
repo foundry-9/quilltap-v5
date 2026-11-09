@@ -44,12 +44,33 @@ function make(): { api: StandaloneDocumentApi; core: FakeCore } {
 }
 
 describe('StandaloneDocumentApi wire shapes', () => {
-  it('fetchStores dispatches documentStores and returns the stores array', async () => {
+  it('fetchStores dispatches documentStores and returns the stores + generalLibrary (C14; missing reads null)', async () => {
     const { api, core } = make();
     core.queue(ok({ stores: [{ mountPointId: 'm1' }], projectLibrary: null }));
-    const stores = await api.fetchStores();
+    expect(await api.fetchStores()).toEqual({ stores: [{ mountPointId: 'm1' }], generalLibrary: null });
     expect(core.requests[0]).toEqual({ type: 'documentStores' });
-    expect(stores).toEqual([{ mountPointId: 'm1' }]);
+    const general = { mountPointId: 'gen', name: 'Quilltap General', mountType: 'database' };
+    core.queue(ok({ stores: [], projectLibrary: null, generalLibrary: general }));
+    expect((await api.fetchStores()).generalLibrary).toEqual(general);
+  });
+
+  it('open and read carry a viewer target when the server sends one (C14, P4.D387 item 17)', async () => {
+    const { api, core } = make();
+    const viewer = {
+      mountPointId: 'm1',
+      relativePath: 'a.png',
+      fileName: 'a.png',
+      fileType: 'blob',
+      fileSizeBytes: 5,
+      originalMimeType: 'image/png',
+      updatedAt: 'T',
+    };
+    core.queue(ok({ document: { filePath: 'a.png', scope: 'document_store' }, content: '', viewer }));
+    expect((await api.open({ filePath: 'a.png', scope: 'document_store', mountPoint: 'S' })).viewer).toEqual(viewer);
+    core.queue(ok({ content: '', mtime: 1, viewer }));
+    expect((await api.read({ filePath: 'a.png', scope: 'document_store', mountPoint: 'S' })).viewer).toEqual(viewer);
+    core.queue(ok({ content: 'x', mtime: 1 }));
+    expect('viewer' in (await api.read({ filePath: 'a.md', scope: 'general' }))).toBe(false);
   });
 
   it('fetchRecent dispatches documentsRecent and returns the documents array', async () => {
@@ -173,13 +194,5 @@ describe('StandaloneDocumentApi wire shapes', () => {
       scope: 'document_store',
       mountPoint: 'Lib',
     });
-  });
-
-  it('listMountFiles rides the shared mountFilesList verb', async () => {
-    const { api, core } = make();
-    core.queue(ok({ files: [{ id: 'f1', relativePath: 'top.md' }], folders: ['sub'] }));
-    const result = await api.listMountFiles('m1');
-    expect(core.requests[0]).toEqual({ type: 'mountFilesList', mountPointId: 'm1' });
-    expect(result).toEqual({ files: [{ id: 'f1', relativePath: 'top.md' }], folders: ['sub'] });
   });
 });

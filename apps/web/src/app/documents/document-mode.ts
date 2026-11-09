@@ -432,7 +432,7 @@ export class DocumentModeController {
         targetFolder: params.targetFolder,
       });
 
-      const doc = this.api.toActiveDocument(data.document, data.content || '', data.mtime);
+      const doc = this.api.toActiveDocument(data.document, data.content || '', data.mtime, data.viewer);
       this.applyDocContent(doc);
       this.focusedDocId.set(doc.id);
       this.documentMode.set(targetMode);
@@ -553,7 +553,13 @@ export class DocumentModeController {
         continue;
       }
       const fresh = contentData.content;
-      if (existing && fresh === (this.savedContentRefs.get(rec.id) ?? '')) {
+      // v4 `useDocumentMode.ts:568` (`5efe53ea7`): refresh in place only when
+      // the entry is still the same KIND (viewer or editor) as the fresh read.
+      if (
+        existing &&
+        !contentData.viewer === !existing.document.viewer &&
+        fresh === (this.savedContentRefs.get(rec.id) ?? '')
+      ) {
         this.updateEntry(rec.id, (e) => ({
           ...e,
           document: {
@@ -564,7 +570,7 @@ export class DocumentModeController {
         }));
         continue;
       }
-      this.applyDocContent(this.api.toActiveDocument(rec, fresh, contentData.mtime));
+      this.applyDocContent(this.api.toActiveDocument(rec, fresh, contentData.mtime, contentData.viewer));
     }
 
     const focused = this.focusedDocId();
@@ -588,12 +594,13 @@ export class DocumentModeController {
 
   /**
    * Re-read every open document's content after the LLM finishes a turn (v4
-   * `handleLLMEditEnd`). Skips dirty panes so pending edits aren't lost.
+   * `handleLLMEditEnd`). Skips dirty panes so pending edits aren't lost, and a
+   * file shown read-only (v4 `:606-608`, `5efe53ea7`): the LLM edits text only.
    */
   async handleLLMEditEnd(): Promise<void> {
     if (!this.chatId) return;
     for (const entry of this.openDocs()) {
-      if (entry.isDirty) continue;
+      if (entry.isDirty || entry.document.viewer) continue;
       const doc = entry.document;
       try {
         const data = await this.api.readDocument(this.chatId, {

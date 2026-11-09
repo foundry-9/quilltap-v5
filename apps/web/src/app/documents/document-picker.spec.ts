@@ -1,12 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 
-import type {
-  AccessibleStoreDto,
-  DocMountFileDto,
-  ProjectLibraryTargetDto,
-  RecentDocumentDto,
-} from '../core/core-contract';
+import type { AccessibleStoreDto, ProjectLibraryTargetDto, RecentDocumentDto } from '../core/core-contract';
+import { file, provideDocumentStoreTesting, settle, store as storeRecord } from '../document-browser/document-browser.testing';
+import { ToastService } from '../ui/toast.service';
 import { DocumentApi } from './document-api';
 import { DocumentPicker, type DocumentSelection } from './document-picker';
 import { StandaloneDocumentApi } from './standalone-wire';
@@ -14,30 +12,50 @@ import { StandaloneDocumentApi } from './standalone-wire';
 class FakeApi {
   recents: RecentDocumentDto[] = [];
   stores: AccessibleStoreDto[] = [];
-  mountFiles: DocMountFileDto[] = [];
+  /** The browsed store's listing, served to the store browser over dispatch. */
+  mountFiles: string[] = [];
   mountFolders: string[] = [];
   lookEverywhereCalls: boolean[] = [];
 
   projectLibrary: ProjectLibraryTargetDto | null = null;
+  generalLibrary: ProjectLibraryTargetDto | null = null;
 
   fetchRecentDocuments = vi.fn(async () => this.recents);
   fetchAccessibleStores = vi.fn(async (_c: string, all: boolean) => {
     this.lookEverywhereCalls.push(all);
-    return { stores: this.stores, projectLibrary: this.projectLibrary };
+    return { stores: this.stores, projectLibrary: this.projectLibrary, generalLibrary: this.generalLibrary };
   });
-  listMountFiles = vi.fn(async () => ({ files: this.mountFiles, folders: this.mountFolders }));
 }
 
 /** The chat-less (standalone) API — the picker uses this when chatId is null. */
 class FakeStandaloneApi {
   recents: RecentDocumentDto[] = [];
   stores: AccessibleStoreDto[] = [];
-  mountFiles: DocMountFileDto[] = [];
+  generalLibrary: ProjectLibraryTargetDto | null = null;
+  mountFiles: string[] = [];
   mountFolders: string[] = [];
 
   fetchRecent = vi.fn(async () => this.recents);
-  fetchStores = vi.fn(async () => this.stores);
-  listMountFiles = vi.fn(async () => ({ files: this.mountFiles, folders: this.mountFolders }));
+  fetchStores = vi.fn(async () => ({ stores: this.stores, generalLibrary: this.generalLibrary }));
+}
+
+/**
+ * The store browser the browse step mounts (P4.D387) reads over dispatch: a
+ * `mountPointGet` record (writable), the `mountFilesList` listing from the
+ * fake's `mountFiles` / `mountFolders`, an empty catalogue.
+ */
+const toasts = { showSuccess: vi.fn(), showError: vi.fn(), showInfo: vi.fn(), showWarning: vi.fn() };
+function provideBrowser(source: { mountFiles: string[]; mountFolders: string[] }) {
+  return provideDocumentStoreTesting(
+    (req) => {
+      if (req.type === 'mountPointGet') return { mountPoint: storeRecord(String(req['mountPointId']), 'Lib') };
+      if (req.type === 'mountFilesList')
+        return { files: source.mountFiles.map((p) => file(p)), folders: source.mountFolders };
+      if (req.type === 'mountPointList') return { mountPoints: [] };
+      return {};
+    },
+    [provideRouter([]), { provide: ToastService, useValue: toasts }],
+  );
 }
 
 function store(over: Partial<AccessibleStoreDto>): AccessibleStoreDto {
@@ -58,6 +76,7 @@ async function render(api: FakeApi): Promise<{
   selections: DocumentSelection[];
 }> {
   TestBed.resetTestingModule();
+  provideBrowser(api);
   TestBed.configureTestingModule({
     imports: [DocumentPicker],
     providers: [
@@ -82,6 +101,7 @@ async function renderStandalone(api: FakeStandaloneApi): Promise<{
   selections: DocumentSelection[];
 }> {
   TestBed.resetTestingModule();
+  provideBrowser(api);
   TestBed.configureTestingModule({
     imports: [DocumentPicker],
     providers: [{ provide: StandaloneDocumentApi, useValue: api }],
@@ -96,12 +116,67 @@ async function renderStandalone(api: FakeStandaloneApi): Promise<{
   return { fixture, selections };
 }
 
+function buttonWith(fixture: ComponentFixture<DocumentPicker>, text: string): HTMLButtonElement {
+  return [...fixture.nativeElement.querySelectorAll('button')].find(
+    (b: HTMLElement) => b.textContent?.trim() === text || b.textContent?.includes(text),
+  ) as HTMLButtonElement;
+}
+
+function clickStore(fixture: ComponentFixture<DocumentPicker>, label: string): void {
+  ([...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
+    b.textContent?.trim().startsWith(label),
+  ) as HTMLButtonElement).click();
+}
+
 /** Drain the ngOnInit fetch microtasks (zoneless whenStable doesn't await them). */
 async function flush(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
 describe('DocumentPicker', () => {
+  it('the General library button when generalLibrary is set (v4 5efe53ea7 :320-334); absent otherwise', async () => {
+    const api = new FakeApi();
+    api.generalLibrary = { mountPointId: 'gen', name: 'Quilltap General', mountType: 'database' };
+    const { fixture } = await render(api);
+    const button = fixture.nativeElement.querySelector('.qt-doc-general-library') as HTMLButtonElement;
+    expect(button.textContent).toContain('General library');
+    expect(button.textContent).toContain('Quilltap General, the shelf every chat shares');
+    expect(button.querySelector('[data-icon]')!.getAttribute('data-icon')).toBe('scriptorium');
+    button.click();
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain('General Library');
+    expect(fixture.nativeElement.querySelector('qt-document-store-browser')).not.toBeNull();
+
+    const none = await render(new FakeApi());
+    expect(none.fixture.nativeElement.querySelector('.qt-doc-general-library')).toBeNull();
+  });
+
+  it('the source step is 4xl and the browse step lg (v4 widths, ruling L-6)', async () => {
+    const api = new FakeApi();
+    api.stores = [store({ mountPointId: 'd1', name: 'Lib', label: 'Library' })];
+    const { fixture } = await render(api);
+    const width = () => (fixture.nativeElement.querySelector('.qt-dialog') as HTMLElement).style.maxWidth;
+    expect(width()).toBe('56rem');
+    clickStore(fixture, 'Library');
+    await settle(fixture);
+    expect(width()).toBe('32rem');
+  });
+
+  it("an unreachable store in Go there toasts v4's line; a store on the shelves is browsed", async () => {
+    const api = new FakeApi();
+    api.stores = [store({ mountPointId: 'd1', name: 'Lib', label: 'Library' }), store({ mountPointId: 'd2', name: 'Other', label: 'Other' })];
+    const { fixture } = await render(api);
+    clickStore(fixture, 'Library');
+    await settle(fixture);
+    const picker = fixture.componentInstance as unknown as { openOtherStore(id: string): void };
+    toasts.showError.mockClear();
+    picker.openOtherStore('elsewhere');
+    expect(toasts.showError).toHaveBeenCalledWith("That store is not on this chat's shelves. Tick Look everywhere to reach it.");
+    picker.openOtherStore('d2');
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain('Other');
+  });
+
   it('lists recents and store buckets on open', async () => {
     const api = new FakeApi();
     api.recents = [
@@ -140,51 +215,40 @@ describe('DocumentPicker', () => {
     expect(selections).toEqual([{ filePath: 'notes/x.md', scope: 'document_store', mountPoint: 'Lib' }]);
   });
 
-  it('browsing a store lists its files + derived folders and opens one', async () => {
+  it('browsing a store mounts the store browser in pick mode; a picked file opens as document_store', async () => {
     const api = new FakeApi();
     api.stores = [store({ mountPointId: 'd1', name: 'Lib', label: 'Library' })];
-    api.mountFiles = [
-      { id: 'f1', relativePath: 'top.md' },
-      { id: 'f2', relativePath: 'sub/deep.md' },
-    ];
+    api.mountFiles = ['top.md', 'sub/deep.md'];
+    api.mountFolders = ['sub'];
     const { fixture, selections } = await render(api);
 
-    // drill into the store
-    const storeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-      b.textContent?.trim().startsWith('Library'),
-    ) as HTMLButtonElement;
-    storeBtn.click();
-    await flush();
-    fixture.detectChanges();
+    clickStore(fixture, 'Library');
+    await settle(fixture);
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('New document here');
-    expect(text).toContain('sub'); // derived folder
-    expect(text).toContain('top.md'); // file at root
+    expect(text).toContain('sub'); // a folder row
+    expect(text).toContain('top.md'); // a file at the top
 
-    const fileBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-      b.textContent?.includes('top.md'),
-    ) as HTMLButtonElement;
-    fileBtn.click();
+    buttonWith(fixture, 'top.md').click();
     expect(selections).toEqual([{ filePath: 'top.md', scope: 'document_store', mountPoint: 'Lib' }]);
   });
 
-  it('"New document here" emits a targetFolder creation for the store', async () => {
+  it('"New document here" in the footer carries the folder being browsed', async () => {
     const api = new FakeApi();
     api.stores = [store({ mountPointId: 'd1', name: 'Lib', label: 'Library' })];
+    api.mountFolders = ['Drafts'];
     const { fixture, selections } = await render(api);
-    const storeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-      b.textContent?.trim().startsWith('Library'),
-    ) as HTMLButtonElement;
-    storeBtn.click();
-    await flush();
-    fixture.detectChanges();
+    clickStore(fixture, 'Library');
+    await settle(fixture);
 
-    const newHere = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-      b.textContent?.includes('New document here'),
-    ) as HTMLButtonElement;
-    newHere.click();
+    buttonWith(fixture, 'New document here').click();
     expect(selections).toEqual([{ scope: 'document_store', mountPoint: 'Lib', targetFolder: undefined }]);
+
+    buttonWith(fixture, 'Drafts').click();
+    await settle(fixture);
+    buttonWith(fixture, 'New document here').click();
+    expect(selections[1]).toEqual({ scope: 'document_store', mountPoint: 'Lib', targetFolder: 'Drafts' });
   });
 
   it('look-everywhere refetches stores with all=true', async () => {
@@ -225,22 +289,26 @@ describe('DocumentPicker', () => {
       expect(text).toContain('Project Files: The Estate');
     });
 
-    it('browses the project mount — the path that did not exist', async () => {
+    it('browses the project library as a STORE (v4 5efe53ea7 dropped the project-scope fallback)', async () => {
       const api = new FakeApi();
       api.projectLibrary = library;
-      api.mountFiles = [{ id: 'f1', relativePath: 'estate/notes.md' }];
-      const { fixture } = await render(api);
+      api.mountFiles = ['estate/notes.md'];
+      api.mountFolders = ['estate'];
+      const { fixture, selections } = await render(api);
 
-      (
-        fixture.nativeElement.querySelector('.qt-doc-project-library') as HTMLButtonElement
-      ).click();
-      await flush();
-      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('.qt-doc-project-library') as HTMLButtonElement).click();
+      await settle(fixture);
 
-      expect(api.listMountFiles).toHaveBeenCalledWith('pm1');
       const text = fixture.nativeElement.textContent as string;
-      expect(text).toContain('Project Files: The Estate');
+      // The browse header names the project (v4 `projectName || 'Project'`).
+      expect(text).toContain('Project');
       expect(text).toContain('estate');
+      buttonWith(fixture, 'estate').click();
+      await settle(fixture);
+      buttonWith(fixture, 'notes.md').click();
+      expect(selections).toEqual([
+        { filePath: 'estate/notes.md', scope: 'document_store', mountPoint: 'Project Files: The Estate' },
+      ]);
     });
 
     it('survives a look-everywhere toggle', async () => {
@@ -296,24 +364,22 @@ describe('DocumentPicker', () => {
       expect(fixture.nativeElement.querySelector('input[type="checkbox"]')).toBeNull();
     });
 
-    it('browsing a store lists its files via the standalone mount listing', async () => {
+    it('browsing a store mounts the store browser; a picked file opens as document_store', async () => {
       const api = new FakeStandaloneApi();
       api.stores = [store({ mountPointId: 'd1', name: 'Lib', label: 'Library' })];
-      api.mountFiles = [{ id: 'f1', relativePath: 'top.md' }];
+      api.mountFiles = ['top.md'];
       const { fixture, selections } = await renderStandalone(api);
-      const storeBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-        b.textContent?.trim().startsWith('Library'),
-      ) as HTMLButtonElement;
-      storeBtn.click();
-      await flush();
-      fixture.detectChanges();
-      expect(api.listMountFiles).toHaveBeenCalledWith('d1');
-
-      const fileBtn = [...fixture.nativeElement.querySelectorAll('button')].find((b: HTMLElement) =>
-        b.textContent?.includes('top.md'),
-      ) as HTMLButtonElement;
-      fileBtn.click();
+      clickStore(fixture, 'Library');
+      await settle(fixture);
+      buttonWith(fixture, 'top.md').click();
       expect(selections).toEqual([{ filePath: 'top.md', scope: 'document_store', mountPoint: 'Lib' }]);
+    });
+
+    it('shows the General library from the standalone stores body (C14)', async () => {
+      const api = new FakeStandaloneApi();
+      api.generalLibrary = { mountPointId: 'gen', name: 'Quilltap General', mountType: 'database' };
+      const { fixture } = await renderStandalone(api);
+      expect(fixture.nativeElement.querySelector('.qt-doc-general-library')).not.toBeNull();
     });
   });
 });

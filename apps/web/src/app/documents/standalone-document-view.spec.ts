@@ -34,7 +34,6 @@ class FakeApi {
   write = vi.fn(async () => this.writeOutcome);
   rename = vi.fn(async () => this.renameResult);
   remove = vi.fn(async () => undefined);
-  listMountFiles = vi.fn(async () => ({ files: [], folders: [] }));
 }
 
 interface HostView {
@@ -45,7 +44,10 @@ interface HostView {
   onDelete(): Promise<void>;
   closeSelf(): void;
   loadError: () => string | null;
-  entry: () => { document: { filePath: string; displayTitle: string; mtime?: number }; isDirty: boolean } | null;
+  entry: () => {
+    document: { filePath: string; displayTitle: string; mtime?: number; viewer?: unknown };
+    isDirty: boolean;
+  } | null;
 }
 
 const PAYLOAD: DocumentStandaloneTabPayload = {
@@ -105,6 +107,29 @@ describe('StandaloneDocumentView', () => {
     const hostClass = (fixture.nativeElement as HTMLElement).className;
     expect(hostClass).toContain('h-full');
     expect(hostClass).not.toContain('flex-1');
+  });
+
+  it('a viewer target through the standalone wire lands on the document (C14, P4.D387 item 17)', async () => {
+    const api = new FakeApi();
+    const viewer = {
+      mountPointId: 'm1',
+      relativePath: 'pics/a.png',
+      fileName: 'a.png',
+      fileType: 'blob',
+      fileSizeBytes: 3,
+      originalMimeType: 'image/png',
+      updatedAt: 'T',
+    };
+    api.openResult = {
+      document: { filePath: 'pics/a.png', scope: 'document_store', mountPoint: 'Lib', displayTitle: 'a.png' },
+      content: '',
+      mtime: 1,
+      isNew: false,
+      viewer,
+    };
+    const { view } = render(api, fakeHandle());
+    await flush();
+    expect(view.entry()?.document.viewer).toEqual(viewer);
   });
 
   it('opens the document on mount and refreshes the tab with the server filePath', async () => {

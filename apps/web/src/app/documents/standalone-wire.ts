@@ -30,10 +30,11 @@ import type {
   DocumentStoresRequest,
   DocumentWriteRequest,
   DocumentsRecentRequest,
+  DocumentViewTarget,
+  LibraryTargetDto,
   RecentDocumentDto,
   StandaloneScope,
 } from '../core/core-contract';
-import type { MountFilesResult } from './document-api';
 
 // Request DTOs — FOLDED into `core-contract.ts` at the workspace-tabs
 // remainder round's unification (§W.3, name-for-name vs `api/types.rs`);
@@ -74,12 +75,22 @@ export interface StandaloneOpenResult {
   content: string;
   mtime?: number;
   isNew: boolean;
+  /** Set for a file shown read-only (C14, P4.D380; v4 `5efe53ea7`). */
+  viewer?: DocumentViewTarget;
 }
 
 /** `documentRead` body — `{ content, mtime }`. */
 export interface StandaloneReadResult {
   content: string;
   mtime?: number;
+  /** Set for a file shown read-only (C14). */
+  viewer?: DocumentViewTarget;
+}
+
+/** v4 standalone `accessible-stores` — `{stores, projectLibrary: null, generalLibrary}` (C14). */
+export interface StandaloneStoresResult {
+  stores: AccessibleStoreDto[];
+  generalLibrary: LibraryTargetDto | null;
 }
 
 /** `documentRename` body — `{ document }`. */
@@ -118,10 +129,16 @@ export class StandaloneDocumentApi {
     return this.core.dispatchData(request);
   }
 
-  /** v4 standalone `accessible-stores` — always look-everywhere, no projectLibrary. */
-  async fetchStores(): Promise<AccessibleStoreDto[]> {
+  /**
+   * v4 standalone `accessible-stores` — always look-everywhere, no
+   * projectLibrary; C14's `generalLibrary` (a missing key reads `null`).
+   */
+  async fetchStores(): Promise<StandaloneStoresResult> {
     const data = await this.data({ type: 'documentStores' });
-    return (data['stores'] as AccessibleStoreDto[] | undefined) ?? [];
+    return {
+      stores: (data['stores'] as AccessibleStoreDto[] | undefined) ?? [],
+      generalLibrary: (data['generalLibrary'] as LibraryTargetDto | null | undefined) ?? null,
+    };
   }
 
   /** v4 standalone `recent-documents` — cross-chat, project-scope rows filtered out. */
@@ -147,11 +164,13 @@ export class StandaloneDocumentApi {
       targetFolder: params.targetFolder,
     });
     const doc = (data['document'] ?? {}) as StandaloneDocumentRecord;
+    const viewer = data['viewer'] as DocumentViewTarget | undefined;
     return {
       document: doc,
       content: (data['content'] as string | undefined) ?? '',
       mtime: data['mtime'] as number | undefined,
       isNew: Boolean(data['isNew']),
+      ...(viewer ? { viewer } : {}),
     };
   }
 
@@ -167,9 +186,11 @@ export class StandaloneDocumentApi {
       scope: params.scope,
       mountPoint: params.mountPoint ?? undefined,
     });
+    const viewer = data['viewer'] as DocumentViewTarget | undefined;
     return {
       content: (data['content'] as string | undefined) ?? '',
       mtime: data['mtime'] as number | undefined,
+      ...(viewer ? { viewer } : {}),
     };
   }
 
@@ -228,18 +249,6 @@ export class StandaloneDocumentApi {
       scope: params.scope,
       mountPoint: params.mountPoint ?? undefined,
     });
-  }
-
-  /**
-   * List a mount point's files + folders for the standalone picker (lane A
-   * `mountFilesList` — not chat-scoped, shared with the chat picker path).
-   */
-  async listMountFiles(mountPointId: string): Promise<MountFilesResult> {
-    const data = await this.core.dispatchData({ type: 'mountFilesList', mountPointId });
-    return {
-      files: (data['files'] as MountFilesResult['files'] | undefined) ?? [],
-      folders: Array.isArray(data['folders']) ? (data['folders'] as string[]) : [],
-    };
   }
 }
 

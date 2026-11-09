@@ -39,6 +39,7 @@ class FakeApi {
     content?: string;
     mtime?: number;
     librarianMessage?: MessageDto | null;
+    viewer?: ActiveDocument['viewer'];
   } = { document: record(), content: 'hello', mtime: 1 };
   writeOutcome: WriteDocumentOutcome = { kind: 'saved', mtime: 2, librarianMessage: null };
   readResult: ReadDocumentResult = { content: 'server', mtime: 9 };
@@ -50,8 +51,14 @@ class FakeApi {
   persisted: Array<Record<string, unknown>> = [];
   writtenContent: string[] = [];
 
-  toActiveDocument = (rec: ReturnType<typeof record>, content = '', mtime?: number) =>
+  toActiveDocument = (
+    rec: ReturnType<typeof record>,
+    content = '',
+    mtime?: number,
+    viewer?: ActiveDocument['viewer'],
+  ) =>
     ({
+      ...(viewer ? { viewer } : {}),
       id: rec.id,
       filePath: rec.filePath,
       scope: rec.scope,
@@ -273,6 +280,54 @@ describe('DocumentModeController (v4 useDocumentMode)', () => {
     await ctrl.handleLLMEditEnd();
     expect(ctrl.activeDocument()?.content).toBe('my local edit');
   });
+
+  // === P4.D387 item 17 (v4 useDocumentMode, 5efe53ea7) ===
+  const VIEWER = {
+    mountPointId: 'm1',
+    relativePath: 'pics/a.png',
+    fileName: 'a.png',
+    fileType: 'blob',
+    fileSizeBytes: 3,
+    originalMimeType: 'image/png',
+    updatedAt: 'T',
+  };
+
+  it('openDocument carries the server viewer target onto the document (C14)', async () => {
+    const { ctrl, api } = build();
+    api.openResult = { document: record({ id: 'v1', filePath: 'pics/a.png' }), content: '', mtime: 1, viewer: VIEWER };
+    await ctrl.openDocument({ filePath: 'pics/a.png', scope: 'document_store', mountPoint: 'Lib' });
+    expect(ctrl.activeDocument()?.viewer).toEqual(VIEWER);
+  });
+
+  it('handleLLMEditEnd skips a file shown read-only (v4 :606-608)', async () => {
+    const { ctrl, api } = build();
+    api.openResult = { document: record({ id: 'v1', filePath: 'pics/a.png' }), content: '', mtime: 1, viewer: VIEWER };
+    await ctrl.openDocument({ filePath: 'pics/a.png', scope: 'document_store', mountPoint: 'Lib' });
+    api.readDocument.mockClear();
+    await ctrl.handleLLMEditEnd();
+    expect(api.readDocument).not.toHaveBeenCalled();
+  });
+
+  it('the outside-edit refresh rebuilds an entry whose kind changed, even at equal content (v4 :568)', async () => {
+    const { ctrl, api } = build();
+    api.openResult = { document: record({ id: 'd1', filePath: 'a.bin' }), content: '', mtime: 1 };
+    await ctrl.openDocument({ filePath: 'a.bin' });
+    const before = ctrl.openDocs()[0].contentVersion;
+    api.openDocsResult = [record({ id: 'd1', filePath: 'a.bin' })];
+    // Same (empty) content, but the read now says "viewer": not an in-place refresh.
+    api.readResult = { content: '', mtime: 5, viewer: VIEWER };
+    await ctrl.reloadFromServer();
+    expect(ctrl.openDocs()[0].document.viewer).toEqual(VIEWER);
+    expect(ctrl.openDocs()[0].contentVersion).toBe(before + 1);
+
+    // Same kind and content: refreshed in place (no version bump).
+    const after = ctrl.openDocs()[0].contentVersion;
+    api.readResult = { content: '', mtime: 6, viewer: VIEWER };
+    await ctrl.reloadFromServer();
+    expect(ctrl.openDocs()[0].contentVersion).toBe(after);
+    expect(ctrl.openDocs()[0].document.mtime).toBe(6);
+  });
+  // === end P4.D387 ===
 
   it('reloadFromServer reconciles the open set to what the server reports', async () => {
     const { ctrl, api } = build();

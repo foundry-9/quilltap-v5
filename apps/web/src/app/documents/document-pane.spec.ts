@@ -2,6 +2,9 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { describe, expect, it } from 'vitest';
 
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+
+import { CoreClient } from '../core/core-client';
 import { RichEditor } from '../editor/rich-editor';
 import { DocumentPane } from './document-pane';
 import type { ActiveDocument } from './document-api';
@@ -16,6 +19,7 @@ function entry(over: Partial<ActiveDocument> = {}, state: Partial<OpenDocEntry> 
     displayTitle: over.displayTitle ?? 'My Notes',
     content: over.content ?? 'hello world',
     mtime: over.mtime,
+    ...(over.viewer ? { viewer: over.viewer } : {}),
   };
   return {
     document,
@@ -33,7 +37,14 @@ function render(e: OpenDocEntry): ComponentFixture<DocumentPane> {
   // Reset so a spec that renders more than once doesn't hit an already-
   // instantiated test module (the P4.6t multi-render lesson).
   TestBed.resetTestingModule();
-  TestBed.configureTestingModule({ imports: [DocumentPane] });
+  TestBed.configureTestingModule({
+    imports: [DocumentPane],
+    // P4.D387: the viewer pane's store viewer reads through TanStack + CoreClient.
+    providers: [
+      provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+      { provide: CoreClient, useValue: { dispatchData: async () => ({}) } },
+    ],
+  });
   const fixture = TestBed.createComponent(DocumentPane);
   fixture.componentRef.setInput('entry', e);
   fixture.componentRef.setInput('mode', 'split');
@@ -53,6 +64,26 @@ async function settle(fixture: ComponentFixture<DocumentPane>): Promise<void> {
 }
 
 describe('DocumentPane', () => {
+  it('P4.D387 item 17 (v4 DocumentPaneBinding, 5efe53ea7): a viewer target renders the read-only viewer pane, not the editor', () => {
+    const fixture = render(
+      entry({
+        filePath: 'pics/a.png',
+        viewer: {
+          mountPointId: 'm1',
+          relativePath: 'pics/a.png',
+          fileName: 'a.png',
+          fileType: 'blob',
+          fileSizeBytes: 10,
+          originalMimeType: 'image/png',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    );
+    expect(fixture.nativeElement.querySelector('[data-testid="document-viewer-pane"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('textarea')).toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-rich-editor')).toBeNull();
+  });
+
   it('renders the title, the qtap:// URL, and the plain-text status', () => {
     const fixture = render(entry());
     const text = fixture.nativeElement.textContent as string;

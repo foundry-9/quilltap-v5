@@ -160,6 +160,8 @@ export class StandaloneDocumentView implements OnInit {
           displayTitle,
           content: data.content || '',
           mtime: data.mtime,
+          // v4 `toActiveDocument` spreads a read-only viewer target in (C14).
+          ...(data.viewer ? { viewer: data.viewer } : {}),
         });
         // Refresh the tab so a blank document's persisted payload gains the
         // server-picked filePath (a reload reopens the real file, not a new blank).

@@ -1293,6 +1293,23 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): Document Mode — the picker on the document-store browser with the General library, and the read-only viewer pane for a store file (P4.D387; v4 5efe53ea7)
+
+_Versions: SPA 0.5.981._
+
+P4.D387 commit 8 (items 16–17).
+
+**The picker (item 16).** `documents/document-picker.ts`'s browse step is now `qt-document-store-browser` in pick mode. A picked file opens as `{filePath, scope: 'document_store', mountPoint: <store name>}`, and the footer's `New document here` (the `file-plus` icon) carries the folder being browsed as `targetFolder`. The bespoke mount listing (`mountFiles` / `mountFolders` / `currentFolder`, the breadcrumb and its template) is deleted, along with `DocumentApi.listMountFiles` / `StandaloneDocumentApi.listMountFiles` and `MountFilesResult`, which nothing else read. New, as at v4 `5efe53ea7`:
+- the **General library** button (`scriptorium` icon, `Quilltap General, the shelf every chat shares`), shown on both surfaces when the server names `generalLibrary` (C14; a missing key reads `null`). `AccessibleStoresResult` and the standalone `fetchStores` (now `{stores, generalLibrary}`) carry it;
+- the project library browsed as a STORE;
+- v4's `handleOpenOtherStore`: a store on the shelves or a library is browsed, anything else toasts `That store is not on this chat's shelves. Tick Look everywhere to reach it.`;
+- the browse header names the project (`projectName || 'Project'`; new optional `projectName` input), `General Library`, or the store;
+- v4's widths: `4xl` for the source step and `lg` for the browse step (ruling L-6; v5 used `3xl` for both).
+
+`document-picker.spec.ts`'s browse cases are re-aimed onto the store browser, with new rows for the General button, the widths, the footer folder and the Go there toast.
+
+**The read-only viewer (item 17).** `ActiveDocument.viewer?` carries C14's `DocumentViewTarget`. `DocumentApi.toActiveDocument(record, content, mtime, viewer)` spreads it first, as v4's does, and the chat open / read and the standalone open / read pass it through. `document-mode.ts`'s outside-edit refresh adds v4's `!fresh.viewer === !existing.document.viewer` clause, and `handleLLMEditEnd` skips a viewed entry. The new `documents/document-viewer-pane.ts` (`qt-document-viewer-pane`, `data-testid="document-viewer-pane"`) has v4's header (`Document` badge, title, Download, Close), the `Read-only` ribbon and the store viewer. `document-pane.ts` renders it INSTEAD of the editor when the document has a viewer (ruling L-3), so neither the Salon host nor the standalone view changes, and a viewer pane has no autosave, frontmatter or toolbar.
+
 #### 2026-11-08 — feat(spa): the store detail page browses its Files on the document-store browser; D18 retired whole under a dead-import census (P4.D387; v4 c34986421, ruling R-D)
 
 _Versions: SPA 0.5.980._

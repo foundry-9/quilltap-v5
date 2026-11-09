@@ -6,9 +6,11 @@ import type {
   AccessibleStoreDto,
   ActiveDocumentRecordDto,
   ChatDetail,
-  DocMountFileDto,
   DocumentScope,
+  DocumentViewTarget,
+  LibraryTargetDto,
   OpenDocumentResultDto,
+  OpenDocumentResultWithViewer,
   ProjectLibraryTargetDto,
   RecentDocumentDto,
   WriteDocumentResultDto,
@@ -23,18 +25,28 @@ export interface ActiveDocument {
   displayTitle: string;
   content: string;
   mtime?: number;
+  /**
+   * Set for a store file Document Mode shows read-only instead of editing (an
+   * image, a PDF, a `.docx`, any other binary) — v4 `ActiveDocument.viewer?`
+   * (`5efe53ea7`; C14). The pane renders the viewer pane, never the editor.
+   */
+  viewer?: DocumentViewTarget;
 }
 
 /** The stores + optional project-library shortcut a chat can reach. */
 export interface AccessibleStoresResult {
   stores: AccessibleStoreDto[];
   projectLibrary: ProjectLibraryTargetDto | null;
+  /** Quilltap General, the shelf every chat shares (C14; a missing key reads `null`). */
+  generalLibrary: LibraryTargetDto | null;
 }
 
 /** A document's bytes as of a read. */
 export interface ReadDocumentResult {
   content: string;
   mtime?: number;
+  /** Set for a file shown read-only (C14, P4.D380). */
+  viewer?: DocumentViewTarget;
 }
 
 /** The outcome of a write — a discriminated result so 409 handling is explicit. */
@@ -43,12 +55,6 @@ export type WriteDocumentOutcome =
   /** The file changed out-of-band (v4's HTTP 409) — reload, do not retry. */
   | { kind: 'conflict' }
   | { kind: 'error'; message: string };
-
-/** A mount point's file + folder listing (v4 `fetchMountPointFiles`). */
-export interface MountFilesResult {
-  files: DocMountFileDto[];
-  folders: string[];
-}
 
 /**
  * The Document Mode dispatch client (v4 `documentModeApi.ts` + `toActiveDocument`).
@@ -68,9 +74,19 @@ export interface MountFilesResult {
 export class DocumentApi {
   private readonly core = inject(CoreClient);
 
-  /** Coerce a `chat_documents` row + loaded content into an {@link ActiveDocument}. */
-  toActiveDocument(record: ActiveDocumentRecordDto, content = '', mtime?: number): ActiveDocument {
+  /**
+   * Coerce a `chat_documents` row + loaded content into an {@link ActiveDocument}.
+   * A `viewer` target (C14) is spread FIRST, as v4 `toActiveDocument` does
+   * (`documentModeApi.ts`, `5efe53ea7`).
+   */
+  toActiveDocument(
+    record: ActiveDocumentRecordDto,
+    content = '',
+    mtime?: number,
+    viewer?: DocumentViewTarget,
+  ): ActiveDocument {
     return {
+      ...(viewer ? { viewer } : {}),
       id: record.id,
       filePath: record.filePath,
       scope: record.scope,
@@ -101,6 +117,7 @@ export class DocumentApi {
     return {
       stores: (data['stores'] as AccessibleStoreDto[] | undefined) ?? [],
       projectLibrary: (data['projectLibrary'] as ProjectLibraryTargetDto | null) ?? null,
+      generalLibrary: (data['generalLibrary'] as LibraryTargetDto | null | undefined) ?? null,
     };
   }
 
@@ -114,7 +131,7 @@ export class DocumentApi {
       mode: 'split' | 'focus';
       targetFolder?: string;
     },
-  ): Promise<OpenDocumentResultDto> {
+  ): Promise<OpenDocumentResultWithViewer> {
     const data = await this.core.dispatchData({
       type: 'chatDocumentOpen',
       chatId,
@@ -125,7 +142,7 @@ export class DocumentApi {
       mode: params.mode,
       targetFolder: params.targetFolder,
     });
-    return data as unknown as OpenDocumentResultDto;
+    return data as unknown as OpenDocumentResultWithViewer;
   }
 
   async closeDocument(chatId: string, chatDocumentId?: string): Promise<void> {
@@ -144,9 +161,11 @@ export class DocumentApi {
       scope: params.scope,
       mountPoint: params.mountPoint,
     });
+    const viewer = data['viewer'] as DocumentViewTarget | undefined;
     return {
       content: (data['content'] as string | undefined) ?? '',
       mtime: data['mtime'] as number | undefined,
+      ...(viewer ? { viewer } : {}),
     };
   }
 
@@ -243,13 +262,6 @@ export class DocumentApi {
   }
 
   /** List a mount point's files + folders for the picker (lane A `mountFilesList`). */
-  async listMountFiles(mountPointId: string): Promise<MountFilesResult> {
-    const data = await this.core.dispatchData({ type: 'mountFilesList', mountPointId });
-    return {
-      files: (data['files'] as DocMountFileDto[] | undefined) ?? [],
-      folders: Array.isArray(data['folders']) ? (data['folders'] as string[]) : [],
-    };
-  }
 }
 
 /**

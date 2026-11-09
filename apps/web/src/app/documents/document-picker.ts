@@ -4,14 +4,16 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Icon } from '../ui/icon';
 import { Modal } from '../ui/modal';
 import { CollapsibleCard } from '../ui/collapsible-card';
-import { formatBytes } from '../ui/format-bytes';
+import { ToastService } from '../ui/toast.service';
 import type {
   AccessibleStoreDto,
-  DocMountFileDto,
   DocumentScope,
+  LibraryTargetDto,
   ProjectLibraryTargetDto,
   RecentDocumentDto,
 } from '../core/core-contract';
+import { DocumentStoreBrowser } from '../document-browser/document-store-browser';
+import type { DocumentEntry } from '../document-browser/document-store.source';
 import { DocumentApi } from './document-api';
 import { StandaloneDocumentApi } from './standalone-wire';
 
@@ -34,9 +36,11 @@ interface SelectedMount {
 
 /**
  * `qt-document-picker` — the Open-Document modal (v4 `DocumentPickerModal`).
- * Two steps: (1) source — new blank, recents, and the store accordions
- * (+ look-everywhere); (2) browse — a mount point's folder tree over lane A's
- * `mountFilesList`, with folder navigation and "new document here".
+ * Two steps: (1) source — new blank, the project and General libraries,
+ * recents, and the store accordions (+ look-everywhere); (2) browse — since v4
+ * `5efe53ea7`, the Scriptorium's own document-store browser in pick mode
+ * (`qt-document-store-browser`: opening a file opens it in Document Mode, its
+ * ⋮ menus stay), with "New document here" in its footer (P4.D387 item 16).
  *
  * Serves BOTH entries v4's one modal serves (P4.9J4): a `chatId` scopes the
  * chat-side picker (recents/stores from the chat's reach via {@link DocumentApi});
@@ -45,29 +49,21 @@ interface SelectedMount {
  * store shows ("look everywhere" is implicit, its checkbox hidden), exactly as
  * v4's `chatId === null` arm.
  *
- * DEFERRED LOUDLY this round (enumerated in the status header): the
- * project/general **FileBrowser** path (needs a project/general file-listing
- * endpoint the SPA doesn't consume this round) and the in-picker **new-folder**
- * control (needs `mountFolderCreate`, not a consumed variant). New blank
- * documents (project scope) and store browsing cover the round's opening paths.
+ * The project library is browsed as a STORE (v4 `5efe53ea7` dropped the
+ * legacy `project`-scope fallback): its official store is an ordinary
+ * `document_store` browse, like any shelf.
  *
- * The deferral above once swallowed the **Project library** button whole
- * (dogfood #50): v4 renders it for either arm, but only its legacy-scope arm
- * needs the deferred endpoint — the store-backed arm is an ordinary mount
- * browse. Since the server withholds the chat project's own store from
- * `stores` on the strength of this button existing, its absence made that
- * store unreachable by any path. The button is now rendered for the
- * store-backed arm; a project with NO official store still falls to the
- * deferral, and shows no button rather than a broken one.
+ * Widths follow v4 (ruling L-6): `4xl` for the source step, `lg` for the
+ * browse step — v5's single `3xl` was a pre-existing drift.
  */
 @Component({
   selector: 'qt-document-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, Icon, CollapsibleCard, NgTemplateOutlet],
+  imports: [Modal, Icon, CollapsibleCard, NgTemplateOutlet, DocumentStoreBrowser],
   template: `
     <qt-modal
       [title]="step() === 'source' ? 'Open Document' : 'Select File'"
-      maxWidth="3xl"
+      [maxWidth]="step() === 'source' ? '4xl' : 'lg'"
       (close)="close.emit()"
     >
       @if (step() === 'source') {
@@ -98,7 +94,7 @@ interface SelectedMount {
               <button
                 type="button"
                 class="qt-doc-project-library w-full flex items-center gap-3 p-4 rounded-lg border qt-border-default hover:qt-bg-muted text-left"
-                (click)="browseProjectLibrary(library)"
+                (click)="browseLibrary(library)"
               >
                 <span class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center qt-bg-muted">
                   <qt-icon name="folder" class="w-5 h-5 qt-text-secondary" />
@@ -106,6 +102,23 @@ interface SelectedMount {
                 <span class="min-w-0">
                   <span class="block font-medium qt-text-primary">Project library</span>
                   <span class="block text-sm qt-text-secondary truncate">{{ library.name }}</span>
+                </span>
+              </button>
+            }
+
+            <!-- General library: Quilltap General (v4 DocumentPickerModal.tsx:320-334, 5efe53ea7). -->
+            @if (generalLibrary(); as general) {
+              <button
+                type="button"
+                class="qt-doc-general-library w-full flex items-center gap-3 p-4 rounded-lg border qt-border-default hover:qt-bg-muted text-left"
+                (click)="browseLibrary(general)"
+              >
+                <span class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center qt-bg-muted">
+                  <qt-icon name="scriptorium" class="w-5 h-5 qt-text-secondary" />
+                </span>
+                <span class="min-w-0">
+                  <span class="block font-medium qt-text-primary">General library</span>
+                  <span class="block text-sm qt-text-secondary">Quilltap General, the shelf every chat shares</span>
                 </span>
               </button>
             }
@@ -238,81 +251,38 @@ interface SelectedMount {
               <qt-icon name="arrow-left" class="w-4 h-4" />
               Back
             </button>
-            <span class="text-sm qt-text-muted">{{ selectedMount()?.name || 'Document Store' }}</span>
+            <span class="text-sm qt-text-muted">{{ browseLabel() }}</span>
           </div>
 
-          <div class="flex-1 overflow-y-auto p-2">
-            @if (filesLoading()) {
-              <div class="text-center py-8 qt-text-muted text-sm">Loading files...</div>
-            } @else {
-              <div class="space-y-0.5">
-                @if (currentFolder()) {
-                  <div class="flex items-center gap-1 px-3 py-1.5 mb-1 text-xs qt-text-muted">
-                    <button class="hover:qt-text-primary" (click)="currentFolder.set('')">
-                      {{ selectedMount()?.name || 'Root' }}
-                    </button>
-                    @for (segment of breadcrumbs(); track $index) {
-                      <span class="flex items-center gap-1">
-                        <span>/</span>
-                        <button class="hover:qt-text-primary" (click)="navigateToCrumb($index)">{{ segment }}</button>
-                      </span>
-                    }
-                  </div>
-
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:qt-bg-muted text-left"
-                    (click)="navigateUp()"
-                  >
-                    <qt-icon name="arrow-left" class="w-4 h-4 flex-shrink-0 qt-text-secondary" />
-                    <span class="text-sm qt-text-secondary">..</span>
-                  </button>
-                }
-
-                <button
-                  type="button"
-                  class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:qt-bg-muted text-left"
-                  (click)="pickNewBlankInFolder()"
-                >
-                  <qt-icon name="file-plus" class="w-4 h-4 flex-shrink-0 qt-text-secondary" />
-                  <span class="text-sm qt-text-secondary">New document here</span>
-                </button>
-
-                @for (folder of entries().folders; track folder) {
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:qt-bg-muted text-left"
-                    (click)="navigateInto(folder)"
-                  >
-                    <qt-icon name="folder" class="w-4 h-4 flex-shrink-0 qt-text-secondary" />
-                    <span class="flex-1 min-w-0 text-sm qt-text-primary font-medium truncate">{{ folder }}</span>
-                    <qt-icon name="chevron-right" class="w-3 h-3 flex-shrink-0 qt-text-muted" />
-                  </button>
-                }
-
-                @for (file of entries().files; track file.id) {
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-3 px-3 py-2 rounded-md hover:qt-bg-muted text-left"
-                    (click)="pickMountFile(file)"
-                  >
-                    <qt-icon name="file" class="w-4 h-4 flex-shrink-0 qt-text-secondary" />
-                    <span class="flex-1 min-w-0 text-sm qt-text-primary truncate" [title]="file.relativePath">
-                      {{ basename(file.relativePath) }}
-                    </span>
-                    @if (file.size != null) {
-                      <span class="text-xs qt-text-muted flex-shrink-0">{{ formatSize(file.size) }}</span>
-                    }
-                  </button>
-                }
-
-                @if (entries().folders.length === 0 && entries().files.length === 0) {
-                  <div class="text-center py-4 qt-text-muted text-sm">This folder is empty.</div>
+          <div class="flex-1 overflow-y-auto">
+            @if (selectedMount(); as mount) {
+              <!-- The Scriptorium's folder browser, in pick mode: opening a
+                   file opens it in Document Mode; its ⋮ menus stay. -->
+              <div class="p-2">
+                @for (id of [mount.id]; track id) {
+                  <qt-document-store-browser
+                    [storeId]="id"
+                    [pickMode]="true"
+                    [footer]="newHere"
+                    [opensStores]="true"
+                    (pickFile)="pickMountFile($event)"
+                    (openStore)="openOtherStore($event)"
+                  />
                 }
               </div>
             }
           </div>
         </div>
+        <ng-template #newHere let-folder>
+          <button
+            type="button"
+            class="qt-button-secondary qt-button-sm inline-flex items-center gap-1.5"
+            (click)="pickNewBlankInFolder(folder)"
+          >
+            <qt-icon name="file-plus" class="w-4 h-4" />
+            New document here
+          </button>
+        </ng-template>
       }
     </qt-modal>
 
@@ -334,9 +304,12 @@ export class DocumentPicker implements OnInit {
   // rail); standalone mode uses the root StandaloneDocumentApi.
   private readonly api = inject(DocumentApi, { optional: true });
   private readonly standaloneApi = inject(StandaloneDocumentApi);
+  private readonly toasts = inject(ToastService);
 
   /** The chat whose reach scopes the picker; `null` = the standalone surface. */
   readonly chatId = input<string | null>(null);
+  /** The chat's project name, for the browse header (v4 `projectName || 'Project'`). */
+  readonly projectName = input<string | null>(null);
 
   readonly selectDocument = output<DocumentSelection>();
   readonly close = output<void>();
@@ -355,6 +328,8 @@ export class DocumentPicker implements OnInit {
    * Null on the standalone surface, and on a chat with no project.
    */
   protected readonly projectLibrary = signal<ProjectLibraryTargetDto | null>(null);
+  /** Quilltap General (C14, v4 `5efe53ea7`) — null until the server names it. */
+  protected readonly generalLibrary = signal<LibraryTargetDto | null>(null);
   protected readonly loading = signal(false);
   /**
    * Gates the collapsible cards until the first fetch settles: a card seeds its
@@ -368,10 +343,14 @@ export class DocumentPicker implements OnInit {
   protected readonly everywhere = computed(() => this.standalone() || this.lookEverywhere());
 
   protected readonly selectedMount = signal<SelectedMount | null>(null);
-  protected readonly mountFiles = signal<DocMountFileDto[]>([]);
-  protected readonly mountFolders = signal<string[]>([]);
-  protected readonly filesLoading = signal(false);
-  protected readonly currentFolder = signal('');
+
+  /** v4 `:470-472` — the browse header names the project, the General library, or the store. */
+  protected readonly browseLabel = computed(() => {
+    const mount = this.selectedMount();
+    if (mount && mount.id === this.projectLibrary()?.mountPointId) return this.projectName() || 'Project';
+    if (mount && mount.id === this.generalLibrary()?.mountPointId) return 'General Library';
+    return mount?.name || 'Document Store';
+  });
 
   ngOnInit(): void {
     void Promise.all([this.loadRecents(), this.loadStores()]).finally(() => this.ready.set(true));
@@ -399,8 +378,11 @@ export class DocumentPicker implements OnInit {
         // both modes, and the project's own store is withheld from `stores` in
         // both, so dropping it here would make the button flicker away.
         this.projectLibrary.set(result.projectLibrary);
+        this.generalLibrary.set(result.generalLibrary ?? null);
       } else {
-        this.stores.set(await this.standaloneApi.fetchStores());
+        const result = await this.standaloneApi.fetchStores();
+        this.stores.set(result.stores);
+        this.generalLibrary.set(result.generalLibrary);
       }
     } catch {
       // leave stores empty
@@ -429,92 +411,39 @@ export class DocumentPicker implements OnInit {
     };
   });
 
-  protected browseStore(store: AccessibleStoreDto): Promise<void> {
-    return this.openMount(store.mountPointId, store.name);
+  /** v4 `handleSelectStore` — browse a store in the browser. */
+  protected browseStore(store: AccessibleStoreDto): void {
+    this.openMount(store.mountPointId, store.name);
   }
 
   /**
-   * v4 routes the Project library button to the project's official store when
-   * it has one (`handleSelectScope('document_store', …)`), which is the same
-   * mount browse a store row performs. v4's other arm — the legacy `project`
-   * scope, taken when a project has NO official store — remains the deferred
-   * FileBrowser path named in this file's header.
+   * v4 `browseLibrary` — the project library (its official store) or the
+   * General library, browsed as a store.
    */
-  protected browseProjectLibrary(library: ProjectLibraryTargetDto): Promise<void> {
-    return this.openMount(library.mountPointId, library.name);
+  protected browseLibrary(library: LibraryTargetDto): void {
+    this.openMount(library.mountPointId, library.name);
   }
 
-  private async openMount(mountPointId: string, name: string): Promise<void> {
+  private openMount(mountPointId: string, name: string): void {
     this.selectedMount.set({ id: mountPointId, name });
     this.step.set('browse');
-    this.currentFolder.set('');
-    this.filesLoading.set(true);
-    try {
-      const chatId = this.chatId();
-      const result = chatId
-        ? await this.api!.listMountFiles(mountPointId)
-        : await this.standaloneApi.listMountFiles(mountPointId);
-      this.mountFiles.set(result.files);
-      this.mountFolders.set(result.folders);
-    } catch {
-      this.mountFiles.set([]);
-      this.mountFolders.set([]);
-    } finally {
-      this.filesLoading.set(false);
-    }
+  }
+
+  /**
+   * v4 `handleOpenOtherStore` — a "where else this appears" Go there: a store
+   * on the shelves is browsed, a library is browsed, anything else is out of
+   * reach from this chat.
+   */
+  protected openOtherStore(mountPointId: string): void {
+    const store = this.stores().find((s) => s.mountPointId === mountPointId);
+    const library = [this.projectLibrary(), this.generalLibrary()].find((l) => l?.mountPointId === mountPointId);
+    if (store) this.browseStore(store);
+    else if (library) this.browseLibrary(library);
+    else this.toasts.showError("That store is not on this chat's shelves. Tick Look everywhere to reach it.");
   }
 
   protected back(): void {
     this.step.set('source');
-    this.mountFiles.set([]);
-    this.mountFolders.set([]);
-  }
-
-  /** Folders + files at the current folder level (v4 `mountPointEntries`). */
-  protected readonly entries = computed<{ folders: string[]; files: DocMountFileDto[] }>(() => {
-    const folder = this.currentFolder();
-    const prefix = folder ? folder + '/' : '';
-    const folderSet = new Set<string>();
-    const filesAtLevel: DocMountFileDto[] = [];
-
-    for (const file of this.mountFiles()) {
-      if (!file.relativePath.startsWith(prefix)) continue;
-      const remainder = file.relativePath.substring(prefix.length);
-      const slash = remainder.indexOf('/');
-      if (slash === -1) filesAtLevel.push(file);
-      else folderSet.add(remainder.substring(0, slash));
-    }
-
-    for (const fullPath of this.mountFolders()) {
-      const lastSlash = fullPath.lastIndexOf('/');
-      const parent = lastSlash === -1 ? '' : fullPath.substring(0, lastSlash);
-      const name = lastSlash === -1 ? fullPath : fullPath.substring(lastSlash + 1);
-      if (parent === folder && name) folderSet.add(name);
-    }
-
-    const folders = Array.from(folderSet).sort((a, b) => a.localeCompare(b));
-    filesAtLevel.sort((a, b) => this.basename(a.relativePath).localeCompare(this.basename(b.relativePath)));
-    return { folders, files: filesAtLevel };
-  });
-
-  protected readonly breadcrumbs = computed(() => {
-    const folder = this.currentFolder();
-    return folder ? folder.split('/') : [];
-  });
-
-  protected navigateInto(folder: string): void {
-    this.currentFolder.update((prev) => (prev ? `${prev}/${folder}` : folder));
-  }
-
-  protected navigateUp(): void {
-    this.currentFolder.update((prev) => {
-      const lastSlash = prev.lastIndexOf('/');
-      return lastSlash === -1 ? '' : prev.substring(0, lastSlash);
-    });
-  }
-
-  protected navigateToCrumb(index: number): void {
-    this.currentFolder.set(this.breadcrumbs().slice(0, index + 1).join('/'));
   }
 
   // --- selections ---
@@ -527,7 +456,8 @@ export class DocumentPicker implements OnInit {
     this.selectDocument.emit({ filePath: doc.filePath, scope: doc.scope, mountPoint: doc.mountPoint || undefined });
   }
 
-  protected pickMountFile(file: DocMountFileDto): void {
+  /** v4 `handleMountPointFileSelect` (`:205-212`). */
+  protected pickMountFile(file: DocumentEntry): void {
     this.selectDocument.emit({
       filePath: file.relativePath,
       scope: 'document_store',
@@ -535,11 +465,18 @@ export class DocumentPicker implements OnInit {
     });
   }
 
-  protected pickNewBlankInFolder(): void {
+  /**
+   * v4 `handleNewBlankInFolder` (`:217-225`): a brand-new "Untitled
+   * Document.md" inside the folder being browsed — the server picks the actual
+   * filename (with collision numbering); this hands it the scope and folder.
+   */
+  protected pickNewBlankInFolder(currentFolder: string): void {
+    const mount = this.selectedMount();
+    if (!mount) return;
     this.selectDocument.emit({
       scope: 'document_store',
-      mountPoint: this.selectedMount()?.name || undefined,
-      targetFolder: this.currentFolder() || undefined,
+      mountPoint: mount.name,
+      targetFolder: currentFolder || undefined,
     });
   }
 
@@ -552,13 +489,5 @@ export class DocumentPicker implements OnInit {
           : 'General';
     const action = doc.isActive ? 'Continue editing' : 'Reopen';
     return `${action} · ${scopeLabel}`;
-  }
-
-  protected basename(path: string): string {
-    return path.split('/').pop() || path;
-  }
-
-  protected formatSize(bytes: number): string {
-    return formatBytes(bytes);
   }
 }

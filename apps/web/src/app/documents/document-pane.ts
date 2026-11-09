@@ -36,6 +36,7 @@ import {
 import { documentPaneUri } from './qtap-uri';
 import { ToastService } from '../ui/toast.service';
 import { activateOnKey } from '../ui/activate-on-key';
+import { DocumentViewerPane } from './document-viewer-pane'; // === P4.D387 ===
 
 /**
  * `qt-document-pane` — the right-side document editor (v4 `DocumentPane`): a
@@ -98,192 +99,205 @@ import { activateOnKey } from '../ui/activate-on-key';
   selector: 'qt-document-pane',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'flex flex-col flex-1 min-h-0 min-w-0' },
-  imports: [FormattingToolbar, Icon, RichEditor],
+  imports: [FormattingToolbar, Icon, RichEditor, DocumentViewerPane],
   template: `
-    <div class="flex flex-col h-full">
-      <div class="qt-doc-header">
-        <span class="qt-doc-badge">Document</span>
+    <!-- === P4.D387 === a store file shown read-only (v4 DocumentPaneBinding's
+         viewer branch, 5efe53ea7; ruling L-3 keeps it here). -->
+    @if (document().viewer; as viewer) {
+      <qt-document-viewer-pane
+        [displayTitle]="document().displayTitle"
+        [viewer]="viewer"
+        (closeDocument)="close.emit()"
+      />
+    } @else {
+      <!-- === end P4.D387 === -->
+      <div class="flex flex-col h-full">
+        <div class="qt-doc-header">
+          <span class="qt-doc-badge">Document</span>
 
-        @if (isEditingTitle()) {
-          <input
-            #titleInput
-            class="qt-doc-title-input"
-            aria-label="Document title"
-            [value]="editTitle()"
-            (input)="editTitle.set($any($event.target).value)"
-            (blur)="submitTitle()"
-            (keydown)="onTitleKeyDown($event)"
-          />
-        } @else {
-          <span
-            class="qt-doc-title cursor-pointer"
-            title="Click to rename"
-            role="button"
-            tabindex="0"
-            (keydown)="activateOnKey($event)"
-            (click)="startTitleEdit()"
-          >
-            {{ document().displayTitle }}
-          </span>
-        }
+          @if (isEditingTitle()) {
+            <input
+              #titleInput
+              class="qt-doc-title-input"
+              aria-label="Document title"
+              [value]="editTitle()"
+              (input)="editTitle.set($any($event.target).value)"
+              (blur)="submitTitle()"
+              (keydown)="onTitleKeyDown($event)"
+            />
+          } @else {
+            <span
+              class="qt-doc-title cursor-pointer"
+              title="Click to rename"
+              role="button"
+              tabindex="0"
+              (keydown)="activateOnKey($event)"
+              (click)="startTitleEdit()"
+            >
+              {{ document().displayTitle }}
+            </span>
+          }
 
-        <div class="flex items-center gap-1">
-          @if (usesRichEditor()) {
+          <div class="flex items-center gap-1">
+            @if (usesRichEditor()) {
+              <button
+                type="button"
+                class="qt-doc-header-button"
+                [class.qt-doc-header-button-active]="showSource()"
+                [title]="showSource() ? 'Show the formatted editor' : 'Show the Markdown source'"
+                [attr.aria-label]="showSource() ? 'Show formatted editor' : 'Show markdown source'"
+                [attr.aria-pressed]="showSource()"
+                (click)="toggleSourceMode()"
+              >
+                <qt-icon name="code" class="w-4 h-4" />
+              </button>
+            }
+
             <button
               type="button"
               class="qt-doc-header-button"
-              [class.qt-doc-header-button-active]="showSource()"
-              [title]="showSource() ? 'Show the formatted editor' : 'Show the Markdown source'"
-              [attr.aria-label]="showSource() ? 'Show formatted editor' : 'Show markdown source'"
-              [attr.aria-pressed]="showSource()"
-              (click)="toggleSourceMode()"
+              [title]="mode() === 'focus' ? 'Show chat' : 'Maximize'"
+              [attr.aria-label]="mode() === 'focus' ? 'Show chat' : 'Maximize document'"
+              (click)="toggleFocus.emit()"
             >
-              <qt-icon name="code" class="w-4 h-4" />
+              <qt-icon [name]="mode() === 'focus' ? 'compress' : 'expand'" class="w-4 h-4" />
             </button>
-          }
 
+            <button
+              type="button"
+              class="qt-doc-header-button"
+              title="Delete document"
+              aria-label="Delete document"
+              (click)="onDeleteClick()"
+            >
+              <qt-icon name="trash" class="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              class="qt-doc-header-button"
+              title="Exit document mode"
+              aria-label="Exit document mode"
+              (click)="close.emit()"
+            >
+              <qt-icon name="close" class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div class="qt-doc-uri-row">
+          <span class="qt-doc-uri-label">URL</span>
+          <span class="qt-doc-uri-value" [title]="documentUri()">{{ documentUri() }}</span>
           <button
             type="button"
-            class="qt-doc-header-button"
-            [title]="mode() === 'focus' ? 'Show chat' : 'Maximize'"
-            [attr.aria-label]="mode() === 'focus' ? 'Show chat' : 'Maximize document'"
-            (click)="toggleFocus.emit()"
+            class="qt-doc-uri-copy-button"
+            [title]="uriCopied() ? 'Copied' : 'Copy URL'"
+            [attr.aria-label]="uriCopied() ? 'Copied URL' : 'Copy URL'"
+            (click)="copyUri()"
           >
-            <qt-icon [name]="mode() === 'focus' ? 'compress' : 'expand'" class="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            class="qt-doc-header-button"
-            title="Delete document"
-            aria-label="Delete document"
-            (click)="onDeleteClick()"
-          >
-            <qt-icon name="trash" class="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            class="qt-doc-header-button"
-            title="Exit document mode"
-            aria-label="Exit document mode"
-            (click)="close.emit()"
-          >
-            <qt-icon name="close" class="w-4 h-4" />
+            <qt-icon name="copy" class="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
 
-      <div class="qt-doc-uri-row">
-        <span class="qt-doc-uri-label">URL</span>
-        <span class="qt-doc-uri-value" [title]="documentUri()">{{ documentUri() }}</span>
-        <button
-          type="button"
-          class="qt-doc-uri-copy-button"
-          [title]="uriCopied() ? 'Copied' : 'Copy URL'"
-          [attr.aria-label]="uriCopied() ? 'Copied URL' : 'Copy URL'"
-          (click)="copyUri()"
-        >
-          <qt-icon name="copy" class="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <!-- v4 \`DocumentToolbarWrapper\` (\`DocumentPane.tsx:323-355\`): the same
+        <!-- v4 \`DocumentToolbarWrapper\` (\`DocumentPane.tsx:323-355\`): the same
            toolbar the composer wears, in its own row above the editor, and
            rendered for the very files v4 wraps in a Lexical composer (markdown).
            NO \`narrationDelimiters\` binding — v4's \`DocToolbar\` passes none, so
            this toolbar shows no synthesized "Nar" button. -->
-      @if (usesRichEditor()) {
-        <div class="qt-doc-toolbar">
-          <qt-formatting-toolbar
-            [disabled]="entry().isLLMEditing"
-            [inCodeBlock]="inCodeBlock()"
-            [showSource]="showSource()"
-            [showSourceToggle]="true"
-            [delimiters]="delimiters()"
-            (action)="onFormatAction($event)"
-            (applyDelimiter)="onApplyDelimiter($event)"
-            (insertChar)="onInsertChar($event)"
-            (toggleSource)="toggleSourceMode()"
-          />
-        </div>
-      }
+        @if (usesRichEditor()) {
+          <div class="qt-doc-toolbar">
+            <qt-formatting-toolbar
+              [disabled]="entry().isLLMEditing"
+              [inCodeBlock]="inCodeBlock()"
+              [showSource]="showSource()"
+              [showSourceToggle]="true"
+              [delimiters]="delimiters()"
+              (action)="onFormatAction($event)"
+              (applyDelimiter)="onApplyDelimiter($event)"
+              (insertChar)="onInsertChar($event)"
+              (toggleSource)="toggleSourceMode()"
+            />
+          </div>
+        }
 
-      @if (hasFrontmatter()) {
-        <div class="qt-frontmatter">
-          <div class="qt-frontmatter-title">Document Info</div>
-          <table class="qt-frontmatter-table">
-            <tbody>
-              @for (row of frontmatter(); track row.key) {
-                <tr>
-                  <th>{{ row.key }}</th>
-                  <td>
-                    @if (row.chips; as chips) {
-                      <div class="qt-frontmatter-chip-list">
-                        @for (chip of chips; track $index) {
-                          <span class="qt-badge qt-badge-tag">{{ chip }}</span>
-                        }
-                      </div>
-                    } @else {
-                      <span>{{ row.text }}</span>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
+        @if (hasFrontmatter()) {
+          <div class="qt-frontmatter">
+            <div class="qt-frontmatter-title">Document Info</div>
+            <table class="qt-frontmatter-table">
+              <tbody>
+                @for (row of frontmatter(); track row.key) {
+                  <tr>
+                    <th>{{ row.key }}</th>
+                    <td>
+                      @if (row.chips; as chips) {
+                        <div class="qt-frontmatter-chip-list">
+                          @for (chip of chips; track $index) {
+                            <span class="qt-badge qt-badge-tag">{{ chip }}</span>
+                          }
+                        </div>
+                      } @else {
+                        <span>{{ row.text }}</span>
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
 
-      <!-- focusout, not blur: blur does not bubble, so a container listener
+        <!-- focusout, not blur: blur does not bubble, so a container listener
            never fires when the textarea (or the ProseMirror contenteditable)
            loses focus. v4's React onBlur works because React delegates blur as
            focusout — focusout is the faithful Angular equivalent (the
            flush-on-blur save rides this). -->
-      <div class="flex-1 overflow-y-auto flex flex-col min-h-0" (focusout)="blur.emit()">
-        @if (useRichEditorNow()) {
-          <qt-rich-editor
-            class="qt-doc-editor-area h-full p-4"
-            [value]="editorValue()"
-            [ariaLabel]="'Document editor'"
-            [smartTypography]="smartTypography()"
-            [disabled]="entry().isLLMEditing"
-            [composerEmoji]="charInsert.emoji()"
-            [composerUnicode]="charInsert.unicode()"
-            (contentChange)="onEditorInput($event)"
-            style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
-          />
-        } @else {
-          <textarea
-            #sourceArea
-            class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
-            [attr.aria-label]="isMarkdown() ? 'Document source' : 'Document content'"
-            [value]="editorValue()"
-            (input)="onEditorInput($any($event.target).value)"
-            [disabled]="entry().isLLMEditing"
-            spellcheck="false"
-            style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
-          ></textarea>
-        }
-      </div>
+        <div class="flex-1 overflow-y-auto flex flex-col min-h-0" (focusout)="blur.emit()">
+          @if (useRichEditorNow()) {
+            <qt-rich-editor
+              class="qt-doc-editor-area h-full p-4"
+              [value]="editorValue()"
+              [ariaLabel]="'Document editor'"
+              [smartTypography]="smartTypography()"
+              [disabled]="entry().isLLMEditing"
+              [composerEmoji]="charInsert.emoji()"
+              [composerUnicode]="charInsert.unicode()"
+              (contentChange)="onEditorInput($event)"
+              style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
+            />
+          } @else {
+            <textarea
+              #sourceArea
+              class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
+              [attr.aria-label]="isMarkdown() ? 'Document source' : 'Document content'"
+              [value]="editorValue()"
+              (input)="onEditorInput($any($event.target).value)"
+              [disabled]="entry().isLLMEditing"
+              spellcheck="false"
+              style="line-height: 1.6; min-height: 100%; background-color: var(--color-background)"
+            ></textarea>
+          }
+        </div>
 
-      <div class="qt-doc-status-bar">
-        <span class="qt-doc-status-item">{{ isMarkdown() ? 'Markdown' : 'Plain text' }}</span>
-        <span class="qt-doc-status-item"
-          >{{ wordCount().toLocaleString() }} word{{ wordCount() === 1 ? '' : 's' }}</span
-        >
-        <span class="qt-doc-status-item">
-          <span [class]="saveDotClass()"></span>
-          {{ saveLabel() }}
-        </span>
-        @if (entry().isLLMEditing) {
-          <span class="qt-doc-status-item ml-auto">AI editing...</span>
-        }
-        <!-- Screen readers hear each completed save and the AI starting to edit,
+        <div class="qt-doc-status-bar">
+          <span class="qt-doc-status-item">{{ isMarkdown() ? 'Markdown' : 'Plain text' }}</span>
+          <span class="qt-doc-status-item"
+            >{{ wordCount().toLocaleString() }} word{{ wordCount() === 1 ? '' : 's' }}</span
+          >
+          <span class="qt-doc-status-item">
+            <span [class]="saveDotClass()"></span>
+            {{ saveLabel() }}
+          </span>
+          @if (entry().isLLMEditing) {
+            <span class="qt-doc-status-item ml-auto">AI editing...</span>
+          }
+          <!-- Screen readers hear each completed save and the AI starting to edit,
              not every Unsaved/Saving flicker while typing. -->
-        <span class="sr-only" role="status" aria-live="polite">{{ liveStatus() }}</span>
+          <span class="sr-only" role="status" aria-live="polite">{{ liveStatus() }}</span>
+        </div>
       </div>
-    </div>
+      <!-- === P4.D387 === -->
+    }
+    <!-- === end P4.D387 === -->
   `,
 })
 export class DocumentPane {
