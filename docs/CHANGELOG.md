@@ -251,6 +251,23 @@ _Versions: core 0.0.1429._
 
 P4.D369's stacking commit (contract C5), which P4.D370 and P4.D371 branch from. New `quilltap_core::characters::kind` ports v4's `lib/characters/kind.ts` at the pin: `CharacterKind { Roleplay, Assistant }` (serde `"roleplay"` / `"assistant"`, `as_str`), `CHARACTER_KINDS`, `DEFAULT_CHARACTER_KIND`, the exact-match lenient `kind_or_default(Option<&Value>)` (anything but exactly `"roleplay"` / `"assistant"` reads `roleplay`; `None` is v4's `undefined`), `resolve_character_kind` (a non-object reads as no kind, as `character?.kind` does), `is_assistant_character`, `AgentModeFlavor`, `ToolRulesVariant`, `GeneratorDirectionKey`, `KindPolicy` (v4's field order), and `kind_policy` / `character_kind_policy` over an exhaustive `match`, so a third kind fails to compile until its policy is added. Nothing calls it yet. New oracle case `cases/character-kind.ts` drives v4's real module (42 rows); new family `character_kind_equivalence` compares the serialized bytes per row and keeps a JSON `null` distinct from an absent value.
 
+#### 2026-11-09 — deus: the since-you-last-spoke reminder, a trailing section after inform (P4.D372 item 6)
+
+_Versions: core 0.0.1436._
+
+NEW `services/established_fact_reminder.rs` ports v4's `buildEstablishedFactReminder`. Its behaviour, in v4's order:
+
+- **Swipes.** The swipe cuts at the first re-rolled message row.
+- **The floor.** The floor is the seat's last own turn. Without one, it is the join time, unless the seat has history access or no join time.
+- **Selection.** It selects public or addressed facts strictly newer than the floor. Every `Date.parse` is `js_date_parse_ms`, and two of v4's NaN arms are measured: an unparseable fact is dropped under a floor, and a NaN floor keeps every parseable fact. The order's prose said the NaN floor drops them; the oracle says otherwise.
+- **Speaker names.** Names load lazily, only for a seat line.
+- **The cap.** The cap is 8000 UTF-16 units, dropping the oldest while more than one fact remains.
+- **The log.** v4's DEBUG is emitted with `chatId` omitted when absent.
+
+`build_context` computes it over the SAME memoised transcript read, gated on a responding participant, and places it right after `inform_block`. Any error gives v4's WARN and `""`. `WhisperEvent` gains `id` / `is_established_fact` and ONE `WhisperEvent::from_value`, which `build_context`'s row read now calls. `RespondingParticipant` gains `created_at` / `has_history_access` (fenced fill in `orchestrator.rs`).
+
+New tier-1 family `established_fact_reminder_equivalence` covers 28 event lists, including the exact-cap boundary, CJK and astral bodies and a 200-fact row (v4 drops 96). It compares the text, the loader-call count and the debug fields. All five mutation runs flip a named row. `core_whisper_equivalence` and `cadence_events_are_read_at_most_once` are unmoved.
+
 #### 2026-11-09 — deus: the Courier delta labels and frames established facts (P4.D372 item 11)
 
 _Versions: core 0.0.1435._

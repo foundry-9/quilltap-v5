@@ -425,6 +425,14 @@ pub struct RespondingParticipant {
     /// read-through fallback (no precompiled stack). Empty for a pre-feature
     /// seat.
     pub selected_subprompt_ids: Vec<String>,
+    // === P4.D372 ===
+    /// `participant.createdAt` — the established-fact reminder's join floor
+    /// (v4 reads `respondingParticipant.createdAt` in BOTH single- and
+    /// multi-character chats; `all_participants` exists only for the latter).
+    pub created_at: Option<String>,
+    /// `participant.hasHistoryAccess` (JS-falsy absent → `false`).
+    pub has_history_access: bool,
+    // === /P4.D372 ===
 }
 
 /// A full participant view for the multi-character branches.
@@ -1108,6 +1116,63 @@ fn build_referent_sections(
     }
 }
 
+// === P4.D372 ===
+/// v4 `context-manager.ts:741-758`: the established facts posted since this
+/// seat last spoke, under their one vouching header; empty-is-absent. Reads
+/// only — over the SAME memoised transcript read as the cadences and the
+/// referent ledger (`cadence_events_are_read_at_most_once`), and a swipe
+/// measures it on what the original saw. Never fails the turn: any error →
+/// v4's WARN (the BARE message) and `""` — the facts still ride in history.
+fn build_established_fact_reminder_section(
+    db: &Db,
+    input: &BuildContextInput,
+    rp: &RespondingParticipant,
+    cadence: &mut CadenceEvents<'_>,
+) -> String {
+    use crate::services::established_fact_reminder::{
+        build_established_fact_reminder, ReminderInput,
+    };
+    let result = cadence.load().and_then(|events| {
+        let reminder_input = ReminderInput {
+            events,
+            responding_participant_id: &rp.id,
+            joined_at: rp.created_at.as_deref(),
+            has_history_access: rp.has_history_access,
+            regeneration_of_message_ids: input.regeneration_of_message_ids.as_deref(),
+            chat_id: Some(&input.chat.id),
+        };
+        // v4 `loadSpeakerNames: () => resolveSpeakerNames(chat)` — the chat's
+        // own participant list, read only when a seat line is selected.
+        build_established_fact_reminder(&reminder_input, || {
+            let chat_id = input.chat.id.clone();
+            let participants = db
+                .read_main(move |c| crate::db::chats_read::find_by_id(c, &chat_id))
+                .map_err(|e| crate::db::fallback::error_text(&e))?
+                .and_then(|chat| chat.get("participants").and_then(Value::as_array).cloned())
+                .unwrap_or_default();
+            db.read_main(|c| {
+                Ok(crate::services::speaker_names::resolve_speaker_names(
+                    c,
+                    &participants,
+                ))
+            })
+            .map_err(|e| crate::db::fallback::error_text(&e))
+        })
+    });
+    match result {
+        Ok(section) => section,
+        Err(error) => {
+            tracing::warn!(
+                chatId = %input.chat.id,
+                error = %error,
+                "[EstablishedFact] Could not build the reminder; the facts still ride in history"
+            );
+            String::new()
+        }
+    }
+}
+// === /P4.D372 ===
+
 fn referent_sections_inner(
     db: &Db,
     input: &BuildContextInput,
@@ -1684,43 +1749,10 @@ impl CadenceEvents<'_> {
 
 /// One `chat_messages` row as the cadence walkers read it.
 fn whisper_event_from_row(m: &Value) -> crate::core_whisper::WhisperEvent {
-    crate::core_whisper::WhisperEvent {
-        // P4.D168: read by `find_last_own_turn_ms` (the progressions cadence),
-        // not by the Core-whisper trigger.
-        created_at: m
-            .get("createdAt")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        event_type: m
-            .get("type")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string(),
-        role: m.get("role").and_then(Value::as_str).map(str::to_string),
-        participant_id: m
-            .get("participantId")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        content: m.get("content").and_then(Value::as_str).map(str::to_string),
-        system_sender: m
-            .get("systemSender")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        system_kind: m
-            .get("systemKind")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-        is_silent_message: m.get("isSilentMessage").and_then(Value::as_bool),
-        target_participant_ids: m
-            .get("targetParticipantIds")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            }),
-    }
+    // === P4.D372 === the ONE row read now lives on the type (it gained `id` /
+    // `isEstablishedFact` for the established-fact reminder).
+    crate::core_whisper::WhisperEvent::from_value(m)
+    // === /P4.D372 ===
 }
 
 /// v4's Core-whisper trigger + READ/ASSEMBLY (W4.6a). Resolves the config
@@ -3281,6 +3313,13 @@ where
     // the model reads about the conversation. Reads only, never fails the turn.
     let (referent_ledger, closing_echo) =
         build_referent_sections(db, input, new_user_message, &mut cadence_events);
+    // === P4.D372 === the established-fact reminder (v4 `turn-trailing.ts:66`,
+    // right after `inform`), gated on a responding participant as v4's is.
+    let established_fact_reminder = match &input.responding_participant {
+        Some(rp) => build_established_fact_reminder_section(db, input, rp, &mut cadence_events),
+        None => String::new(),
+    };
+    // === /P4.D372 ===
 
     // The trailing sections, in their one order (v4 `turn-trailing.ts:42-72`):
     // who the character is (Core whisper), what it remembers (recall), what
@@ -3301,6 +3340,7 @@ where
         progressions_llm_context.clone(),
         inventory_llm_context.clone(),
         inform_block.clone().unwrap_or_default(),
+        established_fact_reminder, // P4.D372
         referent_ledger,
         closing_echo,
         turn_skip_instruction.clone(),
@@ -4336,6 +4376,8 @@ mod inter_character_log_tests {
                 id: "participant-a".to_string(),
                 selected_system_prompt_id: None,
                 selected_subprompt_ids: Vec::new(),
+                created_at: None,
+                has_history_access: true,
             }),
             all_participants: multi.then(|| {
                 vec![

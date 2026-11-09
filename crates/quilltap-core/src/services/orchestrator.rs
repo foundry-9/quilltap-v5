@@ -5396,6 +5396,14 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         selected_system_prompt_id: json_str(args.character_participant, "selectedSystemPromptId"),
         // v4 `2f4254b42`: `respondingParticipant?.selectedSubpromptIds ?? []`.
         selected_subprompt_ids: json_str_array(args.character_participant, "selectedSubpromptIds"),
+        // === P4.D372 === the established-fact reminder's join floor.
+        created_at: json_str(args.character_participant, "createdAt"),
+        has_history_access: args
+            .character_participant
+            .get("hasHistoryAccess")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        // === /P4.D372 ===
     });
     // The all-participants list + per-character map are message-independent (they
     // feed buildContext's attribution/system-prompt). The `existing_messages` /
@@ -5507,6 +5515,10 @@ fn multi_character_fields(
         // v4 reads `characterParticipant.selectedSystemPromptId`.
         selected_system_prompt_id: json_str(character_participant, "selectedSystemPromptId"),
         selected_subprompt_ids: json_str_array(character_participant, "selectedSubpromptIds"),
+        // === P4.D372 === compile-only: this responder is discarded (`_rp_unused`).
+        created_at: None,
+        has_history_access: false,
+        // === /P4.D372 ===
     };
     let participants: Vec<build_context::FullParticipant> = chat
         .get("participants")

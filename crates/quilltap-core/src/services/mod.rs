@@ -292,3 +292,4 @@ pub mod wardrobe_wear_commit;
 // ── P4.D269: the F2 anchor-gate probe (measurement only) ──
 pub mod anchor_gate_probe;
 // ── end P4.D269 ──
+pub mod established_fact_reminder; // P4.D372

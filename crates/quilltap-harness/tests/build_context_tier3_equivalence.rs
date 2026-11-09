@@ -848,6 +848,18 @@ async fn build_context_tier3_matches_oracle() {
                 .unwrap_or_default();
             let responding = Some(
                 quilltap_core::services::build_context::RespondingParticipant {
+                    // P4.D372: the seat's join floor + history access, from
+                    // the same op participant row.
+                    created_at: op
+                        .participants
+                        .iter()
+                        .find(|p| p.id == rp_id)
+                        .map(|p| p.created_at.clone()),
+                    has_history_access: op
+                        .participants
+                        .iter()
+                        .find(|p| p.id == rp_id)
+                        .is_some_and(|p| p.has_history_access),
                     id: rp_id,
                     selected_system_prompt_id: None,
                     selected_subprompt_ids: rp_ids,

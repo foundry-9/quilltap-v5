@@ -54,7 +54,49 @@ pub struct WhisperEvent {
     /// walk unparsed can still carry a `Date`; on this side the wire is always
     /// the string, so the `Date` arm has no counterpart.
     pub created_at: Option<String>,
+    // === P4.D372 (v4 `db6190b44`) ===
+    /// The row's `id` — the established-fact reminder's swipe cut.
+    pub id: Option<String>,
+    /// `isEstablishedFact` (`Some(b)` only for a JSON boolean) — the reminder
+    /// selects seat lines by it.
+    pub is_established_fact: Option<bool>,
+    // === /P4.D372 ===
 }
+
+// === P4.D372 ===
+impl WhisperEvent {
+    /// One `chat_messages` row as the cadence walkers read it (moved here from
+    /// `build_context`'s `whisper_event_from_row`, P4.D372, so the
+    /// established-fact reminder's differential reads rows the way production
+    /// does).
+    pub fn from_value(m: &serde_json::Value) -> Self {
+        use serde_json::Value;
+        let s = |k: &str| m.get(k).and_then(Value::as_str).map(str::to_string);
+        WhisperEvent {
+            // P4.D168: read by `find_last_own_turn_ms` (the progressions
+            // cadence), not by the Core-whisper trigger.
+            created_at: s("createdAt"),
+            event_type: s("type").unwrap_or_default(),
+            role: s("role"),
+            participant_id: s("participantId"),
+            content: s("content"),
+            system_sender: s("systemSender"),
+            system_kind: s("systemKind"),
+            is_silent_message: m.get("isSilentMessage").and_then(Value::as_bool),
+            target_participant_ids: m.get("targetParticipantIds").and_then(Value::as_array).map(
+                |a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                },
+            ),
+            id: s("id"),
+            is_established_fact: m.get("isEstablishedFact").and_then(Value::as_bool),
+        }
+    }
+}
+// === /P4.D372 ===
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoreWhisperReason {

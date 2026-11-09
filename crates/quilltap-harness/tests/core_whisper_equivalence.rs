@@ -66,6 +66,8 @@ impl WireEvent {
             is_silent_message: self.is_silent_message,
             target_participant_ids: self.target_participant_ids,
             created_at: self.created_at,
+            // P4.D372: the reminder's fields; the trigger reads neither.
+            ..Default::default()
         }
     }
 }
