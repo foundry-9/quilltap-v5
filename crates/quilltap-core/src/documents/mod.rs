@@ -21,6 +21,8 @@
 //! corpus is entirely database-backed (matching the whole doc-edit surface) —
 //! the fs branches are a tracked deferral, never exercised by the diff.
 
+pub mod core;
+
 use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde::Serialize;
@@ -111,6 +113,9 @@ pub enum DocError {
     Fs,
     /// Any other store / DB error.
     Store(String),
+    /// v4 `DocumentReadOnlyError` — an editor write to a file Document Mode
+    /// only views (→ 400; P4.D380, contract C14).
+    ReadOnly(String),
 }
 
 impl DocError {
@@ -122,7 +127,8 @@ impl DocError {
             | DocError::Unsupported(m)
             | DocError::MtimeMismatch(m)
             | DocError::Resolve(m)
-            | DocError::Store(m) => m.clone(),
+            | DocError::Store(m)
+            | DocError::ReadOnly(m) => m.clone(),
             DocError::Fs => {
                 "This location is served from the host filesystem, which is unavailable here."
                     .to_string()
@@ -451,59 +457,7 @@ pub fn write_document_file(
     Ok(mtime)
 }
 
-/// The rename-target computation result (v4 `RenameTarget`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RenameTarget {
-    Ok {
-        new_file_path: String,
-        new_display_title: String,
-    },
-    Err {
-        reason: String,
-    },
-}
-
-/// v4 `computeRenameTarget` — turn a user-typed title into the rename target
-/// path: the input is the new basename (directory preserved); a missing
-/// extension inherits the old one ("backstory" → "backstory.md"). Path
-/// separators / `.` / `..` are rejected — a rename within the directory, not a
-/// move. **Pure.**
-pub fn compute_rename_target(current_file_path: &str, new_title: &str) -> RenameTarget {
-    let raw = crate::jsstr::js_trim(new_title);
-    if raw.is_empty() {
-        return RenameTarget::Err {
-            reason: "Name cannot be empty".to_string(),
-        };
-    }
-    if raw.contains('/') || raw.contains('\\') {
-        return RenameTarget::Err {
-            reason: "Name cannot contain path separators".to_string(),
-        };
-    }
-    if raw == "." || raw == ".." || raw.split(['\\', '/']).any(|s| s == "..") {
-        return RenameTarget::Err {
-            reason: "Invalid name".to_string(),
-        };
-    }
-
-    let old_ext = node_extname(current_file_path);
-    let old_dir = node_dirname(current_file_path);
-    let new_basename = if node_extname(raw).is_empty() {
-        format!("{raw}{old_ext}")
-    } else {
-        raw.to_string()
-    };
-    let new_file_path = if old_dir == "." || old_dir.is_empty() {
-        new_basename
-    } else {
-        format!("{}/{}", old_dir.replace('\\', "/"), new_basename)
-    };
-    let new_display_title = node_basename(&new_file_path).to_string();
-    RenameTarget::Ok {
-        new_file_path,
-        new_display_title,
-    }
-}
+pub use self::core::{compute_rename_target, DeleteOutcome, RenameTarget};
 
 /// v4 `renameDocumentFile` — move a document's underlying file to its rename
 /// target. Database stores route through `moveDatabaseDocument` (CONFLICT →
@@ -583,14 +537,6 @@ pub fn rename_document_file(
         }
     }
     Ok(())
-}
-
-/// The outcome of a delete (v4 `'deleted'|'not-found'|'not-a-file'`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeleteOutcome {
-    Deleted,
-    NotFound,
-    NotAFile,
 }
 
 /// v4 `deleteDocumentFile` — delete a document's underlying file. Database stores
@@ -901,7 +847,7 @@ fn schedule_refresh(
 
 /// Node `path.extname` (posix): the substring from the last `.` in the final
 /// segment, or `""` for no dot / a leading-dot dotfile.
-fn node_extname(p: &str) -> String {
+pub(crate) fn node_extname(p: &str) -> String {
     let base = p.rsplit('/').next().unwrap_or(p);
     match base.rfind('.') {
         None | Some(0) => String::new(),
@@ -910,14 +856,14 @@ fn node_extname(p: &str) -> String {
 }
 
 /// Node `path.basename` (posix).
-fn node_basename(p: &str) -> &str {
+pub(crate) fn node_basename(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
 }
 
 /// Node `path.dirname` (posix), for the file paths this module handles (no
 /// trailing slashes): the prefix up to the last `/`, `"."` when there is none,
 /// `"/"` when the only `/` is at the front.
-fn node_dirname(p: &str) -> String {
+pub(crate) fn node_dirname(p: &str) -> String {
     match p.rfind('/') {
         None => ".".to_string(),
         Some(0) => "/".to_string(),

@@ -509,7 +509,7 @@ pub fn handle_copy_file(
 
     // Read the source content, write the destination.
     let content = read_file_with_mtime(mount, &resolved_source)?.content;
-    let mtime = write_file_with_mtime_check(main, mount, &resolved_dest, &content)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved_dest, &content, None)?;
     // triggerReindexIfNeeded: no-op seam (see the module header).
 
     let copied_uri = uri_for(mount, &resolved_dest);

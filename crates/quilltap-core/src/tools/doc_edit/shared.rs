@@ -834,24 +834,45 @@ pub fn read_file_with_mtime(
     }
 }
 
-/// v4 `writeFileWithMtimeCheck` (`path-resolver.ts:677`): a database-backed
+/// v4 `writeFileWithMtimeCheck` (`path-resolver.ts:830`): a database-backed
 /// `ResolvedPath` lands the bytes via the store primitive; a filesystem-backed
 /// path `mkdir -p`s the parent and writes the bytes to disk. Either way returns
-/// the new mtime (ms). The `expected_mtime` guard is not ported (reindex/mtime
-/// seam — see the module header).
+/// the new mtime (ms).
+///
+/// `expected_mtime` is v4's precondition on BOTH branches (P4.D380 item 6 —
+/// the database guard's one home, moved here from Document Mode's
+/// `write_database_checked`, so the `doc_*` tools honour it too, as v4's have
+/// since the baseline): on disk the stat guard ([`FS_MTIME_MISMATCH_MESSAGE`]);
+/// in a database store v4 `writeDatabaseDocument`'s — an EXISTING document
+/// whose joined `lastModified` disagrees refuses with
+/// [`DB_MTIME_MISMATCH_MESSAGE`] (code CONFLICT); a missing one is a create.
+/// v4 runs the unsupported-extension refusal first; a non-native path never
+/// has a document row, so the order is unobservable.
 pub fn write_file_with_mtime_check(
     main: &Connection,
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
+    expected_mtime: Option<i64>,
 ) -> Result<i64, String> {
     if resolved.mount_type.as_deref() != Some("database") {
-        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, None);
+        return write_fs_file_with_mtime_check(&resolved.absolute_path, content, expected_mtime);
     }
-    let mp = resolved
-        .mount_point_id
-        .as_deref()
-        .ok_or("Database-backed ResolvedPath is missing mountPointId")?;
+    let mp = match resolved.mount_point_id.as_deref() {
+        Some(mp) if !mp.is_empty() => mp,
+        _ => return Err("Database-backed ResolvedPath is missing mountPointId".to_string()),
+    };
+    if let Some(expected) = expected_mtime {
+        match database_store::read_database_document(mount, mp, &resolved.relative_path) {
+            Ok(existing) if existing.mtime_ms != expected => {
+                return Err(DB_MTIME_MISMATCH_MESSAGE.to_string());
+            }
+            Ok(_) => {}
+            // NOT_FOUND → no existing document → this is a create; proceed.
+            Err(StoreError::Store(s)) if s.code == DbStoreErrorCode::NotFound => {}
+            Err(e) => return Err(store_error_message(e)),
+        }
+    }
     database_store::write_database_document(
         mount,
         mp,
@@ -884,6 +905,11 @@ pub(crate) fn read_fs_file_with_mtime(absolute_path: &str) -> Result<ReadDoc, St
 /// "mtime mismatch" substring to map it to a 409.
 pub(crate) const FS_MTIME_MISMATCH_MESSAGE: &str =
     "File was modified by another process (mtime mismatch). Please reload and try again.";
+
+/// v4 `writeDatabaseDocument`'s mtime precondition failure (`database-store.ts`,
+/// code CONFLICT) — distinct from the disk branch's "File was modified…".
+pub(crate) const DB_MTIME_MISMATCH_MESSAGE: &str =
+    "Document was modified by another process (mtime mismatch). Please reload and try again.";
 
 /// The host-disk arm of [`write_file_with_mtime_check`] — v4's optional
 /// `expectedMtime` guard, then `fs.mkdir(parent, { recursive: true })`,

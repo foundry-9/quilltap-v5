@@ -52,6 +52,76 @@ pub fn refresh_now(
     }
 }
 
+// === P4.D380 === (v4 `a3d53eae1` — `afterDocumentWrite`'s chain, `core/write.ts:38-61`)
+
+/// The ONE chain after a document write (round ruling R-2): `reindexSingleFile`
+/// → `reindexLinkGroupSiblings` → `enqueueEmbeddingJobsForMountPoint` +
+/// `refreshStats`. The two re-index steps are best-effort themselves (they log
+/// and never fail, as v4's do); the FIRST failure of the last two is the
+/// chain's error. v4 runs those two concurrently under `Promise.all` and
+/// rejects with the first to settle; here they run in order, BOTH always run,
+/// and the embedding error wins when both fail (which settles first in v4 is
+/// unmeasurable from the corpus — recorded).
+pub fn refresh_after_document_write(
+    main: &Connection,
+    mount: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+    absolute_path: &str,
+    extractor: &dyn DocumentTextExtractor,
+) -> Result<(), String> {
+    reindex_single_file(
+        mount,
+        mount_point_id,
+        relative_path,
+        absolute_path,
+        extractor,
+    );
+    super::link_groups::reindex_link_group_siblings(
+        mount,
+        mount_point_id,
+        relative_path,
+        extractor,
+    );
+    let embed = enqueue_embedding_jobs_for_mount_point(main, mount, mount_point_id)
+        .map(|_| ())
+        .map_err(|e| e.to_string());
+    let stats = DocMountPointsRepository::new(mount)
+        .refresh_stats(mount_point_id)
+        .map_err(|e| e.to_string());
+    embed.and(stats)
+}
+
+/// [`refresh_after_document_write`] with v4's catch: ONE WARN `Background
+/// re-index, embedding, or stats refresh failed after a document write`
+/// `{mountPointId, path, error}`; never fails the write that triggered it.
+pub fn refresh_after_document_write_logged(
+    main: &Connection,
+    mount: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+    absolute_path: &str,
+    extractor: &dyn DocumentTextExtractor,
+) {
+    if let Err(error) = refresh_after_document_write(
+        main,
+        mount,
+        mount_point_id,
+        relative_path,
+        absolute_path,
+        extractor,
+    ) {
+        tracing::warn!(
+            target: "quilltap::documents",
+            mountPointId = %mount_point_id,
+            path = %relative_path,
+            error = %error,
+            "Background re-index, embedding, or stats refresh failed after a document write"
+        );
+    }
+}
+// === end P4.D380 ===
+
 /// Refresh with the mount looked up (resolves the fs absolute path for
 /// filesystem mounts; `path: None` = the whole-mount form — no single-file
 /// reindex, just the embedding enqueue + stats).
@@ -80,7 +150,17 @@ pub fn run_refresh(
             } else {
                 String::new()
             };
-            refresh_now(main, mount, mount_point_id, rel, &abs, extractor.as_ref());
+            // P4.D380: the Document Mode cadence of the ONE chain (R-2) — the
+            // link-group siblings step and v4's WARN, where `refresh_now`'s
+            // three `eprintln!`s were.
+            refresh_after_document_write_logged(
+                main,
+                mount,
+                mount_point_id,
+                rel,
+                &abs,
+                extractor.as_ref(),
+            );
         }
         None => {
             if let Err(e) = super::embedding_scheduler::enqueue_embedding_jobs_for_mount_point(

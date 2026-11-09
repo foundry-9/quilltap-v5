@@ -790,6 +790,21 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(documents): the document core — read, write, ensure, rename, delete, view target, one refresh chain (P4.D380, v4 a3d53eae1)
+
+_Versions: core 0.0.1432._
+
+Adds `documents/core/` as one Rust file per v4 module (`lib/documents/core/` at `624d0d25c`):
+
+- `read_document`: one read with the one blob fallback (#134).
+- `stat_document` / `document_exists`: an upload is not a document here.
+- `write_document` / `ensure_document`: one writer, then `after_document_write`.
+- `rename_document`, with the case-only rule. A folder at a database destination counts as taken, and only the disk branch refreshes.
+- `delete_document`.
+- `view_target_for`, which builds the `DocumentViewTarget` in v4's key order.
+
+`DocError` gains `ReadOnly` (v4 `DocumentReadOnlyError`). The module header carries `errors.ts`'s mapping, and `compute_rename_target` and `DeleteOutcome` move into the core and are re-exported. The refresh chain is now one function, `services::mount_index::refresh::refresh_after_document_write`: re-index, link-group siblings, embedding enqueue, stats. A failure logs one WARN, `Background re-index, embedding, or stats refresh failed after a document write`. `run_refresh`'s single-path arm, used by the production `DbMountRefreshScheduler`, now calls it, which gains the siblings step and retires three `eprintln!` texts. `Refresh::Scheduled` serves Document Mode and `Refresh::Now` serves the tools (R-L1, `TOOL_REFRESH_IN_CLOSURE`). `tools::doc_edit::shared::write_file_with_mtime_check` takes `expected_mtime` and now holds v4's database-store mtime guard. Every core line is in v4's words, under `quilltap::documents`, and is pinned by twelve unit tests with their silence legs. The callers move onto the core in the following commits.
+
 #### 2026-11-09 — feat(mount-index): read an uploaded blob as a document (P4.D380, v4 a3d53eae1)
 
 _Versions: core 0.0.1431._
