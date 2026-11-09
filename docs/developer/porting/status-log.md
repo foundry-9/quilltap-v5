@@ -199081,3 +199081,144 @@ The JSON corpora (`chat-message-fts`, `chat-message-fts-reconcile`, `chats-searc
 Invalidated for any other family: none. The grown corpora are read only by the families above; `chats-search.json` / `ui-search.json` re-mint their `/tmp` fixtures per regen.
 
 **Versions at close:** core 0.0.1431, host 0.0.225. web, cli, tauri, the SPA, sys and the harness are unchanged.
+
+### P4.D364 — lane record (PROVIDERS: Anthropic `2026-10-21`, the SDK floors, the full re-record)
+
+- **Start.** Session opened in its own app worktree `.claude/worktrees/p4-d364-providers-f261b2`
+  (branch `claude/p4-d364-providers-f261b2`) already sitting on `SCHEMA` `4e3a1584e` (verified:
+  HEAD = `4e3a1584e`, clean); no move needed. §2 probe (observation, 2026-11-08 21:53 CST): v4
+  `main` moved to `88c9cc81d` (11 commits past the pin: 4.12.2 `c9b281ec9`, `819fc9c82` prompt
+  caching, `88c9cc81d` #147 …); tree clean; `bugfix` `d67c70a51`. Pin
+  `/tmp/qt-v4-pin-p4.d364-624d0d25c` → `624d0d25c6cbb68daa54e08fc57e21e16ce205aa`,
+  `4.13.0-dev.8`; root `npm ci --offline` OK (no ENOTCACHED); `npm rebuild better-sqlite3` OK;
+  root `openai` 7.47.0, `@openrouter/sdk` 1.5.34, `zod` 4.6.7, `better-sqlite3` 13.0.3, `mermaid`
+  12.3.0. `pin-plugin-sdks.sh` last line, verbatim:
+  `openai 7.47.0 | anthropic 1.4.0 | genai 2.32.0 | openrouter 1.5.34 | plugin-utils 2.7.3`.
+- **The R-F STOP and the ruling.** The first full re-record (genai FIRST) found three framing moves
+  (x): X1 genai 2.32.0 `inlineData` `{data,mimeType}` → `{mimeType,data}` (6 google-wire rows); X2
+  `@anthropic-ai/sdk` 1.4.0 `x-api-key` → `Authorization: Bearer` (all 47 anthropic rows; the pin's
+  TRACKED bundle `qtap-plugin-anthropic/index.js:28480-28484`, vs `236c04e35`'s `:12106-12110`
+  `X-Api-Key`); X3 `@openrouter/sdk` 1.5.34 image-models error texts. STOPPED and reported
+  (`p4d364-STOP-rf-framing-moved.md`). **The human's ruling, 2026-11-09 (relayed by the
+  coordinator): R-F option (A) — PORT all three in-lane**; X2 per Anthropic's API overview
+  (`Authorization: Bearer` primary, `x-api-key` a "legacy fallback … still supported") = v4's shape.
+  Recorded as RULED PORTS.
+- **Item 1 classification (the full re-record from the pin; Node 24.13.1; `V4=$PIN`).**
+  - **genai first, its own line — `@google/genai` 2.32.0:** `google-wire` (24) — (s) 24
+    `google-genai-sdk/1.52.0`→`2.32.0`; (x) **X1** 6 rows (`image-attachment` / `multi-attachment` /
+    `merged-user-attachments`, both modes) `inlineData` `{data,mimeType}`→`{mimeType,data}` (2.32.0's
+    `partToMldev$1` copies `inlineData` whole; no CHANGELOG ships in the package). `google-request`
+    (13), `streams/google_parts`, the google rows of response-bodies / text-errors / image-dialects /
+    tool-wire: byte-identical.
+  - **request-envelopes** (412 → 428): (s) 252 `openai` 7.23.0→7.47.0, 47 anthropic 0.115.0→1.4.0,
+    15 speakeasy UA `1.3.28 2.914.0`→`1.5.34 2.950.13`; (h) 47 `anthropic-version` →`2026-10-21`, 33
+    bodies lose `temperature`; (x) **X2** 47 rows `x-api-key` gone, `authorization: Bearer
+    test-api-key` added; +16 rows (the 8 new anthropic cases × 2 modes — explained by the recorder).
+  - **image-dialects** (185 → 191): (s) 8 openai stamps, 3 speakeasy UA; (x) **X3** OpenRouter
+    `models_http_error` `API error occurred: Status 401. Body: {…}` → `No auth credentials found`;
+    plus two STALE-PREMISE rows that were NOT SDK framing moves — `models_live_every_signal` ("Response
+    validation failed": 1.5.34's `Model$inboundSchema` REQUIRES `endpoints`; the recorder's `orModel`
+    now carries `endpoints: []`, after which the row is byte-identical to before), and the 5 nanogpt
+    rows (v4 bug 269 `4b0d1cb04`'s `/image-models?detailed=true` catalog GET, unanswered by the
+    recorder since 2026-10-27; now answered with an empty listing → byte-identical to before); +6
+    OpenRouter error-arm rows (the X3 port's coverage).
+  - **Byte-identical:** all ten `streams/*`, response-bodies, text-http-errors, tool-wire,
+    moderation-wire, web-search-wire, google-request.
+  - **(p):** none observed by the subset checks.
+- **Red-first (item 1(c)–(d), unported SCHEMA + re-recorded corpora):** `request_builder_equivalence`
+  RED at `ANTHROPIC/plain[stream]` (body `temperature`; the family panics at the first row);
+  `request_builder_google_wire_equivalence` RED at `image-attachment[stream]`;
+  `image_dialects_equivalence` RED at `OPENROUTER/models_live_every_signal`;
+  `provider_sdk_version_guard` 2/4 (test 1: two root + three plugin-dir constants; test 2: stamps).
+- **Mutation proofs (f)** — each a separate build, file restored byte-identical: re-insert the sampling
+  block → RED at `ANTHROPIC/plain[stream]`; drop the skip → RED at
+  `ANTHROPIC/attachment-unsupported-empty-content[stream]`; add `^claude-opus-4-6` to the thinking
+  list → RED at `ANTHROPIC/thinking[stream]`. Item 12's validate-probe test RED under the sampling
+  mutation too.
+- **R-P1 (1(e)), measured at the pin:** the plugin-message attachment stampers are all `role:
+  'user'` — `lib/services/chat-message/context-builder.service.ts:791-806` (`selectAttachmentAnchorIndex`:
+  last `isUserTurn`, else last user-turn id, else last `role === 'user'`) / `:1340-1356` (stamps the
+  anchor only), `lib/chat/context/turn-trailing.ts:104` (the only `isUserTurn: true`, role user),
+  `lib/llm/vision-request.ts:292`, `lib/memory/cheap-llm-tasks/image-scene-tasks.ts:474`; every other
+  `attachments:` at the pin is `[]` or a DB UUID row (`message-finalizer.service.ts:732`,
+  `apply-chat-continuation.ts:228`). No assistant plugin message carries attachments → R-P1 stands;
+  `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE` (3 rows × 2 modes, 6 `UNREPRESENTABLE:` lines printed).
+- **Peer install (8(c)):** `openai` present in exactly the six declaring dirs (deepseek, grok,
+  nanogpt, openai-compatible, openai, z-ai — all 7.47.0); absent from the other nine → no guard
+  narrowing.
+- **The regenerated manifest:** `anthropic.json` only — the version line, the helpText, and (ruled
+  X2) `auth` `{kind:"header",header:"x-api-key"}` → `{kind:"bearer"}`; P4.D362's
+  `"samplingParameters": false` regenerated byte-identical, LAST; a second regen clean. Red-first:
+  the untaught generator on SCHEMA dropped the key and moved the helpText (exactly two hunks).
+- **Item 6:** P4.D362 already landed the listing hunk (`provider_capabilities_wire`) and the oracle's
+  fenced spread in `SCHEMA`; CONSUMED, not duplicated. Observation for the follow-ups: the case keeps
+  its five `!!`-coerced keys and passes only the declared key raw — at the pin no other plugin
+  declares an extra capability key, so a raw pass-through would be byte-identical today.
+  `providers_listing` + `provider_registry` regenerated by hand from the pin (the sweep was occupied
+  by P4.D369): green, `"samplingParameters":false` ×1.
+- **Item 11 (the SDK-on-path env families, through the sweep driver from the pin):** candidates by
+  `jest.mock` / `requireActual` / `import` of a provider SDK or a plugin source —
+  `openrouter_sdk_pricing` (real `@openrouter/sdk` 1.5.34 on path: RED "no multi-page scenario" —
+  every page failed 1.5.34's `endpoints`-required validation and v4's fetcher answered nothing; a
+  STALE FIXTURE, fixed with `endpoints: []` on the three seed models → green, outputs 3 / 499 / 503 /
+  1003 / 0), `embedding_wire` (mocks `@openrouter/sdk`; ok), `embedding_provider_tier3` (ok),
+  `nanogpt_image_provider` (mocks `openai`, real plugin-utils; ok), `cheap_llm_fallback` (real
+  `openai` 7.47.0 `APIError`; ok), `fallback_engine` (ok), `pricing_fetcher` (mocks
+  `@openrouter/sdk`; ok), `primary_stream_tier3` (real `openai` `APIError`; RED on the kind-tagged
+  Salon FRAMES — `kind` keys on every frame, P4.D366's union family, NOT an SDK move; its cites left
+  unedited). Every other oracle case: no SDK on path (the `grep` hits are the `'openai'` provider id).
+- **Item 12:** the ANTHROPIC validate probe pinned (no `temperature` / `top_p`, `max_tokens: 1`,
+  `2026-10-21`, Bearer, no `x-api-key`) — a CONVERGENCE of a pre-existing v5 divergence (the probe
+  sent the builder's `temperature: 1`). Key-order observation: v4's validate literal is `{model,
+  max_tokens, messages}`, its chat calls (and v5's shared builder) `{model, messages, max_tokens}` —
+  wire-irrelevant, recorded for the follow-ups, unchanged.
+- **Item 13:** comment-only re-cites in `model/{provider_error, response_parse, plugin_catch_log,
+  sdk_response_shape, transport, streaming_provider, decoders/{mod, chat_completions_sse,
+  google_parts, sse}}.rs`, `record-text-errors.mjs`, `cheap-llm-refusal.test.ts` — each behavior
+  re-measured unmoved (the byte-identical corpora; the OpenRouter `Request timed out` / `Unable to
+  make request` texts at `lib/sdks.js:215-217`; openai / anthropic `Request timed out.` /
+  `Connection error.` at `core/error.js`; genai `throwErrorIfNotOK` and its single attempt without
+  `retryOptions`). `primary-stream-tier3.test.ts`'s three cites NOT re-cited (its family is red on
+  FRAMES, so 7.47.0 is not proven there).
+- **HANDOFFs / cross-fence edits:** `model/streaming_provider.rs` (P4.D367's file): ONE fenced
+  test-only edit (`=== P4.D364 ===`) — its Anthropic auth assertion now expects Bearer; plus one
+  comment-only re-cite. `quilltap-web/tests/profile_bound_api_key_wire.rs:55`'s doc says the
+  ANTHROPIC profile uses "the `x-api-key` header" — stale prose, its `carried_key` handles Bearer
+  (green); NOT edited (web's file) — a follow-ups one-liner. `primary_stream_tier3` RED → P4.D366.
+- **Ruled ports (the human, 2026-11-09):** X1 (`request_builder/google.rs` `reframe_part` — the Blob
+  rebuild deleted), X2 (manifest `auth`, the generator, `provider_auth.rs` doc, four tests), X3
+  (`image_dialects.rs` `openrouter_models_error_message` — 1.5.34's typed-status / schema / default
+  arms, V8 `SyntaxError` on a non-JSON typed body; `MODEL_KEYS` gains `endpoints`).
+- **Stamp census after the re-record:** `request-envelopes` (428) `openai` 7.47.0 ×252 (deepseek
+  32, grok 23, nanogpt 80, openai 33, openai-compatible 46, z-ai 38), `@anthropic-ai/sdk` 1.4.0 ×63,
+  speakeasy `1.5.34 2.950.13` ×15, `anthropic-version: 2026-10-21` ×63; `image-dialects` (191)
+  7.47.0 ×8, speakeasy ×9; `google-wire` (24) `google-genai-sdk/2.32.0` ×24. Node `v24.13.1` ×347
+  (315 + 8 `x-stainless-runtime-version`, 24 `gl-node/`).
+- **Censuses:** `2023-06-01` in crates / harness `.rs` / `.json` / `.mjs` / `.ts` — only three
+  history comments (`provider_auth.rs:35`, `anthropic.rs:10`, `provider_actions.rs:754`) plus
+  unrelated fixture dates; `SAMPLING_PARAMS_REJECTED|model_rejects_sampling` = 0.
+- **Gates:**
+  - `PROVIDERS` (`31c655539`): fmt clean; clippy clean on both feature sets; `cargo test
+    --workspace --no-fail-fast` 904 binaries / 6,051 passed / 3 failed / 3 ignored. The three
+    failures are standing at `SCHEMA`: `spelling_guard` (a survey doc, fixed on main),
+    `builtin_prompt_templates_guard` (P4.D373) and `cli_differential` (P4.D365, `db integrity`).
+  - Tip (`be04b7c36`), with the item-11 env block: 904 / 6,051 / 4 / 3 — the same three standing
+    reds, plus `embedding_provider_tier3`, an env-block artifact. The gate env set its oracle but
+    not `QT_FIXTURE_EMBED_MAIN` / `_MOUNT`, and it is green by name in the sweep.
+    `primary_stream_tier3`'s env was left unset: it is red on FRAMES (P4.D366's union family).
+  - Every family of the differential table is green by name with `--nocapture`.
+  - Recipes: committed corpora `V4=$PIN V5=<worktree> bash
+    harness/oracle/providers/regenerate-*.sh` (Node 24.13.1). Google request, from
+    `$PIN/plugins/dist/qtap-plugin-google`: `npx tsx …/record-google-request.mjs
+    --wardrobe-params <dump> --out …`, the dump made at the pin root by
+    `dump-wardrobe-tool-params.mjs`. Moderation, from the openai plugin dir:
+    `record-moderation-wire.mjs`. Web search, from `qtap-plugin-search-serper`, `TZ=UTC`:
+    `record-web-search-wire.mjs`. The manifest: `cd $PIN && node …/gen-provider-manifests.mjs
+    <worktree>/crates/quilltap-core/src/provider_manifest/manifests`. The listing / registry
+    oracles: `cd $PIN && npx tsx <worktree>/harness/oracle/cases/{providers-listing,provider-registry}.ts
+    > /tmp/p4.d364/…`.
+- **Versions at close:** core 0.0.1430 (SCHEMA's 0.0.1428 + 2), host 0.0.224, web 0.0.256, cli
+  0.0.38, tauri 0.0.9, SPA 0.5.971, sys 0.1.0, harness 0.0.1110 (frozen).
+- **Shas:** `PROVIDERS` `31c655539`; Tier 2 `6de3be4f1` (core), `be04b7c36` (harness); this record.
+- **💸 for the dogfood pass:** the order's rows, plus one for the ruled X2: Fetch Models / Test /
+  a real turn on an Anthropic key, all under `Authorization: Bearer` (no `x-api-key`).
