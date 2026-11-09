@@ -250,20 +250,12 @@ export interface StorytellerRunRequest {
             >
               Run in order
             </button>
-            <!-- P4.D343 item 41 — the simultaneous storyteller round — is
-                 DEFERRED (OPEN). By the human ruling of 2026-11-04 the control
-                 stays, disabled, so the row keeps v4's shape; it has no click
-                 binding, so it cannot dispatch (it used to reach the server's
-                 raw "not_available: storyteller simultaneous" refusal). v4
-                 enables it at two chosen bids with the title "Simple and
-                 Lookup bids speak at once; Act and Destroy bids follow one at
-                 a time" and runs onRun('simultaneous'); restore both when the
-                 round is ported. -->
             <button
               type="button"
               class="qt-button-secondary qt-button-sm"
-              disabled
-              title="The whole company speaking at once is still being rehearsed — not yet on the bill."
+              [disabled]="disabled() || chosenBids().length < 2 || destroyMixed()"
+              (click)="onRun('simultaneous')"
+              title="Simple and Lookup bids speak at once; Act and Destroy bids follow one at a time"
             >
               All at once
             </button>

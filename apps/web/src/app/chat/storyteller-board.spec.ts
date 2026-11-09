@@ -250,10 +250,9 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     expect(text(m.el.querySelector('section > .qt-storyteller-meta'))).toBe(
       'Use a card’s arrows to set the running order; left alone, the room’s rotation decides.',
     );
-    // P4.D343 item 41 (the simultaneous round) is DEFERRED — the control is
-    // kept for v4's layout but disabled (human ruling, 2026-11-04).
+    // v4 `StorytellerBoard.tsx:412` (P4.D368 — the simultaneous round landed).
     expect(button(m.el, 'All at once').title).toBe(
-      'The whole company speaking at once is still being rehearsed — not yet on the bill.',
+      'Simple and Lookup bids speak at once; Act and Destroy bids follow one at a time',
     );
   });
 
@@ -302,7 +301,7 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     expect(button(m.el, 'Let it lie').disabled).toBe(false);
   });
 
-  it('Run in order is disabled with nothing chosen and while busy; All at once always (P4.D343 item 41 deferred)', async () => {
+  it('Run in order is disabled with nothing chosen and while busy; All at once below two chosen and while busy (v4 StorytellerBoard.tsx:411)', async () => {
     const r = openRound([bid('a'), bid('b')]);
     const m = await mount(stub(r));
     expect(button(m.el, 'Run in order').disabled).toBe(true);
@@ -311,15 +310,25 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     expect(button(m.el, 'Run in order').disabled).toBe(false);
     expect(button(m.el, 'All at once').disabled).toBe(true);
     await click(m, tick(m.el, 'B'));
-    // v4 enables it at two chosen; v5 keeps it disabled until the
-    // simultaneous round is ported (human ruling, 2026-11-04).
-    expect(button(m.el, 'All at once').disabled).toBe(true);
+    // v4 enables it at two chosen.
+    expect(button(m.el, 'All at once').disabled).toBe(false);
     m.fixture.componentRef.setInput('busy', true);
     await settle(m.fixture);
     for (const label of ['Run in order', 'All at once', 'Let it lie', 'Select all']) {
       expect(button(m.el, label).disabled).toBe(true);
     }
     expect(tick(m.el, 'A').disabled).toBe(true);
+  });
+
+  it('All at once emits the chosen seats with order simultaneous and keepOrder false', async () => {
+    const r = openRound([bid('a'), bid('b'), bid('c')]);
+    const m = await mount(stub(r));
+    await click(m, tick(m.el, 'A'));
+    await click(m, tick(m.el, 'B'));
+    await click(m, button(m.el, 'All at once'));
+    expect(m.runs).toEqual([
+      { roundId: 'round-1', participantIds: ['a', 'b'], order: 'simultaneous', keepOrder: false },
+    ]);
   });
 
   it('run emits the chosen seats in BOARD order with keepOrder false (Tier 1 — no arrangement)', async () => {
@@ -333,17 +342,16 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     ]);
   });
 
-  it('All at once is disabled and dispatches nothing, even when clicked (P4.D343 item 41 OPEN; ruling 2026-11-04)', async () => {
+  it('All at once with one bid chosen is disabled and dispatches nothing, even when clicked', async () => {
     const s = stub(openRound([bid('a'), bid('b'), bid('c')]));
     const m = await mount(s);
-    await click(m, button(m.el, 'Select all'));
+    await click(m, tick(m.el, 'A'));
     const allAtOnce = button(m.el, 'All at once');
     expect(allAtOnce.disabled).toBe(true);
     const before = s.calls.length;
-    // A disabled button swallows a real click; dispatch one at the element
-    // regardless, so a stray handler would still be caught.
-    allAtOnce.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await settle(m.fixture);
+    // A disabled button swallows a real click (`HTMLElement.click()` on a
+    // disabled control does nothing).
+    await click(m, allAtOnce);
     expect(m.runs).toEqual([]);
     expect(s.calls.length).toBe(before);
   });

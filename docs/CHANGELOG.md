@@ -571,6 +571,14 @@ _Versions: core 0.0.1429, web 0.0.257._
 
 The web wire tests move to the frames dialect: `chain_complete_held_turn_wire` publishes through `Event::chat_in(…, Dialect::Frames, None)` (as the Salon sink does) and expects `kind:"chainComplete"`; `chat_send_smoke` reads `kind:"done"` / `kind:"content"` + `text`; `chat_send_submission_ledger`'s Salon rows expect `{kind:"error", message, errorType, details, userMessagePersisted, pendingToolResultsPersisted}` (the Brahma row keeps the legacy three keys); the swipe / retry-uncensored wires expect `content` frames' `text`, `swipeDone`, and `kind:"error"` with `message`. `message_finalizer_tier3`'s Pascal placeholders read `posted.message`. Core: `chat_events`' module doc says bytes come only from `stream_frames::render` and which surfaces use which dialect (P4.D366 Tier 2 item 22).
 
+#### 2026-11-09 — feat(spa): the Storyteller board's All at once button re-enabled with v4's rule; e2e beat (K) gated on the frames reducer (P4.D368 items 9–10)
+
+_Versions: SPA 0.5.972._
+
+- **All at once** is enabled again with v4's rule: at least two bids chosen, not busy, and no Destroy bid in a mixed selection. It carries v4's title and runs the round with `order: 'simultaneous'`. This retires the 2026-11-04 ruling that kept the button disabled until the server ran the round.
+- The board spec pins v4's rule, title and the emitted run.
+- e2e beat (K) is no longer skipped by name. It now waits for two concurrent streaming bubbles, then two replies, the `(all at once)` summary and exactly two speaking-turn calls. It is gated on `P4D384_FRAMES_SPA_LANDED`, which the unifier flips once the SPA frames reducer is on the same tree.
+
 #### 2026-11-09 — feat(storyteller): one Prospero briefing for the All at once group; the tier-3 family against v4's real handleStorytellerRun (P4.D368 items 5–8, 15)
 
 _Versions: core 0.0.1430, host 0.0.226._

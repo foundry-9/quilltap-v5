@@ -45,7 +45,8 @@ import {
  *    section's first line, `:115`), it streams `plan.turnReply`;
  *  - anything else streams `plan.reply` (prose); every reply word-by-word,
  *    `plan.delayMs` apart, then a `usage` chunk and `[DONE]`; `plan.calls`
- *    counts the calls. Keying on the prompt bytes proves the SERVER sent the
+ *    counts the calls (`plan.bidCalls` the bids, `plan.turnCalls` the
+ *    speaking turns). Keying on the prompt bytes proves the SERVER sent the
  *    right prompt to the right call — a mis-routed call is a red beat.
  *
  * **GATED beats (A)–(F2), (K)** need P4.D343 (the four `chatStoryteller*`
@@ -59,6 +60,18 @@ import {
 const P4D343_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D343’s chatStorytellerRound / -Run / -Ask / -Lie variants, the turnMode sibling and the storytellerRound / storytellerBid / roundOpen frames (wired at unification)';
+
+/**
+ * P4.D368 — beat (K) (All at once) needs the SPA's frames reducer to turn
+ * `seat`-tagged concurrent frames into concurrent bubbles (P4.D384's seat
+ * switch in `salon-conversation.ts`). On the P4.D368 lane branch the server
+ * speaks the frames dialect and the SPA reducer does not, so the beat cannot
+ * pass there. ACTIVATE-AT-UNIFY (§S.9, H-K): the unifier flips this to `true`
+ * on the union and runs this file by itself.
+ */
+const P4D384_FRAMES_SPA_LANDED = false;
+const GATE_REASON_FRAMES =
+  'awaits P4.D384’s frames reducer — the seat switch that renders seat-tagged concurrent frames as concurrent bubbles (wired at unification)';
 
 const ST_PORT = 4353;
 const ST_BASE_URL = `http://127.0.0.1:${ST_PORT}`;
@@ -83,12 +96,20 @@ const STORYTELLER_TOAST = 'Storyteller mode: each of your posts asks the company
 const BOARD = 'section[aria-label="The storyteller\'s board"]';
 
 /** What the spec-local mock answers; a beat sets it before each send. */
-const plan: { reply: string; turnReply: string; delayMs: number; calls: number; bidCalls: number } = {
+const plan: {
+  reply: string;
+  turnReply: string;
+  delayMs: number;
+  calls: number;
+  bidCalls: number;
+  turnCalls: number;
+} = {
   reply: PROSE_REPLY,
   turnReply: TURN_REPLY,
   delayMs: 0,
   calls: 0,
   bidCalls: 0,
+  turnCalls: 0,
 };
 
 let server: ChildProcess | undefined;
@@ -130,6 +151,7 @@ function startBidAwareMock(port: number): Promise<Server> {
         plan.bidCalls += 1;
       } else if (texts.some((t) => t.includes(PLAN_LINE))) {
         reply = plan.turnReply;
+        plan.turnCalls += 1;
       }
       let streamed = false;
       try {
@@ -444,33 +466,41 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     await expect(bids.first().getByText(/^round [0-9a-f-]{6}$/)).toBeVisible();
   });
 
-  test('(K) All at once — two bubbles, then the summary with (all at once)', async ({ page }) => {
+  test('(K) All at once — two bubbles at once, then the summary with (all at once)', async ({ page }) => {
     test.skip(!P4D343_SERVER_LANDED, GATE_REASON);
-    // Skipped BY NAME, not by gate: P4.D343 item 41 is DEFERRED (`order:
-    // simultaneous` is Tier 2) — the server refuses it before any frame
-    // (`storyteller_spine.rs`, 422 `not_available: storyteller simultaneous`;
-    // measured at the 236c04e35 unification: the SPA toasted that raw string).
-    // By the human ruling of 2026-11-04 the SPA now renders the control
-    // DISABLED until the round is ported, so this beat cannot click it.
-    test.skip(
-      true,
-      'P4.D343 item 41 DEFERRED (OPEN) — "All at once" is rendered disabled until ported (human ruling 2026-11-04)',
-    );
+    test.skip(!P4D384_FRAMES_SPA_LANDED, GATE_REASON_FRAMES);
     test.setTimeout(120_000);
+    // Slow enough that both concurrent turns are still streaming together.
+    plan.delayMs = 150;
     await openChat(page, groupChatId);
+    const replies = page.locator('.qt-chat-message', { hasText: TURN_REPLY });
+    const before = await replies.count();
     await send(page, 'Everyone at once, then.');
     const board = page.locator(BOARD);
     await expect(board.getByText('Considering…')).toHaveCount(0, { timeout: 30_000 });
     const boxes = board.locator('input[type="checkbox"]');
+    await expect(boxes.nth(1)).toBeVisible();
     const names = [
       ((await boxes.nth(0).getAttribute('aria-label')) ?? '').replace(/^Let | go ahead$/g, ''),
       ((await boxes.nth(1).getAttribute('aria-label')) ?? '').replace(/^Let | go ahead$/g, ''),
     ];
     await boxes.nth(0).check();
     await boxes.nth(1).check();
+    const turnCallsBefore = plan.turnCalls;
+    const bidCallsBefore = plan.bidCalls;
     await board.getByRole('button', { name: 'All at once' }).click();
-    await expect(page.locator('.qt-storyteller-summary')).toContainText(' (all at once)', { timeout: 60_000 });
-    await expect(page.locator('.qt-storyteller-summary')).toContainText(names[0]);
+    // Two concurrent bubbles stream at the same time (v4 P4.D344 item 16).
+    await expect(page.locator('qt-streaming-message')).toHaveCount(2, { timeout: 30_000 });
+    // Both settle into assistant rows carrying the speaking-turn reply.
+    await expect(replies).toHaveCount(before + 2, { timeout: 60_000 });
+    await expect(page.locator('.qt-storyteller-summary')).toContainText(' (all at once)', { timeout: 30_000 });
+    for (const name of names) {
+      await expect(page.locator('.qt-storyteller-summary')).toContainText(name);
+    }
+    // Two speaking-turn calls (the plan line), no further bid calls.
+    expect(plan.turnCalls - turnCallsBefore).toBe(2);
+    expect(plan.bidCalls - bidCallsBefore).toBe(0);
+    plan.delayMs = 0;
   });
 });
 
