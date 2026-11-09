@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — fix(pascal): the roster logs v4's Custom-tool listing failed for mount WARN (P4.D379 item 8)
+
+_Versions: core 0.0.1435._
+
+`load_tools_from_mount_with_unread` now logs v4's WARN `Custom-tool listing failed for mount` (`{context: pascal.custom-tools, mountPointId, mountName, error}`, the bare message; the `unread` entry keeps `listing failed: <msg>`) when a store's `Tools/` will not list. The line was in v4 at the baseline and missing in v5; it reaches the popup roster and the Workbench library. Pinned two ways: a new `pascal_custom_tools_route_equivalence` row (`list-unread-store`: an unlistable disk store on the project walk, one WARN per perspective, three in all; measured red with the line removed) and the library unit test's capture with its silence leg.
+
 #### 2026-11-09 — test(pascal): the presets route differential, plus the perspective-dropped WARN (P4.D379 items 6 + 9, v4 fd165fce0)
 
 _Versions: core 0.0.1434._

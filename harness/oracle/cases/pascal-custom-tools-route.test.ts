@@ -174,6 +174,7 @@ const PINNED_MESSAGES = new Set([
   'Tool presets resolved',
   'Custom-tool presets listed for the operator',
   'Custom-tool perspective dropped — character unreadable',
+  'Custom-tool listing failed for mount',
   // === end P4.D379 ===
 ]);
 
@@ -947,6 +948,16 @@ async function main(): Promise<void> {
       chat: CHAT_SOLO,
       query: '?action=presets&tool=coin',
       plants: [participantsSql(CHAT_SOLO, [['e5000000-0000-4000-8000-00000000000d', CHAR_D, 'llm'], ['e5000000-0000-4000-8000-00000000000a', CHAR_A, 'llm']])],
+    },
+    // P4.D379 Tier 2 item 8: the ROSTER's listing WARN — the popup list on a
+    // chat whose project walk holds an unlistable disk store; each of the
+    // three perspectives walks it, so three WARNs.
+    {
+      name: 'list-unread-store',
+      method: 'GET',
+      plants: [
+        { kind: 'diskStore', mountPointId: DISK_STORE, name: 'Locked Drawer', projectId: PROJECT, files: ['Tools/x.tool.json'], toolsMode: 0 },
+      ],
     },
     // === end P4.D379 ===
   ];

@@ -821,6 +821,18 @@ pub fn load_tools_from_mount_with_unread(
     // === P4.D328: library reshape ===
     // A failed listing is v4's ONE `unread` entry at `Tools/`.
     let listing_failed = |message: String| {
+        // === P4.D379 === v4's WARN (`custom-tools.ts:367-372`, present since
+        // the baseline): the BARE message, where the entry says `listing
+        // failed: <msg>`.
+        tracing::warn!(
+            target: "quilltap::pascal",
+            context = "pascal.custom-tools",
+            mountPointId = mount_point_id,
+            mountName = %row.name,
+            error = %message,
+            "Custom-tool listing failed for mount",
+        );
+        // === end P4.D379 ===
         (
             Vec::new(),
             Vec::new(),
@@ -1254,8 +1266,23 @@ mod library_reshape_tests {
             [&base],
         )
         .unwrap();
-        let library = list_all_custom_tools(&conn);
+        let (library, lines) = crate::test_support::captured_with(|| list_all_custom_tools(&conn));
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // P4.D379: v4's WARN, once, for the one store that will not list — the
+        // BARE message (the entry carries `listing failed: …`); Alpha's empty
+        // store logs nothing (the silence leg).
+        let warns: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom-tool listing failed for mount"))
+            .collect();
+        assert_eq!(
+            warns,
+            vec![&format!(
+                "WARN quilltap::pascal Custom-tool listing failed for mount context=pascal.custom-tools \
+                 mountPointId=mp-b mountName=Beta error=EACCES: permission denied, scandir '{}'",
+                locked.display()
+            )]
+        );
         assert_eq!(library.stores_consulted, vec!["Alpha", "Beta"]);
         assert!(library.entries.is_empty() && library.errors.is_empty());
         // Alpha's empty base path is an empty mount (v4's relative `Tools`

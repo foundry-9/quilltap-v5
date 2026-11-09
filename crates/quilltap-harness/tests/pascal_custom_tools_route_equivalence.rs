@@ -654,7 +654,7 @@ fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
 }
 
 /// P4.D305: the run-path lines this family pins (the oracle's `PINNED_MESSAGES`).
-const PINNED_MESSAGES: [&str; 10] = [
+const PINNED_MESSAGES: [&str; 11] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
     "Custom tool run refused",
     "Custom tool dealt",
@@ -666,6 +666,7 @@ const PINNED_MESSAGES: [&str; 10] = [
     "Tool presets resolved",
     "Custom-tool presets listed for the operator",
     "Custom-tool perspective dropped — character unreadable",
+    "Custom-tool listing failed for mount",
     // === end P4.D379 ===
 ];
 
@@ -1085,6 +1086,8 @@ async fn custom_tools_route_matches_oracle() {
         ("presets-duplicate-keys", CHAT),
         ("presets-unknown-action", CHAT),
         ("presets-broken-vault-perspective", CHAT_SOLO),
+        // Tier 2 item 8: the roster's listing WARN (a plain popup GET).
+        ("list-unread-store", CHAT),
     ] {
         cases.push((name, chat, None, false));
     }
