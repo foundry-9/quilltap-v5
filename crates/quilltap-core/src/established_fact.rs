@@ -642,15 +642,14 @@ mod leak_tests_read_paths {
     }
 }
 
-/// Leak rows that need a sibling lane's file on the union (§S.4 / H4). The
-/// unifier un-ignores them once P4.D373's extraction prompt bodies carry the
-/// `ESTABLISHED FACTS` block.
+/// Leak rows that needed a sibling lane's file on the union (§S.4 / H4) —
+/// un-ignored at the `624d0d25c` unification, where P4.D373's extraction
+/// prompt bodies carry the `ESTABLISHED FACTS` block.
 #[cfg(test)]
 mod union_leak_tests {
     use super::*;
 
     #[test]
-    #[ignore = "union: P4.D373 prompt_text.rs"]
     fn the_extraction_prompts_carry_the_transcript_rule() {
         use crate::memory_extraction::prompts::prompt_text as pt;
         for (name, body) in [

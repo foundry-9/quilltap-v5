@@ -69,21 +69,10 @@ use serde_json::Value;
 const BRAHMA_LOOKUP_LONE_SURROGATE_CLIP: &[&str] = &["lm_clip_astral", "rm_clip_astral"];
 
 /// H1 (P4.D363): rows whose answer reads a hit's `participantId` (the seat
-/// filter or the speaker label), absent from v5's hit until the union.
-const UNION_RED_H1_PARTICIPANT_ID: &[&str] = &[
-    // The speaker label: v5's hit has no seat, so `speaker_label` answers the
-    // role's label (`Character`) where v4 resolves the seat's name.
-    "lmsg_by_character",
-    "lmsg_all_chats",
-    "lmsg_window_string_compare",
-    "lmsg_window_dateonly",
-    "lmsg_phrase_quoted",
-    "lmsg_snippet_ellipses",
-    "lmsg_limit_1",
-    // The seat filter: no seat → `seat?.characterId !== id` → every hit DROPPED.
-    "lmsg_speaker",
-    "lmsg_speaker_friday",
-];
+/// filter or the speaker label) — red on the lane until P4.D363's hit carried
+/// the seat. EMPTIED at the union (`624d0d25c` round): `db/chats_search.rs`
+/// carries `participantId`, so every `lmsg_*` row compares whole.
+const UNION_RED_H1_PARTICIPANT_ID: &[&str] = &[];
 
 /// H2 (P4.D375): windowed `lookup_memories` rows (the window pass + the
 /// ≤14-day floor relaxation on a plain windowed search). MEASURED EMPTY on this
