@@ -457,6 +457,12 @@ _Docs-only change._
 
 Records the `CATALOG` stacking commit's sha in the P4.D374 order's status header, for P4.D375 to branch from.
 
+#### 2026-11-09 — feat(scriptorium): which chats fall in a time window — services::chat_window, the conversation search's chat_ids scope, unsummarized chats in the retrospective mini-recap (v4 6121f59b9)
+
+_Versions: core 0.0.1431._
+
+P4.D375 C2. New `services::chat_window` (contract C8, v4 `lib/scriptorium/chat-window.ts`): `chat_span_of` (`[createdAt, lastMessageAt ?? updatedAt ?? createdAt]`, `lastMessageAt` first so a retitle does not move the span), `chat_overlaps_window`, and `find_chats_in_window` (by character, or by user on the operator surface; newest first through V8's sort; no `chatType` filter), with v4's DEBUG `Chats in time window`. The read goes through the strict-aware filter fallback, so a failed read logs `Error finding entities by filter` and answers empty; v4's WARN `Could not read chats for a time window` fires only under the strict scope, as in v4. `ConversationSearchOptions` gains `chat_ids` (intersected before scoring; DEBUG `Conversation search restricted to window chats`). `VaultConversationMatch.relative_path` becomes `Option<String>`. The retrospective mini-recap lists the window's chats that have no summary yet (current chat excluded, `title || 'Untitled'`, up to the cap) and its trace always carries `unsummarized`. New differential `chat_window_equivalence` (18 pure span/overlap rows + 13 real-DB ops over the search-tools pair, with the `CHATS_BY_CHARACTER_RETHROW_LINE_ABSENT` carve for v4's strict-mode rethrow line); `recall_assemble_tier3_equivalence` regenerated with two new rows (19 cases).
+
 #### 2026-11-09 — feat(recall): window-first dated recall — the SQL event-time window, the index include set, the window pass in both gather strategies, the narrow-tool-window floor relaxation (v4 6121f59b9)
 
 _Versions: core 0.0.1430._

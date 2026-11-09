@@ -52,6 +52,13 @@ pub struct ConversationSearchOptions {
     pub query: Option<String>,
     /// Lift verbatim (case-insensitive) content hits toward 1.0 before filtering.
     pub apply_literal_phrase_boost: bool,
+    // === P4.D375 ===
+    /// "Restrict to these chats before scoring (intersected with the scope
+    /// above). Set by a caller with a time window, so the period's chats are
+    /// searched whole instead of filtered out of an all-time top-K." (v4
+    /// `chatIds`, 4.12.1 `6121f59b9`.) `Some` of an empty set searches nothing.
+    pub chat_ids: Option<std::collections::HashSet<String>>,
+    // === end P4.D375 ===
 }
 
 /// v4 `searchConversationChunks`. `conn` is a **main**-db connection (read pool).
@@ -75,7 +82,16 @@ pub fn search_conversation_chunks(
     let character_chat_ids: std::collections::HashSet<String> = character_chats
         .iter()
         .filter_map(|c| c.get("id").and_then(Value::as_str).map(str::to_string))
+        // P4.D375: the window's chats, intersected BEFORE scoring.
+        .filter(|id| options.chat_ids.as_ref().is_none_or(|w| w.contains(id)))
         .collect();
+    if let Some(window_chats) = &options.chat_ids {
+        tracing::debug!(
+            requested = window_chats.len(),
+            inScope = character_chat_ids.len(),
+            "Conversation search restricted to window chats"
+        );
+    }
     if character_chat_ids.is_empty() {
         return Ok(Vec::new());
     }

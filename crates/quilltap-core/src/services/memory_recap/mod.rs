@@ -94,12 +94,16 @@ pub(crate) fn ramp_limit(
 pub struct VaultConversationMatch {
     pub conversation_id: String,
     pub conversation_title: String,
-    /// Vault-relative path of the summary file the match came from.
-    pub relative_path: String,
+    /// Vault-relative path of the summary file the match came from; `None` for
+    /// a chat listed from the `chats` table because it has no summary yet (the
+    /// retrospective mini-recap's unsummarized entries — P4.D375, v4 4.12.1
+    /// `6121f59b9`).
+    pub relative_path: Option<String>,
     /// Best cosine score among this conversation's chunks (post window boost).
     pub score: f64,
     /// ISO timestamp of the conversation's first message (frontmatter), when
-    /// recorded AND finite under `Date.parse`.
+    /// recorded AND finite under `Date.parse` — or, for an unsummarized chat,
+    /// its raw `createdAt` (the renderer slices it as given).
     pub first_message_at: Option<String>,
     /// ISO timestamp of the conversation's last message (frontmatter).
     pub last_message_at: Option<String>,
@@ -350,7 +354,7 @@ pub async fn search_vault_conversation_summaries<E: EmbeddingProvider>(
         matches.push(VaultConversationMatch {
             conversation_id,
             conversation_title,
-            relative_path: relative_path.clone(),
+            relative_path: Some(relative_path.clone()),
             score,
             first_message_at: ts_field("firstMessageAt"),
             last_message_at: ts_field("lastMessageAt"),
@@ -944,7 +948,7 @@ mod tests {
         VaultConversationMatch {
             conversation_id: cid.to_string(),
             conversation_title: title.to_string(),
-            relative_path: "Conversation Summaries/x.md".to_string(),
+            relative_path: Some("Conversation Summaries/x.md".to_string()),
             score: 0.9,
             first_message_at: first.map(str::to_string),
             last_message_at: None,

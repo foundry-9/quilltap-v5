@@ -430,6 +430,7 @@ pub async fn execute_search_scriptorium<P: EmbeddingProvider>(
                 min_score: Some(0.3),
                 query: Some(query.to_string()),
                 apply_literal_phrase_boost: true,
+                chat_ids: None,
             };
             if let Ok(convs) = db.read_main(|c| search_conversation_chunks(c, &emb, &opts)) {
                 // Time filter (episodic recall): keep conversations whose

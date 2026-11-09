@@ -85,6 +85,9 @@ interface CaseSpec {
   steps: Step[];
   /** P4.D342: run `spec.circlePlants` on this case's fresh copies. */
   circle?: boolean;
+  /** P4.D375: chats planted on the main copy (replayed by the Rust side from
+   * the output row). */
+  chatPlants?: string[];
 }
 
 const RECAP_TEXT = 'Lyra remembers a great deal.';
@@ -148,6 +151,35 @@ async function main(): Promise<void> {
     { name: 'recap_rows_kept_in_head', steps: [{ op: 'assemble', plan: withRecap }] },
     {
       name: 'retrospective_pre_searched',
+      steps: [{
+        op: 'assemble',
+        plan: noPerTurn,
+        pre: { text: 'w', signals: retroSignals, search: { limit: 30, minImportance: 0.3, retroContext: true } },
+      }],
+    },
+    // ── P4.D375 (v4 4.12.1 `6121f59b9`): the window's unsummarized chats join
+    // the mini-recap — newest first, the current chat excluded, an empty title
+    // → `Untitled`, a chat retitled after the window left out; then the cap.
+    {
+      name: 'p4d375_unsummarized_two',
+      chatPlants: [
+        // The current chat seats Lyra and falls in the window: the read finds
+        // it, and `excludeChatId` must leave it out.
+        seatLyra(spec.chat.id, '2026-06-10T00:00:00.000Z'),
+        ...cloneChat(spec.chat.id, 'a3750000-0000-4000-8000-000000000001', 'Lantern walk', '2026-06-12T10:00:00.000Z', '2026-06-12T11:00:00.000Z', '2026-06-12T11:00:00.000Z'),
+        ...cloneChat(spec.chat.id, 'a3750000-0000-4000-8000-000000000002', '', '2026-06-13T10:00:00.000Z', '2026-06-14T09:00:00.000Z', '2026-06-14T09:00:00.000Z'),
+        ...cloneChat(spec.chat.id, 'a3750000-0000-4000-8000-000000000003', 'Old voyage, retitled', '2026-05-01T10:00:00.000Z', '2026-06-15T10:00:00.000Z', '2026-05-02T10:00:00.000Z'),
+      ],
+      steps: [{
+        op: 'assemble',
+        plan: noPerTurn,
+        pre: { text: 'w', signals: retroSignals, search: { limit: 30, minImportance: 0.3, retroContext: true } },
+      }],
+    },
+    {
+      name: 'p4d375_unsummarized_cap',
+      chatPlants: [0, 1, 2, 3, 4, 5, 6].flatMap(i =>
+        cloneChat(spec.chat.id, `a3750000-0000-4000-8000-00000000001${i}`, `Watch ${i}`, `2026-06-0${8 + Math.min(i, 1)}T1${i}:00:00.000Z`, `2026-06-1${i}T12:00:00.000Z`, `2026-06-1${i}T12:00:00.000Z`)),
       steps: [{
         op: 'assemble',
         plan: noPerTurn,
@@ -233,6 +265,15 @@ async function main(): Promise<void> {
     delete process.env.SQLITE_WAL_MODE;
     process.env.LOG_LEVEL = 'debug';
 
+    if (c.chatPlants) {
+      const keyHex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Driver = require(cipherDriverPath);
+      const conn = new Driver(mainWork);
+      conn.pragma(`key = "x'${keyHex}'"`);
+      for (const sql of c.chatPlants) conn.exec(sql);
+      conn.close();
+    }
     if (c.circle) {
       // Keyed connections of their own, BEFORE the manager opens either file
       // (memory note `jest-oracle-in-case-plants`).
@@ -447,6 +488,7 @@ async function main(): Promise<void> {
       logs: captured,
       stamped,
       ring: ringRow?.h ? JSON.parse(ringRow.h) : null,
+      ...(c.chatPlants ? { chatPlants: c.chatPlants } : {}),
     }));
   }
 
@@ -458,3 +500,38 @@ async function main(): Promise<void> {
 test('recall-assemble oracle', async () => {
   await main();
 }, 240000);
+
+/** P4.D375: Lyra seated in an existing chat (one statement). */
+function seatLyra(chatId: string, at: string): string {
+  return `UPDATE chats SET participants = '${lyraSeat(chatId, at)}' WHERE id = '${chatId}'`;
+}
+
+function lyraSeat(chatId: string, at: string): string {
+  return JSON.stringify([{
+    id: `${chatId.slice(0, -4)}ff${chatId.slice(-2)}`,
+    type: 'CHARACTER',
+    characterId: 'c3000000-0000-4000-8000-000000000001',
+    controlledBy: 'llm',
+    displayOrder: 0,
+    isActive: true,
+    status: 'active',
+    hasHistoryAccess: false,
+    createdAt: at,
+    updatedAt: at,
+  }]);
+}
+
+/** P4.D375: a clone of the case's chat (its participants kept) with a new id,
+ * title and span — four statements, replayed byte-for-byte on the Rust side. */
+function cloneChat(from: string, id: string, title: string, createdAt: string, updatedAt: string, lastMessageAt: string | null): string[] {
+  const q = (v: string | null) => (v === null ? 'NULL' : `'${v.replace(/'/g, "''")}'`);
+  // The fixture's chat seats no one; the clone seats Lyra (the recalling
+  // character), so `findByCharacterId` finds it.
+  const participants = lyraSeat(id, createdAt);
+  return [
+    `CREATE TEMP TABLE p4d375_clone AS SELECT * FROM chats WHERE id = '${from}'`,
+    `UPDATE p4d375_clone SET id = ${q(id)}, title = ${q(title)}, createdAt = ${q(createdAt)}, updatedAt = ${q(updatedAt)}, lastMessageAt = ${q(lastMessageAt)}, participants = ${q(participants)}`,
+    'INSERT INTO chats SELECT * FROM p4d375_clone',
+    'DROP TABLE p4d375_clone',
+  ];
+}

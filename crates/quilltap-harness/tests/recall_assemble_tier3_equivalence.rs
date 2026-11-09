@@ -284,6 +284,16 @@ fn recall_assemble_matches_oracle() {
                 }
             }
         }
+        // P4.D375: the oracle row's chat plants, replayed byte-for-byte.
+        if let Some(plants) = want.get("chatPlants").and_then(Value::as_array) {
+            let w = quilltap_core::db::Writer::open_writable(&main, &pepper)
+                .unwrap_or_else(|e| panic!("{name}: open main writable: {e}"));
+            for sql in plants {
+                w.connection()
+                    .execute_batch(sql.as_str().unwrap())
+                    .unwrap_or_else(|e| panic!("{name}: chat plant failed: {e}\n{sql}"));
+            }
+        }
         let db = Db::open(
             DbPaths {
                 main,
@@ -390,7 +400,7 @@ fn recall_assemble_matches_oracle() {
                 "deliver_recap_turn" => {
                     bundles.push(assemble_recall(&db, &embedding, &completion, &executor, plan(true, false, None)).await);
                 }
-                "retrospective_pre_searched" => {
+                "retrospective_pre_searched" | "p4d375_unsummarized_two" | "p4d375_unsummarized_cap" => {
                     let sig = signals(
                         "They remember the lighthouse.",
                         &["lighthouse"],
@@ -628,6 +638,7 @@ fn recall_assemble_matches_oracle() {
         assert_eq!(ring, want["ring"], "{name}: the chat's ring");
         cases += 1;
     }
-    assert_eq!(cases, 17, "the oracle lost cases");
+    // P4.D375: +2 (the unsummarized-chat rows).
+    assert_eq!(cases, 19, "the oracle lost cases");
     eprintln!("OK: recall-assemble matched the oracle ({cases} cases).");
 }

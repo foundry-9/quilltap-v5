@@ -1023,7 +1023,7 @@ async fn assemble_conversations<E: EmbeddingProvider>(
         )
         .await;
         let standing = (conversations.standing_ids)();
-        let filtered: Vec<_> = matches
+        let mut filtered: Vec<_> = matches
             .iter()
             .filter(|m| {
                 !standing.contains(&m.conversation_id) && !listed.contains(&m.conversation_id)
@@ -1031,6 +1031,74 @@ async fn assemble_conversations<E: EmbeddingProvider>(
             .take(RETRO_MINI_RECAP_MAX_ENTRIES)
             .cloned()
             .collect();
+        // === P4.D375 ===
+        // Chats from the window that the Librarian has not summarized yet: the
+        // summary search cannot see them, so they are listed from the chats
+        // table, newest first, after the summarized matches (v4 4.12.1
+        // `6121f59b9`).
+        let mut unsummarized = 0usize;
+        if let Some(window) = query
+            .window
+            .as_ref()
+            .filter(|_| filtered.len() < RETRO_MINI_RECAP_MAX_ENTRIES)
+        {
+            let already: HashSet<String> =
+                filtered.iter().map(|m| m.conversation_id.clone()).collect();
+            let (cid, uid, chat_id, w) = (
+                character_id.to_string(),
+                plan.user_id.to_string(),
+                plan.chat.id.to_string(),
+                window.clone(),
+            );
+            // `findChatsInWindow` never throws (its read is a fallback).
+            let in_window = db
+                .read_main(move |conn| {
+                    Ok(crate::services::chat_window::find_chats_in_window(
+                        conn,
+                        Some(&cid),
+                        &uid,
+                        &w,
+                        Some(&chat_id),
+                    ))
+                })
+                .unwrap_or_default();
+            for chat in in_window {
+                if filtered.len() >= RETRO_MINI_RECAP_MAX_ENTRIES {
+                    break;
+                }
+                let id = chat
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                if already.contains(&id) || standing.contains(&id) || listed.contains(&id) {
+                    continue;
+                }
+                // `chat.title || 'Untitled'` (JS truthiness).
+                let title = chat
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .filter(|t| !t.is_empty())
+                    .unwrap_or("Untitled")
+                    .to_string();
+                filtered.push(crate::services::memory_recap::VaultConversationMatch {
+                    conversation_id: id,
+                    conversation_title: title,
+                    relative_path: None,
+                    score: 0.0,
+                    first_message_at: chat
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                    last_message_at: chat
+                        .get("lastMessageAt")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                });
+                unsummarized += 1;
+            }
+        }
+        // === end P4.D375 ===
         if !filtered.is_empty() {
             bundle.sections.retrospective = Some(format!(
                 "{}\n\n{READ_CONVERSATION_CALL_NOTE}",
@@ -1041,6 +1109,8 @@ async fn assemble_conversations<E: EmbeddingProvider>(
         let mut detail = Map::new();
         detail.insert("matched".into(), num(matches.len() as f64));
         detail.insert("listed".into(), num(filtered.len() as f64));
+        // P4.D375: ALWAYS present (0 without a window).
+        detail.insert("unsummarized".into(), num(unsummarized as f64));
         detail.insert("signature".into(), Value::String(signature));
         detail.insert("reusedQuery".into(), Value::Bool(reuse));
         trace_stage(

@@ -60,6 +60,7 @@ pub mod chat_events;
 pub mod chat_files;
 pub mod chat_initialize;
 pub mod chat_scenario;
+pub mod chat_window; // P4.D375 (C8) — v4 `lib/scriptorium/chat-window.ts`
 pub mod cheap_llm_exec;
 pub mod cheap_llm_fallback;
 pub mod cold_chunk_reembed;

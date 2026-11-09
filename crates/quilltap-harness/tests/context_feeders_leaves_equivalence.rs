@@ -357,7 +357,7 @@ fn relevant_block_case(id: &str) -> String {
             VaultConversationMatch {
                 conversation_id: cid.to_string(),
                 conversation_title: title.to_string(),
-                relative_path: rel.to_string(),
+                relative_path: Some(rel.to_string()),
                 score,
                 first_message_at: first.map(str::to_string),
                 last_message_at: last.map(str::to_string),
