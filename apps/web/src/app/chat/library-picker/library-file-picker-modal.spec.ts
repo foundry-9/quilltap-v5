@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -89,7 +90,15 @@ const DEFAULT_ANSWERS: Record<string, Record<string, unknown>> = {
   chatPhotoAlbums: { albums: [] },
   filesList: { files: [LEGACY_FILE] },
   filesFoldersList: { folders: [] },
-  mountFilesList: { files: [STORE_ROW] },
+  mountFilesList: { files: [STORE_ROW], folders: [] },
+  // P4.D387: the browse step is the store browser, which reads the record.
+  mountPointGet: {
+    mountPoint: {
+      ...STORE,
+      capabilities: { canWrite: true, canDelete: true, canCreateFolder: true, canMoveIn: true, canMoveOut: true, canConvert: true },
+    },
+  },
+  projectMountPointList: { mountPoints: [STORE], officialMountPointId: 'store-1' },
   characterPhotoList: { entries: [GALLERY_ENTRY] },
   photoGalleryList: { entries: [GALLERY_ENTRY] },
 };
@@ -136,6 +145,7 @@ async function render(
   TestBed.configureTestingModule({
     imports: [LibraryFilePickerModal],
     providers: [
+      provideRouter([]),
       provideTanStackQuery(new QueryClient()),
       { provide: CoreClient, useValue: stubClient(log, { ...DEFAULT_ANSWERS, ...answers }) },
     ],
@@ -346,6 +356,36 @@ describe('qt-library-file-picker-modal — the pick legs', () => {
     await settle(plain);
     expect(noPersona.some((r) => r.type === 'photoGalleryList')).toBe(true);
     expect(noPersona.some((r) => r.type === 'characterPhotoList')).toBe(false);
+  });
+
+  it('a project browses its OWN store (qt-project-store-browser, v4 c17033f04) and a pick attaches', async () => {
+    const log: Dispatched[] = [];
+    const fixture = await render({}, log);
+    let attached = 0;
+    fixture.componentInstance.mountFileAttached.subscribe(() => attached++);
+    clickByText(fixture, 'The Novel');
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-project-store-browser')).not.toBeNull();
+    expect(log).toContainEqual({ type: 'projectMountPointList', projectId: 'p1' });
+    clickByText(fixture, 'plan.md');
+    await settle(fixture);
+    expect(fetchCalls[0].body).toEqual({ mountPointId: 'store-1', relativePath: 'plan.md' });
+    expect(attached).toBe(1);
+  });
+
+  it('General keeps the legacy general-files panel', async () => {
+    const fixture = await render();
+    clickByText(fixture, 'General');
+    await settle(fixture);
+    expect(fixture.nativeElement.querySelector('qt-library-browse-panel')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('qt-document-store-browser')).toBeNull();
+  });
+
+  it('scope cards and gallery tiles take v4 94f041764 hover class', async () => {
+    const fixture = await render();
+    const cards = buttons(fixture).filter((b) => b.classList.contains('qt-card'));
+    expect(cards.length).toBeGreaterThan(1);
+    for (const c of cards) expect(c.classList.contains('hover:qt-bg-surface-hover')).toBe(true);
   });
 
   it('surfaces the server’s message on a failed write and does not close', async () => {

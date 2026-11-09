@@ -17,12 +17,10 @@ import type { CoreClient } from '../../core/core-client';
 import type { AlbumOption, FolderEntry, ProjectSummary } from '../../core/core-contract';
 import type { UploadedChatFile } from '../chat-files.api';
 import {
-  documentStoreFileToPickerFile,
   type PickerFile,
   type PickerGalleryEntry,
   type PickerStoreSummary,
 } from './library-picker.model';
-import type { DocumentStoreFile } from '../../screens/scriptorium/scriptorium.api';
 
 /** Query keys for the picker's reads (kept off the other verticals' namespaces). */
 export const libraryPickerKeys = {
@@ -71,20 +69,6 @@ export async function fetchPickerAlbums(core: CoreClient, chatId: string): Promi
   return (data['albums'] as AlbumOption[]) ?? [];
 }
 
-/**
- * v4 `GET /api/v1/projects/{id}/mount-points` — the FileBrowser's auto-resolve
- * of a project's linked stores (`FileBrowser.tsx:242`). The caller narrows the
- * list with `pickPrimaryProjectStore`; a failure falls back to legacy mode, since
- * one missing link shouldn't take down the browser (v4's own comment).
- */
-export async function fetchProjectStores(
-  core: CoreClient,
-  projectId: string,
-): Promise<PickerStoreSummary[]> {
-  const data = await core.dispatchData({ type: 'projectMountPointList', projectId });
-  return (data['mountPoints'] as PickerStoreSummary[]) ?? [];
-}
-
 /** Legacy-mode browse (v4 `/files?filter=general` or project `?action=list-files`). */
 export async function fetchLegacyFiles(
   core: CoreClient,
@@ -102,16 +86,6 @@ export async function fetchLegacyFiles(
     files: (filesData['files'] as PickerFile[]) ?? [],
     folders: (foldersData['folders'] as FolderEntry[]) ?? [],
   };
-}
-
-/** Mount-mode browse (v4 `GET /api/v1/mount-points/{id}/files`, rows translated). */
-export async function fetchMountFiles(
-  core: CoreClient,
-  mountPointId: string,
-): Promise<PickerFile[]> {
-  const data = await core.dispatchData({ type: 'mountFilesList', mountPointId });
-  const rows = (data['files'] as DocumentStoreFile[]) ?? [];
-  return rows.map(documentStoreFileToPickerFile);
 }
 
 /** The gallery grid's read: the persona's vault photos, else the global gallery. */

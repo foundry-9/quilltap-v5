@@ -1293,6 +1293,17 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): the Library picker browses a project's store and any store on the document-store browser; General keeps the legacy panel (P4.D387; v4 c17033f04)
+
+_Versions: SPA 0.5.983._
+
+P4.D387 commit 10 (item 18).
+
+- **`chat/library-picker/library-file-picker-modal.ts`, the browse step.** A project browses its own store with `qt-project-store-browser` in pick mode (`scrollList`), and a store browses with `qt-document-store-browser` in pick mode. A pick attaches through the Librarian (v4 `handlePickEntry`, with its `Failed to attach file` fallback toast and the `linking` guard and overlay). General keeps `qt-library-browse-panel`.
+- **The browse panel.** `library-browse-panel.ts` is now General-only. Its mount mode and project auto-resolve are deleted, as v4 `c17033f04` deleted their source (`FileBrowser.tsx:226-262`), and its "deliberate reduction" note is rewritten. `library-picker.api.ts`'s `fetchMountFiles` / `fetchProjectStores` go with them.
+- **Hover classes.** The scope cards and gallery tiles take v4 `94f041764`'s `hover:qt-bg-surface-hover transition-colors cursor-pointer` (`ScopeCard :557`, `GalleryPanel :620`).
+- **Specs.** The panel spec's five mount / auto-resolve cases are removed with v4's source. The modal spec gains the project arm, the General arm and the hover rows.
+
 #### 2026-11-08 — feat(spa): General Files header names (v4 94f041764 aria-labels) and the file preview's PDF in a native object (NATIVE_PDF_VIEWER) (P4.D387)
 
 _Versions: SPA 0.5.982._

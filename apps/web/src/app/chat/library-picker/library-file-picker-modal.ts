@@ -7,13 +7,17 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
 import { apiUrl } from '../../core/api-url';
 import { Modal } from '../../ui/modal';
 import type { UploadedChatFile } from '../chat-files.api';
-import { LibraryBrowsePanel, type BrowseScope } from './library-browse-panel';
+import { DocumentStoreBrowser } from '../../document-browser/document-store-browser';
+import type { DocumentEntry } from '../../document-browser/document-store.source';
+import { ProjectStoreBrowser } from '../../document-browser/project-store-browser';
+import { LibraryBrowsePanel } from './library-browse-panel';
 import {
   attachMountFile,
   fetchPickerAlbums,
@@ -49,8 +53,11 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
  *
  * Two steps. **Scope** lists, in v4's render order: General and the gallery
  * (always), then Group Files, then Projects, then Document Stores. **Browse**
- * hands a project / store scope to `qt-library-browse-panel`, or renders the
- * bespoke gallery grid.
+ * (v4 `c17033f04`): a project browses its own store through
+ * `qt-project-store-browser`, a store through `qt-document-store-browser` —
+ * both in pick mode, a pick attaching through the Librarian (v4
+ * `handlePickEntry`); General keeps the legacy `qt-library-browse-panel`; the
+ * gallery is the bespoke grid.
  *
  * ## The two completion callbacks do DIFFERENT things (v4 `:29-49`, `ChatModals :250-266`)
  *
@@ -78,7 +85,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
 @Component({
   selector: 'qt-library-file-picker-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Modal, LibraryBrowsePanel],
+  imports: [Modal, LibraryBrowsePanel, DocumentStoreBrowser, ProjectStoreBrowser, NgTemplateOutlet],
   template: `
     <qt-modal
       [title]="title()"
@@ -92,7 +99,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
         @case ('scope') {
           <div class="space-y-4">
             <section class="space-y-2">
-              <button type="button" class="qt-card w-full text-left p-4 flex items-center gap-3"
+              <button type="button" class="qt-card w-full text-left p-4 hover:qt-bg-surface-hover transition-colors cursor-pointer flex items-center gap-3"
                 (click)="pickGeneral()">
                 <span class="text-xl">{{ generalIcon }}</span>
                 <span>
@@ -100,7 +107,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
                   <span class="qt-text-muted text-sm">Files not assigned to any project</span>
                 </span>
               </button>
-              <button type="button" class="qt-card w-full text-left p-4 flex items-center gap-3"
+              <button type="button" class="qt-card w-full text-left p-4 hover:qt-bg-surface-hover transition-colors cursor-pointer flex items-center gap-3"
                 (click)="pickGallery()">
                 <span class="text-xl">{{ galleryIcon }}</span>
                 <span>
@@ -114,7 +121,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
               <section class="space-y-2">
                 <h3 class="qt-text-label">Group Files</h3>
                 @for (store of groupStores(); track store.id) {
-                  <button type="button" class="qt-card w-full text-left p-4 flex items-center gap-3"
+                  <button type="button" class="qt-card w-full text-left p-4 hover:qt-bg-surface-hover transition-colors cursor-pointer flex items-center gap-3"
                     (click)="pickMount(store)">
                     <span class="text-xl">{{ groupIcon }}</span>
                     <span>
@@ -134,7 +141,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
               <section class="space-y-2">
                 <h3 class="qt-text-label">Projects</h3>
                 @for (project of projects(); track project.id) {
-                  <button type="button" class="qt-card w-full text-left p-4 flex items-center gap-3"
+                  <button type="button" class="qt-card w-full text-left p-4 hover:qt-bg-surface-hover transition-colors cursor-pointer flex items-center gap-3"
                     (click)="pickProject(project.id, project.name)">
                     <span class="text-xl">{{ project.icon || projectIcon }}</span>
                     <span class="font-medium text-foreground">{{ project.name }}</span>
@@ -151,7 +158,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
               <section class="space-y-2">
                 <h3 class="qt-text-label">Document Stores</h3>
                 @for (store of docStores(); track store.id) {
-                  <button type="button" class="qt-card w-full text-left p-4 flex items-center gap-3"
+                  <button type="button" class="qt-card w-full text-left p-4 hover:qt-bg-surface-hover transition-colors cursor-pointer flex items-center gap-3"
                     (click)="pickMount(store)">
                     <span class="text-xl">{{ storeIcon }}</span>
                     <span>
@@ -194,7 +201,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
                   <li>
                     <button
                       type="button"
-                      class="qt-card w-full text-left p-2 disabled:opacity-50"
+                      class="qt-card w-full text-left p-2 hover:qt-bg-surface-hover transition-colors cursor-pointer disabled:opacity-50"
                       [disabled]="linking()"
                       [title]="entry.caption || entry.fileName"
                       (click)="onGalleryPick(entry)"
@@ -214,12 +221,42 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
           }
         }
 
-        @default {
-          <qt-library-browse-panel
-            [scope]="browseScope()!"
-            [linking]="linking()"
-            (pick)="onFileClick($event)"
-          />
+        @case ('browse-project') {
+          <!-- v4 c17033f04: a project browses its own store (pick mode); General
+               keeps the legacy general-files browser. -->
+          @if (selectedProjectId(); as projectId) {
+            <div class="min-h-[50vh] relative">
+              <ng-container [ngTemplateOutlet]="linkingOverlay" />
+              <div class="p-2">
+                <qt-project-store-browser
+                  [projectId]="projectId"
+                  [pickMode]="true"
+                  [scrollList]="true"
+                  (pickFile)="onPickEntry($event)"
+                />
+              </div>
+            </div>
+          } @else {
+            <qt-library-browse-panel [linking]="linking()" (pick)="onFileClick($event)" />
+          }
+        }
+
+        @case ('browse-mount') {
+          @if (selectedMount(); as mount) {
+            <div class="min-h-[50vh] relative">
+              <ng-container [ngTemplateOutlet]="linkingOverlay" />
+              <div class="p-2">
+                @for (id of [mount.id]; track id) {
+                  <qt-document-store-browser
+                    [storeId]="id"
+                    [pickMode]="true"
+                    [scrollList]="true"
+                    (pickFile)="onPickEntry($event)"
+                  />
+                }
+              </div>
+            </div>
+          }
         }
       }
 
@@ -245,6 +282,19 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
         </button>
       </div>
     </qt-modal>
+
+    <!-- v4 LinkingOverlay (:610-616) — seals a browser while a pick is in flight. -->
+    <ng-template #linkingOverlay>
+      @if (linking()) {
+        <div
+          class="absolute inset-0 z-10 flex items-center justify-center"
+          style="background: var(--qt-dialog-backdrop)"
+          data-testid="library-picker-linking"
+        >
+          <p class="qt-text-secondary">Attaching…</p>
+        </div>
+      }
+    </ng-template>
   `,
 })
 export class LibraryFilePickerModal {
@@ -272,8 +322,8 @@ export class LibraryFilePickerModal {
   protected readonly step = signal<Step>('scope');
   protected readonly linking = signal(false);
   private readonly selectedScopeName = signal('General');
-  private readonly selectedProjectId = signal<string | null>(null);
-  private readonly selectedMount = signal<PickerStoreSummary | null>(null);
+  protected readonly selectedProjectId = signal<string | null>(null);
+  protected readonly selectedMount = signal<PickerStoreSummary | null>(null);
 
   // --- step 1's four reads (v4's four `enabled: isOpen` queries) -------------
 
@@ -359,20 +409,6 @@ export class LibraryFilePickerModal {
       : `Browse Files — ${this.selectedScopeName()}`,
   );
 
-  protected readonly browseScope = computed<BrowseScope | null>(() => {
-    const step = this.step();
-    if (step === 'browse-mount') {
-      const mount = this.selectedMount();
-      return mount ? { projectId: null, mountPoint: mount } : null;
-    }
-    if (step === 'browse-project') {
-      // No `mountPoint` key at all — that is what tells the panel to
-      // auto-resolve (v4 distinguishes `undefined` from `null`).
-      return { projectId: this.selectedProjectId() };
-    }
-    return null;
-  });
-
   protected pickGeneral(): void {
     this.selectedProjectId.set(null);
     this.selectedScopeName.set('General');
@@ -425,6 +461,22 @@ export class LibraryFilePickerModal {
       this.toasts.showSuccess(`Linked "${filename}" to chat`);
       this.fileLinked.emit({ file: linked });
       this.close.emit();
+    } catch (err) {
+      this.toasts.showError(errorText(err) || 'Failed to attach file');
+    } finally {
+      this.linking.set(false);
+    }
+  }
+
+  /**
+   * v4 `handlePickEntry` (`:299-321`, `c17033f04`): a file picked in a store
+   * browser (a project's store or any other) attaches through the Librarian.
+   */
+  protected async onPickEntry(entry: DocumentEntry): Promise<void> {
+    if (this.linking()) return;
+    this.linking.set(true);
+    try {
+      await this.attach(entry.mountPointId, entry.relativePath, entry.fileName);
     } catch (err) {
       this.toasts.showError(errorText(err) || 'Failed to attach file');
     } finally {

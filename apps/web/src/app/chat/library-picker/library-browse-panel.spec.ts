@@ -3,7 +3,7 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
-import { LibraryBrowsePanel, type BrowseScope } from './library-browse-panel';
+import { LibraryBrowsePanel } from './library-browse-panel';
 import type { PickerFile } from './library-picker.model';
 
 interface Dispatched {
@@ -43,16 +43,12 @@ function stubClient(
   };
 }
 
-async function render(
-  client: Partial<CoreClient>,
-  scope: BrowseScope,
-): Promise<ComponentFixture<LibraryBrowsePanel>> {
+async function render(client: Partial<CoreClient>): Promise<ComponentFixture<LibraryBrowsePanel>> {
   TestBed.configureTestingModule({
     imports: [LibraryBrowsePanel],
     providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(LibraryBrowsePanel);
-  fixture.componentRef.setInput('scope', scope);
   fixture.detectChanges();
   for (let i = 0; i < 6; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -61,7 +57,17 @@ async function render(
   return fixture;
 }
 
-describe('qt-library-browse-panel — mode resolution (v4 FileBrowser :226-262)', () => {
+/**
+ * RE-AIMED by P4.D387 (item 18; v4 `c17033f04`): the panel is General-only.
+ * REMOVED with v4's own source — no counterpart after `c17033f04`, which
+ * deleted `FileBrowser.tsx:226-262`'s mount mode and project auto-resolve:
+ * "an explicit database store browses THAT store", "a project … auto-resolves
+ * its own store", "a failing auto-resolve falls back", "a filesystem mount
+ * stays in legacy mode", and "emits the clicked row, mount fields intact" (a
+ * mount row). A project / store now browses through the store browser
+ * (`library-file-picker-modal.spec.ts`).
+ */
+describe('qt-library-browse-panel — General (v4 c17033f04 FileBrowser, general files only)', () => {
   it('General browses the legacy general files, never a store', async () => {
     const log: Dispatched[] = [];
     const fixture = await render(
@@ -69,173 +75,27 @@ describe('qt-library-browse-panel — mode resolution (v4 FileBrowser :226-262)'
         filesList: { files: [legacyFile({ id: 'a' })] },
         filesFoldersList: { folders: [] },
       }),
-      { projectId: null },
     );
     expect(log.map((r) => r.type)).toEqual(['filesList', 'filesFoldersList']);
     expect(log[0]['filter']).toBe('general');
     expect(log[0]['projectId']).toBeUndefined();
     expect(fixture.nativeElement.textContent).toContain('a.txt');
   });
-
-  it('an explicit database store browses THAT store, with no auto-resolve', async () => {
-    const log: Dispatched[] = [];
-    const fixture = await render(
-      stubClient(log, {
-        mountFilesList: {
-          files: [
-            {
-              id: 'r1',
-              mountPointId: 'store-1',
-              relativePath: 'notes/plan.md',
-              fileName: 'plan.md',
-              fileType: 'markdown',
-              sha256: 'x',
-              fileSizeBytes: 5,
-              lastModified: '2026-01-02T00:00:00.000Z',
-              conversionStatus: 'converted',
-              conversionError: null,
-              plainTextLength: 1,
-              chunkCount: 1,
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-            },
-          ],
-        },
-      }),
-      {
-        projectId: null,
-        mountPoint: {
-          id: 'store-1',
-          name: 'Research',
-          mountType: 'database',
-          storeType: 'documents',
-          enabled: true,
-        },
-      },
-    );
-    expect(log.map((r) => r.type)).toEqual(['mountFilesList']);
-    // The store badge names the store the panel is reading.
-    expect(fixture.nativeElement.textContent).toContain('Research');
-    // The row lives at /notes/, so root shows the folder, not the file.
-    expect(fixture.nativeElement.textContent).toContain('notes');
-    expect(fixture.nativeElement.textContent).not.toContain('plan.md');
-  });
-
-  it('a project with no explicit store auto-resolves its own "Project Files:" store', async () => {
-    const log: Dispatched[] = [];
-    await render(
-      stubClient(log, {
-        projectMountPointList: {
-          mountPoints: [
-            {
-              id: 'linked',
-              name: 'Reference shelf',
-              mountType: 'database',
-              storeType: 'documents',
-              enabled: true,
-            },
-            {
-              id: 'own',
-              name: 'Project Files: Novel',
-              mountType: 'database',
-              storeType: 'documents',
-              enabled: true,
-            },
-          ],
-        },
-        mountFilesList: { files: [] },
-      }),
-      { projectId: 'p1' },
-    );
-    expect(log.map((r) => r.type)).toEqual(['projectMountPointList', 'mountFilesList']);
-    expect(log[1]['mountPointId']).toBe('own');
-  });
-
-  it('a failing auto-resolve falls back to the project’s legacy files (v4: silent)', async () => {
-    const log: Dispatched[] = [];
-    const fixture = await render(
-      stubClient(log, {
-        projectMountPointList: () => {
-          throw new Error('no link');
-        },
-        filesList: { files: [legacyFile({ id: 'p-file' })] },
-        filesFoldersList: { folders: [] },
-      }),
-      { projectId: 'p1' },
-    );
-    expect(log.map((r) => r.type)).toEqual([
-      'projectMountPointList',
-      'filesList',
-      'filesFoldersList',
-    ]);
-    expect(log[1]['projectId']).toBe('p1');
-    expect(log[1]['filter']).toBeUndefined();
-    expect(fixture.nativeElement.textContent).toContain('p-file.txt');
-  });
-
-  it('a filesystem mount stays in legacy mode (its files live on disk)', async () => {
-    const log: Dispatched[] = [];
-    await render(
-      stubClient(log, { filesList: { files: [] }, filesFoldersList: { folders: [] } }),
-      {
-        projectId: null,
-        mountPoint: {
-          id: 'fs-1',
-          name: 'On disk',
-          mountType: 'filesystem',
-          storeType: 'documents',
-          enabled: true,
-        },
-      },
-    );
-    expect(log.map((r) => r.type)).toEqual(['filesList', 'filesFoldersList']);
-  });
 });
 
 describe('qt-library-browse-panel — picking and sealing', () => {
-  it('emits the clicked row, mount fields intact', async () => {
+  it('emits the clicked legacy row', async () => {
     const log: Dispatched[] = [];
     const fixture = await render(
       stubClient(log, {
-        mountFilesList: {
-          files: [
-            {
-              id: 'r1',
-              mountPointId: 'store-1',
-              relativePath: 'plan.md',
-              fileName: 'plan.md',
-              fileType: 'markdown',
-              sha256: 'x',
-              fileSizeBytes: 5,
-              lastModified: '2026-01-02T00:00:00.000Z',
-              conversionStatus: 'converted',
-              conversionError: null,
-              plainTextLength: 1,
-              chunkCount: 1,
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-            },
-          ],
-        },
+        filesList: { files: [legacyFile({ id: 'a' })] },
+        filesFoldersList: { folders: [] },
       }),
-      {
-        projectId: null,
-        mountPoint: {
-          id: 'store-1',
-          name: 'Research',
-          mountType: 'database',
-          storeType: 'documents',
-          enabled: true,
-        },
-      },
     );
     const picked: PickerFile[] = [];
     fixture.componentInstance.pick.subscribe((f) => picked.push(f));
-    const rows = fixture.nativeElement.querySelectorAll('li button') as NodeListOf<HTMLElement>;
-    rows[rows.length - 1].click();
-    expect(picked).toHaveLength(1);
-    expect(picked[0].mountPointId).toBe('store-1');
-    expect(picked[0].relativePath).toBe('plan.md');
+    (fixture.nativeElement.querySelector('li button') as HTMLElement).click();
+    expect(picked.map((f) => f.id)).toEqual(['a']);
   });
 
   it('seals the panel while linking (the overlay shows; rows disable)', async () => {
@@ -245,7 +105,6 @@ describe('qt-library-browse-panel — picking and sealing', () => {
         filesList: { files: [legacyFile({ id: 'a' })] },
         filesFoldersList: { folders: [] },
       }),
-      { projectId: null },
     );
     expect(
       fixture.nativeElement.querySelector('[data-testid="library-picker-linking"]'),
@@ -275,7 +134,6 @@ describe('qt-library-browse-panel — folder navigation (v4’s pure model, reus
         },
         filesFoldersList: { folders: [] },
       }),
-      { projectId: null },
     );
     const text = () => fixture.nativeElement.textContent as string;
     expect(text()).toContain('root-note.txt');
