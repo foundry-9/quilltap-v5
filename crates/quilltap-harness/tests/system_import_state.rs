@@ -835,6 +835,12 @@ const REPO_LOG_MESSAGES: &[&str] = &[
     "Error creating folder",
     "Error creating tag",
     "Error creating file",
+    // === P4.D368 === the refused message insert's ERROR and the importer's
+    // per-message WARN (the longest match keeps the WARN off `Failed to
+    // import chat`).
+    "Failed to add message to chat",
+    "Failed to import chat message",
+    // === end P4.D368 ===
 ];
 
 /// The [`REPO_LOG_MESSAGES`] entry `rest` starts with — the LONGEST match, so
@@ -998,6 +1004,14 @@ fn compare_repo_logs(
             g["error"] = json!("<SERDE-ARM-DIVERGENCE>");
             w["error"] = json!("<SERDE-ARM-DIVERGENCE>");
         }
+        // === P4.D368 === a refused MESSAGE's line names the chat it was
+        // inserted into — the import's freshly MINTED chat id on each side.
+        for l in [&mut g, &mut w] {
+            if l["message"] == "Failed to add message to chat" && l.get("chatId").is_some() {
+                l["chatId"] = json!("<minted chat id>");
+            }
+        }
+        // === end P4.D368 ===
         if g != w {
             failures.push(format!(
                 "[{name}] refused-chat repository line {i} differs\n  rust:   {g}\n  oracle: {w}"
@@ -1851,7 +1865,6 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D351's `execute_novel_template` and `execute_template_refusals`
     // (92 + 2 = 94).
     // …+ P4.D362's `execute_p4d362_carriers` (94 + 1 = 95).
-    assert_eq!(ran, 95, "expected 95 cases, ran {ran}");
     // [P4.D362] Non-vacuity: v4 imported the two sound profiles (the
     // capless one seeded to 4, the Anthropic one stripped), named-and-skipped
     // the five bad caps with its ZodError, and landed both flagged messages.
@@ -1885,6 +1898,53 @@ fn system_import_execute_state_equivalence() {
         }
         assert_eq!(warnings.len(), 5, "{warnings:?}");
     }
+    // …+ P4.D368's `execute_storyteller_chat_refusals` and
+    // `execute_storyteller_message_refusals` (P4.D343 item 29) (95 + 2 = 97)
+    // — a UNION number: sibling lanes of the `624d0d25c` round add arms too.
+    assert_eq!(ran, 97, "expected 97 cases, ran {ran}");
+    // === P4.D368 === Non-vacuity: v4 REFUSED the four planted storyteller
+    // chats with its ZodError (`Turn Ok` imported), and the four malformed
+    // `storytellerBid` messages with its `invalid_union` (the accepted bid and
+    // the `null` one landed).
+    for (name, prefix, refused, needle) in [
+        (
+            "execute_storyteller_chat_refusals",
+            "Failed to import chat",
+            &[
+                "\"Turn Bogus\"",
+                "\"Turn Number\"",
+                "\"Invite Null\"",
+                "\"Invite String\"",
+            ][..],
+            "",
+        ),
+        (
+            "execute_storyteller_message_refusals",
+            "Failed to import message in chat",
+            &["\"Storyteller Bids\""; 4][..],
+            "\"code\": \"invalid_union\"",
+        ),
+    ] {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap_or_else(|| panic!("the oracle is missing `{name}` — regenerate it"));
+        let warnings: Vec<&str> = case["result"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(warnings.len(), refused.len(), "[{name}] {warnings:?}");
+        for (w, title) in warnings.iter().zip(refused) {
+            assert!(
+                w.starts_with(&format!("{prefix} {title}: [")),
+                "[{name}] {w}"
+            );
+            assert!(w.contains(needle), "[{name}] {w}");
+        }
+    }
+    // === end P4.D368 ===
     // [P4.167 chat record columns] Non-vacuity: v4 REFUSED the planted chats
     // with its `expected record` ZodError (the whole-state diff above compares
     // v5's warnings and rows with these), and the remint's null-out of a
@@ -3260,6 +3320,8 @@ fn run_execute_case(
                 "Error creating folder",
                 "Error creating tag",
                 "Error creating file",
+                // === P4.D368 === `addMessage`'s rethrowing `safeQuery`.
+                "Failed to add message to chat",
             ],
             failures,
         );

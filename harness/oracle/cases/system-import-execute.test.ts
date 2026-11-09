@@ -3065,6 +3065,11 @@ const REPO_LOG_MESSAGES = new Set([
   'Error creating tag',
   // [P4.161 Tier 2] the files repository's own wrap (`{userId, filename}`).
   'Error creating file',
+  // === P4.D368 === the refused message insert: `addMessage`'s rethrowing
+  // `safeQuery` ERROR (`{chatId, error}`), then the importer's per-message WARN.
+  'Failed to add message to chat',
+  'Failed to import chat message',
+  // === end P4.D368 ===
 ]);
 
 /**
@@ -4710,6 +4715,28 @@ async function main(): Promise<void> {
       includeMemories: false,
       includeRelatedEntities: false,
     }),
+    // === P4.D368 === (P4.D343 item 29, §R.10 (m)) the chat create's
+    // `ChatMetadataSchema` refuses a bad `turnMode` (`ChatTurnModeSchema
+    // .nullable().optional()`) and a non-boolean `storytellerInviteFilter`
+    // (`z.boolean().default(false)` — `null` REFUSED: the import never runs
+    // the export JSON schema's boolean-or-null, R-7).
+    executeCase(
+      'execute_storyteller_chat_refusals',
+      () => storytellerChatRefusalsPayload(chatsInformsPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    // The message insert's `ChatEventSchema.parse` refuses a bad
+    // `storytellerBid` (the three-option union's issues) and STORES an
+    // accepted one as Zod emits it (schema key order, unknown keys
+    // stripped, `toolsNamed` defaulted).
+    executeCase(
+      'execute_storyteller_message_refusals',
+      () => storytellerMessageRefusalsPayload(chatsInformsPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    // === end P4.D368 ===
   ];
 
   const outLines: string[] = [
@@ -4908,4 +4935,46 @@ function p4d362CarriersPayload(base: { manifest: unknown; data: Record<string, u
     chats: [tmpl],
   };
   return p;
+}
+
+// === P4.D368 (append-only) — P4.D343 item 29's import refusals ===
+
+function storytellerChatRefusalsPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const id = (n: string) => `a4d36800-0000-4000-8000-0000000000${n}`;
+  return conciergeBogusPayload(base, [
+    [1, { id: id('01'), title: 'Turn Bogus', turnMode: 'bogus' }],
+    [2, { id: id('02'), title: 'Turn Number', turnMode: 7 }],
+    [3, { id: id('03'), title: 'Invite Null', storytellerInviteFilter: null }],
+    [4, { id: id('04'), title: 'Invite String', storytellerInviteFilter: 'yes' }],
+    [5, { id: id('05'), title: 'Turn Ok', turnMode: 'storyteller', storytellerInviteFilter: true }],
+  ]);
+}
+
+function storytellerMessageRefusalsPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const msg = (n: string, storytellerBid: unknown) => ({
+    type: 'message',
+    id: `d4d36800-0000-4000-8000-0000000000${n}`,
+    role: 'ASSISTANT',
+    content: `Bid message ${n}.`,
+    createdAt: `2026-05-03T00:00:${n}.000Z`,
+    attachments: [],
+    storytellerBid,
+  });
+  return conciergeBogusPayload(base, [
+    [
+      1,
+      {
+        id: 'a4d36800-0000-4000-8000-0000000000a1',
+        title: 'Storyteller Bids',
+        messages: [
+          msg('01', 'x'),
+          msg('02', { roundId: 'r' }),
+          msg('03', { roundId: 'r', tier: 'epic', plan: 'p' }),
+          msg('04', { roundId: 'r', tier: 'act', plan: 'p', toolsNamed: 'a' }),
+          msg('05', { plan: 'p', tier: 'act', roundId: 'r', extra: 1 }),
+          msg('06', null),
+        ],
+      },
+    ],
+  ]);
 }

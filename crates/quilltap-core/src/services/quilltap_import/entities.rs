@@ -855,6 +855,10 @@ fn add_imported_messages(
         let inserted_id = message.get("id").and_then(Value::as_str);
         let out = serde_json::from_value::<ChatEventInput>(message.clone())
             .map_err(|e| super::serde_error_text(&e))
+            // === P4.D368 === (P4.D343 item 29) v4's `ChatEventSchema.parse`
+            // inside the rethrowing `safeQuery` of `addMessage`.
+            .and_then(|event| storyteller_bid_parsed(new_chat_id, message, event))
+            // === end P4.D368 ===
             .and_then(|event| {
                 messages_repo
                     .add_message(new_chat_id, &event)
@@ -892,6 +896,157 @@ fn add_imported_messages(
     }
     added
 }
+
+// === P4.D368 === (P4.D343 item 29)
+/// v4 `addMessage` (`chats-messages.ops.ts:397-455`) inserts `ChatEventSchema
+/// .parse(message)`, so a message's `storytellerBid`
+/// (`StorytellerBidRecordSchema.nullable().optional()`) is REFUSED when
+/// malformed and STORED as Zod emits it when not: keys in schema order
+/// (`roundId, tier, plan, toolsNamed`), unknown keys stripped, a missing
+/// `toolsNamed` defaulted to `[]` (the typed twin [`StorytellerBidRecord`]).
+/// `null` and absent pass through.
+///
+/// A refusal is v4's three-option union (`ChatEventSchema = z.union([
+/// MessageEventSchema, ContextSummaryEventSchema, SystemEventSchema])`,
+/// `chat.types.ts:730`): no option survives, so Zod 4.6.7 answers ONE
+/// `invalid_union` carrying each option's issues — the message option's
+/// `storytellerBid` issues, then what the context-summary and system options
+/// say of a `type: 'message'` row (their `type` literal and the required
+/// fields the row lacks). Measured against v4's real `executeImport` at
+/// `624d0d25c` (`system_import_state`'s `execute_storyteller_message_refusals`).
+/// The safeQuery's ERROR `Failed to add message to chat` `{chatId, error}`
+/// precedes the caller's warning, as in v4.
+///
+/// ⚠ Scope (`STORYTELLER_BID_UNION_ISSUES_PARTIAL` does NOT fire): the twin
+/// runs only on a row the typed decode accepted; a row whose OTHER fields v4's
+/// `MessageEventSchema` would also refuse reaches v4's union with more issues
+/// in the first option than this twin lists (pre-existing: v5's decode text
+/// answers those).
+fn storyteller_bid_parsed(
+    new_chat_id: &str,
+    message: &Value,
+    mut event: ChatEventInput,
+) -> Result<ChatEventInput, String> {
+    use crate::api::zod_issues::{key, zod_error_message, ZodIssue};
+    use crate::storyteller::types::StorytellerBidRecord;
+    // Only `MessageEventSchema` carries the key (the other two options strip
+    // it), so only a `message` row is checked.
+    if !matches!(event, ChatEventInput::Message(_)) {
+        return Ok(event);
+    }
+    let Some(bid) = message.get("storytellerBid").filter(|v| !v.is_null()) else {
+        return Ok(event);
+    };
+    let at = |k: &str| vec![key("storytellerBid"), key(k)];
+    let mut bid_issues: Vec<ZodIssue> = Vec::new();
+    match bid.as_object() {
+        None => bid_issues.push(ZodIssue::invalid_type(
+            "object",
+            vec![key("storytellerBid")],
+            Some(bid),
+        )),
+        Some(o) => {
+            if !o.get("roundId").is_some_and(Value::is_string) {
+                bid_issues.push(ZodIssue::invalid_type(
+                    "string",
+                    at("roundId"),
+                    o.get("roundId"),
+                ));
+            }
+            const TIERS: [&str; 4] = ["simple", "lookup", "act", "destroy"];
+            if !o
+                .get("tier")
+                .and_then(Value::as_str)
+                .is_some_and(|t| TIERS.contains(&t))
+            {
+                bid_issues.push(ZodIssue::invalid_value(&TIERS, at("tier")));
+            }
+            if !o.get("plan").is_some_and(Value::is_string) {
+                bid_issues.push(ZodIssue::invalid_type("string", at("plan"), o.get("plan")));
+            }
+            match o.get("toolsNamed") {
+                None => {}
+                Some(Value::Array(items)) => {
+                    for (i, item) in items.iter().enumerate() {
+                        if !item.is_string() {
+                            let mut path = at("toolsNamed");
+                            path.push(Value::from(i));
+                            bid_issues.push(ZodIssue::invalid_type("string", path, Some(item)));
+                        }
+                    }
+                }
+                got => bid_issues.push(ZodIssue::invalid_type("array", at("toolsNamed"), got)),
+            }
+        }
+    }
+    if bid_issues.is_empty() {
+        let parsed: StorytellerBidRecord =
+            serde_json::from_value(bid.clone()).map_err(|e| super::serde_error_text(&e))?;
+        let stored = serde_json::to_value(parsed).map_err(|e| super::serde_error_text(&e))?;
+        if let ChatEventInput::Message(m) = &mut event {
+            m.storyteller_bid = Some(stored);
+        }
+        return Ok(event);
+    }
+    // What the other two union options say of this `type: 'message'` row.
+    let str_field = |k: &str| message.get(k).is_some_and(Value::is_string);
+    let mut summary_issues = vec![ZodIssue::invalid_literal(
+        "context-summary",
+        vec![key("type")],
+    )];
+    if !str_field("context") {
+        summary_issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![key("context")],
+            message.get("context"),
+        ));
+    }
+    const SYSTEM_EVENT_TYPES: [&str; 9] = [
+        "MEMORY_EXTRACTION",
+        "SUMMARIZATION",
+        "TITLE_GENERATION",
+        "CONTEXT_SUMMARY",
+        "IMAGE_PROMPT_CRAFTING",
+        "CONTEXT_COMPRESSION",
+        "DANGER_CLASSIFICATION",
+        "SCENE_STATE_TRACKING",
+        "STATUS_CHANGE",
+    ];
+    let mut system_issues = vec![ZodIssue::invalid_literal("system", vec![key("type")])];
+    if !message
+        .get("systemEventType")
+        .and_then(Value::as_str)
+        .is_some_and(|t| SYSTEM_EVENT_TYPES.contains(&t))
+    {
+        system_issues.push(ZodIssue::invalid_value(
+            &SYSTEM_EVENT_TYPES,
+            vec![key("systemEventType")],
+        ));
+    }
+    if !str_field("description") {
+        system_issues.push(ZodIssue::invalid_type(
+            "string",
+            vec![key("description")],
+            message.get("description"),
+        ));
+    }
+    let issues = [ZodIssue::invalid_union(
+        vec![bid_issues, summary_issues, system_issues],
+        vec![],
+    )];
+    let text = zod_error_message(&issues);
+    // v4's rethrowing `safeQuery('Failed to add message to chat', {chatId})`
+    // — the one home of that line (P4.163).
+    crate::db::fallback::log_chat_message_add_create_wrap_failure(
+        new_chat_id,
+        &crate::db::DbError::RowSchemaRefusal {
+            collection: "chat_messages",
+            issues: serde_json::to_value(&issues).unwrap_or(Value::Null),
+        },
+    );
+    Err(text)
+}
+// === end P4.D368 ===
 
 /// v4 `importChats` (`import-entities.ts:371-450`) — ONE create path since
 /// `8050958be` (bug 228). The exported chat is the full hydrated
@@ -1030,6 +1185,10 @@ pub(super) fn import_chats(
 fn chat_create_zod_error(chat: &Value) -> Option<String> {
     let mut issues: Vec<Value> = Vec::new();
     chat_record_column_issues(chat, CHAT_RECORD_COLUMNS_BEFORE_SOURCE, &mut issues);
+    // === P4.D368 === (P4.D343 item 29) `turnMode` / `storytellerInviteFilter`
+    // — declared after `sillyTavernMetadata` and before `scenarioSource`.
+    chat_storyteller_column_issues(chat, &mut issues);
+    // === end P4.D368 ===
     if let Some(source) = chat.get("scenarioSource").filter(|v| !v.is_null()) {
         let prefix = [Value::String("scenarioSource".into())];
         issues.extend(
@@ -1050,6 +1209,36 @@ fn chat_create_zod_error(chat: &Value) -> Option<String> {
     (!issues.is_empty())
         .then(|| serde_json::to_string_pretty(&issues).unwrap_or_else(|_| "Invalid input".into()))
 }
+
+// === P4.D368 === (P4.D343 item 29, ruling R-7)
+/// v4 `ChatMetadataSchema`'s two storyteller columns, in declaration order
+/// (`chat.types.ts:986`, `:991` at `624d0d25c`):
+/// - `turnMode: ChatTurnModeSchema.nullable().optional()` — absent / `null`
+///   pass; anything but `"rotation"` / `"storyteller"` (a non-string too —
+///   measured: Zod 4.6.7's `z.enum` answers `invalid_value` for a number) is
+///   `invalid_value` at `["turnMode"]`;
+/// - `storytellerInviteFilter: z.boolean().default(false)` — absent defaults;
+///   `null` and every non-boolean are `invalid_type` `expected boolean`. The
+///   EXPORT JSON schema's boolean-or-null never runs on v4's import, so the
+///   Zod create is the rule.
+fn chat_storyteller_column_issues(chat: &Value, issues: &mut Vec<Value>) {
+    use crate::api::zod_issues::{key, ZodIssue};
+    const TURN_MODES: [&str; 2] = ["rotation", "storyteller"];
+    match chat.get("turnMode") {
+        None | Some(Value::Null) => {}
+        Some(Value::String(s)) if TURN_MODES.contains(&s.as_str()) => {}
+        Some(_) => {
+            issues.push(ZodIssue::invalid_value(&TURN_MODES, vec![key("turnMode")]).to_value())
+        }
+    }
+    match chat.get("storytellerInviteFilter") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(
+            ZodIssue::invalid_type("boolean", vec![key("storytellerInviteFilter")], got).to_value(),
+        ),
+    }
+}
+// === end P4.D368 ===
 
 /// v4 `ChatMetadataSchema`'s one `JsonSchema` column declared BEFORE
 /// `scenarioSource` (`chat.types.ts:840` at `322a5488e`), with whether `null`
@@ -1704,3 +1893,69 @@ mod group_null_import_tests {
         }
     }
 }
+
+// === P4.D368 === (P4.D343 item 29)
+#[cfg(test)]
+mod storyteller_bid_import_tests {
+    use super::*;
+    use crate::test_support::captured_with;
+    use serde_json::json;
+
+    fn message(bid: Value) -> Value {
+        json!({
+            "type": "message",
+            "id": "d4d36800-0000-4000-8000-000000000001",
+            "role": "ASSISTANT",
+            "content": "c",
+            "createdAt": "2026-05-03T00:00:01.000Z",
+            "attachments": [],
+            "storytellerBid": bid,
+        })
+    }
+
+    /// The stored bid (`Ok`) or the refusal text (`Err`), and the lines.
+    fn run(bid: Value) -> (Result<Option<Value>, String>, Vec<String>) {
+        let m = message(bid);
+        let event: ChatEventInput = serde_json::from_value(m.clone()).expect("decode");
+        let (out, lines) = captured_with(|| storyteller_bid_parsed("chat-new", &m, event));
+        let out = out.map(|e| match e {
+            ChatEventInput::Message(m) => m.storyteller_bid,
+            _ => panic!("a message row"),
+        });
+        (out, lines)
+    }
+
+    /// v4's rethrowing `safeQuery` logs ERROR `Failed to add message to chat
+    /// {chatId, error}` with the union's bytes; the accepted bid is stored as
+    /// Zod emits it, and logs nothing (the silence leg).
+    #[test]
+    fn a_refused_bid_logs_the_add_message_error_and_an_accepted_one_is_normalised() {
+        let (out, lines) = run(json!({ "roundId": "r" }));
+        let text = out.expect_err("refused");
+        assert!(text.contains("\"code\": \"invalid_union\""), "{text}");
+        let line = lines
+            .iter()
+            .find(|l| l.contains("Failed to add message to chat"))
+            .unwrap_or_else(|| panic!("no add-message ERROR in {lines:#?}"));
+        assert!(line.starts_with("ERROR "), "{line}");
+        assert!(line.contains("chatId=chat-new"), "{line}");
+        assert!(line.contains("invalid_union"), "{line}");
+
+        let (out, lines) = run(json!({ "plan": "p", "tier": "act", "roundId": "r", "extra": 1 }));
+        let stored = out.expect("accepted");
+        assert_eq!(
+            serde_json::to_string(&stored).unwrap(),
+            r#"{"roundId":"r","tier":"act","plan":"p","toolsNamed":[]}"#
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to add message to chat")),
+            "silence leg: {lines:#?}"
+        );
+
+        let (out, _) = run(Value::Null);
+        assert_eq!(out.expect("null passes"), None);
+    }
+}
+// === end P4.D368 ===
