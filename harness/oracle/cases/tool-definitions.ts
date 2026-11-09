@@ -77,6 +77,11 @@ import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
 import { editCustomToolToolDefinition } from '@/lib/tools/edit-custom-tool-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
+// P4.D374: the four Brahma lookups (v4 `c539c82e0`; ALL_TOOLS order after runSql).
+import { lookupCharacterToolDefinition } from '@/lib/tools/lookup-character-tool';
+import { lookupMemoriesToolDefinition } from '@/lib/tools/lookup-memories-tool';
+import { lookupMessagesToolDefinition } from '@/lib/tools/lookup-messages-tool';
+import { readMessagesToolDefinition } from '@/lib/tools/read-messages-tool';
 import {
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
@@ -163,6 +168,11 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   runCustom: runCustomToolDefinition,
   editCustomTool: editCustomToolToolDefinition,
   runSql: runSqlToolDefinition,
+  // P4.D374: the four Brahma lookups (v4 `c539c82e0`).
+  lookupCharacter: lookupCharacterToolDefinition,
+  lookupMemories: lookupMemoriesToolDefinition,
+  lookupMessages: lookupMessagesToolDefinition,
+  readMessages: readMessagesToolDefinition,
   searchScriptorium: searchScriptoriumToolDefinition,
   searchScriptoriumBrahma: searchScriptoriumBrahmaToolDefinition,
   // v4 `d1c06cd9d` (the Scenario Builder variant). Read off the module

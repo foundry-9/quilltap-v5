@@ -74,6 +74,11 @@ import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
 import { editCustomToolToolDefinition } from '@/lib/tools/edit-custom-tool-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
+// P4.D374: the four Brahma lookups (v4 `c539c82e0`; ALL_TOOLS order after runSql).
+import { lookupCharacterToolDefinition } from '@/lib/tools/lookup-character-tool';
+import { lookupMemoriesToolDefinition } from '@/lib/tools/lookup-memories-tool';
+import { lookupMessagesToolDefinition } from '@/lib/tools/lookup-messages-tool';
+import { readMessagesToolDefinition } from '@/lib/tools/read-messages-tool';
 import {
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
@@ -160,6 +165,11 @@ const ALL: UniversalTool[] = [
   runCustomToolDefinition,
   editCustomToolToolDefinition,
   runSqlToolDefinition,
+  // P4.D374: the four Brahma lookups (v4 `c539c82e0`).
+  lookupCharacterToolDefinition,
+  lookupMemoriesToolDefinition,
+  lookupMessagesToolDefinition,
+  readMessagesToolDefinition,
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,
   // v4 `d1c06cd9d` (the Scenario Builder variant); absent at an older pin.

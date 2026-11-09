@@ -184,7 +184,7 @@ pub enum ToolEffectSpec {
     Computed(ComputedEffect),
 }
 
-/// v4 `BUILT_IN_TOOL_EFFECTS` (`effects.ts:107-182`) — 74 rows: 3 none, 33
+/// v4 `BUILT_IN_TOOL_EFFECTS` (`effects.ts:107-182`) — 78 rows: 3 none, 37
 /// read, 29 write, 5 destroy, 4 computed. Order is unobservable; the SET and
 /// the VALUES are what `tool_effects_equivalence` pins. `None` when the tool
 /// declares no effect (v4 `toolEffectSpecOf` — an own-property lookup).
@@ -247,6 +247,12 @@ pub fn tool_effect_spec_of(name: &str) -> Option<ToolEffectSpec> {
         "rng" => Declared(None),
         "run_custom" => Computed(ComputedEffect::RunCustom),
         "run_sql" => Declared(Read),
+        // === P4.D374 === the four Brahma lookups (v4 `c539c82e0`, `effects.ts:164-171`).
+        "lookup_character" => Declared(Read),
+        "lookup_memories" => Declared(Read),
+        "lookup_messages" => Declared(Read),
+        "read_messages" => Declared(Read),
+        // === /P4.D374 ===
         "search" => Declared(Read),
         "search_web" => Declared(Read),
         "self_inventory" => Declared(Read),
@@ -273,7 +279,7 @@ pub fn tool_effect_spec_of(name: &str) -> Option<ToolEffectSpec> {
 /// Every key of v4's `BUILT_IN_TOOL_EFFECTS`, sorted (code-unit order). The
 /// table is the `match` above; this list is the enumeration the oracle compares
 /// and the unit tests walk.
-pub const BUILT_IN_TOOL_EFFECT_NAMES: [&str; 74] = [
+pub const BUILT_IN_TOOL_EFFECT_NAMES: [&str; 78] = [
     "ask_carina",
     "attach_image",
     "delete_annotation",
@@ -322,9 +328,13 @@ pub const BUILT_IN_TOOL_EFFECT_NAMES: [&str; 74] = [
     "log_create_entry",
     "log_grep",
     "log_read",
+    "lookup_character",
+    "lookup_memories",
+    "lookup_messages",
     "project_info",
     "read_conversation",
     "read_mail",
+    "read_messages",
     "request_full_context",
     "rng",
     "run_custom",
@@ -472,8 +482,8 @@ mod tests {
                 ToolEffectSpec::Computed(_) => counts[4] += 1,
             }
         }
-        assert_eq!(BUILT_IN_TOOL_EFFECT_NAMES.len(), 74);
-        assert_eq!(counts, [3, 33, 29, 5, 4]);
+        assert_eq!(BUILT_IN_TOOL_EFFECT_NAMES.len(), 78);
+        assert_eq!(counts, [3, 37, 29, 5, 4]);
         let sorted: Vec<&str> = {
             let mut v = BUILT_IN_TOOL_EFFECT_NAMES.to_vec();
             v.sort_unstable();

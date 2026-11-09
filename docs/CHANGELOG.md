@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — CATALOG: regenerate the tool catalog from v4 624d0d25c (80 entries: four Brahma lookups + three searchScriptorium strings)
+
+_Versions: core 0.0.1429._
+
+P4.D374's stacking commit (P4.D375 branches from it). `tools/definitions/data.rs` regenerated from the pin through `gen-tool-catalog.mjs`: 76 → 80 entries. Four new entries sit after `runSql` in v4's `ALL_TOOLS` order (`lookupCharacter`, `lookupMemories`, `lookupMessages`, `readMessages`, from v4 `c539c82e0`), and `searchScriptorium`'s description changes with 4.12.1's three strings (`6121f59b9`). `searchScriptoriumBrahma` / `searchScriptoriumScenario` do not move. Both oracle cases (`tool-definitions.ts`, `tool-definitions-canonical.ts`) gain the four imports and keys at the same position. `tools/effects.rs` gains the four `read` effects (78 rows: 3 none, 37 read, 29 write, 5 destroy, 4 computed), so `every_catalog_name_declares_an_effect` stays green. The tools are catalogued only; their handlers and executor arms land in later P4.D374 commits.
+
 #### 2026-11-08 — SCHEMA: the 624d0d25c D23 re-dump (moves 22 / 23 + kind / brahma fresh-only), the Anthropic sampling strip and two column ensures as one chain, the column plumbing, the export dumps (v4 624d0d25c)
 
 _Versions: core 0.0.1428, host 0.0.224._
