@@ -355,6 +355,17 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
     );
 
     if options.sql_access {
+        // === P4.D374 === v4 `c539c82e0` (`plugin-tool-builder.ts:532-542`):
+        // the lookup shortcuts ride on the same switch — the operator's
+        // inspection tools, answering the common questions (who is X, what does
+        // X remember, where was Y said) in one call each before the console
+        // falls back to hand-written SQL. Executor-gated on `operatorSurface`
+        // like `run_sql`.
+        push_key(&mut universal, "lookupCharacter");
+        push_key(&mut universal, "lookupMemories");
+        push_key(&mut universal, "lookupMessages");
+        push_key(&mut universal, "readMessages");
+        // === /P4.D374 ===
         push_key(&mut universal, "runSql");
     }
 

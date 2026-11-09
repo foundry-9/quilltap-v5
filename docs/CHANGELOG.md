@@ -391,6 +391,12 @@ Ports v4 `lib/chat/established-fact.ts` whole as `quilltap_core::established_fac
 
 New source census `deus_ex_machina_name_leak_guard` scans every string literal under `crates/*/src` (1,153 files, ~100k literals) for v4's `UI_NAME`, with an empty allow-list. Its self-test and a planted-const mutation are both red. The behavioural `leak_tests` module starts with the frame pass. A `union_leak_tests` row for the extraction prompt bodies is ignored until P4.D373's regen lands.
 
+#### 2026-11-08 — feat(tools): the Brahma sqlAccess slate offers the four lookup tools before run_sql (P4.D374)
+
+_Versions: core 0.0.1432._
+
+P4.D374 Tier 1 item 11. With `sql_access` on, `services/tool_build.rs` now offers `lookup_character`, `lookup_memories`, `lookup_messages` and `read_messages` before `run_sql`, in v4's order (`plugin-tool-builder.ts:532-542`). `tool_build_equivalence` was red on exactly its two `sqlAccess` cases before the change and is green after. The tools are executor-gated on the operator surface; their handlers land in later P4.D374 commits.
+
 #### 2026-11-08 — feat(brahma): regenerate the Brahma SQL prompt from v4 624d0d25c — the lookup-shortcuts section (P4.D374)
 
 _Versions: core 0.0.1431._
