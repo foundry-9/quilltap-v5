@@ -651,6 +651,12 @@ _Versions: core 0.0.1430._
 
 The scenario collection list GETs (project, group, General) resolve without `ensure`: a store-less owner answers `{mountPointId: null, scenarios: [], warnings: []}` after the DEBUG `${logTag} No ${owner} store yet; no scenarios`, and nothing is provisioned; a create still provisions and heals `Knowledge/` for a group (v4 #136, `0c47f4539`). The cast GET `groups/scenarios` walks `group_mounts_for(.., include_empty)` and resolves each group without `ensure`. `scenarios/location.rs` resolves through `reach::resolve_owner_store` (`ensure` throws on a folder failure, `archived` refuse, context `scenarios`) and classifies through `reach::classify_mount`; its own folder heal and `[ScenarioLocation] Failed to ensure Scenarios folder` WARN are gone (the reach WARN replaces it). The Scenario Builder's pool is `reach::resolve_cast_pool` (its three own lines replaced by reach's; `namedGroupCount` counts the raw `groupIds`). The knowledge injector buckets its input with `reach::bucket_mounts` and no longer dedups it. Tests: `scenarios_routes` gains five fenced rows with a store census; `scenario_location` captures the two reach lines; `knowledge_injector` gains a colliding-input row; the `builtin_mounts` WARN pin, the Builder pool and service unit tests and the host's `a_failed_general_heal_logs_l2_then_l37` move to reach's lines; `scenario_builder_mount_pool`'s oracle records reach's ROOT-logger lines; `scenarios_routes`' `project_list_folder_failure_500` answers 200 at the pin (a list no longer heals), id kept.
 
+#### 2026-11-09 — feat(wardrobe): the server-side item draft — draft_from_item / draft_to_payload (P4.D377 item 7, v4 600c2906f)
+
+_Versions: core 0.0.1430._
+
+NEW `wardrobe/item_draft.rs` ports what the wardrobe Duplicate route calls from v4's client-safe `lib/wardrobe/item-draft.ts`: `WardrobeItemDraft`, `draft_from_item` (the `?? ''` / `?? false` / `?? []` guards) and `draft_to_payload` (v4's key order; `blankToNull` and the title trim over JS `.trim()`; `replace` sent only for a composite). v4 builds a copy server-side so its title is chosen against the tier's titles. `emptyDraft`, `payloadForEdit` and `validateDraft` stay client-only. New tier-1 family `wardrobe_item_draft_equivalence` (26 rows, draft fields and payload bytes) against v4's real module (`harness/oracle/cases/wardrobe-item-draft.ts`).
+
 #### 2026-11-08 — fix(reach): the path resolver's roster unit test reads the pool's DEBUG (REACH follow-up)
 
 _Versions: core 0.0.1429._

@@ -19,6 +19,7 @@
 //! - [`sort_for_default_outfit`] (v4 `default-outfit.ts`) — the deterministic
 //!   layer order for a default outfit.
 
+pub mod item_draft;
 pub mod operator_provenance;
 pub mod pronoun_guidance;
 pub mod rollback;
