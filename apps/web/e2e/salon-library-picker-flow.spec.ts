@@ -209,8 +209,11 @@ test.describe('P4.9E4B — the Library file picker', () => {
     await expect(dialog.getByText('Document Stores')).toBeVisible({ timeout: 15_000 });
     await dialog.getByText(STORE_NAME, { exact: true }).click();
     await expect(dialog.getByText(`Browse Files — ${STORE_NAME}`)).toBeVisible({ timeout: 15_000 });
+    // P4.D387 (v4 c17033f04): a store browses on the document-store browser in
+    // pick mode; its row's name button picks the file.
+    await expect(dialog.locator('qt-document-store-browser')).toBeVisible({ timeout: 15_000 });
 
-    await dialog.getByRole('button', { name: /picker-plan/ }).first().click();
+    await dialog.locator('[data-testid="document-row"]').getByRole('button', { name: /picker-plan/ }).first().click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
 
     // No composer chip — the announcement IS the hand-off.

@@ -1293,6 +1293,30 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — test(e2e): the document-store browser walks on an own instance (4364), gated C13/C14 beats, and the library-picker store beat on the browser (P4.D387)
+
+_Versions: SPA 0.5.985._
+
+P4.D387 commit 12 (item 22). New `apps/web/e2e/document-store-browser-flow.spec.ts` runs on its own instance at 4364. It follows the `diagrams-flow` recipe: the salon pair is copied and re-keyed, the user rewritten, and `instance_settings` plus `chat_documents` are planted from `fresh_schema.json` (the pair predates both). Two database stores are seeded through dispatch and the multipart item PUT. No LLM mock is needed, so 45362 stays reserved.
+
+- **Ungated beats, all green:**
+  - the store page's `Files` browser;
+  - New folder;
+  - `Upload here` into the folder being browsed;
+  - a `.md` read-only in the viewer dialog;
+  - rename in place;
+  - delete after the in-page confirmation;
+  - one Escape over the Move dialog closing only it (R11);
+  - a PDF in the native `<object>`;
+  - Document Mode's picker in pick mode opening a `.md` in the editor;
+  - `New document here` in a folder.
+- **Gated beats:**
+  - behind `P4D381_SERVER_LANDED`: links / unlink, copy-folder + cross-store folder move + recursive folder delete, the `.docx` 422 fallback, and the counts moving on another write;
+  - behind `P4D380_SERVER_LANDED`: a `.png` in Document Mode's viewer pane, the General library button, and FilesCard Browse All.
+
+  The unifier flips both consts (§S.9).
+- **`salon-library-picker-flow.spec.ts:192`** (the store-attach beat) is re-aimed onto the store browser's row.
+
 #### 2026-11-08 — feat(spa): FilesCard Browse All opens the project store browser in a Project Files dialog (P4.D387; v4 c17033f04)
 
 _Versions: SPA 0.5.984._
