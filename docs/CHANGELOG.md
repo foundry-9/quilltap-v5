@@ -117,6 +117,12 @@ _Versions: core 0.0.1429._
 
 P4.D364, the round's PROVIDERS stacking commit. Every committed provider corpus was re-recorded from the `624d0d25c` pin at its SDK floors (`openai` 7.47.0, `@anthropic-ai/sdk` 1.4.0, `@google/genai` 2.32.0, `@openrouter/sdk` 1.5.34, `@quilltap/plugin-utils` 2.7.3). The re-record moved three framings beyond version stamps; the human ruled all three ported (2026-11-09). Anthropic: the builder sends no `temperature` / `top_p` on any model; the rejected-model list is renamed `BUDGET_THINKING_REJECTED_MODELS` and picks only the thinking shape; a message of any role whose attachments all failed and whose text is empty is dropped; the manifest moves to `anthropic-version: 2026-10-21` and `Authorization: Bearer` (SDK 1.x, and Anthropic's primary header); the Extended Thinking help text loses its sampling sentence. Google: `inlineData` keeps the plugin's `{mimeType, data}` order (genai 2.x copies it whole). OpenRouter: the image models list throws 1.5.34's typed error messages (the error's own `message`, `Response validation failed` on a schema miss, the default `API error occurred: Status …` shape otherwise), and the SDK key table gains `endpoints`. The manifest generator now emits the version, the auth and the plugin-declared `samplingParameters` key, so a regen reproduces `anthropic.json`. v4's assistant-document relocation is the named divergence `ASSISTANT_ATTACHMENTS_UNREPRESENTABLE`. `provider_sdk_version_guard` is re-pinned to the seven new versions. Recorder fixes: 16 new Anthropic rows and six OpenRouter error-arm rows; the NanoGPT image rows answer the bug-269 catalog GET; the OpenRouter model fixture carries the now-required `endpoints`. Unchanged after the re-record: google-request, all ten stream corpora, response bodies, text errors, tool wire, moderation and web search.
 
+#### 2026-11-08 — docs(porting): P4.D369 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The P4.D369 lane record in `status-log.md` (red-first counts, the measured erasure hazard, the import measurement, the DEBUG and import mutation proofs, the gate, the reds that belong to other lanes, HANDOFFs) and the order's status header set to LANE COMPLETE.
+
 #### 2026-11-08 — test(characters): the character-kind chokepoint census — v4's kind-chokepoint.test.ts, with a typed arm (P4.D369)
 
 _No crate versions bumped._

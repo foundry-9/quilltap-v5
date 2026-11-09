@@ -199322,3 +199322,102 @@ As the order lists them (six images to a cap-4 vision profile; the byte budget's
 **Versions at close:** core 0.0.1430, host 0.0.225; web, cli, tauri, sys, SPA unchanged; harness 0.0.1110 (frozen).
 
 **Status:** LANE COMPLETE except Tier 2 items 16 (the new row) and 17 (the probe-failure plant), both banked by name above.
+
+## P4.D369 — the character-kind KEYSTONE, server side (lane record, 2026-11-08)
+
+**Branch:** `claude/p4-d369-kind-9e079d`, cut from `SCHEMA` `4e3a1584e` (P4.D362's Tier-1 commit). The session started in an app-made worktree already sitting on that commit with no commits of its own, so no move was needed. Pin: `/tmp/qt-v4-pin-p4.d369-624d0d25c` at `624d0d25c` (`4.13.0-dev.8`); `npm ci --offline` succeeded first time (better-sqlite3 13.0.3, zod 4.6.7); plugin dirs by `.claude/pin-plugin-sdks.sh`.
+
+### §R.2 probe (observation)
+
+2026-11-08 21:53 CST: v4 `main` at `88c9cc81d` (10+ commits past the pin, incl. 4.12.2 and `88c9cc81d` "folder moves match folder paths case-insensitively", #147 — the coordinator's recorded row); `bugfix` at `d67c70a51` (4.12.2 bug branch); the checkout on `main`, tree CLEAN. Continued on the pin.
+
+### Commits
+
+| sha | unit |
+|---|---|
+| `4ff9bff3e` | **`KIND:`** `characters/kind.rs` + `pub mod kind;` + `cases/character-kind.ts` + `character_kind_equivalence` (core 0.0.1429) |
+| `c96b1985f` | docs: the `KIND` sha in the status header |
+| `b8024c66c` | Tier 1 items 3–8: lenient read, materialize, overlay, the four writers, `MANAGED_FIELDS`, the DEBUG (core 0.0.1430) |
+| `df46c2216` | Tier 1 item 9 + Tier 2 item 13: PUT, list DTO, the create bag (core 0.0.1431) |
+| `8b4fa3b66` | Tier 1 item 10: the `.qtap` import refusal (core 0.0.1432) |
+| `8e94be896` | Tier 1 item 12: the chokepoint census (harness only) |
+
+**`KIND`** = `4ff9bff3e`, pushed 2026-11-08 and SendMessaged to the coordinator (`local_04dae01f…`), which relays to P4.D370 / P4.D371 (neither was running). Contents: two source files (`characters/kind.rs`, `characters/mod.rs`), one case, one test, plus the version bump + CHANGELOG. **No amendment.** C5 signature: `kind_or_default(Option<&Value>)` — the round block's binding C5 reads `Option<&Value>` (the amendment the order's correction 2 anticipated), so the lane followed it; item 2's `&Value` prose is superseded.
+
+### Red-first (unported `SCHEMA` + `KIND`, regenerated from the pin; `/tmp/p4d369/redfirst-sweep.keep.log`)
+
+16 families: 11 red, 5 green.
+- `character_kind_equivalence`: red = absent symbol (the module did not exist); green from `KIND` on (42 rows equal).
+- `vault_json_parsers` RED (`[p-full] parse_vault_properties` — v4's parse gains `kind: "roleplay"` last; every success row).
+- `characters_scaffold_tier2` / `characters_create_tier2` / `characters_provision_tier2` / `vault_character_write` RED (`doc_mount_files` row state — the properties.json sha moved, nine keys vs eight).
+- `characters_update_tier2` RED at snapshot 0 (the legacy file + `talkativeness`): v4 writes `…"diagramStyle": "handDrawn",\n  "kind": "roleplay"\n}`, v5 wrote eight keys. **The erasure hazard, measured:** v4's snapshot 1 (an assistant file + `{title: "The Steward"}`) ends `"kind": "assistant"\n}`; unported v5's write rendered the eight `PROPERTY_KEYS` only, i.e. the same bytes WITHOUT the `kind` line — the v4-written `assistant` erased.
+- `characters_mutations` RED: every echo lacks `kind`; `p4d369_update_kind_{robot,null,mixed_case}` answered 200 where v4 answers 400; `…_with_bad_diagram` one issue where v4 has two; every `p4d369_create_with_*` row (8) differed.
+- `characters_read` (`findByIdRaw`), `characters_reads` (`list_all`, …), `vault_read_overlay` (hydrated character), `qtap_import` (`doc_mount_file_links`) RED.
+- Green before porting: `characters_slim_tier2`, `characters_physical_tier2`, `metadata_vault_roundtrip`, `store_name_reconcile` (none compares a properties.json content row) and `character_kind`.
+
+### Tier 1
+
+- **Items 3–8 landed** (`b8024c66c`). Unit tests: `vault_overlay::tests::{parses_a_file_without_the_key_as_roleplay_hollowing_nothing, reads_an_unrecognized_kind_as_roleplay_instead_of_failing_the_parse}`; `vault_character_update::p4d369_kind_tests` (5: legacy file → nine keys ending roleplay; an assistant file kept across `title` and `talkativeness` patches; a kind-only patch writes only that key, the slim row's `updatedAt` untouched, `robot` / `null` / `Assistant` through the repository write `roleplay`; the diagram line precedes the kind line, once; an absent file seeds roleplay). The materialize + overlay need no separate "once" test: `insert` on a `preserve_order` map overwrites in place (the key keeps the materialized slot after `diagramStyle`, which is where v4's spread puts it) — `characters_read` / `characters_reads` / `vault_read_overlay` green byte-for-byte.
+- **The DEBUG** fires on the CALLER thread (`update_character` runs inline on the test thread; `captured_with` sees it). **Mutation proof:** the message renamed → `a_kind_patch_writes_only_that_key_and_keeps_every_other` and `the_kind_line_follows_the_diagram_line` RED (2 of 5); restored.
+- **Item 9 + Tier 2 item 13 landed** (`df46c2216`). The PUT arm sits after `diagramStyle`, before `physicalDescription.humanoid` (shape order; `p4d369_update_kind_with_bad_diagram` proves two issues in order). `p4d349_update_issues` keeps its name; its doc now says four refusals. **Tier 2 item 13 measured:** v4 wrote the DEFAULT for all eight probed keys (`kind`, `talkativeness`, `pronouns`, `aliases`, `canChooseOutfit`, `canDrawDiagrams`, `diagramStyle`, `metadata`) where v5 wrote the body's value — all 8 rows red-first, all green after projecting from v4's explicit create bag (`create_vault_bag`), which subsumes item 9's minimum strip. **Dogfood-class finding text for the unifier:** "a v5 POST /characters wrote eight properties.json / metadata keys v4's createCharacterSchema strips (pre-existing since P4.6f); fixed by projecting v4's explicit create bag." Not ported (recorded): v4's `physicalDescription` sub-schema also strips `humanoid` / `headAndShouldersPrompt` at create; v5 still passes the body's physical object through (no row measured it; outside this order's keys).
+- **Item 10 landed** (`8b4fa3b66`), measured at the pin with a new isolated kind leg in `cases/qtap-import.ts` (re-reads the bug-75 bundle — `executeImport` mutates its input — and re-arms the repository singletons, the `v4-oracle-reinit-and-throwing-plants` trap): `assistant` → created, properties.json ends `"kind": "assistant"`; absent → created, `"kind": "roleplay"`; `robot` and `null` → REFUSED, warning `Failed to import character "Kind Robot": [\n  {\n    "code": "invalid_value",\n    "values": [\n      "roleplay",\n      "assistant"\n    ],\n    "path": [\n      "kind"\n    ],\n    "message": "Invalid option: expected one of \"roleplay\"|\"assistant\""\n  }\n]` (v4 also logs `Error creating character` at ERROR from the repository — NOT ported: v5 has no repository-level create ERROR line for any field; recorded). v5's pre-create check emits the same bytes via `zod_error_message`; mutation proof: check disabled → `kind import warnings (byte-exact)` RED.
+- **Item 11:** the K-A families regenerated from the pin and green by name (pass 1 `/tmp/p4d369/ported1-sweep.log`, broad pass `/tmp/p4d369/broad-sweep.log`). NDJSON line counts and `grep -o` markers (plain `"kind":"roleplay"` / escaped `\"kind\": \"roleplay\"`): `character-kind` 42; `vault-json-parsers` 56 / 16 / 0; `charupd` 1 / 2 / 3; `vault-character-write` 1 / 0 / 1; `characters-mutations` 71 / 35 / 0; `charread` 1 / 18 / 0; `characters-reads` 39 / 34 / 0; `vault-read-overlay` 1 / 7 / 0; `scaffold` 1 / 0 / 1; `charcreate` 1 / 1 / 2; `charprov` 1 / 1 / 2; `qtap-import` 1 / 3 / 4; `store-name-reconcile` 18 / 0 / 0; `metadata-roundtrip` 1 / 0 / 0. Two kind-only literal rows fixed: the scaffold family's default literal and `system_restore_state`'s `PRESERVE_BACKFILL` (fenced `// === P4.D369 ===`; 224 → 223 differences).
+- **Item 12 landed** (`8e94be896`): `character_kind_chokepoint_census`, four arms (literal `==`/`!=`, literal `matches!`, literal `match` arm, typed), the five v4 probes translated + seven more trips + seven non-offences, five committed evasion fixtures (`literal_eq`, `literal_matches`, `literal_match_arm`, `typed_eq`, `typed_match_arm`), and a guard that the chokepoint itself still trips (the exemption is load-bearing). Baseline on the branch: **0** offenders over the five crates.
+
+### Reds that are NOT this lane's (recorded by name, never fixed across the fence)
+
+- `characters_mutations` `tag_delete` + `tag_delete tables`: v4 answers 500 at the pin; RED at `SCHEMA` before any P4.D369 edit (red-first log). Same class as below.
+- `system_restore_state` (223 differences), `system_import_state` (`execute_overwrite_all` imported 0 profiles): v4's oracle throws `(0 , _providervalidation.acceptsSamplingParameters) is not a function` on every connection-profile write — the jest provider-validation mock lacks the 4.12 export. P4.D362 fixes it on its lane AFTER `SCHEMA` (`57a39acb3`, `9024789a2`); union row.
+- `ai_import_assembly`, `ai_import_tier3` (also v4's `appVersion` stamp), `character_optimizer_prompts`, `character_optimizer_tier3`, `character_wizard_tier3`, `generators_wizard_prompts`: the generators' field-semantics prose — P4.D371's by design.
+- `multi_character_turn_anchor`: `GROUP_SCENE_DISCIPLINE` — P4.D373's.
+- `tool_build_equivalence`: the tool lists differ in ORDER only (same sets; no `kind` content) — not this lane's (the order said it would not move; it moves on the pin for a sibling reason — P4.D370's slate / P4.D374's catalog). HANDOFF to the unifier for attribution.
+- `backup_uuid_remap`: refused by the driver by design.
+- `provisioning_equivalence`, `system_export_equivalence`, `system_backup_equivalence`, `system_restore_equivalence`: green in the broad sweep on this branch.
+
+### Standing censuses (Tier 2 item 15) — from the workspace gate
+
+- fmt clean; clippy `--workspace --all-targets -D warnings` clean, plain AND `--features quilltap-core/native-transport` (after `npm ci` + `npm run build` in `apps/web`).
+- `cargo test --workspace --no-fail-fast` (34-var lane env block, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin; log `/tmp/p4d369/workspace-gate.log`): **906 binaries / 6,067 passed / 5 failed / 3 ignored.** None is this lane's:
+  - `cli_differential` — 424 cases / 1 failure, `[db help] stdout differs` (v4's `db integrity` help line — P4.D365's);
+  - `builtin_prompt_templates_guard` — P4.D373's by-design flip;
+  - `provider_sdk_version_guard` — P4.D364's by-design flip;
+  - `characters_mutations_equivalence` — only `tag_delete` / `tag_delete_tables` (the P4.D362 profile class above); every `p4d369_*` row green;
+  - `spelling_guard` — one hit in the COMMITTED setupphase survey `surveys/2026-11-04-setupphase-vendor-norport.md:295` (a quoted `git grep` command), present at `SCHEMA`; HANDOFF to the unifier (a `quilltap-spelling-exception` mark).
+- Green by name (unmoved): `fallback_home_guard`, `dispatch_wrong_type_census`, `web_edge_body_parse_guard`, `import_warning_text_guard` (the new refusal goes through `zod_error_message`, no new offender), `host_zone_sites_census`, `qtap_schema_embed_guard`, `chat_turn_mode_routes_equivalence`; `recipe_sweep.py --self-test` 0.
+- No SPA file moved (no `npm test` / Playwright).
+
+### HANDOFFs
+
+| id | to | item | measurable |
+|---|---|---|---|
+| H1 | P4.D370 / P4.D371 | `KIND` `4ff9bff3e` (C5, `kind_or_default(Option<&Value>)`) | the children compile against it unchanged |
+| H2 | P4.D370 | its assistant-kind tier-3 rows read through this overlay | `orchestrator_tier3` assistant rows green on the union |
+| H3 | P4.D388 | the wire: item GET `kind` (overlay), list DTO `kind` after `diagramStyle`, PUT `{kind}` + its 400 | its gated card beat LIVE at §S.9 |
+| H4 | the unifier | the census as a §S.4 union census over P4.D370 / P4.D371 code; `system_export_equivalence`; the connection-profile reds above (P4.D362's later commits); `tool_build` attribution | green on the union |
+| H5 | P4.D362 | none needed: `schema-key-order.json` / the dump already carry `kind` (no `system_export` red on this branch) | — |
+
+### Corrections raised
+
+§R.10 (m) (the import key lives in `quilltap_import/characters.rs`, confirmed); C5's signature (followed the block's `Option<&Value>`); the create-path class (Tier 2 item 13, fixed); the comment-only hunks (carried into `vault_read_overlay.rs` and the `vault_character_update.rs` module doc); `readCharacterVaultManagedFields`' `snapshot.kind` NO-COUNTERPART (recorded in `CharacterVaultWriteInput.kind`'s doc); the fresh-only `characters."kind"` column never read (Tier 3 item 17, recorded in the materialize comment); `isAssistantCharacter` ported for parity (no v4 caller). No planner answer received.
+
+### Oracle regen recipes (each from the pin; canonical headers say `cd ~/source/quilltap-server`)
+
+- `character_kind_equivalence`: `cd "$PIN" && $N/npx tsx <v5w>/harness/oracle/cases/character-kind.ts > /tmp/oracle-character-kind.ndjson`; run `QT_ORACLE_CHARACTER_KIND=… cargo test -p quilltap-harness --test character_kind_equivalence`.
+- Every other family: `/opt/homebrew/bin/python3.13 harness/tools/recipe_sweep.py --v5w ~/source/quilltap-v5/.claude/worktrees/p4-d369-kind-9e079d --v4 /tmp/qt-v4-pin-p4.d369-624d0d25c --force --run <family>` (headers unchanged except the new `qtap_import` leg, which needs no new env).
+
+### Fixtures changed
+
+Committed spec JSONs only: `characters-update-tier2.json` (+10 ops), `vault-character-write-tier2.json` (+3 ops). No `.db` pair rebuilt; the per-run minted builders (`charupd`, `vault-character-write`, `qtap-import`) re-mint at regen. Other oracles invalidated: none beyond the families above (each regenerates its own).
+
+### Gotchas
+
+- `executeImport` MUTATES its `exportData` in place: a later leg that reuses the parsed object imports stringified arrays (`expected array, received string` on every collection). Re-read the file.
+- A self-matching wait loop (`ps | grep "cargo clippy --workspace"`) nearly recurred; a sentinel line in the background task's output is the safe wait.
+
+### Versions at close
+
+core 0.0.1432 (no other crate bumped; harness frozen).
+
+### 💸 for the owed dogfood pass
+
+As the order lists (the Friday-copy `kind` count before the first v5 write; an assistant character's talkativeness edit keeps `assistant` with the DEBUG silent; PUT `{kind:'assistant'}` fires the DEBUG once and both GETs answer `assistant`, `{kind:'Assistant'}` answers 400; a POST with `kind:'assistant'` creates `roleplay`; a `.qtap` round trip keeps `assistant`) — plus: a POST carrying `talkativeness` / `aliases` / `metadata` creates the defaults (Tier 2 item 13).
