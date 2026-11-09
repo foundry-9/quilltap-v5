@@ -895,6 +895,98 @@ fn read_err(e: DbError) -> ResolveError {
     ResolveError::path(PathErrorCode::AccessDenied, e.to_string())
 }
 
+// === P4.D380 === (v4 `4310d435f` — the resolved-file helpers, `path-resolver.ts:785-824`)
+
+/// What [`stat_resolved_file`] reports about a path on disk (v4
+/// `ResolvedFileStat {isFile, size, mtime: Date}`; the `Date` carried as its
+/// millisecond epoch, `stats.mtime.getTime()`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ResolvedFileStat {
+    pub is_file: bool,
+    pub size: u64,
+    pub mtime_ms: i64,
+}
+
+/// v4 `statResolvedFile` — stat the on-disk file behind a filesystem-backed
+/// [`ResolvedPath`]. `Ok(None)` when nothing is there (`ENOENT` / `ENOTDIR`),
+/// so callers probe existence without catching; **any other error (permissions,
+/// I/O) bubbles rather than reading as "absent"** (round ruling R-4 — the one
+/// behaviour change of `4310d435f`: an `EACCES` must never read as "free" and
+/// be written over). Database-backed paths have no disk file and also give
+/// `None`. `std::fs::metadata` follows symlinks, as `fs.stat` does — a dangling
+/// link is `ENOENT`.
+pub fn stat_resolved_file(resolved: &ResolvedPath) -> std::io::Result<Option<ResolvedFileStat>> {
+    if resolved.mount_type.as_deref() == Some("database") || resolved.absolute_path.is_empty() {
+        return Ok(None);
+    }
+    match std::fs::metadata(&resolved.absolute_path) {
+        Ok(meta) => Ok(Some(ResolvedFileStat {
+            is_file: meta.is_file(),
+            size: meta.len(),
+            mtime_ms: crate::tools::doc_edit::shared::metadata_mtime_ms(&meta),
+        })),
+        Err(e) if is_absent_io_error(&e) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// The one absent class (R-4): v4's `code === 'ENOENT' || code === 'ENOTDIR'`.
+pub fn is_absent_io_error(e: &std::io::Error) -> bool {
+    matches!(
+        e.kind(),
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+    )
+}
+
+/// v4 `moveResolvedFile` — move a file between two filesystem-backed resolved
+/// paths, creating the destination's parent directory. The caller checks for a
+/// taken destination.
+pub fn move_resolved_file(from: &ResolvedPath, to: &ResolvedPath) -> std::io::Result<()> {
+    tracing::debug!(
+        from = %from.relative_path,
+        to = %to.relative_path,
+        "Moving resolved file"
+    );
+    if let Some(parent) = Path::new(&to.absolute_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::rename(&from.absolute_path, &to.absolute_path)
+}
+
+/// v4 `deleteResolvedFile` — delete the on-disk file behind a filesystem-backed
+/// resolved path.
+pub fn delete_resolved_file(resolved: &ResolvedPath) -> std::io::Result<()> {
+    tracing::debug!(path = %resolved.relative_path, "Deleting resolved file");
+    std::fs::remove_file(&resolved.absolute_path)
+}
+
+/// The Node errno name (`error.code`) for an [`std::io::Error`] — what the
+/// differential compares for a rethrown stat / move / delete. Unmapped OS
+/// errors read `E<raw>` so a new class is visible rather than silently equal.
+pub fn io_error_code(e: &std::io::Error) -> String {
+    let name = match e.raw_os_error() {
+        Some(1) => "EPERM",
+        Some(2) => "ENOENT",
+        Some(5) => "EIO",
+        Some(13) => "EACCES",
+        Some(17) => "EEXIST",
+        Some(18) => "EXDEV",
+        Some(20) => "ENOTDIR",
+        Some(21) => "EISDIR",
+        Some(22) => "EINVAL",
+        Some(62) if cfg!(target_os = "macos") => "ELOOP",
+        Some(40) if cfg!(target_os = "linux") => "ELOOP",
+        Some(63) if cfg!(target_os = "macos") => "ENAMETOOLONG",
+        Some(36) if cfg!(target_os = "linux") => "ENAMETOOLONG",
+        Some(66) if cfg!(target_os = "macos") => "ENOTEMPTY",
+        Some(39) if cfg!(target_os = "linux") => "ENOTEMPTY",
+        Some(n) => return format!("E{n}"),
+        None => return format!("{:?}", e.kind()),
+    };
+    name.to_string()
+}
+// === end P4.D380 ===
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1689,3 +1781,104 @@ mod tests {
         }
     }
 }
+
+// === P4.D380 === (the resolved-file helpers' unit pins; the differential is
+// `quilltap-harness/tests/doc_resolved_file_equivalence.rs`)
+#[cfg(test)]
+mod resolved_file_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    fn fs_path(abs: &Path, rel: &str) -> ResolvedPath {
+        ResolvedPath {
+            absolute_path: abs.join(rel).to_string_lossy().into_owned(),
+            scope: DocEditScope::General,
+            mount_point_id: None,
+            mount_point_name: None,
+            mount_type: None,
+            base_path: abs.to_string_lossy().into_owned(),
+            relative_path: rel.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_missing_path_a_file_under_a_file_and_a_dangling_link_read_as_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("plain.md"), "x").unwrap();
+        std::os::unix::fs::symlink("nowhere.md", dir.path().join("dangling.md")).unwrap();
+        assert_eq!(
+            stat_resolved_file(&fs_path(dir.path(), "missing.md")).unwrap(),
+            None
+        );
+        // ENOTDIR: a path under a regular file.
+        assert_eq!(
+            stat_resolved_file(&fs_path(dir.path(), "plain.md/child.md")).unwrap(),
+            None
+        );
+        assert_eq!(
+            stat_resolved_file(&fs_path(dir.path(), "dangling.md")).unwrap(),
+            None
+        );
+        let hit = stat_resolved_file(&fs_path(dir.path(), "plain.md"))
+            .unwrap()
+            .unwrap();
+        assert!(hit.is_file);
+        assert_eq!(hit.size, 1);
+        let folder = stat_resolved_file(&fs_path(dir.path(), ""))
+            .unwrap()
+            .unwrap();
+        assert!(!folder.is_file);
+    }
+
+    #[test]
+    fn eacces_bubbles_rather_than_reading_as_absent() {
+        // R-4: a child of a mode-000 directory is EACCES for a non-root user.
+        let dir = tempfile::tempdir().unwrap();
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::write(locked.join("a.md"), "x").unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let got = stat_resolved_file(&fs_path(dir.path(), "locked/a.md"));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let err = got.expect_err("EACCES must bubble");
+        assert_eq!(io_error_code(&err), "EACCES");
+        assert!(!is_absent_io_error(&err));
+    }
+
+    #[test]
+    fn a_database_path_and_an_empty_absolute_path_have_no_disk_file() {
+        let mut db = fs_path(Path::new("/tmp"), "x.md");
+        db.mount_type = Some("database".into());
+        assert_eq!(stat_resolved_file(&db).unwrap(), None);
+        let mut empty = fs_path(Path::new("/tmp"), "x.md");
+        empty.absolute_path.clear();
+        assert_eq!(stat_resolved_file(&empty).unwrap(), None);
+    }
+
+    #[test]
+    fn move_and_delete_log_v4s_debug_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let from = fs_path(dir.path(), "a.md");
+        let to = fs_path(dir.path(), "deep/er/b.md");
+        let (r, lines) = crate::test_support::captured_with(|| move_resolved_file(&from, &to));
+        r.unwrap();
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap_core::doc_edit::path_resolver Moving resolved file from=a.md to=deep/er/b.md".to_string()]
+        );
+        assert!(dir.path().join("deep/er/b.md").is_file());
+        let (r, lines) = crate::test_support::captured_with(|| delete_resolved_file(&to));
+        r.unwrap();
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap_core::doc_edit::path_resolver Deleting resolved file path=deep/er/b.md".to_string()]
+        );
+        assert!(!dir.path().join("deep/er/b.md").exists());
+        // The silence leg: a stat logs nothing.
+        let (_, lines) =
+            crate::test_support::captured_with(|| stat_resolved_file(&fs_path(dir.path(), "a.md")));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+}
+// === end P4.D380 ===

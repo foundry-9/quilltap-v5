@@ -790,6 +790,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(doc-edit): the resolved-file helpers — stat / move / delete with v4's absent class (P4.D380, v4 4310d435f)
+
+_Versions: core 0.0.1430._
+
+Appends `stat_resolved_file`, `move_resolved_file` and `delete_resolved_file` to `doc_edit/path_resolver.rs` (v4 `path-resolver.ts:785-824` at `624d0d25c`), plus `is_absent_io_error` and `io_error_code` (the Node errno name). Only `ENOENT` / `ENOTDIR` read as absent; every other error, `EACCES` included, propagates (round ruling R-4). `stat` follows symlinks, as `fs.stat` does, and answers nothing for a database-backed path or an empty absolute path. `move` and `delete` log v4's DEBUG lines `Moving resolved file` `{from, to}` and `Deleting resolved file` `{path}`. New tier-1 family `doc_resolved_file_equivalence` drives v4's real helpers over 21 per-row temp trees (missing, ENOTDIR, dangling and live symlinks, mode-000 parents, a move onto a non-empty folder, an unlink of a folder) and compares results, errno codes, post-op existence and the log lines.
+
 #### 2026-11-08 — fix(reach): the path resolver's roster unit test reads the pool's DEBUG (REACH follow-up)
 
 _Versions: core 0.0.1429._
