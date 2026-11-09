@@ -730,6 +730,12 @@ _Versions: core 0.0.1429._
 
 `REACH` (`07b68e7c3`) moved the project-roster DEBUG from the doc-edit path resolver into the tiered pool (`Character off project roster — project tier withheld`, target `quilltap_core::db::tiered_mount_pool`) but left one core unit test pinning the retired `Path resolver: …` line; the workspace gate, owed when `REACH` landed, caught it. Test-only.
 
+#### 2026-11-09 — feat(pascal): the custom-tool preset naming contract as a Rust twin (P4.D379 item 1, v4 fd165fce0)
+
+_Versions: core 0.0.1430._
+
+NEW `pascal/tool_presets.rs`: `PRESET_NAME_PATTERN`, `PRESET_FILE_SUFFIX` and `parse_preset_from_path`, ported from v4 `lib/pascal/tool-presets.ts` at the `624d0d25c` pin (the server half; the SPA keeps its own twin, and v4's two client-only helpers are not ported). Prefix and suffix match case-sensitively, and an overlapping prefix and suffix (`Tools/coin.settings.json` for tool `coin`) answers no preset instead of panicking on the slice. New tier-1 family `pascal_tool_presets_equivalence` (oracle `pascal-tool-presets.ts`: one constants row, 24 pattern rows, 46 parse rows).
+
 #### 2026-11-08 — fix(reach): the path resolver's roster unit test reads the pool's DEBUG (REACH follow-up)
 
 _Versions: core 0.0.1429._

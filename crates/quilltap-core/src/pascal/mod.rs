@@ -23,6 +23,7 @@ pub mod side_effects;
 pub mod tool_effect; // P4.D343
 pub mod tool_gate;
 pub mod tool_gate_keys;
+pub mod tool_presets; // P4.D379
 pub mod tool_vocabulary;
 pub mod trigger_phrases;
 pub mod trigger_runner;
