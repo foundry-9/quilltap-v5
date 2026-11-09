@@ -1293,6 +1293,12 @@ _Docs-only change._
 
 Records `BROWSER` (`8785aeca0`) in P4.D386's status header on the lane branch, so P4.D387 can branch from it.
 
+#### 2026-11-08 — feat(spa): FilesCard Browse All opens the project store browser in a Project Files dialog (P4.D387; v4 c17033f04)
+
+_Versions: SPA 0.5.984._
+
+P4.D387 commit 11 (item 19). `screens/prospero/cards/project-files-card.ts`'s "Browse All Files" is no longer a disabled tier-3 placeholder. It opens a `qt-modal` (`title="Project Files"`, `maxWidth="3xl"`, `[closeOnBackdrop]="false"`) that hosts `qt-project-store-browser` (`scrollList`) in a `min-h-[400px] p-2` body. Closing it re-reads the card's own list (`projectKeys.files`, v4's `onFilesChange`), since the browser re-reads only its own listing. Upload happens there, through the browser's `Upload here`; the card's own `Upload Files` button stays the recorded tier-3 deferral. `aria-expanded` was verified: it was already converged through `ui/collapsible-card.ts`. `projects.spec.ts`'s FilesCard case is re-aimed to the open / backdrop / close cycle (fenced).
+
 #### 2026-11-08 — feat(spa): the Library picker browses a project's store and any store on the document-store browser; General keeps the legacy panel (P4.D387; v4 c17033f04)
 
 _Versions: SPA 0.5.983._

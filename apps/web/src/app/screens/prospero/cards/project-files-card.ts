@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { injectQuery } from '@tanstack/angular-query-experimental';
+import { QueryClient, injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
 import type { ProjectFileDto } from '../../../core/core-contract';
@@ -9,6 +9,7 @@ import { formatBytes } from '../../../ui/format-bytes';
 import { FileThumbnail } from '../../files/file-thumbnail';
 import { fileUrl } from '../../../images/image-urls';
 import { buildMountBlobUrl } from '../../scriptorium/scriptorium.api';
+import { ProjectStoreBrowser } from '../../../document-browser/project-store-browser';
 import { fetchProjectFiles, projectKeys } from '../projects.api';
 
 /**
@@ -18,15 +19,18 @@ import { fetchProjectFiles, projectKeys } from '../projects.api';
  * files` line. A store-backed row's thumbnail and preview go through the
  * mount-point blob route, as v4's do. Clicking an image opens a plain lightbox.
  *
- * DEFERRED LOUDLY (tier 3): "Browse All Files" (the ~5k-line FileBrowser /
- * FilePreview family) is a disabled affordance; project file UPLOAD (multipart
- * to the files/mount routes) is not shipped this round — lane C ships only the
- * characters-photos route.
+ * "Browse All Files" (v4 `c17033f04`, P4.D387 item 19) opens the project's
+ * own store in the document-store browser (`qt-project-store-browser`) in a
+ * `Project Files` dialog that a backdrop click does not close; closing it
+ * re-reads this card's list, since the browser re-reads only its own listing
+ * (v4 `onFilesChange`). Files are uploaded there, through the browser's
+ * `Upload here`. The card's own `Upload Files` button (v4's multipart upload
+ * into the project store) is the standing tier-3 deferral.
  */
 @Component({
   selector: 'qt-project-files-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CollapsibleCard, FileThumbnail, Modal],
+  imports: [CollapsibleCard, FileThumbnail, Modal, ProjectStoreBrowser],
   template: `
     <qt-collapsible-card
       title="Files"
@@ -76,14 +80,25 @@ import { fetchProjectFiles, projectKeys } from '../projects.api';
         <button
           type="button"
           class="w-full qt-button qt-button-secondary text-sm"
-          title="The full file browser is not yet available"
-          disabled
+          (click)="browserOpen.set(true)"
         >
           Browse All Files
         </button>
       </div>
     </qt-collapsible-card>
 
+    @if (browserOpen()) {
+      <qt-modal
+        title="Project Files"
+        maxWidth="3xl"
+        [closeOnBackdrop]="false"
+        (close)="closeBrowser()"
+      >
+        <div class="min-h-[400px] p-2">
+          <qt-project-store-browser [projectId]="projectId()" [scrollList]="true" />
+        </div>
+      </qt-modal>
+    }
     @if (lightbox(); as src) {
       <qt-modal title="Preview" maxWidth="2xl" (close)="lightbox.set(null)">
         <img [src]="src" alt="File preview" class="max-h-[70vh] w-full object-contain" />
@@ -96,7 +111,10 @@ export class ProjectFilesCard {
   readonly defaultOpen = input(false);
 
   private readonly core = inject(CoreClient);
+  private readonly queryClient = inject(QueryClient);
   protected readonly lightbox = signal<string | null>(null);
+  /** The Browse All dialog (v4 `showBrowser`). */
+  protected readonly browserOpen = signal(false);
 
   private readonly filesQuery = injectQuery(() => ({
     queryKey: projectKeys.files(this.projectId()),
@@ -110,6 +128,12 @@ export class ProjectFilesCard {
     const n = this.files().length;
     return `${n} file${n !== 1 ? 's' : ''}`;
   });
+
+  /** v4: closing the browser re-reads the card's own list (`onFilesChange`). */
+  protected closeBrowser(): void {
+    this.browserOpen.set(false);
+    void this.queryClient.invalidateQueries({ queryKey: projectKeys.files(this.projectId()) });
+  }
 
   protected sizeLabel(file: ProjectFileDto): string {
     return formatBytes(file.size ?? 0);

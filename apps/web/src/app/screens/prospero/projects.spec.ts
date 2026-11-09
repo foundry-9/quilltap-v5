@@ -7,7 +7,7 @@ import {
   QueryObserver,
   provideTanStackQuery,
 } from '@tanstack/angular-query-experimental';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { coreStreamStub } from '../../core/core-client.testing';
@@ -1674,18 +1674,39 @@ describe('ProjectFilesCard', () => {
     expect(imgs[1].getAttribute('src')).toContain('/api/v1/files/f1?action=thumbnail&size=40');
   });
 
-  it("caps the list at the first 10 files, says v4's +N more files, and disables Browse All Files", async () => {
+  it("caps the list at the first 10 files and says v4's +N more files", async () => {
     const many = Array.from({ length: 14 }, (_, i) =>
       storeRow({ id: `f${i}`, originalFilename: `f${i}.md`, relativePath: `f${i}.md` }),
     );
     const fixture = await render(many);
     expect(rowTexts(fixture).length).toBe(10);
     expect(fixture.nativeElement.textContent).toContain('+4 more files');
+  });
+
+  // === P4.D387 item 19 (v4 c17033f04 FilesCard :156-185) ===
+  it('Browse All Files opens the project store browser in a Project Files dialog; closing re-reads the card', async () => {
+    const fixture = await render([storeRow()]);
     const browse = [...fixture.nativeElement.querySelectorAll('button')].find(
       (b: HTMLButtonElement) => b.textContent?.trim() === 'Browse All Files',
     ) as HTMLButtonElement;
-    expect(browse.disabled).toBe(true);
+    expect(browse.disabled).toBe(false);
+    browse.click();
+    fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('qt-modal') as HTMLElement;
+    expect(dialog.querySelector('.qt-dialog-title')!.textContent).toBe('Project Files');
+    expect((dialog.querySelector('.qt-dialog') as HTMLElement).style.maxWidth).toBe('48rem');
+    expect(dialog.querySelector('qt-project-store-browser')).not.toBeNull();
+    // A backdrop click does not close it (v4 closeOnClickOutside={false}).
+    (dialog.querySelector('.qt-dialog-overlay') as HTMLElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('qt-project-store-browser')).not.toBeNull();
+    const invalidate = vi.spyOn(TestBed.inject(QueryClient), 'invalidateQueries');
+    (dialog.querySelector('button[aria-label="Close"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('qt-project-store-browser')).toBeNull();
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: projectKeys.files('p1') });
   });
+  // === end P4.D387 ===
 });
 
 /**
