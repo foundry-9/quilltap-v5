@@ -723,6 +723,11 @@ impl<'c> DocMountFileLinksRepository<'c> {
             mount_point_id,
             &rel,
         );
+        // v4 `emitDocumentWritten` (`database-store.ts:277`) — the store's
+        // `mountPoints` hint. v4 has ONE `writeDatabaseDocument`, so every overlay
+        // projection that lands here (inventory, wardrobe, managed fields, project
+        // / group stores, summaries) announces its store as v4's does.
+        crate::services::mount_index::realtime::emit_document_written(mount_point_id, &rel);
 
         Ok(result)
     }
@@ -1332,6 +1337,9 @@ impl<'c> DocMountFileLinksRepository<'c> {
             return Ok(false);
         };
         self.delete_with_gc_or_false(&link.id);
+        // v4 `emitDocumentDeleted` (`database-store.ts:302`), whatever the GC
+        // answered — only an absent link returns before it.
+        crate::services::mount_index::realtime::emit_document_deleted(mount_point_id, &rel);
         Ok(true)
     }
 

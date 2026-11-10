@@ -293,6 +293,9 @@ pub fn delete_wardrobe_item_image_link(
         return false;
     };
     let blob_collected = links.delete_with_gc_or_false(&link.id);
+    // v4 `emitDocumentDeleted({ mountPointId, relativePath })`
+    // (`wardrobe-image-bridge.ts:213`) — the store's `mountPoints` hint.
+    crate::services::mount_index::realtime::emit_document_deleted(mount_point_id, &relative_path);
     // v4 `refreshStats(mountPointId).catch(() => {})` — best-effort.
     let _ = DocMountPointsRepository::new(mount).refresh_stats(mount_point_id);
     tracing::debug!(

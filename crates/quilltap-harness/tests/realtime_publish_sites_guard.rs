@@ -278,6 +278,22 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          rescan's `:784` lives in v5's `scanner.rs`).",
     ),
     (
+        "crates/quilltap-core/src/db/doc_mount_file_links.rs",
+        "realtime::emit_document_",
+        2,
+        "v4 `database-store.ts`'s write `:277` and delete `:302` again, in the \
+         REPOSITORY twins of `writeDatabaseDocument` / `deleteDatabaseDocument` \
+         every vault-overlay projection writes through (inventory, wardrobe, \
+         managed fields, project / group stores, summaries — v4's one function).",
+    ),
+    (
+        "crates/quilltap-core/src/services/wardrobe_image_bridge.rs",
+        "realtime::emit_document_",
+        1,
+        "v4 `wardrobe-image-bridge.ts:213`: a picture link's delete (only when \
+         the link was found).",
+    ),
+    (
         "crates/quilltap-core/src/services/mount_index/scanner.rs",
         "realtime::emit_document_",
         1,

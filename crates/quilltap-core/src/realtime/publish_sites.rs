@@ -1932,6 +1932,82 @@ mod mount_store_publish_sites {
         assert!(cap.drain().await.is_empty(), "an absent delete announced");
     }
 
+    // ── the repository twins of `writeDatabaseDocument` / `deleteDatabaseDocument`
+    // (`database-store.ts:277, :302`) — every vault-overlay projection (the
+    // inventory, wardrobe, character managed fields, project / group stores,
+    // conversation summaries, wardrobe instructions) writes through these, as
+    // v4's overlay writes through the one `writeDatabaseDocument`.
+
+    #[tokio::test]
+    async fn the_repository_write_and_delete_twins_publish() {
+        let fx = fixture();
+        let links = crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(
+            fx.mount.connection(),
+        );
+        let mut cap = HintCapture::start();
+        links
+            .write_database_document(&fx.a, "notes/r.md", "r")
+            .unwrap();
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        assert!(links.delete_database_document(&fx.a, "notes/r.md").unwrap());
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+        // Silence: an absent path returns before the emit.
+        assert!(!links
+            .delete_database_document(&fx.a, "notes/zz.md")
+            .unwrap());
+        assert!(cap.drain().await.is_empty(), "an absent delete announced");
+    }
+
+    // ── v4 `wardrobe-image-bridge.ts:213`: a picture link's delete ──
+
+    #[tokio::test]
+    async fn a_wardrobe_item_image_link_delete_publishes_only_when_found() {
+        use crate::services::wardrobe_image_bridge::delete_wardrobe_item_image_link;
+        let fx = fixture();
+        let rel = crate::services::wardrobe_image_paths::wardrobe_item_image_path(
+            "item-1", "a.webp", "images",
+        );
+        crate::db::doc_mount_file_links::DocMountFileLinksRepository::new(fx.mount.connection())
+            .link_blob_content(&crate::db::doc_mount_file_links::LinkBlobInput {
+                mount_point_id: fx.a.clone(),
+                relative_path: rel.clone(),
+                file_name: "a.webp".into(),
+                file_type: None,
+                original_file_name: Some("a.webp".into()),
+                original_mime_type: Some("image/webp".into()),
+                stored_mime_type: "image/webp".into(),
+                sha256: "1".repeat(64),
+                data: vec![1, 2, 3],
+                normalize_images: false,
+                description: None,
+                conversion_status: None,
+                extracted_text: None,
+                extracted_text_sha256: None,
+                extraction_status: None,
+                last_modified: None,
+                created_at: None,
+            })
+            .unwrap();
+        let mut cap = HintCapture::start();
+        // Silence: no link → the early return before the emit.
+        assert!(!delete_wardrobe_item_image_link(
+            fx.mount.connection(),
+            &fx.a,
+            "item-1",
+            "missing.webp",
+            "images"
+        ));
+        assert!(cap.drain().await.is_empty(), "an absent picture announced");
+        assert!(delete_wardrobe_item_image_link(
+            fx.mount.connection(),
+            &fx.a,
+            "item-1",
+            "a.webp",
+            "images"
+        ));
+        assert_eq!(cap.drain_expecting(1).await, vec![mp(&fx.a)]);
+    }
+
     #[tokio::test]
     async fn a_folder_move_emits_per_document_and_a_blob_only_folder_nothing() {
         let fx = fixture();
