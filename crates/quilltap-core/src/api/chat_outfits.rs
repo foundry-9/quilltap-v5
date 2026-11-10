@@ -319,7 +319,7 @@ pub fn chat_wardrobe_history_get(db: &Db, chat_id: &str, character_id: Option<&s
         }) {
             Ok(pool) => pool,
             Err(crate::db::DbError::PartitionUnavailable(_)) => {
-                load_wearable_pool_degraded(main, character_id)
+                load_wearable_pool_degraded(main, character_id, Some(chat_id))
             }
             Err(e) => return Err(e),
         };
@@ -1036,7 +1036,7 @@ async fn put_on_or_fit(
                     ..LoadWearablePoolOptions::default()
                 },
             ),
-            None => load_wearable_pool_degraded(main, &parsed.character_id),
+            None => load_wearable_pool_degraded(main, &parsed.character_id, Some(&cid)),
         };
         if parsed.mode == "set_all" {
             let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
@@ -1227,7 +1227,7 @@ pub async fn chat_wardrobe_rollback(
                     ..LoadWearablePoolOptions::default()
                 },
             ),
-            None => load_wearable_pool_degraded(main, &character_id),
+            None => load_wearable_pool_degraded(main, &character_id, Some(&cid)),
         };
         // v4 `outfit.ts:383-389` awaits `loadWearablePool` as its own
         // statement and evaluates `operatorWardrobeProvenance(chat)` while

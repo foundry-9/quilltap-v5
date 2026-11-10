@@ -493,16 +493,52 @@ pub fn load_wearable_pool(
 /// vault wardrobe, the group members, the project links, the shared tiers each
 /// answer empty without throwing (measured through v4's REAL `?action=
 /// wardrobe-history` on a degraded clone: no `[WearablePool]` WARN, every
-/// count and both mount counts `0`) — so the pool is EMPTY and every slot id a
-/// caller resolves against it reads missing. Same DEBUG as the sound load.
-pub fn load_wearable_pool_degraded(main: &Connection, character_id: &str) -> WearablePool {
-    // The two tiers v4 still REACHES: the shared General tier (its pointer is
-    // in `instance_settings`) and the character's own vault (its pointer on
-    // the raw row) — each a folder read + a `wardrobe.json` read through the
-    // fallback overlay, one quiet DEBUG apiece (measured: four for a vaulted
-    // character under a provisioned General). The group / project tiers
-    // resolve no mount at all on a degraded partition.
+/// item count `0`) — so the pool is EMPTY and every slot id a caller resolves
+/// against it reads missing. Same DEBUG as the sound load.
+///
+/// The OPERATOR project tier (every caller is the Salon's operator door, so
+/// no roster gate): since v4 `0c47f4539` (P4.D376 shift (a)) the project's
+/// official store comes FIRST from the RAW project row on main, so it
+/// survives a degraded mount index — `projectMountCount` counts it and its
+/// shared-tier reads cost the same two fallback DEBUGs a store does (measured
+/// at the `624d0d25c` pin: six lines + `projectMountCount=1` for a vaulted
+/// character under a provisioned General in a project chat). The links half
+/// (`project_doc_mount_links`, on the mount index) reads empty.
+pub fn load_wearable_pool_degraded(
+    main: &Connection,
+    character_id: &str,
+    chat_id: Option<&str>,
+) -> WearablePool {
+    // The tiers v4 still REACHES: the shared General tier (its pointer is in
+    // `instance_settings`), the chat project's official store (its pointer on
+    // the raw project row) and the character's own vault (its pointer on the
+    // raw row) — each a folder read + a `wardrobe.json` read through the
+    // fallback overlay, one quiet DEBUG apiece. The group tier resolves no
+    // mount at all on a degraded partition.
     let degraded = DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex);
+    let project_ids: Vec<String> = chat_id
+        .filter(|c| !c.is_empty())
+        .and_then(|cid| {
+            crate::db::fallback::find_by_id_or_none("chats", cid, || {
+                chats_read::find_by_id(main, cid)
+            })
+        })
+        .and_then(|chat| {
+            chat.get("projectId")
+                .and_then(Value::as_str)
+                .filter(|p| !p.is_empty())
+                .map(str::to_string)
+        })
+        .and_then(|project_id| crate::db::projects::find_by_id_raw_or_none(main, &project_id))
+        .and_then(|project| {
+            project
+                .get("officialMountPointId")
+                .and_then(Value::as_str)
+                .filter(|o| !o.is_empty())
+                .map(str::to_string)
+        })
+        .into_iter()
+        .collect();
     let general = instance_settings::get_general_mount_point_id(main)
         .ok()
         .flatten()
@@ -514,14 +550,14 @@ pub fn load_wearable_pool_degraded(main: &Connection, character_id: &str) -> Wea
                 .map(|p| !p.is_empty())
         })
         .unwrap_or(false);
-    for _ in 0..(usize::from(general) + usize::from(vaulted)) * 2 {
+    for _ in 0..(usize::from(general) + project_ids.len() + usize::from(vaulted)) * 2 {
         crate::db::fallback::log_mount_index_unavailable("doc_mount_documents", &degraded);
     }
     let pool = build_wearable_pool(
         character_id,
         WardrobeTierMounts {
             group_mount_point_ids: Vec::new(),
-            project_mount_point_ids: Vec::new(),
+            project_mount_point_ids: project_ids.clone(),
         },
         Vec::new(),
         Vec::new(),
@@ -536,7 +572,7 @@ pub fn load_wearable_pool_degraded(main: &Connection, character_id: &str) -> Wea
         generalCount = 0,
         reachable = pool.reachable(),
         groupMountCount = 0,
-        projectMountCount = 0,
+        projectMountCount = project_ids.len(),
         context = "wardrobe",
         "[WearablePool] Loaded wearable pool"
     );
