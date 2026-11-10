@@ -17,6 +17,7 @@ import {
   TEST_PEPPER,
   webBinary,
 } from './support/env';
+import { seedPascalToolsFixture } from './support/seed-pascal-tools-fixture';
 
 /**
  * P4.D388 — the round's SPA smalls, end to end on their own instance.
@@ -117,6 +118,11 @@ test.describe('P4.D388 — the SPA smalls', () => {
       throw new Error(`instance_settings plant failed:\n${ddl.stdout}\n${ddl.stderr}`);
     }
 
+    // (H) needs the shared instance's Tools roster in Aria's vault, which
+    // global-setup seeds there; this own instance over the salon pair seeds the
+    // same rows (mount partition only — the userId rewrite above is untouched).
+    seedPascalToolsFixture(cli, SM_INSTANCE_DIR);
+
     const logFd = openSync(SM_SERVER_LOG, 'w');
     server = spawn(
       web,
@@ -210,6 +216,16 @@ test.describe('P4.D388 — the SPA smalls', () => {
     // The claim here is about the OTHER card, which no save touches.
     await editCard.getByLabel(/^Assistant/).click();
     await expect(viewCard2.locator('input[value="roleplay"]')).toBeChecked();
+
+    // Since P4.D369 the server takes the `{kind}` save, so the click above
+    // really did make Aria an assistant — and (C) needs her a roleplay
+    // character to have something to change. Let the save land, then leave her
+    // as the fixture had her (as (C) does).
+    const aria = await character('Aria');
+    if (P4D369_SERVER_LANDED) {
+      await expect.poll(async () => (await character('Aria'))['kind'], { timeout: 15_000 }).toBe('assistant');
+    }
+    await dispatchRaw({ type: 'characterUpdate', characterId: aria['id'], character: { kind: 'roleplay' } });
   });
 
   // ---- gated -----------------------------------------------------------

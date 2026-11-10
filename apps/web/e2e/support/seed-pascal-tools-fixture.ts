@@ -59,10 +59,10 @@ const PASCAL_VAULT_A = (
  * previous transcribed literal exactly the way the PASCAL_VAULT_A comment
  * above predicts, so this id is now derived, never transcribed.
  */
-function ariaVaultId(cli: string): string {
+function ariaVaultId(cli: string, instanceDir: string): string {
   const rows = readMainRows(
     cli,
-    INSTANCE_DIR,
+    instanceDir,
     "SELECT characterDocumentMountPointId AS v FROM characters WHERE name = 'Aria'",
   );
   const v = rows[0]?.v;
@@ -74,8 +74,12 @@ function ariaVaultId(cli: string): string {
 
 type Row = Record<string, unknown>;
 
-export function seedPascalToolsFixture(cli: string): void {
-  const ariaVault = ariaVaultId(cli);
+/**
+ * Seed the Tools roster into `instanceDir` — the shared instance by default;
+ * an own-instance spec over the salon pair (`spa-smalls-flow`) passes its own.
+ */
+export function seedPascalToolsFixture(cli: string, instanceDir: string = INSTANCE_DIR): void {
+  const ariaVault = ariaVaultId(cli, instanceDir);
   // 1. The throwaway read instance over the committed pascal fixture.
   const src = resolve(ARTIFACTS_DIR, 'pascal-src');
   const srcData = resolve(src, 'data');
@@ -132,7 +136,7 @@ export function seedPascalToolsFixture(cli: string): void {
       .join(',\n');
     runWrite(
       cli,
-      INSTANCE_DIR,
+      instanceDir,
       `INSERT OR REPLACE INTO ${table} (${cols.map((c) => `"${c}"`).join(', ')}) VALUES ${values};`,
     );
   }
