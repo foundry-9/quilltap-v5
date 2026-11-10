@@ -10,7 +10,9 @@
 //! byte (v4's `{subprompts}` / `{subprompt}` / `{success}` / `{error}` and the
 //! Zod `{error: 'Validation error', details}` envelope — `details` compared
 //! serialized), the RECORDED seams (the routes' own `publishRealtime(
-//! 'characters', id)` + the fan-out's `chats` publishes + the recompile calls),
+//! 'characters', id)` + the fan-out's `chats` publishes + the recompile calls,
+//! with the document store's bus-direct `mountPoints` hint folded in order —
+//! `BusPublishLayer`),
 //! and a compact CENSUS of the vault links/folders, the characters' vault
 //! links and the chats' participants after the mutating cases.
 //!
@@ -710,6 +712,63 @@ fn status_body(r: &Response) -> (u16, Value) {
     }
 }
 
+/// The case whose recorder receives the BUS-direct publishes (see
+/// [`BusPublishLayer`]).
+static BUS_SINK: Mutex<Option<Arc<Recorder>>> = Mutex::new(None);
+
+/// v4's oracle mocks `publishRealtime` itself, so it records EVERY publish —
+/// the routes' and the fan-out's (v5's seams) AND the document store's
+/// `emitDocumentWritten` / `emitDocumentDeleted` → `publishMountChange` hint
+/// (`db-store-events.ts:68-83`, v4 `aec626eff`), which v5 publishes straight to
+/// the bus from `database_store` on the writer thread, never through a seam.
+/// This layer folds the bus's `Realtime publish queued` line into the case's
+/// recorder at the moment it is logged, so the one publish list keeps v4's
+/// order. The bus is re-armed per case (a fresh coalescing map; the flush
+/// futures are dropped), so a store's first publish in a case always logs; a
+/// SECOND same-key publish inside one case would coalesce where v4's mock
+/// records it — that shows as a mismatch, never a false green.
+struct BusPublishLayer;
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for BusPublishLayer {
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        struct V {
+            message: String,
+            topic: String,
+            id: String,
+        }
+        impl tracing::field::Visit for V {
+            fn record_str(&mut self, f: &tracing::field::Field, v: &str) {
+                match f.name() {
+                    "topic" => self.topic = v.to_string(),
+                    "id" => self.id = v.to_string(),
+                    _ => {}
+                }
+            }
+            fn record_debug(&mut self, f: &tracing::field::Field, v: &dyn std::fmt::Debug) {
+                if f.name() == "message" {
+                    self.message = format!("{v:?}");
+                }
+            }
+        }
+        let mut v = V {
+            message: String::new(),
+            topic: String::new(),
+            id: String::new(),
+        };
+        event.record(&mut v);
+        if v.message != "Realtime publish queued" {
+            return;
+        }
+        if let Some(rec) = BUS_SINK.lock().unwrap().as_ref() {
+            let id = (!v.id.is_empty()).then_some(v.id);
+            rec.publish.lock().unwrap().push((v.topic, id));
+        }
+    }
+}
+
 #[test]
 fn subprompts_routes_match_oracle() {
     let Some(oracle_path) = env_or_skip("QT_ORACLE_SUBPROMPTS_ROUTES") else {
@@ -743,6 +802,15 @@ fn subprompts_routes_match_oracle() {
         "oracle case count != corpus (shape)"
     );
 
+    // Every thread's events (the writer thread's included) — this binary's one
+    // test owns the process-global subscriber.
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(BusPublishLayer),
+        )
+        .expect("this binary's one test owns the global subscriber");
+    }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -772,6 +840,9 @@ fn subprompts_routes_match_oracle() {
         .expect("open db");
         let rec: Arc<Recorder> = Arc::new(Recorder::default());
         let seams: Arc<dyn FanoutSeams> = rec.clone();
+        *BUS_SINK.lock().unwrap() = Some(rec.clone());
+        let (tx, _rx) = tokio::sync::broadcast::channel(16);
+        quilltap_core::realtime::bus::arm_realtime_bus(tx, Arc::new(|_flush| {}));
         let cid = spec.ids.get(case.character).unwrap().as_str();
         let uid = spec.user_id.as_str();
         let body = case.body.clone().unwrap_or(Value::Null);
@@ -802,6 +873,8 @@ fn subprompts_routes_match_oracle() {
             )),
             other => panic!("unknown case shape {other:?}"),
         };
+        quilltap_core::realtime::bus::disarm_realtime_bus();
+        *BUS_SINK.lock().unwrap() = None;
         let (status, body) = status_body(&resp);
         let want_ok = (200..300).contains(&want.status);
         let got_ok = (200..300).contains(&status);
