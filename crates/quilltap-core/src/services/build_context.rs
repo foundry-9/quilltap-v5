@@ -3277,6 +3277,23 @@ where
     };
 
     // === P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:2701-2719`) ===
+    // v4 reads the referent sections and the established-fact reminder in the
+    // same `Promise.all` as the inform block (`context-manager.ts:708`), so
+    // any line they log lands BEFORE the inform DEBUG below.
+    // The referent ledger and the closing echo (v4 `buildReferentSections`,
+    // `f7a1789df` / `9a88f862f`): who the last few spoken lines were about, and
+    // the line being answered, repeated after recall so it is the last thing
+    // the model reads about the conversation. Reads only, never fails the turn.
+    let (referent_ledger, closing_echo) =
+        build_referent_sections(db, input, new_user_message, &mut cadence_events);
+    // === P4.D372 === the established-fact reminder (v4 `turn-trailing.ts:66`,
+    // right after `inform`), gated on a responding participant as v4's is.
+    let established_fact_reminder = match &input.responding_participant {
+        Some(rp) => build_established_fact_reminder_section(db, input, rp, &mut cadence_events),
+        None => String::new(),
+    };
+    // === /P4.D372 ===
+
     // The inform block — the operator's passages for this seat, under the one
     // vouching header `assemble_inform_block` puts on them — goes in the trailing
     // sections below, after recalled memories and the progressions report, so it
@@ -3308,20 +3325,6 @@ where
         );
     }
     // === end P4.D254 ===
-
-    // The referent ledger and the closing echo (v4 `buildReferentSections`,
-    // `f7a1789df` / `9a88f862f`): who the last few spoken lines were about, and
-    // the line being answered, repeated after recall so it is the last thing
-    // the model reads about the conversation. Reads only, never fails the turn.
-    let (referent_ledger, closing_echo) =
-        build_referent_sections(db, input, new_user_message, &mut cadence_events);
-    // === P4.D372 === the established-fact reminder (v4 `turn-trailing.ts:66`,
-    // right after `inform`), gated on a responding participant as v4's is.
-    let established_fact_reminder = match &input.responding_participant {
-        Some(rp) => build_established_fact_reminder_section(db, input, rp, &mut cadence_events),
-        None => String::new(),
-    };
-    // === /P4.D372 ===
 
     // The trailing sections, in their one order (v4 `turn-trailing.ts:42-72`):
     // who the character is (Core whisper), what it remembers (recall), what
