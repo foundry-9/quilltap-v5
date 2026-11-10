@@ -7,6 +7,7 @@ import {
 } from './support/fixtures';
 
 import { BASE_URL, E2E_PASSPHRASE } from './support/env';
+import { expectTooltip } from './support/tooltips';
 
 /**
  * ORDERING: this file rides the SHARED global-setup server and unlocks it, so
@@ -347,7 +348,7 @@ test.describe('P4.6x — Document Mode (open → edit → save → rename → cl
       // this same template is absent here.
       const delimiters = toolbar.locator('.qt-rp-annotation-button');
       await expect(delimiters).toHaveCount(1, { timeout: 20_000 });
-      await expect(delimiters.first()).toHaveAttribute('title', 'Thoughts (~...~)');
+      await expectTooltip(delimiters.first(), 'Thoughts (~...~)');
       await expect(delimiters.first()).toHaveText('Th');
 
       // Write a line, select it, press the delimiter.
