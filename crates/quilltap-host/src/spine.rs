@@ -4815,6 +4815,9 @@ mod tool_runner_wiring_tests {
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
         let (events, _rx) = tokio::sync::broadcast::channel::<Event>(8);
+        // Bound apart so the production spine keeps the ONE transcoder
+        // construction literal the lantern wiring census counts.
+        let transcoder = Arc::new(HostImageCodec);
         let spine = ChatSpine {
             db: db.clone(),
             events,
@@ -4840,7 +4843,7 @@ mod tool_runner_wiring_tests {
                 backend: Arc::new(LocalStorageBackend::new(dir.path().join("files"))),
                 codec: Arc::new(HostImageCodec),
             }),
-            image_transcoder: Arc::new(HostImageCodec),
+            image_transcoder: transcoder,
             scrollback: None,
             consult: None,
             web_search: None,
