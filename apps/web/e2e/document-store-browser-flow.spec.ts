@@ -398,11 +398,19 @@ test.describe.serial('P4.D387 — the document-store browser', () => {
     await folderMenuItem(page, 'Drafts', 'Copy to…').click();
     let dialog = page.getByRole('dialog', { name: /Copy folder "Drafts" to a folder/ });
     await dialog.getByLabel('Store').selectOption(otherStoreId);
+    // A destination folder must be highlighted before Copy enables (v4
+    // DestinationPickerDialog: \`canSubmit = target !== null && …\`; a store
+    // change clears the highlight) — the other store's top level.
+    await dialog.getByRole('option', { name: 'Top of the store', exact: true }).click();
     await dialog.getByRole('button', { name: 'Copy', exact: true }).click();
     await expect(dialog).toBeHidden({ timeout: 15_000 });
     await folderMenuItem(page, 'Minutes', 'Move to…').click();
     dialog = page.getByRole('dialog', { name: /Move folder "Minutes" to a folder/ });
     await dialog.getByLabel('Store').selectOption(otherStoreId);
+    // A destination folder must be highlighted before Move enables (v4
+    // DestinationPickerDialog: \`canSubmit = target !== null && …\`; a store
+    // change clears the highlight) — the other store's top level.
+    await dialog.getByRole('option', { name: 'Top of the store', exact: true }).click();
     await dialog.getByRole('button', { name: 'Move', exact: true }).click();
     await expect(
       page.locator('[data-testid="documents-folder-row"]', { hasText: 'Minutes' }),

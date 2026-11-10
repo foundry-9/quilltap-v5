@@ -263,6 +263,22 @@ describe('DocumentPicker', () => {
     expect(api.lookEverywhereCalls).toEqual([false, true]);
   });
 
+  it('a store card that mounted EMPTY re-mounts open once look-everywhere fills it (v4 keys its cards on everywhere + non-empty)', async () => {
+    const api = new FakeApi();
+    // Nothing reachable from the chat: every store card mounts closed.
+    api.stores = [];
+    const { fixture } = await render(api);
+    expect(buttonWith(fixture, 'Browser Archive')).toBeUndefined();
+
+    api.stores = [store({ mountPointId: 'db1', name: 'Browser Archive', label: 'Browser Archive' })];
+    const checkbox = fixture.nativeElement.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event('change'));
+    await flush();
+    fixture.detectChanges();
+    expect(buttonWith(fixture, 'Browser Archive')).toBeDefined();
+  });
+
   /**
    * Dogfood #50. The server withholds the chat project's OWN store from the
    * accessible-store list — in look-everywhere mode too — because v4 surfaces

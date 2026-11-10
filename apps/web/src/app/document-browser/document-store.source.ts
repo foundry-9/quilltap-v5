@@ -64,17 +64,25 @@ export function createDocumentStoreSource(storeId: () => string | null) {
   const queryClient = inject(QueryClient);
   const id = (): string => storeId() ?? '';
 
-  const storeQuery = injectQuery(() => ({
-    queryKey: mountPointKeys.detail(id()),
-    queryFn: () => fetchDocumentStore(core, id()),
-    enabled: Boolean(storeId()),
-  }));
+  // Each id is captured as the options are built, never read inside
+  // `queryFn` (see the destination dialog's listing for why it matters).
+  const storeQuery = injectQuery(() => {
+    const current = id();
+    return {
+      queryKey: mountPointKeys.detail(current),
+      queryFn: () => fetchDocumentStore(core, current),
+      enabled: Boolean(current),
+    };
+  });
 
-  const listingQuery = injectQuery(() => ({
-    queryKey: mountPointKeys.files(id()),
-    queryFn: () => fetchDocumentListing(core, id()),
-    enabled: Boolean(storeId()),
-  }));
+  const listingQuery = injectQuery(() => {
+    const current = id();
+    return {
+      queryKey: mountPointKeys.files(current),
+      queryFn: () => fetchDocumentListing(core, current),
+      enabled: Boolean(current),
+    };
+  });
 
   const entries = computed<DocumentEntry[]>(() =>
     (listingQuery.data()?.files ?? []).map((f) => ({ ...f, folder: parentFolder(f.relativePath) })),

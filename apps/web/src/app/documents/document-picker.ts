@@ -123,32 +123,39 @@ interface SelectedMount {
               </button>
             }
 
+            <!-- Each card sits under a one-item keyed @for: v4 KEYS its cards on
+                 \`everywhere\` and whether the bucket has anything
+                 (\`key={\`db-\${everywhere}-\${…length > 0}\`}\`), so a card that mounted
+                 empty — and so closed — re-mounts OPEN once Look everywhere
+                 fills it. \`defaultOpen\` only seeds a card as it mounts. -->
             @if (ready()) {
-            <qt-collapsible-card
-              title="Recent"
-              description="Documents you've lately had open"
-              icon="clock"
-              [defaultOpen]="recents().length > 0"
-            >
-              <div class="space-y-1">
-                @if (recents().length === 0) {
-                  <div class="px-3 py-2 text-sm qt-text-muted">No recent documents yet.</div>
-                }
-                @for (doc of recents().slice(0, maxRecent); track doc.id) {
-                  <button
-                    type="button"
-                    class="w-full flex items-center gap-3 px-4 py-3 rounded-lg border qt-border-default hover:qt-bg-muted text-left"
-                    (click)="pickRecent(doc)"
-                  >
-                    <qt-icon [name]="doc.isActive ? 'file' : 'clock'" class="w-5 h-5 flex-shrink-0 qt-text-secondary" />
-                    <span class="flex-1 min-w-0">
-                      <span class="block font-medium qt-text-primary truncate">{{ doc.displayTitle || doc.filePath }}</span>
-                      <span class="block text-xs qt-text-secondary">{{ recentLabel(doc) }}</span>
-                    </span>
-                  </button>
-                }
-              </div>
-            </qt-collapsible-card>
+            @for (cardKey of ['recent-' + (recents().length > 0)]; track cardKey) {
+              <qt-collapsible-card
+                title="Recent"
+                description="Documents you've lately had open"
+                icon="clock"
+                [defaultOpen]="recents().length > 0"
+              >
+                <div class="space-y-1">
+                  @if (recents().length === 0) {
+                    <div class="px-3 py-2 text-sm qt-text-muted">No recent documents yet.</div>
+                  }
+                  @for (doc of recents().slice(0, maxRecent); track doc.id) {
+                    <button
+                      type="button"
+                      class="w-full flex items-center gap-3 px-4 py-3 rounded-lg border qt-border-default hover:qt-bg-muted text-left"
+                      (click)="pickRecent(doc)"
+                    >
+                      <qt-icon [name]="doc.isActive ? 'file' : 'clock'" class="w-5 h-5 flex-shrink-0 qt-text-secondary" />
+                      <span class="flex-1 min-w-0">
+                        <span class="block font-medium qt-text-primary truncate">{{ doc.displayTitle || doc.filePath }}</span>
+                        <span class="block text-xs qt-text-secondary">{{ recentLabel(doc) }}</span>
+                      </span>
+                    </button>
+                  }
+                </div>
+              </qt-collapsible-card>
+            }
             }
           </div>
 
@@ -174,65 +181,73 @@ interface SelectedMount {
             }
 
             @if (ready()) {
-            <qt-collapsible-card
-              title="Character Vaults"
-              [description]="everywhere() ? 'Every character vault' : 'Vaults of characters in this chat'"
-              icon="characters"
-              [defaultOpen]="buckets().characterVaults.length > 0"
-            >
-              <div class="space-y-0.5">
-                @for (store of buckets().characterVaults; track store.mountPointId) {
-                  <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
-                } @empty {
-                  <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
-                }
-              </div>
-            </qt-collapsible-card>
-
-            @if (buckets().groupStores.length > 0) {
+            @for (cardKey of ['vaults-' + everywhere() + '-' + (buckets().characterVaults.length > 0)]; track cardKey) {
               <qt-collapsible-card
-                title="Group Files"
-                description="Stores shared with characters' groups"
-                icon="users"
-                [defaultOpen]="true"
+                title="Character Vaults"
+                [description]="everywhere() ? 'Every character vault' : 'Vaults of characters in this chat'"
+                icon="characters"
+                [defaultOpen]="buckets().characterVaults.length > 0"
               >
                 <div class="space-y-0.5">
-                  @for (store of buckets().groupStores; track store.mountPointId) {
+                  @for (store of buckets().characterVaults; track store.mountPointId) {
                     <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
+                  } @empty {
+                    <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
                   }
                 </div>
               </qt-collapsible-card>
             }
 
-            <qt-collapsible-card
-              title="Database-backed document stores"
-              [description]="everywhere() ? 'Every store kept inside Quilltap' : 'Project stores kept inside Quilltap'"
-              icon="database"
-              [defaultOpen]="buckets().databaseStores.length > 0"
-            >
-              <div class="space-y-0.5">
-                @for (store of buckets().databaseStores; track store.mountPointId) {
-                  <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
-                } @empty {
-                  <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
-                }
-              </div>
-            </qt-collapsible-card>
+            @if (buckets().groupStores.length > 0) {
+              @for (cardKey of ['group-' + everywhere() + '-' + (buckets().groupStores.length > 0)]; track cardKey) {
+                <qt-collapsible-card
+                  title="Group Files"
+                  description="Stores shared with characters' groups"
+                  icon="users"
+                  [defaultOpen]="true"
+                >
+                  <div class="space-y-0.5">
+                    @for (store of buckets().groupStores; track store.mountPointId) {
+                      <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
+                    }
+                  </div>
+                </qt-collapsible-card>
+              }
+            }
 
-            <qt-collapsible-card
-              title="Filesystem-backed document stores"
-              [description]="everywhere() ? 'Every store backed by folders on disk' : 'Project stores backed by folders on disk'"
-              icon="folder"
-              [defaultOpen]="buckets().filesystemStores.length > 0"
-            >
-              <div class="space-y-0.5">
-                @for (store of buckets().filesystemStores; track store.mountPointId) {
-                  <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
-                } @empty {
-                  <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
-                }
-              </div>
-            </qt-collapsible-card>
+            @for (cardKey of ['db-' + everywhere() + '-' + (buckets().databaseStores.length > 0)]; track cardKey) {
+              <qt-collapsible-card
+                title="Database-backed document stores"
+                [description]="everywhere() ? 'Every store kept inside Quilltap' : 'Project stores kept inside Quilltap'"
+                icon="database"
+                [defaultOpen]="buckets().databaseStores.length > 0"
+              >
+                <div class="space-y-0.5">
+                  @for (store of buckets().databaseStores; track store.mountPointId) {
+                    <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
+                  } @empty {
+                    <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
+                  }
+                </div>
+              </qt-collapsible-card>
+            }
+
+            @for (cardKey of ['fs-' + everywhere() + '-' + (buckets().filesystemStores.length > 0)]; track cardKey) {
+              <qt-collapsible-card
+                title="Filesystem-backed document stores"
+                [description]="everywhere() ? 'Every store backed by folders on disk' : 'Project stores backed by folders on disk'"
+                icon="folder"
+                [defaultOpen]="buckets().filesystemStores.length > 0"
+              >
+                <div class="space-y-0.5">
+                  @for (store of buckets().filesystemStores; track store.mountPointId) {
+                    <ng-container [ngTemplateOutlet]="storeRow" [ngTemplateOutletContext]="{ $implicit: store }" />
+                  } @empty {
+                    <div class="px-3 py-2 text-sm qt-text-muted">None available here.</div>
+                  }
+                </div>
+              </qt-collapsible-card>
+            }
 
             }
             @if (loading()) {

@@ -136,11 +136,19 @@ export class DocumentDestinationDialog {
     return eligible.find((s) => s.id === this.source().id)?.id ?? eligible[0]?.id ?? '';
   });
 
-  protected readonly listing = injectQuery(() => ({
-    queryKey: mountPointKeys.files(this.destId()),
-    queryFn: () => fetchDocumentListing(this.core, this.destId()),
-    enabled: this.destId() !== '',
-  }));
+  protected readonly listing = injectQuery(() => {
+    // The id is captured HERE, never read inside `queryFn`: a TanStack Query
+    // keeps the last `queryFn` an observer gave it, and this dialog opens on
+    // the browser's own store (`files(source)`) before a store is chosen. A
+    // lazy `this.destId()` left that query fetching the CHOSEN store, so the
+    // copy's settle refilled the browser with the destination's listing.
+    const destId = this.destId();
+    return {
+      queryKey: mountPointKeys.files(destId),
+      queryFn: () => fetchDocumentListing(this.core, destId),
+      enabled: destId !== '',
+    };
+  });
 
   protected readonly folders = computed(() =>
     [...(this.listing.data()?.folders ?? [])]

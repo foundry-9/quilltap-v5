@@ -15,6 +15,7 @@ import {
 import { DocumentDescriptionDialog, type DescribedFile } from './document-description-dialog';
 import { DocumentDestinationDialog, type DocumentDestination } from './document-destination-dialog';
 import { DocumentLinksDialog } from './document-links-dialog';
+import { mountPointKeys } from './document-store.keys';
 
 /**
  * v4 `DocumentFileDialogs.tsx` + `DocumentDestinationDialog.tsx`
@@ -216,7 +217,7 @@ describe('DocumentDestinationDialog (v4 DocumentDestinationDialog.tsx)', () => {
   });
 
   async function render(mode: DestinationMode) {
-    const { seen } = provideDocumentStoreTesting(CATALOG);
+    const { seen, queryClient } = provideDocumentStoreTesting(CATALOG);
     TestBed.configureTestingModule({ imports: [DestHost] });
     const fixture = TestBed.createComponent(DestHost);
     fixture.componentInstance.mode.set(mode);
@@ -225,7 +226,7 @@ describe('DocumentDestinationDialog (v4 DocumentDestinationDialog.tsx)', () => {
     await settle(fixture);
     const el = fixture.nativeElement as HTMLElement;
     const select = el.querySelector('#document-destination-store') as HTMLSelectElement;
-    return { fixture, seen, el, select };
+    return { fixture, seen, queryClient, el, select };
   }
   const optionsOf = (s: HTMLSelectElement) => [...s.options].map((o) => o.textContent!.trim());
 
@@ -269,5 +270,17 @@ describe('DocumentDestinationDialog (v4 DocumentDestinationDialog.tsx)', () => {
       ) as HTMLButtonElement
     ).click();
     expect(fixture.componentInstance.sent).toEqual([{ mountPointId: 'store-b', folder: 'A' }]);
+  });
+
+  it('after a cross-store pick, the SOURCE store’s listing query still fetches the source (the copy’s settle refetches it)', async () => {
+    const { fixture, seen, queryClient, select } = await render('copy');
+    // The dialog opened on this store, so it observed `files(store-a)` first.
+    expect(seen).toContainEqual({ type: 'mountFilesList', mountPointId: 'store-a' });
+    select.value = 'store-b';
+    select.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const before = seen.length;
+    await queryClient.refetchQueries({ queryKey: mountPointKeys.files('store-a') });
+    expect(seen.slice(before)).toEqual([{ type: 'mountFilesList', mountPointId: 'store-a' }]);
   });
 });
