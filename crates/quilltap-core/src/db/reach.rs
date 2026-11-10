@@ -228,7 +228,29 @@ pub fn resolve_owner_store(
     user_id: &str,
     opts: &ResolveOwnerStoreOptions<'_>,
 ) -> Result<Option<OwnerStore>, DbError> {
+    resolve_owner_store_with(main, Some(mount), scope, id, user_id, opts)
+}
+
+/// [`resolve_owner_store`] where the mount index may be DEGRADED (`None`).
+/// v4's *why* (#136, `0c47f4539`): a read probe (no `ensure`) reads only the
+/// owner's RAW row on main for its store pointer, so it resolves on a degraded
+/// mount index exactly as on a sound one; only the `ensure` arms touch the
+/// mount index, and with it absent they fail `PartitionUnavailable` — v4's
+/// mount guard throwing from the first store write.
+pub fn resolve_owner_store_with(
+    main: &Connection,
+    mount: Option<&Connection>,
+    scope: OwnerScope,
+    id: Option<&str>,
+    user_id: &str,
+    opts: &ResolveOwnerStoreOptions<'_>,
+) -> Result<Option<OwnerStore>, DbError> {
     let context = opts.context;
+    let need_mount = || {
+        mount.ok_or(DbError::PartitionUnavailable(
+            crate::write_partition::WriteDbTarget::MountIndex,
+        ))
+    };
 
     if scope == OwnerScope::General {
         let Some(mount_point_id) =
@@ -237,7 +259,7 @@ pub fn resolve_owner_store(
             return Ok(None);
         };
         if let Some(ensure) = &opts.ensure {
-            ensure_owner_folder(mount, &mount_point_id, ensure, context)?;
+            ensure_owner_folder(need_mount()?, &mount_point_id, ensure, context)?;
         }
         return Ok(Some(OwnerStore {
             scope,
@@ -320,6 +342,7 @@ pub fn resolve_owner_store(
         } else {
             owner_name.as_str()
         };
+        let mount = need_mount()?;
         let Some(ensured) =
             ensure_owner_official_store(main, mount, kind, &owner_id, fallback_name)?
         else {

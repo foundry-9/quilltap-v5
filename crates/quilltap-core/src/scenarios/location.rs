@@ -674,6 +674,21 @@ pub fn resolve_scenario_location(
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<ScenarioLocation>, ScenarioLocationError> {
+    resolve_scenario_location_with(main, Some(mount), scope, id, user_id, ensure)
+}
+
+/// [`resolve_scenario_location`] where the mount index may be DEGRADED
+/// (`None`): a read probe (`ensure: false`) resolves from the owner's raw row
+/// on main alone (v4 #136 — "a read probe takes the store as it is"); an
+/// `ensure` with no mount index fails `PartitionUnavailable`.
+pub fn resolve_scenario_location_with(
+    main: &Connection,
+    mount: Option<&Connection>,
+    scope: ScenarioScope,
+    id: Option<&str>,
+    user_id: &str,
+    ensure: bool,
+) -> Result<Option<ScenarioLocation>, ScenarioLocationError> {
     let location = resolve(main, mount, scope, id, user_id, ensure)?;
     tracing::debug!(
         scope = scope.as_str(),
@@ -697,14 +712,29 @@ pub fn resolve_store_scenario_location(
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<StoreScenarioLocation>, ScenarioLocationError> {
+    resolve_store_scenario_location_with(main, Some(mount), scope, id, user_id, ensure)
+}
+
+/// [`resolve_store_scenario_location`] where the mount index may be DEGRADED
+/// (`None`) — see [`resolve_scenario_location_with`].
+pub fn resolve_store_scenario_location_with(
+    main: &Connection,
+    mount: Option<&Connection>,
+    scope: ScenarioScope,
+    id: Option<&str>,
+    user_id: &str,
+    ensure: bool,
+) -> Result<Option<StoreScenarioLocation>, ScenarioLocationError> {
     debug_assert!(
         scope != ScenarioScope::Character,
         "the character location is read-only"
     );
     Ok(
-        resolve_scenario_location(main, mount, scope, id, user_id, ensure)?.and_then(|l| match l {
-            ScenarioLocation::Store(s) => Some(s),
-            ScenarioLocation::Character(_) => None,
+        resolve_scenario_location_with(main, mount, scope, id, user_id, ensure)?.and_then(|l| {
+            match l {
+                ScenarioLocation::Store(s) => Some(s),
+                ScenarioLocation::Character(_) => None,
+            }
         }),
     )
 }
@@ -722,14 +752,14 @@ pub fn resolve_store_scenario_location(
 /// 'Group'`.
 fn resolve(
     main: &Connection,
-    mount: &Connection,
+    mount: Option<&Connection>,
     scope: ScenarioScope,
     id: Option<&str>,
     user_id: &str,
     ensure: bool,
 ) -> Result<Option<ScenarioLocation>, ScenarioLocationError> {
     use crate::db::reach::{
-        resolve_owner_store, Archived, EnsureFolder, OwnerFolderFailure, OwnerScope,
+        resolve_owner_store_with, Archived, EnsureFolder, OwnerFolderFailure, OwnerScope,
         ResolveOwnerStoreOptions,
     };
     let owner_scope = match scope {
@@ -746,7 +776,8 @@ fn resolve(
         archived: Archived::Refuse,
         context: Some("scenarios"),
     };
-    let Some(store) = resolve_owner_store(main, mount, owner_scope, id, user_id, &opts)? else {
+    let Some(store) = resolve_owner_store_with(main, mount, owner_scope, id, user_id, &opts)?
+    else {
         return Ok(None);
     };
     match store.scope {

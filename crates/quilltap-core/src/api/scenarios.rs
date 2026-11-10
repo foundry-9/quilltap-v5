@@ -50,9 +50,9 @@ use crate::db::{groups, projects, DbError};
 use crate::jsstr::{zod_len_max_ok, zod_len_min_ok};
 use crate::scenarios::everywhere::list_scenarios_everywhere;
 use crate::scenarios::location::{
-    lookup_scenario_ref, resolve_store_scenario_location, CreateScenarioInput,
-    ScenarioLocationError, ScenarioRefLookup, ScenarioScope, StoreScenarioLocation,
-    UpdateScenarioInput,
+    lookup_scenario_ref, resolve_store_scenario_location, resolve_store_scenario_location_with,
+    CreateScenarioInput, ScenarioLocationError, ScenarioRefLookup, ScenarioScope,
+    StoreScenarioLocation, UpdateScenarioInput,
 };
 use crate::services::image_job_common::{with_both_conns, with_main_and_mount_if_open};
 
@@ -384,7 +384,7 @@ fn load_location(
 /// `Knowledge/`) only on a write.
 fn ensure_location(
     main: &Connection,
-    mount: &Connection,
+    mount: Option<&Connection>,
     cfg: &ScenarioRouteConfig,
     owner_id: Option<&str>,
     user_id: &str,
@@ -399,7 +399,7 @@ fn ensure_location(
     }
     // === P4.D376 === (v4 #136: a read never provisions)
     let Some(location) =
-        resolve_store_scenario_location(main, mount, cfg.scope, owner_id, user_id, for_write)?
+        resolve_store_scenario_location_with(main, mount, cfg.scope, owner_id, user_id, for_write)?
     else {
         if !for_write {
             owner_line!(debug, cfg, owner_id;
@@ -419,7 +419,7 @@ fn ensure_location(
         ))));
     };
     if for_write && cfg.ensure_knowledge {
-        ensure_group_knowledge_folder(mount, location.mount_point_id())?;
+        ensure_group_knowledge_folder(degraded(mount)?, location.mount_point_id())?;
     }
     // === end P4.D376 ===
     Ok(Ok(location))
@@ -641,16 +641,33 @@ pub async fn collection_list(
 ) -> Response {
     run(db, cfg, move |main, mount| {
         let attempt = (|| -> Step<Value> {
-            let mount = degraded(mount)?;
+            // v4 #136 (`0c47f4539`): the read probe resolves the store from the
+            // owner's raw row on main, so it survives a DEGRADED mount index;
+            // the listing's store read is then v4's fallback read — one quiet
+            // DEBUG, no scenarios (measured at the `624d0d25c` pin).
             let location =
                 match ensure_location(main, mount, &cfg, owner_id.as_deref(), &user_id, false)? {
                     Ok(l) => l,
                     Err(r) => return Ok(Err(r)),
                 };
-            let listed = location.list(mount, include_archived)?;
             let mut body = Map::new();
             body.insert("mountPointId".into(), json!(location.mount_point_id()));
-            body.extend(scenarios_value(&listed));
+            match mount {
+                Some(mount) => {
+                    let listed = location.list(mount, include_archived)?;
+                    body.extend(scenarios_value(&listed));
+                }
+                None => {
+                    crate::db::fallback::log_mount_index_unavailable(
+                        "doc_mount_documents",
+                        &DbError::PartitionUnavailable(
+                            crate::write_partition::WriteDbTarget::MountIndex,
+                        ),
+                    );
+                    body.insert("scenarios".into(), json!([]));
+                    body.insert("warnings".into(), json!([]));
+                }
+            }
             Ok(Ok(Value::Object(body)))
         })();
         attempt.unwrap_or_else(|e| {
@@ -685,7 +702,7 @@ pub async fn collection_create(
             }
             let fields = extract_fields(&bag);
             let mount = degraded(mount)?;
-            let location = match ensure_location(main, mount, &cfg, owner_id.as_deref(), &user_id, true)? {
+            let location = match ensure_location(main, Some(mount), &cfg, owner_id.as_deref(), &user_id, true)? {
                 Ok(l) => l,
                 Err(r) => return Ok(Err(r)),
             };
