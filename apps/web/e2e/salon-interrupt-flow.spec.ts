@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { expect, test, type Page } from './support/fixtures';
 
 import { makeDbKeyFile } from './support/dbkey';
+import { expectTooltip } from './support/tooltips';
 import {
   ARTIFACTS_DIR,
   cliBinary,
@@ -288,9 +289,9 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await expect(col).toBeVisible();
     await expect(col.getByRole('button', { name: 'Send message' })).toBeVisible();
     await expect(hand(page)).toBeDisabled();
-    await expect(hand(page)).toHaveAttribute('title', HAND_TITLE_REST);
+    await expectTooltip(hand(page), HAND_TITLE_REST);
     await expect(stopButton(page)).toBeDisabled();
-    await expect(stopButton(page)).toHaveAttribute('title', STOP_TITLE_REST);
+    await expectTooltip(stopButton(page), STOP_TITLE_REST);
   });
 
   test('(D) mid-stream both interrupts open and Send is greyed and titled Generating...', async ({ page }) => {
@@ -301,10 +302,10 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await send(page, 'Is anyone about?');
     await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
     await expect(hand(page)).toBeEnabled();
-    await expect(hand(page)).toHaveAttribute('title', HAND_TITLE_LIVE);
+    await expectTooltip(hand(page), HAND_TITLE_LIVE);
     const sendBtn = page.getByRole('button', { name: 'Send message' });
     await expect(sendBtn).toBeDisabled();
-    await expect(sendBtn).toHaveAttribute('title', 'Generating...');
+    await expectTooltip(sendBtn, 'Generating...');
     await expect(stopButton(page)).toBeDisabled({ timeout: 60_000 });
   });
 
@@ -316,7 +317,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await send(page, 'Just us, then?');
     await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
     await expect(hand(page)).toBeDisabled();
-    await expect(hand(page)).toHaveAttribute('title', HAND_TITLE_SINGLE);
+    await expectTooltip(hand(page), HAND_TITLE_SINGLE);
     await expect(stopButton(page)).toBeDisabled({ timeout: 60_000 });
   });
 
@@ -422,10 +423,12 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await hand(page).click();
     await expect(hand(page)).toHaveAttribute('aria-pressed', 'true');
     await expect(hand(page)).toHaveClass(/qt-chat-interrupt-button-raised/);
-    await expect(hand(page)).toHaveAttribute('title', HAND_TITLE_UP);
+    await expectTooltip(hand(page), HAND_TITLE_UP);
     // The Host's note is an announcement chip, collapsed by default as in v4
-    // (`AnnouncementChip.tsx`); its words show once it is expanded.
-    const note = page.getByRole('button', { name: 'Expand The Host turn yield message' });
+    // (`AnnouncementChip.tsx`); its words show once it is expanded. v4
+    // `94f041764` dropped the chip's "Expand … message" aria-label: its visible
+    // sender + kind + time name it, and `aria-expanded` carries the state.
+    const note = page.locator('.qt-chat-announcement-chip[aria-expanded="false"]', { hasText: /The Host\s*turn yield/ });
     await expect(note).toBeVisible({ timeout: 60_000 });
     await note.click();
     await expect(page.getByText('yields the floor to').first()).toBeVisible();

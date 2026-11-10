@@ -575,6 +575,7 @@ interface CascadePrompt {
       <qt-chat-composer
         [busy]="busy()"
         [handRaised]="handRaised()"
+        [handStatus]="handStatus()"
         [canRaiseHand]="canRaiseHand()"
         [stopping]="stopping()"
         [disabled]="regeneration.isRegenerating()"
@@ -604,6 +605,7 @@ interface CascadePrompt {
         (send)="send($event)"
         (stop)="stop()"
         (toggleRaisedHand)="toggleRaisedHand()"
+        (dismissHandStatus)="dismissHandStatus()"
         (continue)="continueTurn()"
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"

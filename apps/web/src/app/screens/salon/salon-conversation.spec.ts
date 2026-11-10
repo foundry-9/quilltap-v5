@@ -5635,6 +5635,23 @@ describe('SalonConversation — raise a hand / stop (v4 useSSEStreaming 2b5e8ee2
     inst.dismissHandStatus();
     expect(inst.handStatus()).toBeNull();
   });
+
+  it('the composer’s chip draws the status and its × puts the outcome away (the union binding, v4 ChatComposer :466-470)', async () => {
+    const { fixture, inst, events$ } = await mountLive();
+    await beginTurn(inst);
+    await inst.toggleRaisedHand();
+    events$.next(asked('Friday'));
+    events$.next(answered('Friday', true));
+    fixture.detectChanges();
+    const chip = (fixture.nativeElement as HTMLElement).querySelector('qt-chat-composer qt-raised-hand-chip [aria-live]');
+    expect(chip?.textContent).toContain('Friday yields the floor — it is yours');
+    const dismiss = chip!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss the raised-hand note"]');
+    expect(dismiss).not.toBeNull();
+    dismiss!.click();
+    fixture.detectChanges();
+    expect(inst.handStatus()).toBeNull();
+    expect(chip?.textContent?.trim()).toBe('');
+  });
   // === end P4.D384 ===
 
   // === P4.D384 (C4 H1): the established-fact send ===
