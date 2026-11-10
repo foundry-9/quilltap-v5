@@ -25,7 +25,8 @@
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-characters-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
+ *   cp "$V5W/harness/oracle/lib/v4-migrations.ts"               "$TMPO/lib/"
  *   cp "$V5W/harness/oracle/cases/characters-mutations.test.ts" "$TMPO/cases/"
  *   cp "$V5W/harness/oracle/fixtures/characters.json"           "$TMPO/fixtures/"
  *   cd ~/source/quilltap-server
@@ -41,6 +42,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { plant412Columns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -820,6 +822,27 @@ async function main(): Promise<void> {
   };
   for (const [k, v] of Object.entries(fixtures)) {
     if (!v || !existsSync(v)) throw new Error(`fixture ${k} missing: ${v}`);
+  }
+  // P4.D362 (the `624d0d25c` pin): v4's connection-profile `update` names
+  // `maxImagesPerRequest`, a column v4 adds at boot
+  // (`add-profile-max-images-per-request-v1`) and the committed pair predates;
+  // jest's `initializeDatabase` runs no migrations, so `tag_delete`'s profile
+  // untag failed `no such column` and answered 500. v4's own column DDL onto a
+  // per-run copy (never the committed pair) — v5's side carries the column
+  // through its boot ensure.
+  {
+    const plantDir = mkdtempSync(join(tmpdir(), 'qt-characters-p4d362-plant-'));
+    process.on('exit', () => rmSync(plantDir, { recursive: true, force: true }));
+    const planted = join(plantDir, 'main.db');
+    copyFileSync(fixtures.main, planted);
+    jest.doMock('better-sqlite3', () =>
+      jest.requireActual(
+        join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+      ),
+    );
+    await plant412Columns(planted, spec.testPepperBase64);
+    jest.resetModules();
+    fixtures.main = planted;
   }
   const outPath = process.env.QT_ORACLE_OUT;
   if (!outPath) throw new Error('QT_ORACLE_OUT must point at the NDJSON file to write');
