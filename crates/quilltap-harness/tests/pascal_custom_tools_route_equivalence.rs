@@ -44,7 +44,8 @@
 //!
 //! The `run-oracle-consult-resolved` case needs `connection_profiles.
 //! maxImagesPerRequest` on v4's side at the pin (P4.D362's column); the oracle
-//! applies v4's own migration DDL to that case's copy.
+//! carries it through P4.D362's once-plant of the 4.12 columns (v4's own
+//! migration DDL) on the scratch copy every case copies.
 //!
 //! Generate the oracle (v4 @ the `624d0d25c` pin, Node 24 — mirror to /tmp;
 //! jest ignores `.claude/`):

@@ -410,19 +410,10 @@ async function runCase(
   const lockedDirs: string[] = [];
   const pre = (c.plants ?? []).filter((pl) => pl.kind !== 'doc');
   // At the pin the profile repository writes `maxImagesPerRequest`, a column
-  // v4 adds at boot (`add-profile-max-images-per-request-v1`, `INTEGER DEFAULT
-  // 4`) and the committed pair predates. jest's `initializeDatabase` runs no
-  // migrations, so the `profile: true` case's create failed and killed the run.
-  // v4's own DDL, on that case's copy only (the column is P4.D362's; v5's side
-  // of the row is the union's).
-  if (c.profile) {
-    pre.unshift({
-      kind: 'sql',
-      db: 'main',
-      sql: 'ALTER TABLE "connection_profiles" ADD COLUMN "maxImagesPerRequest" INTEGER DEFAULT 4',
-      params: [],
-    });
-  }
+  // the committed pair predates. P4.D379's per-case `ALTER … ADD COLUMN` for
+  // the `profile: true` case is gone at the union: P4.D362's once-plant
+  // (`plant412Columns`, below in the driver) already carries the column into
+  // every case's copy, so a second ADD answered `duplicate column name`.
   if (pre.length > 0) {
     const Driver = jest.requireActual(cipherDriverPath);
     const keyHex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
