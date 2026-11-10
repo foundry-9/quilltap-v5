@@ -59,14 +59,17 @@ pragma, so it uses the default cipher of `better-sqlite3-multiple-ciphers`:
   `NotADatabase` on every real Quilltap DB. (The retired `sqlcipher-probe` crate
   demonstrated this in Phase 0; don't reintroduce a bundled-sqlcipher feature.)
 - The real DB layer links **SQLite3MultipleCiphers** (utelle), version matching
-  what v4 bundles (**2.3.5**, on SQLite 3.53.2 in the matching amalgamation),
+  what v4 bundles (**2.4.0**, on SQLite 3.53.4 in the matching amalgamation —
+  P4.D365, following v4's `better-sqlite3-multiple-ciphers` 13.0.3; the
+  real-instance open on 2.4.0 is still owed to the next dogfood pass),
   opened with its default sqleet cipher — no `cipher=` pragma needed. The
   amalgamation is compiled by the dedicated **`quilltap-sqlite3mc-sys`** crate
   (`crates/quilltap-sqlite3mc-sys/build.rs`, vendored under its `vendor/`) and
   linked as `sqlite3` for the whole workspace; `quilltap-core` depends on it (the
-  `db` module is the first consumer). That sys crate's version is **pinned and
-  never bumped** so the 12 MB C compile caches across our per-commit version
-  bumps — bumping it would force the ~4-min amalgamation recompile.
+  `db` module is the first consumer). That sys crate's version is **bumped only
+  when the vendored amalgamation moves** (0.2.0 since P4.D365) so the 12 MB C
+  compile caches across our per-commit version bumps — bumping it forces the
+  ~4-min amalgamation recompile.
 - **Two different ciphers — never conflate:** the `.dbkey` *file* wraps the
   pepper with **AES-256-GCM + PBKDF2** (that part of v4's docs is right; ported
   in `quilltap-core::dbkey`). The *databases* are **ChaCha20**.
@@ -188,8 +191,8 @@ rust-toolchain.toml        # pinned channel 1.96.0
 crates/
   quilltap-sqlite3mc-sys/  # link-only: build.rs + vendor/ compile & link the
                            #   SQLite3MC (ChaCha20/sqleet) amalgamation for the
-                           #   whole workspace. Version PINNED (keeps the 12 MB C
-                           #   compile cached across our version bumps).
+                           #   whole workspace. Version bumped ONLY with the
+                           #   amalgamation (keeps the 12 MB C compile cached).
   quilltap-core/           # the portable engine (lib). Modules: dbkey, db
                            #   (cipher-correct DB layer), memory_weighting, …
                            #   depends on quilltap-sqlite3mc-sys for the cipher.
@@ -1210,17 +1213,71 @@ records THERE. Update this summary only when a phase or round completes.
     2. The 4.12.0 catch-up, and any later catch-ups.
     3. The owed dogfood pass, covering every round owed since.
   - Details: `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `236c04e35` (2026-10-28, v4 main — "dev: started
-  4.12.0 development", `4.12.0-dev.0`; code = the 4.11.0 release), adopted
-  at the `236c04e35` round's unification (2026-11-04).** **Drift state, the drift-check method,
+- **The `624d0d25c` 4.12.x catch-up round (P4.D361 → … ∥ P4.D388,
+  twenty-eight lanes): UNIFIED on main (2026-11-09) — ALL TWENTY-EIGHT
+  LANDED; the oracle baseline MOVES to `624d0d25c`; the 45 v4 commits past
+  the pin (4.12.2, D23 moves 24–26 pending, live-data hazards) stay in the
+  ledger's §3, PIN REQUIRED.**
+  - **Absorbed:**
+    - D23 moves 22–23 (deus ex machina / established facts, the per-profile
+      image cap), the fresh-only `kind` / Brahma columns, three ensures;
+    - the character kind keystone and what follows it (Agent Mode, the
+      native tool rules, the generators);
+    - kind-tagged Salon stream frames, gesture yields + the raised hand, the
+      simultaneous Storyteller round (P4.D343 item 41 + item 29);
+    - the 4 MB image transport budget; the Anthropic 2026-10-21 move;
+    - SQLite3MC 2.4.0 / SQLite 3.53.4 (sys 0.2.0) and `quilltap db
+      integrity`;
+    - the reach tier walk, the item route factory, wardrobe transfers /
+      pools, Pascal presets, the document core, the mount-point store API;
+    - the Brahma lookup tools, window-first dated search, the probation
+      prompts;
+    - the SPA: WCAG 2.2 themes, the composer + deus, the shared item
+      browser, the store browser, the kind card / image cap / presets;
+    - `help/` 138 and `docs/v4/` 537.
+  - **The §3 review (eight readers + the unifier): no blocking finding; the
+    one that would have shipped — the in-chat tool runners carried NO
+    embedding provider, so `lookup_memories` and window-first search never
+    took the vector path; fixed.** The sweep caught a second: overlay
+    writes through the `doc_mount_file_links` twins never published v4's
+    store hint (a second, emit-less copy of `writeDatabaseDocument`), so
+    open store browsers went stale; fixed at the chokepoint. Plus the
+    degraded wearable pool / scenario list and a dozen should-fixes.
+    - ⚖ Two rulings for the human: `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`,
+      and `put_zero_one_flag` `"0.0"` → true (a v4 issue drafted, unfiled).
+  - **Gate:**
+    - fmt / clippy (both) / release: clean.
+    - Sweep: 823 ok / 3 / 1 / 6 of 833 (two standing + the SDK env
+      artifact).
+    - Tier R: 438 / 0.
+    - `cargo test --workspace`: 939 binaries / 6,371 / 21 / 3, zero SKIP;
+      every red standing, refused, fixed, or green by name.
+    - SPA: 677 / 17,442.
+    - Playwright: 549 / 5 / 9 — four green by file; Storyteller (K) RULED red (land, then order).
+  - **Versions:** core 0.0.1440, host 0.0.227, web 0.0.257, cli 0.0.40, SPA
+    0.5.986.
+  - **Next:**
+    1. A follow-ups smalls round — FIRST the Storyteller live run fold
+       (the early run reply on main since P4.D343 leaves Playwright
+       `salon-storyteller-flow` (K) red; ruled 2026-11-10: land, then
+       order), then the review's recorded items and the orders' OPEN
+       remainders (two rulings first).
+    2. The 45-commit catch-up (`/driftcheck` first).
+    3. The owed dogfood pass, once v5 reaches live Friday's v4 state — it
+       includes the real-instance open on SQLite3MC 2.4.0.
+  - Details: `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `624d0d25c` (2026-11-04, v4 main — "ci: restore the
+  8 GB heap for the coverage run", `4.13.0-dev.8`; code = 4.12.1 plus the
+  4.13-dev span through it), adopted at the `624d0d25c` round's unification
+  (2026-11-09).** **Drift state, the drift-check method,
   and the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
   and by `/unify` at baseline moves; the other porting commands run the
   ledger's §2 freshness probe instead of re-deriving drift, and lanes never
   write it. **Never restate the drift count here — read the ledger's §1.**
-  **v4 released 4.12.0 during the `236c04e35` round and now stamps
-  `4.13.0-dev` — re-probe BOTH branches (main and bugfix) every time;
-  bugfix is measured by CONTENT.** The
+  **v4 released 4.12.2 during the `624d0d25c` round and stamps
+  `4.13.0-dev` — re-probe ALL THREE branches (main, bugfix, release) every
+  time; bugfix is measured by CONTENT.** The
   sweep driver remains the sanctioned per-family regen path — never run two
   sweeps concurrently; it needs Python ≥ 3.12
   (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since

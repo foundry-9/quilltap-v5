@@ -12,6 +12,57 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-09 — unify(624d0d25c): the 4.12.x catch-up round — twenty-eight lanes (P4.D361–P4.D388) on main; the oracle baseline moves to `624d0d25c`
+
+_Versions: core 0.0.1440, host 0.0.227, cli 0.0.40, SPA 0.5.986; web 0.0.257, tauri 0.0.9, harness 0.0.1110 and sqlite3mc-sys 0.2.0 unchanged by the unifier._
+
+Unification of the `624d0d25c` round: the 28 lanes cherry-picked in dependency order (`REAIM` → `SCHEMA` → `KIND` / `FRAMES` / `REACH` / `CATALOG` / `CSS` / `BROWSER` stacks), then the unifier's wires and fixes.
+
+**What landed:**
+- the IMPORT-DEAD re-aims (P4.D361) and the schema keystone — D23 moves 22–23, the fresh-only `kind` / Brahma columns, three boot ensures, the export dumps (P4.D362);
+- FTS character-only reindex and the staff filter (P4.D363);
+- the Anthropic 2026-10-21 provider move, no sampling, the SDK floors (P4.D364);
+- SQLite3MultipleCiphers 2.4.0 (SQLite 3.53.4, sys 0.2.0), `quilltap db integrity`, croner 11 (P4.D365);
+- kind-tagged Salon stream frames and the raised hand (P4.D366, P4.D384);
+- the 4 MB image transport budget, provenance ranking, `maxImagesPerRequest` (P4.D367);
+- the simultaneous Storyteller round (P4.D343 item 41) and its import refusals (P4.D368);
+- the character kind keystone and everything that follows the kind — Agent Mode, the native tool rules, the generators (P4.D369–P4.D371);
+- deus ex machina and established facts (P4.D372, P4.D385);
+- the probation prompts, the inform header, the 1.1.33 catalogue (P4.D373);
+- the Brahma lookup tools and the tool catalog regen (P4.D374);
+- window-first dated search and the honest empty (P4.D375);
+- the reach tier walk, the item route factory, the wardrobe transfers / pools, the Pascal presets (P4.D376–P4.D379);
+- the document core, the mount-point store API and the store browser (P4.D380, P4.D381, P4.D387);
+- `help/` 138, `docs/v4/` 537, the CLI README (P4.D382);
+- the SPA: WCAG 2.2 theme CSS (P4.D383), the composer and tooltips (P4.D385), the shared item browser (P4.D386), the kind card / provider editor / image cap / presets dialog (P4.D388).
+
+**Unification wires:**
+- every union-gated e2e beat flipped LIVE;
+- P4.D384's LANE-REMOVE shims retired onto P4.D385's types; the handed-over union reds (P4.D385 H3b / H4b, P4.D387 H1b) applied;
+- P4.D386 H-U1 (the wardrobe browser refreshes unless realtime is up);
+- P4.D378's `UNION_PENDING_P4D377_RAW_OWNER` carve deleted; the `CONSULTED_CROSS_TIER_INTERLEAVE` carves narrowed to named two-way rows;
+- the union-gate notes the union turned green retired.
+
+**Unification fixes:**
+- the in-chat tool runners now carry the real embedding provider, so `lookup_memories` and the window-first search take the vector path (they never did);
+- overlay writes through the `doc_mount_file_links` repository twins now publish the store's `mountPoints` hint at v4's `writeDatabaseDocument` chokepoint, as does the wardrobe picture delete, so open store browsers refresh;
+- the degraded wearable pool keeps the chat project's official store; the degraded scenario list answers 200 empty, as v4 does;
+- a failed concurrent Storyteller seat's error frame rides its seat and drops only its own bubble;
+- the CLI's writable open enforces foreign keys;
+- the custom-tools routes and the preset walk read through v4's fallback `findById`;
+- Brahma `maxAgentTurns` past the safe range carries Zod's two issues;
+- `build_context` reads the referent sections and the established-fact reminder before the inform DEBUG, as v4's one `Promise.all` does;
+- the search tool's knowledge tiers are the shared `bucket_mounts`; `doc_copy_file`'s probe is the core's `stat_document`;
+- the Salon's raised-hand chip is bound (it was always empty on the union); a conversation-search reveal opens the collapsed announcement it targets; the document picker's store cards re-open as v4's do and a cross-store copy no longer re-aims the source listing; the `.docx` viewer falls back to download on the server's real refusal; P4.D388's Run-dialog presets section is applied;
+- the oracle-side and count reds the union exposed (restore provider mocks, the bag-nulls archive, the almanack prompt templates, the import-state and query-param counts, the orchestrator and mail-alert comparands).
+
+**Gate:**
+- fmt, clippy (both feature sets) and the release build: clean.
+- The sweep from the pin: 823 ok / 3 / 1 refused / 6 non-extractable of 833. The 3 are the two standing reds and the `provider_sdk_version_guard` env artifact.
+- Tier R: 438 cases / 0 failures.
+- `cargo test --workspace`: 939 binaries / 6,371 passed / 21 failed / 3 ignored, zero SKIP. Two were stale publish pins (fixed); the rest are standing, refused, or shared-fixture collisions green by name.
+- SPA: 677 files / 17,442 tests; the build is clean.
+- Playwright: 549 passed / 5 failed / 9 skipped (23.1 m) on the final tree, after the union-red fixes (the first full run was 520 / 22 / 8). Four of the five are green by file alone (the dropped-attachment toast, Deus (k), the waiting quill, and the axe sweep after the destructive specs); the fifth is Storyteller (K), RULED red (land, then order).
 
 #### 2026-11-05 — docs(porting): reword the vendor survey's grep so `spelling_guard` passes on main
 

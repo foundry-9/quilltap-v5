@@ -276,6 +276,11 @@ boundary; streaming only on `Event`; the `Db` ownership model; enclave
   bespoke `qt-file-manager` (`apps/web/src/app/files/**`) ships over the
   ported v4 SVAR adapter helpers, native `qt-*` styling, path-native ids;
   ngx-explorer was uninstalled. Full record: the P4.6aa order header.
+  **The file-manager choice is RETIRED (2026-11-09, ruling R-D of the
+  `624d0d25c` round):** P4.D387 deleted the bespoke `qt-file-manager`
+  (`apps/web/src/app/files/**` and its toggle) and ported v4's
+  `components/document-browser/` family on the shared folder browser. R-D
+  does not touch the other component choices below.
   Terminal: **xterm.js** (framework-agnostic, ports directly). Virtualized
   message list: **`@tanstack/virtual-core`** (vanilla core; matches v4's
   variable-height behavior — Angular CDK's autosize is still experimental).
@@ -7157,6 +7162,131 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `624d0d25c` 4.12.x catch-up round (P4.D361 → {P4.D362 → {P4.D363 ∥ P4.D364 → P4.D367 ∥ P4.D369 → {P4.D370 ∥ P4.D371} ∥ P4.D372 ∥ P4.D374 → P4.D375} ∥ P4.D366 → P4.D368 ∥ P4.D373 ∥ P4.D376 → {P4.D377 ∥ P4.D378 ∥ P4.D379 ∥ P4.D380} ∥ P4.D381} ∥ P4.D365 ∥ P4.D382 ∥ P4.D383 → {P4.D384 ∥ P4.D385 ∥ P4.D386 → P4.D387 ∥ P4.D388}) — UNIFIED 2026-11-09 (ordered 2026-11-04)
+
+**UNIFIED on main (2026-11-09; fast-forward from `unify/624`). ALL
+TWENTY-EIGHT LANES LANDED.** 196 lane commits were cherry-picked in
+dependency order, then the unifier's wires and fixes. The oracle baseline
+MOVES from `236c04e35` to `624d0d25c` (= the pin). All seventy-four ledger
+§3 rows retired to §6, `b15fe9404` whole at last. v4 kept moving: it
+released 4.12.2 and reached `2f0a033ca` (`4.13.0-dev.56`), **45 commits
+past the pin**, recorded UNPROCESSED in `drift-ledger.md` §3 with three
+additive migrations (the suggested 24th–26th D23 moves) and live-data
+hazards (ledger §1). The regen rule is PIN REQUIRED at `624d0d25c`. Round
+record: `status-log.md`, "The `624d0d25c` 4.12.x catch-up round —
+UNIFICATION record (2026-11-09)". Each order's status header lists its
+exact OPEN remainder.
+- **Landed:** every item in the round's scope (the ORDERED section below),
+  apart from each header's named OPEN rows. The headline pieces:
+  - D23 moves 22–23 + the fresh-only `characters.kind` /
+    `projects.brahmaConnectionProfileId` in one re-dump, three boot ensures
+    (P4.D362); the stamped FTS character-only reindex (P4.D363);
+  - Anthropic `2026-10-21` without sampling and the full provider
+    re-record (P4.D364); SQLite3MC 2.4.0 / SQLite 3.53.4 (sqlite3mc-sys
+    0.2.0), `db integrity`, croner 11 (P4.D365);
+  - the `kind`-tagged Salon frames rendered at the sink, gesture yields
+    (P4.D366 / P4.D384); Storyteller "All at once" and the import refusals
+    (P4.D368 — the 2026-11-04 disabled-until-ported ruling RETIRES);
+  - the image transport budget and per-profile cap (P4.D367); character
+    kind, Agent Mode and the generators by kind (P4.D369–P4.D371); Deus Ex
+    Machina (P4.D372 / P4.D385); the probation prompts and catalogue 1.1.33
+    (P4.D373); the Brahma lookups + `CATALOG` (P4.D374); window-first dated
+    search (P4.D375);
+  - the tier walk, item routes, pools / transfers, Pascal presets, the
+    document core and the store API (P4.D376–P4.D381); the SPA's CSS /
+    WCAG 2.2, item and document browsers (**D18 RETIRED**, R-D) and smalls
+    (P4.D383–P4.D388);
+  - `help/` 138, `docs/v4/` 537, and the NO-PORT record for the 32
+    `NO-PORT?` rows (P4.D382).
+- **The §3 review (eight readers R1–R8 + the unifier): no BLOCKING
+  finding.** What would have shipped, both fixed:
+  - the production tool runners carried `ErasedEmbeddingProvider::none()`,
+    so the in-chat `search` tool's vector passes and Brahma's
+    `lookup_memories` never took the vector path (`d6202b2d3`);
+  - overlay writes through `doc_mount_file_links` never published the
+    store's `mountPoints` hint — a second, emit-less copy of v4's one
+    `writeDatabaseDocument` chokepoint (`6f9633ac2`, `72600dbab`).
+  - Also fixed red-first: the degraded wearable pool's project tier, the
+    degraded scenario list's 500, and the should-fixes in the round record
+    (Storyteller seat error frames, the failover describer, the CLI's
+    foreign keys, `build_context`'s read order, the
+    `CONSULTED_CROSS_TIER_INTERLEAVE` carves narrowed to named two-way rows
+    — v4 `921fe94bb` converges on them, #155).
+- **Gate:** fmt / clippy (both feature sets) / release clean; the sweep
+  from the pin 823 ok / 3 run_failed (the two standing +
+  `provider_sdk_version_guard`, an env artifact — it reads the LIVE v4
+  plugin install) / 1 refused / 6 non-extractable of 833; `cargo test
+  --workspace --no-fail-fast` 939 binaries / 6,371 / 21 (each standing,
+  refused, hand-run green, fixed, or green by name) / 3 ignored, zero SKIP;
+  SPA 677 files / 17,442 tests. Tier R 438 / 0. Playwright 549 / 5 / 9 — four green by file; Storyteller (K) RULED red (land, then order).
+- **Versions:** core 0.0.1440, host 0.0.227, cli 0.0.40, SPA 0.5.986;
+  web 0.0.257, tauri 0.0.9, harness 0.0.1110 (frozen), sqlite3mc-sys 0.2.0
+  unchanged.
+
+**NEXT** (in order; the 2026-11-04 ruling stands — the dogfood pass waits
+until v5 has caught up with the v4 state live Friday is at):
+
+1. **A follow-ups smalls round.**
+   - ⚖ **Two human rulings first:** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`
+     (a recorded divergence — confirm); `put_zero_one_flag` maps `"0.0"` →
+     `true` as v4's `Boolean('0.0')` does (a v4 issue is DRAFTED, not
+     filed — go-ahead or not).
+   - **FIRST — the Storyteller live run fold (RULED 2026-11-10: land, then
+     order).** `quilltap-host/src/storyteller_spine.rs:924` answers
+     `chatStorytellerRun` before `run_planned_round` streams (on main since
+     P4.D343), so no storyteller run bubble streams live; Playwright
+     `salon-storyteller-flow` (K) "All at once" is the one red beat it
+     leaves. Hold the reply until the round closes (v4: the run's 200 IS the
+     round's stream) AND fix the SPA's live run fold — the held-reply
+     attempt reddened beats (B)(C)(D)(E)(F2); plus (K)'s
+     `qt-streaming-message:has(.qt-chat-message-row)` count. Also audit the
+     lazy-store-id-in-`queryFn` shape `5ff2d0f7f` fixed in two document
+     components.
+   - **The round record's "Recorded, not fixed":**
+     - P4.D381 item 18's four outer emit sites (v4
+       `character-gallery-service.ts:196`, `user-gallery-service.ts:253`,
+       `save-image-to-album.ts:318`, `character-vault-bridge.ts:191`; v5
+       likely `services/image_job_storage.rs`);
+     - `ThemeService` does not apply a theme's `tokens.json` (v4
+       `theme-style-injector.tsx:118`);
+     - P4.D387 Tier 2 item 23 (markdown in the store viewer);
+     - P4.D370 item 14;
+     - `RAW_CHARACTER_ROW_UNVALIDATED`;
+     - `accessible_stores`' user from `chat.userId`;
+     - the held `SQLITE_DEFAULT_FOREIGN_KEYS` at the sys crate;
+     - a malformed `chat_documents` NULL `isActive`;
+     - no filesystem-store realtime hint;
+     - the `lm_window_narrow_below_floor` row;
+     - the `.qtap` kind import reporting one issue where v4's ZodError
+       lists all;
+     - P4.D367's oracle on the static capability mirror, not the registry.
+   - **The order headers' OPEN items:** P4.D361 Tier 2 items 13 / 14;
+     P4.D367 item 16's cap-2-understudy row; P4.D377 items 6 / 10 / 14 /
+     18; P4.D380 Tier 2 item 18; P4.D381 item 17's remaining `eprintln!`s
+     and the `move_database_folder` NULL-parent gap; P4.D386 items 8 / 9 /
+     17.
+   - Still carried: the `236c04e35` unification's NEXT 2 list (below) minus
+     what this round closed, and the harness's frozen-`ProcessClock`
+     asymmetry (the orchestrator family's held cases).
+2. **The 45-commit catch-up** (`drift-ledger.md` §1 / §3; `/driftcheck`
+   first). D23 moves 24–26 pending (`connection_profiles.
+   toolResultVerbatimTurns`, the `chat_avatar_timeline` table, the three
+   `chats` opening-state columns) plus the probable fresh-only
+   `characters` moves (`19e45d664` birthday, `1dc11e947`
+   `CharacterRowSchema`) measured in ONE re-dump; the live-data hazards
+   (frontmatter `id:` stamping, `openingState 'pending'` chats, the
+   avatar-timeline carriers) measured first; the Green Room / opening,
+   character-vault, Aurora, Turns-mode, message-edit, Foundry and
+   provider prompt-cache programmes; the `921fe94bb` convergence retired
+   by measurement; a fresh pin's SDK floors against
+   `provider_sdk_version_guard`.
+3. **The owed dogfood pass** — every round owed since the 2026-11-04
+   ruling, on a Friday copy once v5's baseline reaches the v4 state the
+   copy is at, with the UNION build. It must include the **real-instance
+   open on SQLite3MC 2.4.0** (`REAL_INSTANCE_OPEN_AWAITS_DOGFOOD`) and the
+   first-boot ensures (the sampling heal, the FTS reindex, the two
+   columns) measured first.
+
 ## The `624d0d25c` 4.12.x catch-up round (P4.D361 → {P4.D362 → {P4.D363 ∥ P4.D364 → P4.D367 ∥ P4.D369 → {P4.D370 ∥ P4.D371} ∥ P4.D372 ∥ P4.D374 → P4.D375} ∥ P4.D366 → P4.D368 ∥ P4.D373 ∥ P4.D376 → {P4.D377 ∥ P4.D378 ∥ P4.D379 ∥ P4.D380} ∥ P4.D381} ∥ P4.D365 ∥ P4.D382 ∥ P4.D383 → {P4.D384 ∥ P4.D385 ∥ P4.D386 → P4.D387 ∥ P4.D388}) — ORDERED 2026-11-04
 
 **ORDERED 2026-11-04 — NEXT 3 of the `236c04e35` unification (the 4.12.0
@@ -7224,10 +7354,8 @@ vendor-norport}.md`.
   RETIRED by R-D** when P4.D387 lands; the unifier records it beside the
   locked decision.
 
-**NEXT after this round unifies:** the next `/driftcheck` (`4089469a8` at
-least), then the follow-ups smalls round (the `236c04e35` unification's
-NEXT 2, minus items 41 / 29), then the owed dogfood pass once v5's baseline
-reaches the Friday copy's v4 state.
+**NEXT after this round unifies:** SUPERSEDED — the round UNIFIED
+2026-11-09; see the UNIFIED section above for the current NEXT list.
 
 ## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {{P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356} ∥ {P4.D350 → P4.D349} ∥ {P4.D354 → P4.D355} ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D357 ∥ P4.D358 ∥ P4.D359 ∥ P4.D360) — UNIFIED 2026-11-04 (ordered 2026-10-29)
 

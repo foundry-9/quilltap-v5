@@ -202655,3 +202655,134 @@ The now-dead `scriptorium.api.ts` per-file ops (`fetchStoreFiles`, `listMountBlo
 - (e) `TestBed.createComponent` of a second root detaches the first root's element, so create the alert host last.
 
 **Cleanup:** the lane's `target/` was deleted whole at close, the pin worktree was removed (`git worktree remove` + `prune`), and `/tmp/p4d387` scratch was removed.
+
+## The `624d0d25c` 4.12.x catch-up round (P4.D361 → P4.D362 → {P4.D369 → {P4.D370 ∥ P4.D371}} ∥ … ∥ P4.D388, twenty-eight lanes) — UNIFICATION record (2026-11-09)
+
+**UNIFIED on `main` (fast-forward from `unify/624`). ALL TWENTY-EIGHT LANES LANDED. The oracle baseline MOVES to `624d0d25c`.** v4 kept moving through the round: it released 4.12.2 and reached `4.13.0-dev.56` (`2f0a033ca`). The ledger's §3 holds the 45 commits past the pin, recorded UNPROCESSED by `/driftcheck` during the round. The regen rule is PIN REQUIRED.
+
+### The pin
+
+- `/tmp/qt-v4-pin-unify624-624d0d25c` (v4 `624d0d25c`). The root was installed with `npm ci`, and the plugin and CLI dirs were floor-installed (`.claude/pin-plugin-sdks.sh`). `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin for every regen and gate.
+
+### The picks
+
+- 196 lane commits were cherry-picked onto `unify/624` in dependency order (`lanes.txt`): D361 → D365 → D382 → D362 → D363 → D364 → D367 → D369 → D370 → D371 → D372 → D373 → D374 → D375 → D366 → D368 → D376 → D377 → D378 → D379 → D380 → D381 → D383 → D384 → D385 → D388 → D386 → D387.
+- **Mechanical resolutions:**
+  - Version files were accumulated and the locks synced.
+  - CHANGELOG and status-log were unioned.
+  - The append-only seams were unioned: `services/mod.rs`, `core-contract.ts`, `fallback_home_guard.rs`, `system-import-execute.test.ts`, the fixtures README.
+- **Censuses were summed BY NUMBER:**
+  - `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` reached 532.
+  - The tri-state total reached 161 (P4.D377 + P4.D379 + P4.D381).
+  - The doc_mount fallback census converted 103 = 95 + 1 (P4.D380) + 7 (P4.D381).
+- **One compile-level reconciliation:** P4.D380 removed `documents/mod.rs`'s `store_err`, so P4.D377's `StoreError::FileOp` arm was routed to P4.D380's replacement.
+
+### The §3 review
+
+Eight parallel readers each took a group of lanes (R1–R8), with the unifier on the whole diff. **No BLOCKING finding.**
+
+**The finding that would have shipped (R5):**
+- The production tool runners carried `ErasedEmbeddingProvider::none()` (`tools/executor.rs`). `with_embedding_provider` had no production caller, so the in-chat `search` tool's vector passes and Brahma's `lookup_memories` NEVER took the vector path live.
+- Fixed in `d6202b2d3`: the host's memory embedding is threaded through `build_turn_tool_runner` and the spine's `tool_runner()`, with a wiring test.
+
+**The union defect the sweep caught that would also have shipped:**
+- Overlay writes through `doc_mount_file_links`' `write_database_document` / `delete_database_document` never published the store's `mountPoints` hint. This was a second, emit-less copy of v4's single `writeDatabaseDocument` chokepoint (v4 `aec626eff`).
+- As a result, inventory / wardrobe / summary / managed-field writes left open store browsers stale.
+- Fixed in `6f9633ac2`, with the wardrobe-picture delete. It is pinned by two new `publish_sites` tests and two census rows.
+- The two location publish pins were updated to v4's `[mountPoints(store), topic]` order in `72600dbab`.
+
+**Production port defects the sweep exposed, fixed red-first:**
+- The degraded wearable pool dropped the project tier (`f768d20d4`; v4 `0c47f4539` reads it from main).
+- The degraded scenario collection list answered 500 where v4 answers 200 empty with one fallback DEBUG (`c0b21867c`).
+
+**Should-fixes landed (each with a test):**
+- A failed concurrent Storyteller seat's error frame now rides its seat, and the SPA drops only that seat's bubble (`08ee30208`, `89a5c7c55`).
+- The failover chain's production describer arm is driven by a test (`9aaed766a`).
+- The persisted-description probe's DEBUG and its silent miss are pinned (`3cdf31d6f`).
+- One collection + ranking under `plan_image_transport` and `ranked_image_positions` (`404fac10e`).
+- The preset walk and the custom-tools routes read through v4's fallback `findById` (`4c3d39865`, `62760b85e`).
+- Brahma `maxAgentTurns` past the safe range carries Zod's two issues, and the new memories-count home is guarded (`c8a9b0d91`).
+- The CLI's writable open enforces foreign keys, as v4's driver does (`94a60996b`).
+- The search tool's knowledge tiers are the shared `bucket_mounts` (`aea316e3d`), and the accessible-stores walk's dead step was dropped (`ac3fb34b2`).
+- `doc_copy_file`'s probe is the core's `stat_document` (`02213d50a`).
+- `build_context` reads the referent sections and the established-fact reminder before the inform DEBUG, as v4's one `Promise.all` does (`7d1c45c68`).
+- The `CONSULTED_CROSS_TIER_INTERLEAVE` carves were narrowed to named two-way rows (`5c3930619`; v4 `921fe94bb` converges on them — #155).
+
+**Recorded, not fixed — for the human or a later order:**
+- ⚖ **For the human's confirmation:**
+  - `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT` (a recorded divergence);
+  - `put_zero_one_flag` maps `"0.0"` → `true` exactly as v4's `Boolean('0.0')` does — a v4 issue is DRAFTED, NOT filed.
+- **P4.D381 item 18's remaining outer emit sites:** v4 `lib/photos/character-gallery-service.ts:196`, `user-gallery-service.ts:253`, `save-image-to-album.ts:318`, `lib/file-storage/character-vault-bridge.ts:191` (v5 likely `services/image_job_storage.rs`).
+- **Follow-ups:**
+  - `ThemeService` does not apply a theme's `tokens.json` (v4 `theme-style-injector.tsx:118`);
+  - P4.D387 Tier 2 item 23 (markdown in the store viewer);
+  - P4.D370 item 14;
+  - `RAW_CHARACTER_ROW_UNVALIDATED`;
+  - `accessible_stores`' user should come from `chat.userId`;
+  - `SQLITE_DEFAULT_FOREIGN_KEYS` held at the sys crate (the CLI's open now sets it);
+  - a malformed `chat_documents` NULL `isActive`;
+  - no filesystem-store realtime hint;
+  - the `lm_window_narrow_below_floor` row;
+  - the `.qtap` kind import reports one issue where v4's ZodError lists all;
+  - P4.D367's oracle uses the static capability mirror, not the registry;
+  - P4.D384 H1b superseded by PL-4.
+- **Harness asymmetry:** the frozen `ProcessClock` versus wall-clock rows (the orchestrator family's held cases).
+- **NOT verified:** the real-instance open on SQLite3MC 2.4.0 (`REAL_INSTANCE_OPEN_AWAITS_DOGFOOD`) — owed to the next dogfood pass.
+
+### The union reds (first full sweep: 14 beyond the standing), each fixed
+
+- The lantern wiring census counted two `image_transcoder: Arc::new(HostImageCodec)` literals after the embedding wiring test; the test binds its own (`3c5ea1872`).
+- The pascal custom-tools route oracle planted `maxImagesPerRequest` twice (P4.D379 × P4.D362, `627ccaee7`).
+- The query-param refusal count 110 → 113 (P4.D381, `b20ba6c3f`); the import-state counts 79 → 82 and 18 → 20 (P4.D362 + P4.D368, `faa9b2b84`).
+- The restore oracle needed P4.D362's provider-registry mock, and the BAG-NULLS archive gained P4.D374's `brahmaConnectionProfileId` (`2d5c3e36a`).
+- The almanack main fixture's prompt templates were re-seeded through v4's real `findAllForUser` at the pin (P4.D373's 1.1.33 catalogue, `3c6321ce8`).
+- The characters-mutations oracle plants v4's 4.12 columns (`22299a26f`); group_wardrobe's archived row moved to index 2 (P4.D378's added scarf, `8fe90a9ff`).
+- orchestrator_tier3 on the union: the error frame by kind, the held deus post, two rows off shared chats (`59ca6cadd`).
+- The subprompts and mail-alerts families record the store hint; the mail-alerts oracle resets v4's `globalThis` bus per scenario (`f46370443`, `6efaa6a61`).
+- The wearable-pool, scenario-list, chokepoint and build_context items above.
+- Retired: `UNION_GATED_ON_P4D369`, the generators' RED-BY-DESIGN docs, the doc_mount census's union arithmetic (`cc973db04`).
+
+### The Playwright union reds (first full run: 22 red; 16 still red BY FILE in 9 files), fixed
+
+Six files went green by file (timing / order). The other nine were fixed one at a time, one Playwright invocation at a time:
+- **Port defects that would have shipped:**
+  - The Salon never bound the composer's `[handStatus]` / `(dismissHandStatus)`. P4.D384 computes the status and P4.D385 draws it, so on the union the raised-hand chip was ALWAYS empty (`d4f3df5d3`, red-first unit test).
+  - A conversation-search reveal never opened the collapsed announcement chip it targets: `MessageList` now binds `AnnouncementGroup.revealExpand`, add-only, as v4 `SalonView.tsx:1433-1438` does (`c4319a798`).
+  - The document picker seeded its cards' `defaultOpen` once, where v4 keys them on `everywhere` + non-empty. Separately, the destination dialog and the store source read the store id lazily inside `queryFn`, so after a cross-store copy the browser showed the DESTINATION store's listing. Both fixed red-first in `5ff2d0f7f`.
+  - The `.docx` viewer matched kind `not_available` where the server sends `unprocessable` + `not_available: docx render-html` (P4.D381), so the download fallback never showed (`f0454669c`).
+  - P4.D388's HANDOFF H1 popup patch had never been applied: the Run dialog had no presets section (`0b1120549`).
+- **Spec premises a sibling lane legitimately moved:**
+  - `title` reads → Quilltap tooltips (P4.D385 H3 / H4: `d4f3df5d3`, `324b4dae4`); the yield chip by its visible text (v4 `94f041764`).
+  - The ledger injector on the kind-tagged `done` frame (P4.D366, `4a1dbfecd`).
+  - The search spec's G1 live-region count scoped to the chip, since v4's composer has two live regions; G2's `/deus` picked from the slash menu.
+  - The slash menu's new `/attach_image` row hovered under a resting pointer (`85970d4ea`).
+  - `dot.png` → `dot.webp` (v4 `blob-transcode.ts:163-168`, `59ed40f8e`).
+  - spa-smalls (B) now really saves `{kind}` (P4.D369), and (H)'s own instance seeds its Tools roster (`c70e20e00`).
+- **Still RED — RULED (human, 2026-11-10): land, follow-up order.** `salon-storyteller-flow` (K) "All at once" fails on a PRE-EXISTING defect on main since P4.D343 (`6db0b25aa`, 2026-11-03).
+  - `crates/quilltap-host/src/storyteller_spine.rs:924` answers `chatStorytellerRun` (`tx.send(Ok(()))`) right after planning, BEFORE `run_planned_round` streams.
+  - The SPA's `runStorytellerSelection` folds only until the dispatch settles, so NO storyteller run bubble ever streams live, in-order runs included (their beats count settled rows). In v4 the run's 200 response IS the round's stream, read to close.
+  - P4.D368 re-enabling "All at once" exposed it.
+  - Holding the reply (v4's shape) rendered (K) but reddened (B)(C)(D)(E)(F2), whose live fold had never run. The attempt is saved with the unifier's scratch.
+  - A (K) spec premise rides the fix: v5 keeps an empty `qt-streaming-message` host mounted where v4's `StreamingMessage` returns null, so the count should use `:has(.qt-chat-message-row)`.
+  - → **the next follow-ups round** (phase-4 NEXT 1).
+- Unchecked follow-up: the lazy-id-in-`queryFn` shape behind the destination dialog may exist in other components.
+
+### The gate
+
+- fmt / clippy (`--workspace --all-targets -D warnings`, plain AND `--features quilltap-core/native-transport`) / release build: clean on the final tree. Clippy caught `too_many_arguments` on the widened `build_turn_tool_runner` (`fab346fa0`).
+- **The full sweep from the pin (second run):** 823 ok / 3 run_failed / 1 refused (`backup_uuid_remap`, by design) / 6 non-extractable of 833.
+  - The 3 are the two standing (`ariel_writers_tier3`, `search_replace`) and `provider_sdk_version_guard`.
+  - `provider_sdk_version_guard` is an env artifact: it reads the LIVE v4 plugin install (openrouter 1.5.62 / plugin-utils 2.7.4), past the pin's 1.5.34 / 2.7.3.
+- **`cargo test --workspace --no-fail-fast`** with the harvested env block (1,099 vars, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **939 binaries / 6,371 passed / 21 failed / 3 ignored, zero SKIP.** The 21:
+  - the two standing;
+  - `backup_uuid_remap` (refused);
+  - `recall_probe_fixture` (non-extractable; hand-run from the pin: 9 turns, 125 candidates, gold-at-head 24 — green);
+  - two core publish pins made stale by `6f9633ac2` (fixed);
+  - fifteen shared-fixture / env-block collisions, each GREEN BY NAME through the driver (15/15).
+- Tier R: `cli_differential` 438 cases / 0 failures.
+- SPA: 677 files / 17,442 tests; `npm run build` clean.
+- Playwright: 549 passed / 5 failed / 9 skipped (23.1 m) on the final tree, after the union-red fixes (the first full run was 520 / 22 / 8). Four of the five are green by file alone (the dropped-attachment toast, Deus (k), the waiting quill, and the axe sweep after the destructive specs); the fifth is Storyteller (K), RULED red (land, then order).
+
+### Versions
+
+core 0.0.1440, host 0.0.227, cli 0.0.40, SPA 0.5.986. Unchanged: web 0.0.257, tauri 0.0.9, harness 0.0.1110 (frozen), sqlite3mc-sys 0.2.0.

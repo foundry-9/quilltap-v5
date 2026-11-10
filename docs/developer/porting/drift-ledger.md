@@ -19,436 +19,321 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `236c04e35`**: "dev: started 4.12.0 development" (v4
-  main, 2026-10-28 19:30 −0500, `package.json` `4.12.0-dev.0`). Its code is
-  v4's 4.11.0 release, measured by CONTENT: `1ca45c171` = `7789ebed6`'s
-  tree, and `236c04e35` adds only the `4.12.0-dev.0` stamps. It was adopted
-  when the `236c04e35` 4.11.0 catch-up round was unified (2026-11-04). All
-  twenty lanes landed: P4.D341 → {P4.D350 → P4.D349} → {P4.D347 → P4.D348 →
-  {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356 ∥ P4.D354 → P4.D355 ∥
-  P4.D357 ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D359 ∥ P4.D360 ∥
-  P4.D358. The round was pinned at the same commit, so the baseline equals
-  the pin. Sixty-eight of the sixty-nine §3 rows `6fd2d5ffb..236c04e35`
-  retired to §6; **`b15fe9404` stays in §3, PARTIAL** (P4.D343 item 41, the
-  `simultaneous` order, and item 29, the `.qtap` import refusals). The
-  previous baseline was `322a5488e` (2026-10-27 → 2026-11-04).
-- **Checked:** 2026-11-04 (afternoon), by `/driftcheck` on v5 main
-  (`79e95fe99`), after the `236c04e35` round's unification. Fetched first
-  (tags too); local equals `origin` on `main` and `bugfix`. The §2 probe
-  FAILED on **eleven new `main` commits** past the recorded `7b4e1b9fa`
-  (`9d6f155c5` … `624d0d25c`, `4.13.0-dev.0` → `dev.8`) and a moved
-  `bugfix` / `release`.
-  - **v4 RELEASED 4.12.1** (`6121f59b9`, tag `4.12.1`, 2026-11-04 10:35):
-    a bugfix-branch release whose sole parent is `7bdb45873` (4.12.0).
-    Its content is `bugfix`'s `182282af4` (window-first dated search +
-    the honest empty search), `97f5c849f` (CI heap) and two docs commits;
-    `merge: 4.12.1 back into main` (`afec0af10`) brings it onto `main`.
-    Measured by CONTENT: `git diff 6121f59b9 main` over 4.12.1's `lib/` /
-    `app/` files is ONE file — `lib/tools/native-tool-prompt.ts`, which
-    `96156566b` refactored on `main` — so the merge kept 4.12.1 whole.
+- **Oracle baseline: `624d0d25c`**: "ci: restore the 8 GB heap for the
+  coverage run" (v4 main, 2026-11-04 11:00, `package.json`
+  `4.13.0-dev.8`). Its code contains v4's 4.12.0 and 4.12.1 releases. It
+  was adopted when the `624d0d25c` 4.12.x catch-up round was unified
+  (2026-11-09). All twenty-eight lanes landed: P4.D361 → P4.D362 →
+  {P4.D369 → {P4.D370 ∥ P4.D371}} ∥ … ∥ P4.D388 (picked D361 → D365 →
+  D382 → D362 → D363 → D364 → D367 → D369 → D370 → D371 → D372 → D373 →
+  D374 → D375 → D366 → D368 → D376 → D377 → D378 → D379 → D380 → D381 →
+  D383 → D384 → D385 → D388 → D386 → D387). The round was pinned at the
+  same commit, so the baseline equals the pin. All seventy-four §3 rows
+  `b15fe9404` + `8832cfd20` … `624d0d25c` retired to §6 — `b15fe9404`
+  whole at last (P4.D368 landed P4.D343 items 41 and 29). The previous
+  baseline was `236c04e35` (2026-11-04 → 2026-11-09).
+- **Checked:** 2026-11-09 (afternoon), by `/driftcheck` on v5 main
+  (`a11fbe767`), during the `624d0d25c` round (lanes in flight); re-read
+  at the round's unification (same tips, tree clean). NOT fetched; local
+  refs read as they stand.
+  - The §2 probe FAILED on **45 new `main` commits** past `624d0d25c`
+    (`4089469a8` … `2f0a033ca`, `4.13.0-dev.12` → `dev.56`), a moved
+    `bugfix` (`997657639` → `d67c70a51`, 11 commits) and a moved `release`
+    (`6121f59b9` → `c9b281ec9`).
+  - **v4 RELEASED 4.12.2** (`c9b281ec9`, tag `4.12.2`, 2026-11-06 13:11;
+    sole parent `6121f59b9`, i.e. 4.12.1). Its content is nine `bugfix`
+    cherry-picks of `main` commits — `8dfe307f5`, `99391975f`,
+    `f5d37e718`, `b9b9621e8`, `c874ae9ba`, `4b97636b2`, `0ae0ba3a7`,
+    `4d3b00621` — plus the Gemini-arrival half of `403d60081`
+    (`35d0bd803`) and the Wolfi Dockerfiles (`f1037ba27`). `452e61ea9`
+    ("merge: 4.12.2 back into main") brings it onto `main`. Measured by
+    CONTENT: every line 4.12.2 added under `lib/` / `app/` / `packages/` /
+    `plugins/` is on `main` HEAD, except three hunks later `main` commits
+    superseded (the Anthropic breakpoint block and the OpenRouter header /
+    `user` lines, both rewritten by `819fc9c82`; two
+    `character-optimizer.service.ts` message lines reshaped by `4089469a8`
+    / `c874ae9ba`). **No unabsorbed release content.**
   - `gh issue list -R foundry-9/quilltap-server --label bug --state all`:
-    unchanged since the morning check (#120, #121, #133–#137, all CLOSED);
-    none of the 11 cites an issue. **NO CONVERGENCE.**
-  - The morning check of 2026-11-04 (`ddda33e2f`) recorded the 62 below;
-    earlier checks live in the §6 bullets and this file's git history.
-- **v4 `main` HEAD at check: `624d0d25c`** ("ci: restore the 8 GB heap
-  for the coverage run", 2026-11-04 11:00, `4.13.0-dev.8`) — **SEVENTY-THREE
-  commits past the baseline, all UNPROCESSED in §3**: the 10 of 2026-10-29,
-  the 52 of 2026-11-04 (morning) and the 11 of 2026-11-04 (afternoon).
-  (Against the old baseline `322a5488e` it was 142.)
-  - **The 10 of 2026-10-29** (`8832cfd20` … `544c7ab1e`, `4.12.0-dev.1` →
-    `dev.9`):
-    - *Dependency move:* `8832cfd20`, the driver to
-      `better-sqlite3-multiple-ciphers` 13.0.3, which moves v4 onto
-      **SQLite3MC 2.4.0 / SQLite 3.53.4**. Build flags
-      (`deps/defines.gypi`) are byte-identical to 12.11.1; there is NO
-      migration and NO D23 move; one new server INFO line. **A ruling is
-      owed on v5's vendored 2.3.5 amalgamation.**
-    - *PORT:* `bf7a457f6`, the iCloud-placeholder scan fix on the ported
-      scanner and `?action=scan` (a NEW `filesInCloud` wire key). The
-      boot-scan split and the watcher are NO-PORT: v5 has never had a
-      watcher. **`544c7ab1e`**: the Anthropic API version `2026-10-21` with
-      NO sampling parameters, documents moved into a user turn,
-      `ProviderCapabilities.samplingParameters` (plugin-types 2.10.0), the
-      repository stripping sampling keys, and a NEW DATA-REWRITE MIGRATION
-      `strip-anthropic-sampling-parameters-v1`.
-    - *NO-PORT?:* `db4a76e39`, the chokidar drop (both watchers are
-      NO-COUNTERPART; one About-credits line is a PORT small); `f56965ef9`
-      (`openai` 7.45.1 / `@openrouter/sdk` 1.5.21 —
-      `provider_sdk_version_guard` trips at any pin past it); `3936fdf65`;
-      `eb90eb466`; `7dedfa067`; `3e4f9dea9`; `9f761e157`.
-  - **The 52 of 2026-11-04**, by class (§3, from the hunks):
-    - *PORT / PORT-NEW with a D23 move:* `db6190b44`, Deus Ex Machina —
-      established facts (the 22nd move); `d439f6dc9`, the per-profile image
-      cap (the 23rd move; `openai` ^7.47.0 / `@openrouter/sdk` ^1.5.33 ride
-      it).
-    - *PORT with a non-D23 migration:* `902c6efe9`, Staff rows out of global
-      search (an FTS5 trigger replace + rebuild; #121).
-    - *PORT — wire or behaviour moves on ported surfaces:* **`604a082c4`,
-      the Salon SSE wire becomes `kind`-tagged frames** (Help chat / Brahma
-      / Scenario Builder / one-shot keep the old bag); **`29c1e2690`, the
-      image transport budget REWRITTEN** (4 MB base64 total, provenance
-      ranking, an omission text); `a3d53eae1`, the document core (#133 /
-      #134 / #137); `0c47f4539`, the tier walk, and reads no longer
-      provision stores (#135 / #136); `600c2906f`, the item-route family (a
-      NEW `?action=duplicate`, a NEW `wardrobe` realtime topic);
-      `30a3b4cb7`, document moves; `a0ed5ecad` (`GET
-      /api/v1/wardrobe/transfers` REMOVED — v5 still serves it);
-      `aec626eff`, the mount-point document-store API (`listForBrowser`,
-      `?action=links` / `render-html` via mammoth, copy / move /
-      delete-folder, per-store realtime); `5efe53ea7` / `c17033f04`,
-      Document Mode (non-text read-only, the General library, blob text
-      editing); `fd165fce0`, Pascal presets on the tool walk; `9eab8d2da`,
-      gesture-only yields + a `handAsked` frame; `ba6c8fe0f`, the
-      "probation" prompt text (generators, extraction, consolidation, recall
-      tags, 21 sample prompts); `4efea65e5`, Green Room multi-slot spread;
-      `d4ddeb943`, avatar-job reuse PENDING-only; `4310d435f`, a stat error
-      class; `c539c82e0`, the Brahma lookup tools + the `@Brahma` profile (a
-      NEW project vault key); `70d2859d8`, the CLI's `db integrity` (no more
-      `cipher_integrity_check`).
-    - *SPA / CSS:* `29ba4d3f8`, `3c41cf3da`, `4f5047241`, `671c59a53`,
-      `df8d4d70a`, `b2b783b47`, `c34986421` (the SVAR dependency removed),
-      `27fb3ec77`, `87c3860df` (undefined CSS tokens), `94f041764` (a second
-      WCAG 2.2 AA pass + five theme packs).
-    - *NO-PORT? (docs / tests / tooling / stamps):* `d03eb2d63`,
-      `a299de9f5`, `f12bda3d1`, `3d39c303c` (verify "output unchanged"),
-      `134961572`, `f1c2b178d`, `06efd9ca2`, `d2795f72c`, `25a20221c`,
-      `705b954c2`, `ec8d91667`, `05264ace3` (the watchers — NO-COUNTERPART;
-      its scanner walk is a PORT? beside `bf7a457f6`), `547f1a739`,
-      `856ed4f2b` (+ an About line), `8f83041aa`, `9b5bb27df`, `cbf4805c0`,
-      and the four release commits `7bdb45873` / `b37769882` / `013b99b5d` /
-      `7b4e1b9fa`.
-  - **The 11 of 2026-11-04 afternoon** (`9d6f155c5` … `624d0d25c`), by
-    class (§3, from the hunks). **No migration, no D23 move** in any of
-    them — the new character `kind` lives in the vault's `properties.json`
-    (v4's spec moved it off the DB column first proposed):
-    - *PORT-NEW — the character-kind programme* (v4's spec
-      `character-kind-and-roleplay-defaults.md`, phases 1–6):
-      `b09ca46bb`, `kind` (`roleplay` default / `assistant`) through ONE
-      reader `lib/characters/kind.ts` + a chokepoint grep-test, the vault
-      read / patch / full-sync / scaffold, the PUT + GET wire, the
-      `.qtap` schema, the Aurora "Kind of character" card; `96156566b`,
-      Agent Mode's flavour (`in-character` vs `research`) and the native
-      tool-rules preamble (`roleplay` "Using tools" vs `assistant`
-      MANDATORY) from the responding character's kind — roleplay turns are
-      NEVER offered `submit_final_response`; Brahma / Help chat / one-shot
-      pin `research` + `assistant`; `3ae4cf582`, the four generators
-      (Wizard, Summon From Lore, External Prompt, Optimizer) add
-      `generatorDirectionFor(kind)` + the Optimizer's flattening drift
-      signal, and the Wizard's system-prompt field gets a 2500-token
-      budget.
-    - *PORT — prompt text and seeding on ported surfaces:* `d0201575a`,
-      default-system-prompts 1.1.32 (`MODERN_GENERAL` RETIRED →
-      `MODERN_ROLEPLAY`, NEW `MODERN_ASSISTANT`, a stakes passage in every
-      companion / romantic / platonic prompt) + the seed PRUNES built-in
-      rows the registry no longer ships (a NEW INFO / DEBUG pair);
-      `c69a08882`, `INFORM_BLOCK_HEADER` reworded (feelings and resolve;
-      outranks "your usual temperament") + a NEW
-      `GROUP_SCENE_DISCIPLINE` bullet; `7ff5fda89`, one more stakes bullet
-      + default-system-prompts 1.1.33.
-    - *PORT — 4.12.1, window-first dated search* (`6121f59b9` /
-      `afec0af10`): `memories.findIdsInEventWindow` (SQL over
-      `COALESCE(occurredAt, createdAt)`), the index's `includeIds`, the
-      recall gather's window pass (`via: 'window'`) in both the vector and
-      text strategies, the tool path's ≤ 14-day window relaxing the
-      relevance floor (`TOOL_WINDOW_FLOOR_MAX_DAYS`), NEW
-      `lib/scriptorium/chat-window.ts`, unsummarized in-window chats in the
-      retrospective mini-recap, the search tool's window census + honest
-      empty text, three tool-description strings and the rule-6 sentence
-      in both the native and simple-JSON tool prompts.
-    - *NO-PORT? (docs / CI):* `9d6f155c5`, `763dfaceb`, `624d0d25c`.
-  - **Surfaces the `236c04e35` round just LANDED that these commits move
-    again** — v4 drift, not v5 bugs, when the next catch-up's pins trip:
-    Storyteller (`604a082c4` DELETES the `tagSseChunk` seat-tagging P4.D343
-    / P4.D344 ported, and re-shapes every Salon frame); Pascal intervention
-    (`fd165fce0` on P4.D345 / P4.D346's run route and dialog); the composer
-    and prose mode (`db6190b44`'s `/deus` + Cmd/Ctrl+Shift+Enter and
-    `df8d4d70a`'s tooltips on P4.D352's composer); diagrams (`8f83041aa`
-    moves `mermaid` to 12.3; P4.D353 pins 12.2); WCAG / themes (`87c3860df`
-    + `94f041764` over P4.D357 / P4.D358's files and the same five packs);
-    the mount index (`aec626eff`, `c34986421`, `c17033f04`, `05264ace3`,
-    `0c47f4539` — P4.D354's family); the context builder (`db6190b44`,
-    `ba6c8fe0f`, `d439f6dc9`, `29c1e2690`, `0c47f4539`'s knowledge injector
-    — P4.D347); the memory rubric (`ba6c8fe0f` and `db6190b44` edit
-    P4.D342's extraction prompts); vault keys (`c539c82e0`'s
-    `brahmaConnectionProfileId` beside P4.D349's `humanoid` / pronoun /
-    diagram keys). The Log carrier (P4.D355) is untouched.
-- **v4 `bugfix` tip at check:** `997657639` ("Merge tag '4.12.1' into
-  bugfix", 2026-11-04; parents `e74035270` "bugfix: started 4.12.1 bug
-  branch" + `6121f59b9`). Since the morning's `17cb0e819` it carried
-  `2bca31c11` (merge `main` → bugfix: the 4.13.0-dev stamps), `538b7f078` /
-  `749800d46` (docs), `182282af4` (the window-first search) and
-  `97f5c849f` (CI heap), all released as 4.12.1. By CONTENT,
-  `git diff 6121f59b9 bugfix` is the bugfix stamps only (3 files +4 / −4),
-  and 4.12.1 is merged into `main` (above): **NO unabsorbed bugfix
-  content.** The §2 probe's bugfix base is `997657639`. **`release`
-  tip:** `6121f59b9` (`release: 4.12.1`). Re-probe ALL THREE branches every
-  time.
-- **Checkout at check:** branch **`main`** at `624d0d25c`, tree **CLEAN**
-  (the morning's wrong-branch posture and staged CHANGELOG dirt are gone).
-  Its code is 4.13.0-dev.8, SEVENTY-THREE commits past the baseline, so a
-  regen from it is poisoned by DRIFT. The live root `node_modules` still
-  carries the 13.0.3 driver / `openai` 7.47.0 / `@openrouter/sdk` 1.5.34 /
-  `mermaid` 12.3.0 (unchanged by the 11).
-- **Verdict: DRIFT PENDING — 73 commits past the baseline, all UNPROCESSED
-  (§3)**, plus the held PARTIAL row `b15fe9404`. The morning's facts stand
-  (three migrations past the baseline's own — the 22nd / 23rd D23 moves and
-  the FTS rebuild — plus `544c7ab1e`'s data-rewrite migration; the Salon's
-  `kind`-tagged frames; the image transport budget; the SQLite3MC 2.4.0
-  ruling owed; ~28 NO-PORT? candidates). The 11 add NO migration and NO D23
-  move: one PORT-NEW programme (character kind, three commits), three PORT
-  prompt / seeding moves, the 4.12.1 window-first search (PORT on the recall
-  pipeline and the search tool), and three NO-PORT? docs / CI rows. No
-  convergence.
-- **ORDERED (`/setupphase`, 2026-11-04 evening):** the `624d0d25c` catch-up
-  round — P4.D361 … P4.D388, twenty-eight lanes — takes ALL SEVENTY-FOUR §3
-  rows `b15fe9404` + `8832cfd20` … `624d0d25c` (each marked `ORDERED`). The
-  round is PINNED at `624d0d25c`. Its first probe found the live checkout
-  DIRTY with an uncommitted Optimizer change. Before the orders' commit, v4
-  committed that change as **`4089469a8`** ("feat: Refine from Memories &
-  Instructions", `4.13.0-dev.12`, `main` only); it is recorded below as
-  UNPROCESSED for the next `/driftcheck`. It is NOT this round's (the human's
-  ruling R-B). `bugfix` is unmoved (`997657639`). The human's round rulings
-  (2026-11-04) are:
-  - bump the vendored amalgamation to SQLite3MC 2.4.0;
-  - pin at `624d0d25c`;
-  - scope = the drift plus P4.D343 items 41 / 29;
-  - retire D18;
-  - `.docx` `render-html` as a named refusal;
-  - a full provider re-record;
-  - Salon frames rendered at the sink.
-- **Regen rule: PIN REQUIRED at `236c04e35`** (§5.1) for any work outside the
-  `624d0d25c` round; the round's lanes regen from `624d0d25c` pins (each
-  order's §R.3). Never regen from the
-  live checkout: it is seventy-three commits past the baseline.
-  - The pin's root takes its own `npm ci --offline --ignore-scripts`, then
-    `npm rebuild better-sqlite3` (SQLite 3.53.2 / chacha20 — the pin's
-    lockfile wants the 12.11.1 driver; the live tree has 13.0.3).
+    NEW issues **#145–#155** (all CLOSED). Twelve of the 45 cite them with
+    `Fixes #N`: `f5d37e718` #145 (spec `5f8c45966`); `7624332c0` #146;
+    `88c9cc81d` #147 (test `5f0bb6b0b`); `1dc11e947` #148 / #149 / #150
+    (spec `3277aa572`); `348172b9c` #151–#154 (spec `d281c2332`);
+    `921fe94bb` #155. **#147 and #155 were FILED BY THIS PORT** (P4.D381
+    R-6, P4.D378 `CONSULTED_CROSS_TIER_INTERLEAVE`); the rest are v4
+    code-reading or CI finds.
+- **v4 `main` HEAD at check: `2f0a033ca`** ("feat: opaque characters may
+  use their own vault's non-core folders", 2026-11-09 13:13 −0600,
+  `4.13.0-dev.56`) — **FORTY-FIVE commits past the baseline `624d0d25c`,
+  all UNPROCESSED in §3** (118 past the old baseline `236c04e35`; the 73 in
+  between are this round's, now absorbed). `4089469a8` (the Optimizer's
+  "Refine from Memories & Instructions", committed during the round's
+  planning and held out of it by ruling R-B) is now classified among the
+  45.
+- **v4 `bugfix` tip at check: `d67c70a51`** ("bugfix: started 4.12.2 bug
+  branch", 2026-11-06 13:12). Since `997657639` it carried the nine
+  cherry-picks above and its own stamp. By CONTENT, `git diff c9b281ec9
+  bugfix` touches 3 files (+4 / −4: `README.md`, `package.json`,
+  `package-lock.json` — the bug-branch stamps only). **NO unabsorbed
+  bugfix content.** The §2 probe's bugfix base is `d67c70a51`.
+  **`release` tip:** `c9b281ec9` (`release: 4.12.2`). Re-probe ALL THREE
+  branches every time.
+- **Checkout at check:** branch **`main`** at `2f0a033ca`, tree **CLEAN**.
+  Its code is `4.13.0-dev.56`, forty-five commits past the baseline, so a
+  regen from it is poisoned by DRIFT.
+- **Verdict: DRIFT PENDING — 45 commits past the baseline `624d0d25c`,
+  all UNPROCESSED (§3).** By leading class: 1 CONVERGENCE, 19 PORT-led, 13
+  PORT-NEW-led, 12 NO-PORT? candidates.
+  - **THREE v4 migrations**, all additive (one NULL backfill; none
+    destructive): `add-profile-tool-result-verbatim-turns-v1`
+    (`9d68d8421`), `add-chat-avatar-timeline-table-v1` (`ebb0ca13a`, a NEW
+    TABLE), `add-chat-opening-state-v1` (`348172b9c`, three
+    migration-only `chats` columns). Suggested D23 numbering 24th / 25th /
+    26th (Schema / D23 below; `/setupphase` confirms).
+  - **Two probable FRESH-ONLY generateDDL moves on `characters`** —
+    `19e45d664` (`birthday`) and `1dc11e947` (the repository re-keyed onto
+    `CharacterRowSchema`: a fresh v4 `characters` table LOSES the 19
+    vault-managed columns, `kind` among them) — to be MEASURED by re-dump.
+  - **ONE convergence: `921fe94bb` (#155)** — v4 adopts this port's
+    `CONSULTED_CROSS_TIER_INTERLEAVE` ruling (P4.D378, RULED 2026-11-09):
+    `consulted` (and now `unread`) concatenated in tier order own → group
+    → project → General. The round's unifier already NARROWED the carves to
+    named two-way rows (`5c3930619`); they trip at the next baseline move
+    by design — retire by measurement (§5.4), checking v5's
+    `unread_mounts` order too (the ruling covered `consulted`).
+    `88c9cc81d` (#147) is NOT a convergence: v5 ported v4's case-sensitive
+    folder move FAITHFULLY, so it is a plain PORT of v4's fix.
+  - **Programmes:** the Green Room / opening refactor (`0ae0ba3a7`,
+    `4d3b00621`, `89f259c2f`, `3db965416`, `348172b9c`, `309741661`,
+    `dca8ff120`); the character repository / vault refactor (`1dc11e947`,
+    `c135a5561`); Aurora's one character page + autosave (`7624332c0`,
+    `3a79f744c`); birthdays / public identity (`19e45d664`); the Salon
+    avatar timeline (`ebb0ca13a`); Turns mode (`b941280d5`); edit any Salon
+    line (`8d5eb8f0e`); the Foundry settings rebuild (`f1386cebd`); the
+    Optimizer (`4089469a8`, `c874ae9ba`); provider prompt-cache fixes across
+    five plugins (`8dfe307f5`, `b9b9621e8`, `4b97636b2` — which REMOVES
+    `previousResponseId` chaining from the spine — `f5d37e718`,
+    `78aca159d`, `819fc9c82`); the per-profile tool-result elision window
+    (`9d68d8421`); Brahma turn caps (`3cc12d346`, default 50 → 10); the
+    wardrobe image-prompt optimizer (`fee1bd63d`, `aefbdde05`); opaque
+    characters' own-vault reach (`2f0a033ca`).
+- **Regen rule: PIN REQUIRED at `624d0d25c`** (§5.1) — HEAD is past the
+  baseline. Never regen from the live checkout: it is forty-five commits
+  past it.
+  - The pin's root takes its own `npm ci` (the unifier's pin
+    `/tmp/qt-v4-pin-unify624-624d0d25c` did); its lockfile carries the
+    13.0.3 driver (SQLite3MC 2.4.0 / SQLite 3.53.4), which now matches v5's
+    vendored amalgamation.
   - The pin's plugin + CLI dirs take the floor install
     (`.claude/pin-plugin-sdks.sh <PIN> <COMMIT>`, the 2026-11-02 rulings),
-    never live symlinks. The script refuses a pin not at `<COMMIT>`. Its
-    `--offline` installs answered `ENOTCACHED` for every lane after P4.D354
-    (the npm cache lacked the floor packuments and
-    `@quilltap/plugin-types@2.8.0`); since 2026-11-04 the script retries a
-    cache miss once with `--prefer-offline`, which fetches only the missing
-    public metadata and still installs the exact floors inside the pin
-    (`openai` 7.23.0, anthropic 0.115.0, genai 1.52.0, `@openrouter/sdk`
-    1.3.28, plugin-utils 2.7.1; the CLI driver 12.11.1). When the pin moves,
-    re-check the printed floors against `provider_sdk_version_guard`.
+    never live symlinks; the script refuses a pin not at `<COMMIT>` and
+    retries a cache miss once with `--prefer-offline`. The floors at this
+    baseline are P4.D364's (`openai` 7.47.0, `@anthropic-ai/sdk` 1.4.0,
+    `@google/genai` 2.32.0, `@openrouter/sdk` 1.5.34, plugin-utils 2.7.3).
+  - ⚠ **`provider_sdk_version_guard` is an env artifact at every gate**
+    until the next pin: it reads the LIVE v4 plugin install (openrouter
+    1.5.62 / plugin-utils 2.7.4), past the pin's 1.5.34 / 2.7.3. (Past the
+    baseline, `99391975f` / `f5d37e718` pin the OpenRouter **plugin's**
+    `@openrouter/sdk` to 1.5.56 at that commit.) Re-read the live versions
+    and re-check the printed floors against the guard before the next pin
+    set-up.
   - `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin.
 
 ### ⚠ LIVE-DATA — what stands at this baseline
 
-- **A v5 at `236c04e35` reads and writes** `memories.keystone` (the 17th
-  move: the migration's `INTEGER NOT NULL DEFAULT 0` + the partial index
-  `idx_memories_keystone`, as ONE boot ensure), `chats.turnMode` /
-  `storytellerInviteFilter`, `chat_messages.storytellerBid`, the NEW table
-  `storyteller_rounds` (its FK + both indexes as ensures),
-  `llm_logs.storytellerRoundId` (the first llm-logs column ensure v5 has
-  needed), `chat_settings.customToolIntervention` (default ON) and
-  `roleplay_templates.unmarkedStyle` / `markdownAsterisks`. It runs
-  `778b97b2b`'s every-boot seed, which re-encodes the built-in templates'
-  `narrationDelimiters` as JSON and inserts the Novel template with it
-  `null`.
-  - **The first v5 boot of a pre-`8cb584eff` Friday copy** ADDS the eight
-    columns + one table (column-gated, v4's shapes, every ensure UNSTAMPED)
-    and REWRITES the built-in templates' delimiter cells `*` → `"*"`. A
-    copy v4 migrated sees NO-OP ensures and a no-op seed. The first-boot
-    seed rewrite on a real vintage copy is still to measure (P4.D341 item
-    24, the owed dogfood pass).
-- **The three vault-key ERASURE hazards RETIRE on the union build**
-  (P4.D349's statement): after P4.D349 a v5 physical write keeps `humanoid`
-  (an explicit value as given; an omitted flag → the vault's current
-  value); a v5 properties write (full, RMW, backfill, scaffold) carries
-  `canDrawDiagrams` and `diagramStyle`; a v5 wardrobe projection carries
-  `pronounGuidance`; the P4.82 head-and-shoulders backfill skips a
-  non-humanoid. **A v5 build from BEFORE this round still erases them:** no
-  pre-round v5 write to a character v4 edited past `6588972d5` /
-  `b27e5089a` / `eb90d9ed8` (reads stay safe).
-- **Keystones are protected:** maintenance, demotion, consolidation, fold
-  and chat-wipe skip `keystone = 1` rows; recall lifts them into the
-  circle; a v5 backup / `.qtap` carries the column. A pre-round v5 build
-  must NOT run maintenance on a copy v4 keystoned.
-- **The Log is carried** (`cc5f2347c`, P4.D355): a v5 backup writes
-  `data/log-entries.json`; a `replace` restore / delete-all clears
-  `log_entries`; a `new-account` restore remaps `id` / `chatId` /
-  `characterId`; `.qtap` still omits it. A pre-round v5 backup has no Log
-  file, so restoring it on the union leaves the Log empty (expected).
-- **Terminals** (`85c002822`, P4.D355): Kill sends SIGHUP, then SIGKILL
-  after 3 s; a deleted chat (including delete-all and a `replace` restore)
-  ends its shells, and v5 deletes its `terminal_sessions` rows explicitly;
-  the daily sweep unlinks orphaned transcripts older than 1 h.
-- **Settings:** the chat-settings PUT refuses unknown keys with a 400
-  (`3b8b6f42b`, P4.D356).
-- **Files:** ingest fills `doc_mount_blobs.extractedText*` for native-text
-  uploads, and a boot backfill fills old rows (`40fab1c54`, P4.D354) — a
-  DATA WRITE on the first boot of any copy with uploads (measure the row
-  count; PDF / DOCX rows stay `'none'` under the refusing seam). The
-  backfill blocks boot where v4 runs it fire-and-forget (P4.D354 K10).
+- **A v5 at `624d0d25c` reads and writes** (on top of the `236c04e35`
+  state — keystones, Storyteller, intervention, the Novel template, the
+  Log carrier, terminals; see §6 and the round records):
+  - `chat_messages.isEstablishedFact` (the 22nd move) and
+    `connection_profiles.maxImagesPerRequest` (the 23rd, + its NULL → 4
+    backfill) — both UNSTAMPED, column-gated boot ensures;
+  - `strip-anthropic-sampling-parameters-v1` as a STAMPED data heal, with
+    v4's repository-side sampling STRIP on every profile write (P4.D362) —
+    **the sampling-key ping-pong RETIRES**; the Anthropic builder sends no
+    `temperature` / `top_p` under `anthropic-version` `2026-10-21`
+    (P4.D364);
+  - `reindex-chat-message-fts-character-only-v1` as a STAMPED boot ensure
+    with v4's byte-identical trigger text (P4.D363) — **the FTS reconcile
+    ping-pong RETIRES** (a v5 boot no longer re-indexes Staff rows);
+  - the vault / settings keys `properties.json` `kind` (P4.D369),
+    `brahmaConnectionProfileId` and `brahmaConsole.inlineConnectionProfileId`
+    (P4.D374 ports their reader / writer). That a v5 write no longer erases
+    a v4-written value is to MEASURE at the dogfood pass.
+  - The first v5 boot of a pre-4.12 copy ADDS the two columns, runs the
+    sampling heal and the FTS reindex (both stamped); a copy v4 already
+    migrated sees NO-OP ensures. Measure both at the dogfood pass.
+- **The cipher build moved:** v5 now links SQLite3MC **2.4.0** / SQLite
+  **3.53.4** (`quilltap-sqlite3mc-sys` 0.2.0, P4.D365, ruling R-A), the same
+  as v4's 13.0.3 driver; `defines.gypi` converged (STAT4 and DQS included)
+  except `SQLITE_DEFAULT_FOREIGN_KEYS`, HELD at the sys crate
+  (`SQLITE_DEFAULT_FK_HELD`; the CLI's writable open now enforces foreign
+  keys itself, `94a60996b`). ⚠ **The real-instance open on 2.4.0 is NOT
+  verified** (`REAL_INSTANCE_OPEN_AWAITS_DOGFOOD`) — owed to the next
+  dogfood pass on a Friday copy.
 - **The general rule BITES:** a v5 build from before this round must not
-  open an instance this round's ensures have altered. The owed dogfood pass
-  runs with the UNION build.
-- **Past `236c04e35` — build and scan:** `8832cfd20` moves v4 onto
-  SQLite3MC **2.4.0** / SQLite **3.53.4** (v5 links 2.3.5 / 3.53.2; sqleet
-  on both). v4 says "v12 and v13 databases interoperate" and ships NO
-  migration; a v5 at 2.3.5 opening a file v4 wrote under 2.4.0 is the
-  ordinary SQLite forward-compat case, NOT measured — the first v5 open of a
-  post-`8832cfd20` Friday copy is the measurement. `bf7a457f6`: a v4-HEAD
-  scan LEAVES an iCloud-evicted placeholder unread (`in-cloud`, its row
-  kept); a v5 scan HASHES it, which makes iCloud download it, and may index
-  it as modified or empty. Non-corrupting for the DB; the Friday copy's
-  stores live outside iCloud's eviction set.
-- **Past `bf7a457f6` — ONE data-rewrite ping-pong class:** `544c7ab1e`'s
-  `strip-anthropic-sampling-parameters-v1` drops `temperature` / `top_p` /
-  `topP` / `top_k` / `topK` from Anthropic profiles' `parameters`, and v4's
-  repository strips them on every later write. v5 still SENDS them under
-  the old pinned `anthropic-version` (harmless until v5 moves the header);
-  a v5 write of such a profile puts the keys BACK on a shared instance.
-- **Past `544c7ab1e` (v4 4.12.0) — two additive columns, ONE index-rebuild
-  ping-pong, ONE new vault key:**
-  - `chat_messages.isEstablishedFact INTEGER DEFAULT NULL` and
-    `connection_profiles.maxImagesPerRequest INTEGER DEFAULT 4` (+ a
-    NULL-only backfill) are additive with DEFAULTs; a v5 INSERT that does
-    not name them is legal. v5 reads an established-fact USER row as a plain
-    line and a Host row `systemKind='established-fact'` as an unknown kind;
-    v5 ignores the image cap.
-  - ⚠ **`reindex-chat-message-fts-character-only-v1` (`902c6efe9`):** v5's
-    boot reconcile counts eligibility by the OLD filter
-    (`chat_message_fts_reconcile.rs:144`), so a v5 boot of a v4-migrated
-    copy sees eligible ≠ indexed and REBUILDS the whole index (re-indexing
-    Staff rows; v4's newer trigger, created `IF NOT EXISTS`, survives); v4's
-    next boot rebuilds again. Measured from source, NOT run. Non-corrupting,
-    but expect the WARN `Message search index is out of step with the
-    transcript; rebuilding` on the first v5 boot of a post-4.12 copy.
-  - ⚠ **Vault-key ERASURE (`c539c82e0`):** a v5 project properties write
-    drops `properties.json` `brahmaConnectionProfileId`.
-    `brahmaConsole.inlineConnectionProfileId` sits in an existing settings
-    value — measure whether v5's Brahma settings PUT preserves it.
-  - The 4.12.0 docs now say ChaCha20 / SQLite3MC, not SQLCipher
-    (`70d2859d8`) — a documentation convergence onto this port's Phase-0
-    finding.
+  open an instance this round's ensures have altered, and a pre-round v5
+  build (2.3.5) should not write a file the union build (2.4.0) touched.
+  The owed dogfood pass runs with the UNION build.
+- **Past `624d0d25c` — NO destructive migration** (all three are additive),
+  but measure these before any v5 build opens a copy v4 ran past the
+  baseline:
+  - **(a) `1dc11e947` stamps frontmatter `id:` into `Prompts/*.md` /
+    `Scenarios/*.md` on the next write.** Until a file is renamed the
+    stamped id equals v5's path-derived id; after a v4 rename, v4 keeps the
+    stamped id while v5 (`stable_uuid` in `scenarios/location.rs` /
+    `vault_overlay.rs`) mints a new one, so `defaultScenarioId` /
+    `defaultSystemPromptId` resolve differently. Also measure whether a v5
+    frontmatter rewrite (`db/scenarios.rs`) preserves the `id:` key.
+  - **(b) `348172b9c`: a chat v4 created but has not opened sits at
+    `openingState 'pending'`.** v5 has no opening runner, so opening it in
+    v5 shows no greeting; v4 would later resume it, and a v5 turn may land
+    first.
+  - **(c) `ebb0ca13a`'s `chat_avatar_timeline`:** a v5 backup / `.qtap`
+    export of a v4-migrated instance omits `data/avatar-timeline.json` /
+    `avatar_timeline`, so a v5 restore drops its rows; a v5 character
+    delete leaves orphan timeline rows (v4 calls `deleteByCharacter`; chat
+    deletes cascade by FK).
+  - **(d) `19e45d664`:** `properties.json` `birthday` should survive v5's
+    read-modify-write (`vault_character_update.rs` preserves untouched
+    keys) and progressions' `public` key in `metadata.json` should survive
+    v5's progression write — measure both.
+  - **(e) `1dc11e947`'s boot heal no longer repopulates a vault from the
+    raw row; v5 at the baseline still does** — a v5-side divergence, not a
+    hazard to Friday.
+  - **(f) `9d68d8421`:** a v5 profile write that omits
+    `toolResultVerbatimTurns` is legal (the column has `DEFAULT 3`); v5
+    keeps eliding at its literal 3.
+  - **(g) `3cc12d346`:** v5 still defaults Brahma `maxAgentTurns` to 50
+    where v4 now defaults to 10 (a stored 5–200 value parses on both).
+  - None of the 45 rewrites existing rows the way `544c7ab1e` or the
+    memory refactor did.
 - **Standing:** no v5 build against live Friday — dogfood a COPY, and do
   not round-trip v4-written characters through v5 writes while comparing
-  with v4. The extraction rate ledger is per-process; the `52d6e7ecd` /
-  `07b8f0209` notes and the P4.D274 store-name plan probe on a copy stand.
+  with v4. Live v4 has migrated Friday past the baseline (4.12.x and
+  beyond); no earlier backup exists, so the dogfood pass waits until v5
+  catches up with the v4 state Friday is at (the 2026-11-04 ruling). The
+  extraction rate ledger is per-process; the P4.D274 store-name plan probe
+  on a copy stands.
 
 ### Schema / D23
 
-- **LANDED this round: the SEVENTEENTH to TWENTY-FIRST moves in ONE
-  `fresh_schema.json` re-dump** (P4.D341, the `KEYSTONE` commit
-  `c2c28c031`): `memories."keystone"` (+ `idx_memories_keystone`),
-  `chats."turnMode"` / `"storytellerInviteFilter"`,
-  `chat_messages."storytellerBid"`, the NEW table `storyteller_rounds`,
-  `llm_logs."storytellerRoundId"` + its index, `chat_settings.
-  "customToolIntervention"`, `roleplay_templates."unmarkedStyle"` /
-  `"markdownAsterisks"`, plus the boot-seed rewrite of
-  `narrationDelimiters` and the Novel row. Five boot ensures, each in
-  `restore_vintage_state`'s mirror-boot; `migration_indexes.json` +3.
-  Vault / JSON keys landed with them: `humanoid`, `canDrawDiagrams` /
-  `diagramStyle`, `pronounGuidance` (P4.D349),
-  `smartTypographySettings.punctuationWarnings`, and the `systemKind` value
-  `off-scene-left-behind`.
-- **PENDING past the baseline — the TWENTY-SECOND and TWENTY-THIRD moves**,
-  both additive, both with v4 migrations, both TWO-shape (the Zod field sits
-  mid-schema; the migration APPENDS):
-  - **22nd (`db6190b44`, `add-established-fact-field-v1`):**
-    `chat_messages."isEstablishedFact" INTEGER DEFAULT NULL` — schema order
-    between `isSilentMessage` and `systemSender`.
-  - **23rd (`d439f6dc9`, `add-profile-max-images-per-request-v1`):**
-    `connection_profiles."maxImagesPerRequest" INTEGER DEFAULT 4` — schema
-    order between `supportsImageUpload` and `tags` (`DDL.md` lists it last;
-    generateDDL follows the schema); the migration also backfills NULL → 4.
-  - **Not D23:** `reindex-chat-message-fts-character-only-v1` (`902c6efe9`)
-    — FTS5 trigger text + an index rebuild (a STAMPED boot ensure on v5's
-    `chat_message_fts` module, not a dump);
-    `strip-anthropic-sampling-parameters-v1` (`544c7ab1e`, a data rewrite);
-    vault / JSON keys `properties.json` `brahmaConnectionProfileId`,
-    `brahmaConsole.inlineConnectionProfileId`; the `systemKind` value
-    `established-fact`; the job type `established-fact-memories`.
-  - A further `fresh_schema.json` re-dump is owed at the next pin.
+- **LANDED this round: the TWENTY-SECOND and TWENTY-THIRD moves in ONE
+  `fresh_schema.json` re-dump** (P4.D362, the `SCHEMA` commit
+  `4e3a1584e`): `chat_messages."isEstablishedFact"` (generateDDL's shape
+  between `isSilentMessage` and `systemSender`; the migration's `INTEGER
+  DEFAULT NULL` appended on an existing table) and
+  `connection_profiles."maxImagesPerRequest"` (`INTEGER DEFAULT 4` between
+  `supportsImageUpload` and `tags`; the migration appends + backfills NULL
+  → 4). The same dump carries the two FRESH-ONLY moves the ledger had
+  missed — `characters."kind" TEXT DEFAULT 'roleplay'` (`b09ca46bb`) and
+  `projects."brahmaConnectionProfileId" TEXT` (`c539c82e0`), no ensure, no
+  SQL writer. `migration_indexes.json` re-dumped (`source.v4Commit` only);
+  three boot ensures in v4's registration order through ONE chain (host,
+  vintage mirror-boot, test twin); `schema-key-order.json` dumped,
+  `qtap-export.schema.json` re-vendored whole. P4.D363 re-homed the FTS
+  reindex as a stamped ensure (not a dump).
+- **PENDING past the baseline — suggested 24th to 26th moves** (`/setupphase`
+  confirms the numbers):
+  - **24th (`9d68d8421`, `add-profile-tool-result-verbatim-turns-v1`):**
+    `connection_profiles."toolResultVerbatimTurns" INTEGER DEFAULT 3` — a
+    Zod field, so generateDDL renders it (position to MEASURE at re-dump);
+    the migration is additive with a no-op NULL → 3 backfill. A boot
+    ensure.
+  - **25th (`ebb0ca13a`, `add-chat-avatar-timeline-table-v1`):** the NEW
+    TABLE `chat_avatar_timeline` + `idx_chat_avatar_timeline_chat` —
+    MIGRATION-ONLY (its own DDL file, not a Zod collection; the
+    `chat_wardrobe_history` class), so per the 2026-10-19 ruling a boot
+    ensure, not a dumped artifact; add it to `restore_vintage_state`'s
+    boot-align list.
+  - **26th (`348172b9c`, `add-chat-opening-state-v1`):** MIGRATION-ONLY
+    `chats."openingState" TEXT NOT NULL DEFAULT 'done'`, `"openingPhase"`,
+    `"openingPlan"` (both `TEXT DEFAULT NULL`; not in `ChatSchema`, not
+    exported). A boot ensure.
+  - **Probable FRESH-ONLY moves on `characters` — MEASURE with
+    `harness/oracle/provision/dump-fresh-schema.ts` at the next pin:**
+    `19e45d664` adds `birthday`; `1dc11e947` re-keys onto
+    `CharacterRowSchema`, so a fresh table loses all 19 managed columns
+    (including the `kind` this round just dumped). No migration; v4 never
+    calls `generateAlterStatements`. ⚠ Census v5's raw `characters` reads
+    at the re-dump: a SELECT of a managed column by name fails on a
+    v4-fresh instance — and under DQS a double-quoted missing column could
+    read as a string literal (memory note `sqlite-dqs-build-difference`;
+    P4.D365 reports DQS converged — re-measure).
+  - **Not D23:** `89f259c2f`'s `outfitSelectionProfileId` (a JSON key in
+    `chat_settings."cheapLLMSettings"`); `3cc12d346`'s `maxAgentTurns`
+    (JSON in `instance_settings`, default only); `b941280d5`'s `'turns'`
+    (a new value in the bare-`TEXT` `turnMode`); `3a79f744c`'s retired
+    physical-description keys (never stored in the vault).
 
 ### Regen, dependencies, help
 
-- **Dependencies at the baseline:** root `openai` 7.45.0 /
-  `@openrouter/sdk` 1.5.9 (`provider_sdk_version_guard`, measured by
-  P4.D360 — no recorder resolves the root), `zod` 4.6.7, `pdfjs-dist`
-  6.4.299 with `pdf-parse` REMOVED (P4.D354 re-aimed the IMPORT-DEAD
-  `file-content-extractor` oracle; R-C: no new PDF crate),
-  `@quilltap/plugin-types` 2.9.0, `@xterm/headless` 6.0.0 (v5's twin is
-  `vt100` 0.18.1); v5's `regress` crate backs the llm-logs `regexp()`. The
-  diagram client deps landed under P4.D353's ruling R-B (A) (`mermaid`
-  12.2.0, `@hpcc-js/wasm-graphviz` 1.30.0, `svg2roughjs` 3.2.3, `dompurify`
-  3.4.17), and P4.D358's axe sweep added `@axe-core/playwright`.
-- **Past the baseline (recorded 2026-11-04):** `openai` ^7.45.0 → ^7.45.1
-  (`f56965ef9`) → **^7.47.0** (`d439f6dc9`); `@openrouter/sdk` ^1.5.9 →
-  ^1.5.21 → ^1.5.33 → **^1.5.34** (`8f83041aa`) —
-  `provider_sdk_version_guard` moves at any later pin; `mermaid` 12.2 → 12.3
-  (`8f83041aa`); `@svar-ui/react-filemanager` REMOVED (`c34986421`);
-  `@playwright/test` REMOVED (`856ed4f2b`); `mammoth` now also renders
-  `.docx` → HTML for `?action=render-html` (`aec626eff` — no v5 twin; a
-  ruling); the v13 driver (`8832cfd20`); `zod` UNCHANGED 4.6.7.
-  - ⚠ **IMPORT-DEAD at any pin ≥ 4.12.0 (measured by grep over
-    `harness/oracle`, 2026-11-04):** `lib/chat/message-attachment-adapter`
-    (DELETED by `29c1e2690`) ← `cases/file-attachment-tier3.test.ts` (also
-    its `adaptMessagesForProfile`); `lib/wardrobe/folder-mutations`
-    (DELETED by `600c2906f`) ← `cases/item-mutations-tier2.ts`; the removed
-    `createInventoryFolder` / `renameInventoryFolder` /
-    `deleteInventoryFolder` / `normalizeInventoryFolderName` (`134961572`)
-    ← `cases/inventory-keystone-tier2.ts`, `cases/inventory-types.ts`,
-    `cases/item-folders.ts` — a stage-0 re-aim for the next catch-up. The
-    Help-chat / Brahma / Scenario-Builder oracles that read the stream bag
-    stay on `legacyFrameEncoder`; the Salon-turn stream oracles do not.
-- **Help / docs:** `help/` is **137 files** (+ `diagrams.md`,
-  `storyteller-mode.md`), md5-identical to the pin; `docs/v4/` **518**
-  (P4.D360). Re-measure the past-the-baseline help / docs hunks at the next
+- **Dependencies at the baseline:** the pin's SDK floors above (P4.D364's
+  full re-record, ruling R-F; ruled ports X1 genai 2.32.0 `inlineData`
+  order, X2 Anthropic `Authorization: Bearer`, X3 OpenRouter 1.5.34
+  image-model errors); `zod` 4.6.7; the v13 driver; croner 11 (P4.D365,
+  reclassified PORT); `mermaid` 12.3.0, `@hpcc-js/wasm-graphviz` 1.30.0,
+  `dompurify` 3.4.17 in the SPA; `mammoth`'s `.docx` → HTML is a NAMED
+  refusal in v5 (`render-html` 422, ruling R-E); v5's `vt100` /
+  `regress` twins unchanged.
+- **Past the baseline:** the OpenRouter plugin pins `@openrouter/sdk` 1.5.56
+  (`99391975f`); five provider plugins re-shape their cache placement and
+  usage readers (`8dfe307f5`, `b9b9621e8`, `4b97636b2`, `f5d37e718`,
+  `78aca159d`, `819fc9c82`) — the round's full re-record moves again at the
+  next pin. No root dependency move was recorded among the 45; re-read the
+  live root versions at the next pin set-up.
+- **IMPORT-DEAD:** the round's stage-0 re-aim (P4.D361) cleared the
+  4.12.0 set. For the next catch-up, grep `harness/oracle` for every export
+  the 45 delete — at least `lib/chat/initial-greeting.ts`,
+  `first-message-context.ts`, `initialize.ts`, `creation-progress.ts`
+  (DELETED by `348172b9c`), the `vault-overlay/` tree (→
+  `lib/characters/vault/*`, `1dc11e947`), `findPreviousResponseId`
+  (`4b97636b2`), and `PhysicalDescriptionSchema`'s `name` /
+  `usageContext` (`3a79f744c`).
+- **Help / docs:** `help/` is **138 files** (+ `deus-ex-machina.md`),
+  md5-identical to the pin; `docs/v4/` **537** (P4.D382, 51 operations,
+  incl. the vendored CLI README). Past the baseline, `7624332c0` (~30
+  pages), `f1386cebd` (~75 pages, settings links rewritten) and a dozen
+  smaller commits move `help/`; the spec docs `5f8c45966`, `3277aa572`,
+  `d281c2332`, `523503e8a` add `docs/v4/` paths. Re-measure at the next
   pin.
 - **Themes / CSS:** v5 vendors `apps/web/public/themes/*` and
-  `apps/web/src/styles/qt-components/*.css` at the pin's bytes (P4.D357;
-  `known-violations.json` re-baselined on the union, 696 → 521 rows). Past
-  the baseline, `87c3860df` + `94f041764` move the CSS and five packs; v5
-  has no `theme-storybook` (its mirror hunks are NO-PORT).
+  `qt-components/*.css` at the pin's bytes (P4.D383, the WCAG 2.2 pass and
+  the undefined-token fixes). Past the baseline `7ea21c151` adds four
+  Madman's Box backdrops and `dca8ff120` a `_green-room.css`.
 
 ### Rounds, guards, state
 
-- **The `236c04e35` round — UNIFIED 2026-11-04** (the §6 bullet; the round
-  record in `status-log.md`; `phase-4.md`'s UNIFIED block).
-  - **Ratified at this move (P4.D360's §S.6 record, §6 lists them):**
-    twenty-two whole rows `NO-PORT-RATIFIED` (`cb94e6e99` with P4.D348's
-    rider) and thirteen NO-PORT halves (the v4-internal half of a PORT row
-    — plugin rebundles, storybook, scripts, Node fork artefacts, tests,
-    `.claude` / v4 `CLAUDE.md` / README; the PORT half stays with its
-    owner). P4.D360 also JOINS every row whose `help/`, `docs/` or CLI
-    README hunk it vendored (68 of the 69; ten joins §S.6 had omitted:
-    `eb2d87788`, `8ae8a127c`, `99463fc56`, `b02d902f3`, `0276d10d9`,
-    `9faed0c7e`, `40cc6ffda`, `4b0d1cb04`, `2b2b190b6`, `dff76ebef`).
-  - **Unabsorbed drift caught at unify and fixed in production:** v4
-    `0276d10d9`'s `InventoryScopeSchema` enum order in the item-images
-    `SCOPE_ISSUE` (no lane had carried it).
-  - **Ruled divergence `WARDROBE_VIEWER_ESCAPE_LAYERED`** (human,
-    2026-11-04): with the wardrobe item editor's picture viewer open, Escape
-    closes ONLY the viewer in v5; v4 at `236c04e35` closes both (v4
-    `dff76ebef`'s `useEscapeKey` on `window` beside `useImageNavigation` on
-    `document`, neither stopping propagation —
-    `WardrobeItemImageSection.tsx:513`). Pinned red-first (`2655348b8`). A
-    v4 GitHub issue is a filing candidate, pending the human's go-ahead.
-  - **Ruling — Storyteller "All at once"** (human, 2026-11-04): hidden until
-    ported. The server answers 422 `not_available: storyteller
-    simultaneous` (P4.D343 item 41 DEFERRED); the SPA control renders
-    DISABLED with a house-register title and never dispatches; v4's enable
-    rule and title are recorded beside it; e2e beat (K) is skipped by name.
-    It re-enables when item 41 lands, which also retires `b15fe9404` from
-    §3.
-- **The `322a5488e` round — UNIFIED 2026-10-27**; its follow-ups smalls
-  round (P4.165–P4.174) UNIFIED 2026-10-28, absorbing no §3 row.
+- **The `624d0d25c` round — UNIFIED 2026-11-09** (the §6 bullet; the round
+  record in `status-log.md`, "The `624d0d25c` 4.12.x catch-up round —
+  UNIFICATION record (2026-11-09)"; `phase-4.md`'s UNIFIED block).
+  - **Ratified at this move (P4.D382's NO-PORT record, §6 lists them):** 24
+    whole rows `NO-PORT-RATIFIED`, and 8 rows NO-PORT in half with the PORT
+    half ABSORBED by its owner (32 `NO-PORT?` rows in all; `3936fdf65`
+    reclassified PORT for croner, `afec0af10` carrying 4.12.1's content).
+  - **Unabsorbed v4 chokepoint caught at unify and fixed:** the overlay
+    writes through `doc_mount_file_links` never published the store's
+    `mountPoints` hint (a second, emit-less copy of v4 `aec626eff`'s
+    `writeDatabaseDocument`) — fixed in `6f9633ac2`, the publish order
+    `[mountPoints(store), topic]` in `72600dbab`.
+  - **Rulings now standing:** D18 RETIRED (R-D, P4.D387 ports v4's
+    `document-browser/`); `.docx` `render-html` a named refusal (R-E);
+    Salon frames rendered at the sink (R-G); Storyteller "All at once" LIVE
+    (P4.D368 — the 2026-11-04 disabled-until-ported ruling retires);
+    `WARDROBE_VIEWER_ESCAPE_LAYERED` re-measured by P4.D387 and STANDS.
+  - **⚖ For the human's confirmation:** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`
+    (a recorded divergence); `put_zero_one_flag` maps `"0.0"` → `true` as
+    v4's `Boolean('0.0')` does — a v4 issue DRAFTED, not filed.
+- **The `236c04e35` round — UNIFIED 2026-11-04.**
 - **Next:**
-  1. The owed dogfood pass on a Friday copy with the UNION build (the
-     round's 💸 rows; P4.D341 item 24's first-boot seed rewrite first).
-  2. A follow-ups smalls round: the round record's recorded notes, plus
-     P4.D343 item 41 (re-enables "All at once") and item 29.
-  3. The 4.12.0 catch-up (`/driftcheck` first): the 62 commits, the 22nd /
-     23rd D23 moves in ONE re-dump, the SQLite3MC 2.4.0 amalgamation
-     ruling, the FTS reconcile and vault-key hazards first, the stage-0
-     IMPORT-DEAD re-aims, and the pin-setup cache fix above.
+  1. A follow-ups smalls round: the round record's "Recorded, not fixed"
+     list and the order headers' OPEN items (`phase-4.md`), after the two
+     rulings above.
+  2. The 45-commit catch-up (`/driftcheck` first): D23 moves 24–26 and the
+     `characters` fresh-only measurement in ONE re-dump, the live-data
+     hazards (a)–(g) measured first, the IMPORT-DEAD re-aims, the
+     `921fe94bb` convergence retired by measurement, a fresh pin's floors
+     against `provider_sdk_version_guard`.
+  3. The owed dogfood pass once v5 reaches the v4 state the Friday copy is
+     at — including the real-instance open on SQLite3MC 2.4.0.
 
 ## §2 The freshness probe
 
@@ -489,81 +374,51 @@ passes the commit.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `b15fe9404` | 2026-10-22 | Feature: Storyteller mode and declared tool effects | **PORT-NEW (Storyteller — a third Salon turn mode) + PORT (declared tool effects REPLACE `DESTRUCTIVE_TOOL_NAMES` with an execution-time ceiling) WITH THE EIGHTEENTH + NINETEENTH D23 MOVES — TWO migrations, both additive, no data rewrite, one a NEW TABLE, one in the LLM-LOGS partition** (classified 2026-10-26 from the hunks; 194 files +5,802 / −268; prod 172 files +5,433 / −244; `dev.58`; parent `036b32a78`). **D23:** `add-storyteller-mode-v1` (main; `dependsOn sqlite-initial-schema-v1`): `chats."turnMode" TEXT DEFAULT NULL` (NULL reads `'rotation'`; patch-only), `chats."storytellerInviteFilter" INTEGER DEFAULT 0`, `chat_messages."storytellerBid" TEXT DEFAULT NULL` (JSON), and a NEW TABLE `storyteller_rounds` (`id` PK, `chatId` NOT NULL, `triggerMessageId`, `status` NOT NULL, `bids DEFAULT '[]'`, `selection` / `closedReason` / `closedAt`, `createdAt` / `updatedAt` NOT NULL, FK `chatId → chats ON DELETE CASCADE`, `idx_storyteller_rounds_chat (chatId, status)`); `add-llm-logs-storyteller-round-id-column-v1` (llm-logs; `dependsOn add-llm-logs-autonomous-run-id-column-v1`; skips when the logs file is absent): `llm_logs."storytellerRoundId" TEXT DEFAULT NULL` + `idx_llm_logs_storytellerRoundId`. generateDDL renders every column (`turnMode` bare `TEXT`, `storytellerInviteFilter` between `isPaused` and `isManuallyRenamed`, `storytellerBid` before `pascalMeta`, `storytellerRoundId` after `autonomousRunId`) AND `storyteller_rounds` (its repository is in `RepositoryContainer`) but WITHOUT the FK and the index — those become boot ensures. **Effects (PORT):** NEW `lib/tools/effect-types.ts` (`none\|read\|write\|destroy`, `UNDECLARED_TOOL_EFFECT='write'`, `computedToolEffect`, `isWithinCeiling`, `lowerToolEffect`) + `lib/tools/effects.ts` (`BUILT_IN_TOOL_EFFECTS` from a per-tool `xxxToolEffect` export; four computed effects — `state`, `doc_open_document`, `edit_custom_tool`, `run_custom` — each with a per-ceiling note appended to the description by `applyEffectCeilingToTools`; the model-visible refusal ``Not run: `${name}` is a ${effect} call, and this turn allows only ${phrase}. Nothing was changed. Carry on without it.``). `destructive-tools.ts` DELETED: the autonomous-room gate lowers the ceiling to `write` — **the withheld set widens 3 → 5** (`doc_delete_blob`, `delete_annotation` newly withheld) — and the ceiling is enforced at EXECUTION in `executeToolCallWithContext`; `buildTools()` returns `customToolEffects` (`lib/pascal/tool-effect.ts`) + `pluginToolEffects`; triggers skip a tool above the ceiling; the Workbench library gains `effect`; `@quilltap/plugin-types` 2.9.0, MCP plugin 1.1.45 (per-server `effect`), curl 1.0.32. **Storyteller (PORT-NEW):** `lib/storyteller/*` (bid call `toolChoice:'none'`, logType `STORYTELLER_BID`; the BID/TIER/TOOLS/PLAN parser; tiers; invite probability `0.25+0.75×talkativeness`; the model-visible bid / plan sections under `[Turn note from the Salon — not spoken by any character]`; `STORYTELLER_BOARD_TIMEOUT_MS=45_000`, `STORYTELLER_CONCURRENCY_PER_PROFILE=4`; AsyncLocalStorage → `llm_logs.storytellerRoundId`; SSE `participantId` + `concurrent:true`); a dry repository scope (`lib/repositories/dry-scope.ts`, with the read/write rulebook moved VERBATIM into `method-classification.ts`); `buildContext` `purpose:'turn'\|'bid'` + `storytellerSection` LAST in the trailing list; orchestrator `holdForStoryteller` / `openRoundOnSend` (SSE `storytellerRound`, `storytellerBid`, `roundOpen`, `chainComplete` reason `'round_open'`) / `runStorytellerBid` / `handleStorytellerRun`; the finalizer writes `storytellerBid` and defers extraction / fold / danger to `runStorytellerRoundHousekeeping`; routes GET `?action=storyteller-round`, POST `?action=storyteller-run\|storyteller-ask\|storyteller-lie`, chat PATCH `turnMode` / `storytellerInviteFilter`, the chat GET wire gains both; realtime topic `storytellerRounds`; the replace restore TRUNCATES `storyteller_rounds` (never backed up); the `.qtap` schema gains `turnMode` / `storytellerInviteFilter` / `storytellerBid`; SPA `StorytellerBoard`, the sidebar's three-position mode radiogroup, the Inspector filter; help `storyteller-mode.md` NEW + six edits. **v5 intersection:** `services/tool_build.rs:690`'s `DESTRUCTIVE_TOOL_NAMES` filter + `tool_build_equivalence` (the 3 → 5 widening); the executor dispatch; `StreamMessage` `toolChoice` (P4.13/P4.14); `build_context.rs`'s trailing sections; the processMessage spine + turn chain; the trigger runner (P4.D305); the Workbench library (P4.D307); llm-logs D23 (P4.D49); realtime; the restore delete list (P4.9G); `public/schemas` (P4.D313). No v5 analogue for the dry scope or plugin tool effects. Rides ORDERED P4.D328 / P4.D331 (the new tools need `xxxToolEffect`), P4.D332 (`edit_custom_tool`'s computed effect), P4.D329 / P4.D333, P4.D334, P4.D335 / P4.D336 (`runWithTurnControl`, `chainComplete` reasons). **Comments claim what no hunk does:** `storytellerBid` "stripped from every transcript" (never copied, not stripped); `dry-scope.ts` names a nonexistent `bid.service.ts`; the llm-logs index comment's "per-run budget sum" is copy-paste. | **ABSORBED(236c04e35) — PARTIAL, HELD in §3** (P4.D341 [the three moves] + P4.D343 + P4.D344 + P4.D360; was ORDERED 2026-10-29). Not absorbed: **P4.D343 Tier 2 item 41** — the `simultaneous` order (the server answers 422 `not_available: storyteller simultaneous`; by the human's 2026-11-04 ruling the SPA's **All at once** renders DISABLED and e2e beat (K) is skipped by name) — and **item 29**, the `.qtap` import's refusals of a bad `turnMode` / `storytellerInviteFilter` / `storytellerBid` (v5 accepts them). Retires to §6 when item 41 lands. → ORDERED(P4.D368: items 41 + 29) — the `624d0d25c` round, 2026-11-04 |
-| `8832cfd20` | 2026-10-28 | deps: SQLCipher driver to better-sqlite3-multiple-ciphers 13 | **DEPENDENCY MOVE + PORT? (one server INFO line) + NO-PORT (CLI / Docker / CI / jest / docs)** (classified 2026-10-29 from the hunks; 24 files +1,492 / −1,776; `4.12.0-dev.1`; tag `4.12.0-dev.1`). **The driver:** root `better-sqlite3` alias `npm:better-sqlite3-multiple-ciphers@^12.11.1` → `^13.0.3` and `packages/quilltap`'s `^12.11.1` → `^13.0.3`; `allowScripts` DENIES the driver's install script (prebuilt Node-API binaries for 8 targets — darwin / linux / linuxmusl / win32 × x64 / arm64 — nothing compiles; Linux glibc ≥ 2.35). **MEASURED from the installed 13.0.3 tree: SQLite3MC `2.4.0` on SQLite `3.53.4`** (v5's `quilltap-sqlite3mc-sys` vendors **2.3.5 / 3.53.2**, the 12.11.1 pair). The `deps/defines.gypi` build flags are BYTE-IDENTICAL between 12.11.1 (npm-cache tarball) and 13.0.3 — `SQLITE_ENABLE_STAT4`, `SQLITE_DQS=0`, `SQLITE_USE_URI=0`, `THREADSAFE=2` etc. unchanged, so the two standing build-difference notes (STAT4 / DQS) stand as they are. NO migration, NO D23 move; v4's commit asserts v12 / v13 files interoperate, and the hunks make no on-disk change (the cipher default stays sqleet; no `cipher=` pragma appears). **Server hunk (the only `lib/` change):** `lib/database/backends/sqlite/client.ts` — after `SQLite database connection established`, a NEW `logDriverVersions(db)`: INFO `SQLCipher driver loaded` `{ driverVersion: <better-sqlite3/package.json version ?? 'unknown'>, sqliteVersion: <select sqlite_version()> ?? 'unknown' }`, DEBUG `Could not read SQLCipher driver versions { error }` on throw; "Parent process only" per its docblock. **CLI (`packages/quilltap/lib/native-modules.js` 238 lines, `bin/quilltap.js`):** `ensureDatabaseNativeModule()` LOADS the prebuild and classifies a failure (`unsupported-platform` / `glibc-too-old` / `load-failed`, with v4's sentences) instead of `readCompiledAbi` + `rebuildNativePackage`; `jest.global-setup.js` loses its ABI heal; `native-rebuild.test.js` DELETED, `native-driver-check.test.js` NEW. **Infra:** Dockerfile / Dockerfile.ci prune the driver to the image's arch; `release.yml` + `build-standalone-tarball.mjs` + `build-push-docker.ts` comments / steps; README glibc floor; v4 CLAUDE.md rule against v13-only driver API (`db.explain()`, `Statement.prototype.toString()`) until the Electron shell ships v13. **Docs:** `docs/CHANGELOG.md` SPLIT — 984 lines of 4.x history moved to a NEW `docs/CHANGELOG_V4.md`; NEW `docs/developer/features/complete/better-sqlite3-multiple-ciphers-v13.md` + `better-sqlite3-multiple-ciphers-v13-shell-notes.md`; ROADMAP line; `dependency-upgrade-safe-batch.md` touched. | **v5 intersection — a RULING owed (the cipher crate):** `crates/quilltap-sqlite3mc-sys/` vendors the **2.3.5** amalgamation "matching what v4 bundles" (CLAUDE.md's standing rule names 2.3.5 / 3.53.2 and `commit.md` §2 names 2.3.5) — v4 now bundles **2.4.0 / 3.53.4**. The crate's own rule says bump its pinned version ONLY when the vendored source changes — this is that case if the human rules to follow v4 (one ~4-min amalgamation recompile on every lane's cold target, then cached; `scripts/cargo-sweep.sh` keeps it). Alternative ruling: HOLD at 2.3.5 and record the pair as a ruled build difference beside STAT4 / DQS (`sqlite-stat4-build-difference`, `sqlite-dqs-build-difference`). Either way CLAUDE.md's cipher paragraph + `commit.md` §2 + `build.rs`'s "use a 2.3.x release to match … @12.11.1" docblock need the new numbers. **The INFO line:** v5's `db/runtime.rs` emits the three `… database connection established` lines (P4.159's boot-hardness family pins them byte-for-byte in `host_boot_hardness`); v4's new line names a Node DRIVER v5 does not have — PORT? as a v5-shaped line (`driverVersion` would be the sys crate / amalgamation version) or NO-PORT; the boot-line census + `host_boot_hardness` carry it either way. **CLI:** NO v5 analog (the 2026-10 `85813ddd2` finding stands: v5 links the amalgamation statically; `quilltap db` reaches core directly; Tier R's `npx quilltap` oracle bytes unchanged for every ported subcommand). **Docker (P4.10):** v5's image never installs the Node driver — NO-PORT. **Pins:** `provider_sdk_version_guard` reads SDK versions only (`openai` / `@openrouter/sdk`), so it does NOT trip on the driver; the real-DB jest oracles (`requireActual` of the cipher driver through the `packages/quilltap/node_modules` symlink, §5.1) will run on 13.0.3 / SQLite 3.53.4 at HEAD's tree and on 12.11.1 only under the pin's own `npm ci --offline` — a sweep from the pin MUST rebuild all three symlink classes. **Mirror:** `docs/v4/CHANGELOG.md` + NEW `docs/v4/CHANGELOG_V4.md` + the two specs + ROADMAP, for the catch-up's help/docs lane. | ORDERED(P4.D365) — the `624d0d25c` round, 2026-11-04 |
-| `bf7a457f6` | 2026-10-29 | Fix: filesystem stores faulted in iCloud files, held the startup screen, and leaked a descriptor per file | **PORT (the scanner: `in-cloud` + `filesInCloud` + `emptyScanResult` + ONE new INFO line; the `?action=scan` handler's log key and wire key) + PORT-NEW (the pure `lib/files/cloud-placeholder.ts` pair) + NO-PORT (the boot-scan split, the startup-gate text, the `fs.watch` watcher — surfaces v5 has NEVER had) + help** (classified 2026-10-29 from the hunks; 18 files +1,012 / −117; `4.12.0-dev.2`; found LIVE on the human's V4test instance — a store on an iCloud-synced `~/Documents`, 23,615 of 24,153 files evicted). **Scanner (`lib/mount-index/scanner.ts`):** `ScanResult` gains `filesInCloud: number` (between `filesDeleted` and `chunksCreated`); NEW exported `emptyScanResult(mountPointId, errors = [])` replaces the three hand-built zero results (scanner + scan-runner ×2); `ProcessFileOutcome` gains `{ status: 'in-cloud' }`; `processMountFile` now `fs.stat`s BEFORE `computeSha256` (the stat MOVED up from after the sha/unchanged check — so an unsupported type still returns before any stat, and `in-cloud` returns before any read; the later `const stat` line is deleted) and returns `in-cloud` when `isEvictedCloudPlaceholder(stat)`; `scanMountPoint`'s switch counts `filesInCloud++` and `continue`s (the path IS added to `seenPaths` first, so the row survives the stale sweep); the completion INFO gains `filesInCloud`; a NEW INFO after it, only when `filesInCloud > 0`: `Left cloud-evicted files unread; they are indexed once downloaded` `{ mountPointId, name, filesInCloud }`; `walkDirectory` becomes EXPORTED (for the watcher). **`lib/files/cloud-placeholder.ts` (NEW, pure):** `STAT_BLOCK_BYTES = 512`, `AllocationStat = { size, blocks }`, `isNotFullyMaterialized(stat)` = `size > 0 && blocks * 512 < size` (MOVED out of `lib/startup/materialize-cloud-files.ts`, which now imports it), `isEvictedCloudPlaceholder(stat, platform = process.platform)` = `(darwin | win32) && size > 0 && blocks === 0`. **Scan runner (`scan-runner.ts`):** `scanAllMountPoints(options: { only?: 'database' | 'filesystem'; reportStartupProgress?: boolean = true })` filters `findEnabled()` by `mountType === 'database'`, makes every `startupProgress` call optional-chained, adds `only` to both INFO lines (`'all'` when omitted) + `totalInCloud` to the completion line, and a DEBUG `No enabled mount points to scan { only }` on the empty case. **Boot (`instrumentation.ts` PHASE 3.3):** `mountScanSettled = scanAllMountPoints({ only: 'database' })` inside the gate; then, NOT awaited by the gate, `.then(() => scanAllMountPoints({ only: 'filesystem', reportStartupProgress: false }))` with a WARN `Filesystem document store scan failed`; `startup-state.ts` docblocks only. **Route (`[id]/route.ts` `handleScan`):** the `Mount point scan completed`-class INFO gains `filesInCloud: scanResult.filesInCloud` (between `filesDeleted` and `chunksCreated`); the response is the whole `scanResult`, so the wire JSON gains the key. **Watcher (`lib/mount-index/watcher.ts`):** filesystem stores watch through Node's recursive `fs.watch` (one FSEvents stream per store) with `handleNativeEvent` resolving each debounced path against the disk (file → index; gone → unlink, + `removeIndexedBeneath` after a rename when the path has no file type; directory arrived by rename → `walkDirectory` + index each), `pendingRenames` per watcher, `in-cloud` → DEBUG `Mount watcher left a cloud-evicted file unread`; `QUILLTAP_WATCHER_POLLING=1` keeps chokidar polling (now ignoring non-indexable files) and is the fallback when `fs.watch` throws (WARN `Native recursive watch unavailable, falling back to polling`). **Help:** `help/mount-points.md` +10 / −2 — a NEW `#### Files Resting in the Cloud` section, the "startup sweep … runs *after* the house has opened its doors" paragraph, the polling paragraph reworded. Tests: `scan-runner.test.ts` +86 (the `only` trio + the two progress rows), NEW `cloud-placeholder.test.ts`, `scanner-cloud-placeholder.test.ts`, `watcher-native.test.ts`. | **v5 intersection — PORT on the ported scanner:** `crates/quilltap-core/src/services/mount_index/scanner.rs` (`ScanResult` → `to_json` key order; `ProcessFileOutcome`; `process_mount_file`'s stat-before-hash + `In-cloud`; `scan_mount_point`'s count + the INFO line; `empty_scan_result`); `api/mount_files.rs::mount_scan` (the `Request::MountScan` handler — the route INFO's `filesInCloud` key + the wire `scanResult` gaining the key — a SHARED CONTRACT with the SPA's `scriptorium.api.ts` scan-result type, P4.6-series Scriptorium); the mount-index tier-2 families that compare scan results / logs (`danger_scan_tier2_equivalence`, `doc_mount_*_tier2_equivalence`, `mount_link_groups_equivalence`, `doc_mount_fallback_sites_census` — the census counts `process_mount_file` sites); `apps/web/src/app/screens/scriptorium/scriptorium.api.ts:69` (`filesDeleted` … add `filesInCloud`) + whichever Scriptorium toast renders the scan summary. **PORT-NEW:** the two pure predicates as a tier-1 exact family (a `cloud_placeholder` module under `services/mount_index/` or `files/`; v5 has no `materialize-cloud-files` boot step — `grep` finds no analog in `quilltap-host`). ⚠ **`blocks` on Windows:** v4 relies on libuv reporting allocation size; Rust's `std::os::unix::fs::MetadataExt::blocks` is unix-only — the Windows arm needs its own reading (or a ruled `false` until Tauri-Windows), record it. **NO-PORT, by standing deferral:** v5 has NO boot-time `scanAllMountPoints` (the host's boot runs only the PHASE 3.3b orphan reaper; `grep scan_all_mount_points crates/` = 0), NO startup-progress gate, and NO mount watcher (`phase-4.md`'s "chokidar-equivalent fs watcher INCLUDING the db-store-event emitter chain (host cadence)" deferral, named since P4.6p/P4.6v) — so the `only` / `reportStartupProgress` options, the two-pass boot, the watcher's `handleNativeEvent` and polling fallback have no v5 home; record them in the deferral's ledger, do not stub them. **Help:** `help/mount-points.md` re-vendors (the `p4.9i2` bank; v5 serves `help/` from the binary). **Dogfood:** a Friday-copy store on a local (non-iCloud) folder scans identically before and after; the `in-cloud` arm is provable only with a planted dataless file (macOS `blocks === 0` needs a real evicted placeholder — `brctl evict`) or by the pure family. | ORDERED(P4.D381) — the `624d0d25c` round, 2026-11-04 |
-| `db4a76e39` | 2026-10-29 | deps: drop chokidar; files watcher on fs.watch, mount polling walks the store | **NO-PORT? (both watchers are NO-COUNTERPART in v5) + PORT (one About-credits line)** (classified 2026-10-29 from the hunks; 13 files +505 / −176; `4.12.0-dev.3`; parent `bf7a457f6` — the morning's recorded dirt, committed). `lib/file-storage/watcher.ts` (+209 / −… : the instance `files/` watcher moved onto recursive `fs.watch`, `handleNativeEvent` resolving each debounced event against the disk, folder arrival / departure by rename, a pending-unlink cancel on a sha-matched move, symlinks skipped, `toStorageKey` normalising to `/`), `lib/mount-index/watcher.ts` (the polling backend rewritten as a 2 s walker over `walkDirectory` + `detectFileType`, diffing mtime / size, no chokidar), `package.json` / `packages/quilltap/package.json` (chokidar dropped), `app/about/AboutView.tsx` (`Filesystem & Archives: tar, yauzl, semver`), a comment in the mount-points route, two tests + a NEW `watcher-native.test.ts`. | **v5 intersection:** NONE in code — v5 ships NO file-storage watcher (`folders_chokepoint_wiring_guard::the_no_counterpart_rows_are_recorded`) and NO mount watcher (the standing "chokidar-equivalent watcher (host cadence)" deferral); only the About credits line (`about-page.ts:435-459`, the P4.D359 byte port of `a4945d8d9`'s list) gains this one-word drop — a one-line rider for whichever lane next touches it; `docs/v4/` mirror. | ORDERED(P4.D382 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `f56965ef9` | 2026-10-29 | chore(deps): minor npm update to root repo | **NO-PORT? (dependency stamps) — but it MOVES the two SDK versions the guard reads** (classified 2026-10-29 from the hunks; 10 files +71 / −64; `dev.4`). `package.json`: `openai` ^7.45.0 → **^7.45.1**, `@openrouter/sdk` ^1.5.9 → **^1.5.21** (+ its `allowScripts` key), `@tanstack/react-virtual` 3.14.24, `@types/yauzl` moved; seven `plugins/dist/*/index.js` bundles rebuilt (one line each). | **v5 intersection:** `provider_sdk_version_guard.rs:128/:132` (`INSTALLED_ROOT_OPENAI_SDK` / `INSTALLED_ROOT_OPENROUTER_SDK`) — at the `236c04e35` pin P4.D360 sets 7.45.0 / 1.5.9; ANY later pin moves them again (7.45.1 / 1.5.21). No code. | ORDERED(P4.D364 + P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `3936fdf65` | 2026-10-29 | deps: croner 11, jest-fetch-mock 4.2; test-only packages to devDependencies | **NO-PORT? (dependency stamps)** (classified 2026-10-29; 5 files +36 / −33; `dev.5`). `croner` ^10 → ^11 (v4's cron scheduler — v5's cadence is the host's own; no `croner` twin), `jest-fetch-mock` 3.2 → 4.2 moved to devDependencies with `@types/yauzl`. | **v5 intersection:** none (v4's jest mocks are oracle-side only; no oracle imports `jest-fetch-mock` directly — confirm at the next census). | ORDERED(P4.D365 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `eb90eb466` | 2026-10-29 | deps: Lexical 0.53 | **NO-PORT? (client dependency stamps)** (classified 2026-10-29; 5 files +219 / −211; `dev.6`). The nine `lexical` / `@lexical/*` packages 0.52 → 0.53; no source hunk. | **v5 intersection:** none — v5's composer is ProseMirror (D17). | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `7dedfa067` | 2026-10-29 | deps: ESLint 10 | **NO-PORT? (tooling)** (classified 2026-10-29; 5 files +201 / −340; `dev.7`). `eslint` 9.39 → 10.13 + three `overrides` entries for the react / jsx-a11y / import plugins; no source hunk. | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `3e4f9dea9` | 2026-10-29 | deps: TypeScript 6 | **NO-PORT? (tooling + the four `packages/*` manifests)** (classified 2026-10-29; 17 files +754 / −1,225; `dev.8`). `typescript` 5.9 → 6.0.3 at the root and in `create-quilltap-theme` / `plugin-types` / `plugin-utils` / `theme-storybook` (+ `css-modules.d.ts`, `version.generated.ts`); no `lib/` / `app/` hunk. | **v5 intersection:** none for v5's Rust / Angular; ⚠ the ORACLES run under v4's tsx — a TypeScript 6 `node_modules` at a post-`3e4f9dea9` pin is what `npm ci` installs there (tsx strips types; measure that every oracle still loads at that pin). | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `9f761e157` | 2026-10-29 | deps: bring packages and plugins up to root dependency levels | **NO-PORT? (every plugin manifest + bundle rebuilt; `packages/*` manifests)** (classified 2026-10-29 from the stat; 56 files +83,965 / −40,295 — nearly all `plugins/dist/*/index.js`; `dev.8`, no root stamp). Each of the fifteen plugins' `package.json` moves `@quilltap/plugin-types` ^2.8.0 / ^2.9.0 → **^2.9.1**, `@quilltap/plugin-utils` ^2.7.1 → **^2.7.2**, `openai` ^7.23.0 → **^7.45.1**; every `manifest.json` version +1 (anthropic 1.0.63, curl, deepseek, google, grok, mcp, nanogpt, ollama, openai, openrouter, search-serper, z-ai, …); `qtap-plugin-anthropic/provider.ts` +24 / −… (measure — a bundle-level change with a `.ts` hunk); `packages/quilltap` `sharp` 0.35.5. | **v5 intersection:** v5's providers are declarative manifests (no JS plugins); the plugin `node_modules` symlink class (§5.1) now points at trees built for these versions — at the `236c04e35` pin the plugin dirs' deps are inert type-only imports as before; the `anthropic/provider.ts` hunk needs a read at the next catch-up (it precedes `544c7ab1e`'s rewrite of the same file). | ORDERED(P4.D364 + P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `544c7ab1e` | 2026-10-29 | anthropic: move to API version 2026-10-21; drop temperature and top_p | **PORT (the Anthropic request builder + the connection-profiles repository + the profile editor) WITH A NEW DATA-REWRITE MIGRATION — `strip-anthropic-sampling-parameters-v1` (main partition; rewrites `connection_profiles.parameters` for Anthropic profiles; NO column move)** (classified 2026-10-29 from the hunks; 32 files +722 / −250; prod 22 files +251 / −115; `dev.9`; plugin-types **2.10.0**, plugin-utils 2.7.3, the Anthropic plugin 1.0.64). **Plugin (`plugins/dist/qtap-plugin-anthropic/provider.ts` +95 / −…, `index.ts`):** the `anthropic-version` pin `2023-06-01` DROPPED — the SDK default `2026-10-21` applies, which REJECTS `temperature` / `top_p` / `top_k` on every model and document blocks placed directly in assistant messages; the plugin sends NO sampling parameters on any model; assistant-turn documents move into a user turn placed just before it; the thinking shape unchanged (adaptive on new-gen, `budget_tokens` on older). **plugin-types:** NEW `ProviderCapabilities.samplingParameters?: boolean` (the Anthropic plugin declares `false`). **`lib/plugins/provider-validation.ts`:** NEW `acceptsSamplingParameters(provider)` (exported through `lib/plugins/index.ts`). **`lib/llm/sampling-params.ts`:** NEW `SAMPLING_PARAMETER_KEYS = ['temperature','top_p','topP','top_k','topK']` + `withoutSamplingParameters(params) → {parameters, removed}` (`max_tokens` and provider options kept). **`connection-profiles.repository.ts`:** `sanitizeParametersForProvider(provider, parameters, profileId?)` on `create` (when `data.parameters`) and `update` (when `parameters` OR `provider` is in the patch — a provider change re-checks the stored blob through `findById`), DEBUG `Stripped sampling parameters the provider does not accept {context:'ConnectionProfilesRepository', profileId, provider, removed}` — covers editor, auto-configure, import and restore. **Migration** `strip-anthropic-sampling-parameters-v1` (`migrations/scripts/index.ts` +4; a `prettify.ts` label) cleans existing Anthropic profiles. **SPA:** `components/settings/connection-profiles/types.ts` +2; the editor hides Temperature / Top P for such providers and omits them from save and test-message; the card shows only Max Tokens. `help/connection-profiles.md` +4 / −2. Tests: a 157-line integration test + a 41-line unit test. | **v5 intersection — PORT:** the Anthropic request builder (P4.11 / P4.13 — `providers/anthropic/*`: the `anthropic-version` header value, the sampling keys OMITTED, the assistant-document relocation), the provider manifest's capability (`samplingParameters: false` on the declarative Anthropic manifest + the `acceptsSamplingParameters` twin), `db/connection_profiles.rs` create / update (the strip + the DEBUG line; import / restore / auto-configure ride the repository), the migration as a STAMPED data-rewrite boot ensure (the P4.D265 class — it rewrites rows, so it stamps `migrations_state`; `restore_vintage_state`'s boot-align list), the Settings SPA profile editor / card (P4.6e) + the wire's capability field, `help/connection-profiles.md`. ⚠ LIVE-DATA (§1): until ported, a v5 write of an Anthropic profile puts the sampling keys BACK (ping-pong), and v5 keeps sending them under the old header. The oracle side: `provider_sdk_version_guard` unchanged (no SDK move here); the Anthropic request-builder families (`anthropic_*_request_equivalence`, the stream / non-stream builders) redden at a post-`544c7ab1e` pin; `plugin-types` 2.10.0 is a type-only import for the oracles. | ORDERED(P4.D362 + P4.D364 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `29ba4d3f8` | 2026-10-29 | ui: opaque dropdowns; open menus rise above their rows | **PORT? (SPA / CSS only)** (classified 2026-11-04 from the hunks; 23 files +275 / −100; `dev.10`). NEW `qt-bg-popover` utility (`--qt-popover-bg`) in `qt-components/_utilities.css`; ten dropdowns / menus switch to it; `_surfaces.css`: a `qt-card` holding an open popup gets `position: relative; z-index: 20; translate: none`; NEW `hooks/useFixedMenu.ts` (viewport-fixed menu that flips upward, closes on outside scroll / resize) under the wardrobe, inventory, folder and scenario rows; roleplay-template and task-details dialogs on `qt-dialog`. No `lib/` / `app/api/` hunk. | **v5 intersection:** the SPA's shared `qt-components` CSS port (the P4.D357 WCAG/tokens lane's file family) and the four row menus (wardrobe / Inventory / folder / scenario rows — P4.D285 and the `322a5488e` round's Inventory SPA). Theme packs: Art Deco / Great Estate / Madman's Box clear `.bg-background` (why the utility exists). | ORDERED(P4.D383 + P4.D386) — the `624d0d25c` round, 2026-11-04 |
-| `3c41cf3da` | 2026-10-29 | salon: compact the header breadcrumb for a crowded cast | **PORT-NEW (SPA)** (classified 2026-11-04 from the hunks; 12 files +433 / −110; `dev.11`). NEW `components/chat/ChatHeaderBreadcrumb.tsx` (283) — project / character links step down full name → abbreviation → avatar only when the row doesn't fit, Quilltap tooltips; `SalonView.tsx` −153 net; `qt-page-toolbar` left section sizing in `_layout.css`; `help/chats.md` +4. No server hunk. | **v5 intersection:** the Salon header / page toolbar (P4.6a Salon vertical; the workspace tab toolbar `p4.9j`); `help/chats.md` re-vendor. | ORDERED(P4.D384 + P4.D383) — the `624d0d25c` round, 2026-11-04 |
-| `4f5047241` | 2026-10-29 | search: look in the open Salon chat first; ?msg= links scroll to the message | **PORT-NEW (SPA) + PORT (`?msg=` deep links)** (classified 2026-11-04 from the hunks; 27 files +943 / −146; `dev.12`). Client-side "This conversation" matches over the visible transcript (NEW `lib/chat/conversation-search.ts` 134 — markdown-stripped, case-insensitive, newest first, TOOL rows skipped; it is a CLIENT module under `lib/`), the CSS Custom Highlight API painting, `useSearchHighlight` / `useAutoScroll`; `lib/chat/message-navigation.ts` reworked; `/salon/<id>?msg=<messageId>` now READ by every entry (the workspace link interceptor, `useWorkspaceNavigate`, `WorkspaceIntent`, `page.tsx`); a `conversationSearch` slot on the page-toolbar context; `help/search.md` +29. No `app/api/` hunk. | **v5 intersection:** the SPA search bar / dialog (P4.6-era global search + the FTS5 message search, `f45a517a9`'s port), the Salon transcript scroller, the workspace link interception (`p4.9j`). `help/search.md` re-vendor. | ORDERED(P4.D384 + P4.D383) — the `624d0d25c` round, 2026-11-04 |
-| `902c6efe9` | 2026-10-29 | search: keep Staff messages and announcement bubbles out of global search | **PORT (FTS5 eligibility + the search filter) WITH A NEW INDEX-REBUILD MIGRATION `reindex-chat-message-fts-character-only-v1` — NOT a D23 move (the FTS5 objects are not generateDDL's; no column)** (classified 2026-11-04 from the hunks; 18 files +325 / −30; `dev.13`; **`Fixes #121`** — v4-ORIGINATED ("Original to v4", v5 status "Not assessed"), NOT a convergence). `lib/database/backends/sqlite/chat-message-fts.ts`: `chatMessageFtsEligibilitySql` gains `AND "systemSender" IS NULL AND "customAnnouncer" IS NULL`; the INSERT trigger's `WHEN` is now that function; NEW `staleChatMessageFtsTriggers(db)` compares each trigger's `sqlite_master.sql` against the expected text and `ensureChatMessageFtsSchema` DROPs + recreates stale ones (DEBUG `Replacing outdated chat message FTS triggers {stale}`). `chats-search.ops.ts`: the FTS query adds the eligibility SQL; the fallback filter is `isCharacterAuthoredMessage(msg)`. The migration (`shouldRun`: missing objects OR stale triggers OR eligible ≠ indexed) rebuilds with two INFO lines (`Rebuilding chat message search index without Staff messages`, `Chat message search index rebuilt {scanned, indexed, total, dropped}`) and progress; `create-chat-message-fts`'s `dependsOn` grows two ids; `prettify.ts` label; `docs/developer/DDL.md`, `help/search.md`. | **v5 intersection — PORT:** `db/chat_message_fts.rs` (the eligibility SQL + trigger text + a stale-trigger replace), `db/chat_message_fts_reconcile.rs` (the boot reconcile), `db/chats_search.rs` (both arms), the migration as a STAMPED boot ensure + `restore_vintage_state`'s boot-align entry; the FTS families (`chat_message_fts_*`, `chats_search_*`) redden at a post-pin regen. ⚠ **LIVE-DATA (§1): a PING-PONG REBUILD class until ported** — v5's reconcile counts eligibility by the OLD filter, so on an instance v4 trimmed it sees eligible ≠ indexed and REBUILDS (re-indexing every Staff row); v4's next boot rebuilds again. Measured from v5's source (`chat_message_fts_reconcile.rs:144`), not run. | ORDERED(P4.D363) — the `624d0d25c` round, 2026-11-04 |
-| `d03eb2d63` | 2026-10-29 | Docs: Deus Ex Machina spec (established facts in the Salon) (#122) | **NO-PORT? — docs only, VERIFIED** (2 files +345: NEW `docs/developer/features/deus-ex-machina.md` + a ROADMAP line; no stamp). Superseded in substance by `db6190b44`, which edits the spec as-built. | **v5 intersection:** the `docs/v4/` mirror only. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `db6190b44` | 2026-10-29 | salon: Deus Ex Machina — established facts | **PORT-NEW (Salon "established facts") + PORT (context builder, extraction prompts, cheap-LLM transcripts, Courier delta) WITH THE TWENTY-SECOND D23 MOVE — `chat_messages."isEstablishedFact" INTEGER DEFAULT NULL` (`add-established-fact-field-v1`, main partition, additive, NO data rewrite)** (classified 2026-11-04 from the hunks; 94 files +2,500 / −93; `dev.15`). **Schema:** `ChatMessageSchema.isEstablishedFact: z.boolean().nullable().optional()` sits BETWEEN `isSilentMessage` and `systemSender` — so TWO shapes (generateDDL's schema-order column for a fresh table vs the migration's APPENDED one). **Server:** NEW `lib/chat/established-fact.ts` (the one recogniser; the frames, the reminder header, the transcript rule — frames applied at READ time, never stored); the operator's USER row carries the flag (`recordOperatorPost`), the machine kind is a public Host row `systemSender='host'`, `systemKind='established-fact'`, `participantId` NULL; NEW background job `established-fact-memories` (`handlers/established-fact-memories.ts` 164, `queue-service.ts` +43, a job type + activity kind + job topic); NEW `lib/chat/context/established-fact-reminder.ts` (a trailing reminder in `turn-trailing.ts`); `context-manager.ts` / `context-summary.ts` / `message-attribution.ts` / `speaker-names.ts` / `transcript-projection.ts`; `context-builder.service.ts` +36, `orchestrator.service.ts` +30, `courier-transport.service.ts` +18, `operator-post.service.ts`; the four extraction prompts (`shared.ts` +11, `self.ts`, `other.ts`, `episode.ts`) + `window.ts` + `candidate.ts`; `cheap-llm-tasks/chat-tasks.ts`; NEW `lib/services/announcer/writer.ts` +108 and `in-scene-voiced.ts`; the announcement action + `schemas.ts` (a fact tab in Insert Announcement); a `/deus` slash command (`registry.ts`); `public/schemas/qtap-export.schema.json` +2. **SPA:** the composer (`/deus`, Cmd/Ctrl+Shift+Enter one-line fact, `KeyboardPlugin`), `MessageRow`, `system-message-labels`, `InsertAnnouncementDialog`, `_chat.css` +54. **Help:** NEW `help/deus-ex-machina.md` (67); `inform.md`, `insert-announcement.md`, `character-system-transparency.md`. | **v5 intersection — PORT:** the D23 re-dump (`fresh_schema.json`) + a column-gated UNSTAMPED boot ensure with both shapes + `restore_vintage_state`'s boot-align; the context builder / turn-trailing chain (the round's P4.D347 lane's file family — referent ledger, absent mentions — and P4.D254's trailing inform section), the extraction prompts (P4.D296; the round's P4.D342 rubric lane edits the same prompts), the Courier transport, the operator post, the announcer writer (the Insert Announcement port), the job runner (a new handler kind), the slash-command registry (P4.D308), the `.qtap` export schema, the Salon composer (the round's P4.D352 composer lane). | ORDERED(P4.D362 + P4.D372 + P4.D385 + P4.D383 + P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `671c59a53` | 2026-10-29 | salon: one predicate for never-collapsed announcements | **PORT (SPA — a v4 display defect)** (classified 2026-11-04 from the hunks; 8 files +84 / −23; `dev.16`). `isAlwaysExpandedAnnouncement` in `announcement-render-items.ts` now the one rule (Carina, established facts, mail deliveries `suparna/mail-delivery`, Pascal results `pascal/custom-tool-result`); `isCollapsedAnnouncement` exported and passed to `MessageRow` (the message list's own exemption check removed). | **v5 intersection:** the Salon announcement chip grouping (the Staff / announcement render items, P4.6-era Salon). Measure whether v5 has the split check. | ORDERED(P4.D385) — the `624d0d25c` round, 2026-11-04 |
-| `df8d4d70a` | 2026-10-30 | salon: Deus Ex Machina toggle on the composer portrait; Quilltap tooltips in the composer | **PORT-NEW (SPA, rides `db6190b44`) + PORT? (composer tooltips / aria-labels)** (classified 2026-11-04 from the hunks; 26 files +667 / −369; `dev.17`). `SpeakingAsAvatar` gains the established-fact toggle (`aria-pressed`, `qt-chat-established-fact-toggle`); NEW `deus-ex-machina` icon (`public/images/icons/`, the Madman's Box variant + `theme.json` 1.1.10, the icon registry); native `title` tooltips in `ChatComposer`, `ComposerGutterTools`, `FormattingToolbar`, `RngDropdown`, `CustomToolsButton`, `PendingInformChips` replaced with `Tooltip`, icon-only buttons gain `aria-label`; initial-only portraits get a min width. | **v5 intersection:** the Salon composer + formatting toolbar (the round's P4.D352 composer lane and P4.D358's accessible-names lane touch the same controls), the icon set and the Madman's Box pack (P4.D357). | ORDERED(P4.D385) — the `624d0d25c` round, 2026-11-04 |
-| `fd165fce0` | 2026-10-30 | pascal: custom-tool presets follow the tool walk | **PORT (Pascal run presets) + PORT-NEW (`?action=presets` + the Run dialog's store labels / "Save into")** (classified 2026-11-04 from the hunks; 14 files +598 / −102; `dev.18`). NEW `lib/pascal/tool-preset-pool.ts` (`resolveToolPresetPool` — presets `Tools/{tool}.{preset}.settings.json` found on the same walk as definitions: character vault, group stores, project stores, Quilltap General, nearest first, a nearer name shadowing a farther one); `custom-tools.ts`: shared `listToolsFolderFiles` + exported `orderedMounts`; `GET /api/v1/chats/[id]/custom-tools?action=presets` (+76: winning presets with the stores they shadow, every walk store as a save destination, stores that would not list); `CustomToolRunDialog.tsx` +175; query key. | **v5 intersection — PORT:** the Pascal custom-tool walk + presets (P4.D305 / P4.D307 run dialog; the vault-only custom tools of the `322a5488e` round) and the round's P4.D345 / P4.D346 intervention lanes (same route, same dialog). | ORDERED(P4.D379 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `9eab8d2da` | 2026-10-30 | salon: raised-hand status chip; gesture-only answers count as a yield | **PORT (turn manager + the raise-hand SSE) + PORT-NEW (SPA chip)** (classified 2026-11-04 from the hunks; 18 files +382 / −33; `dev.19`). `turn-manager/yield-signal.ts`: NEW `isGestureOnlyReply(text)` (≤ 280 chars, no blank line, no spoken quote, peeled `*` / `_` / `( )` wrappers, a letter inside) → `{yielded: true, cleaned, inferred: true}`; the raise-hand note's model-visible text gains "A reply that is only a gesture, with no words spoken aloud, is also taken as yielding."; NEW `encodeHandAskedEvent` → `data: {"handAsked":true,participantId,characterName}`; `handAnswered` gains `inferred`; `turn-outcome.service.ts`. SPA: NEW `RaisedHandChip.tsx`, `useSSEStreaming` +90. `help/interrupting.md`. | **v5 intersection — PORT:** raise a hand / stop (the `322a5488e` round's interrupts lane — `turn_manager` yield signal + the streaming frames), the Salon SSE wire (a NEW frame), the SPA composer chip. Tier-1 candidate: `isGestureOnlyReply` is a pure function. | ORDERED(P4.D366 + P4.D384 + P4.D385) — the `624d0d25c` round, 2026-11-04 |
-| `b2b783b47` | 2026-10-31 | item-browser: shared folder browser for the Wardrobe and the Inventory | **PORT? (SPA refactor of ported browsers) + PORT-NEW (shared folder browser)** (classified 2026-11-04 from the hunks; 32 files +2,214 / −1,618; `dev.20`). NEW `components/item-browser/*` (`FolderBrowserShell`, `ItemActionMenu`, `ItemFolderField`, `ContainerSelect`, `useFolderBrowserState`), `lib/folder-browser/view.ts` (142, client), `lib/hooks/use-container-catalogue.ts`; `WardrobeBrowser` / `InventoryBrowser` and their dialogs rebuilt on it; `lib/wardrobe/folder-view.ts` −132 (moved to the shared view); NEW spec `docs/developer/features/folder-browser.md`. | **v5 intersection:** the SPA wardrobe folder browser (P4.D285) and the Inventory browser (the `322a5488e` round's Inventory SPA) — a parity port, not a wire move. `help/inventory.md`, `help/wardrobe.md`. | ORDERED(P4.D386) — the `624d0d25c` round, 2026-11-04 |
-| `a0ed5ecad` | 2026-10-31 | item-browser: shared server folder layer for the Wardrobe and the Inventory | **PORT (wire: a route REMOVED) + refactor ("No behaviour change" — verify)** (classified 2026-11-04 from the hunks; 21 files +891 / −689; `dev.21`). NEW `lib/mount-index/item-folder-location.ts` (`ItemFolderLocation`, `locationKey`, generic folder create / rename / delete / move-items keyed by `ItemFolderKind`), `item-folder-routes.ts` (`itemFolderActionHandlers` for both factories); `lib/wardrobe/transfers.ts` (413 — the transfer logic out of its route, typed refusals); **`GET /api/v1/wardrobe/transfers` REMOVED** ("no callers"); `wardrobe.types.ts` −9. | **v5 intersection — PORT:** v5 STILL serves `GET /api/v1/wardrobe/transfers` (`quilltap-web/src/wardrobe_routes.rs:457`, `api/types.rs:2788`) — a route v4 no longer has; the folder actions (P4.D281) + Inventory folder actions (`322a5488e` round). Measure the transfer refusal texts against the new typed refusals. | ORDERED(P4.D377 + P4.D378) — the `624d0d25c` round, 2026-11-04 |
-| `aec626eff` | 2026-10-31 | mount-points: document-store API for the folder browser | **PORT-NEW (mount-point API) + PORT (the files listing wire + realtime topics)** (classified 2026-11-04 from the hunks; 25 files +1,037 / −72; `dev.22`). `GET …/files` returns `DocMountBrowserEntry` rows (`listForBrowser` — no `extractedText`, plus `linkGroupId` / `linkCount`); per-file GET `?action=links` and `?action=render-html` (`.docx` through mammoth, unsafe link targets neutralised — NEW `converters/docx-html.ts`); NEW `unlink-file` (`clearLinkGroup`), `copy-folder`, cross-store `move-folder` (`destMountPointId`), recursive `delete-folder` (`folder-ops.ts` +258, undoing a failed copy / move); `doc-mount-file-links.repository.ts` +104; `publishMountChange` scopes the `mountPoints` topic per store (`realtime.ts`, `topic-map.ts`, `realtime.types.ts`). | **v5 intersection — PORT:** the mount-points routes + `db/doc_mount_*` (the Scriptorium vertical incl. the D18 bespoke file manager), the realtime invalidation subsystem's topic map, the round's P4.D354 mount-index lane (same files). `mammoth` is a v4 dependency v5 has no twin for — a dependency ruling for `render-html`. | ORDERED(P4.D381 + P4.D387) — the `624d0d25c` round, 2026-11-04 |
-| `c34986421` | 2026-10-31 | scriptorium: folder browser for document stores | **PORT-NEW (SPA — the Scriptorium store browser) + PORT (filesystem folder move / delete keep `doc_mount_folders` in step) + a dependency REMOVED** (classified 2026-11-04 from the hunks; 54 files +2,237 / −2,952; `dev.23`). The store detail page browses on the shared folder browser (NEW `components/document-browser/*`, viewers for images / PDF / Markdown / text / `.docx`, `FilePreviewDocx`); `FileTable` and the whole SVAR file-manager beta DELETED, **`@svar-ui/react-filemanager` REMOVED**; `ItemFolderPickerDialog` → `DestinationPickerDialog` (link mode, store chooser); `lib/mount-index/folder-ops.ts` +33 (folder rows follow a filesystem move / delete); NEW `lib/folder-browser/document-actions.ts`, `preview-kind.ts`; `AboutView.tsx` credits (SVAR dropped); `help/mount-points.md` +30. | **v5 intersection:** the Scriptorium SPA (v5 never ported SVAR — the D18 bespoke file manager; this converges v4 toward a browser of its own, so compare shapes rather than port the SVAR removal), `db/doc_mount_folders` (the folder-op server half — PORT), the About credits list (`about-page.ts`, P4.D359's byte port). | ORDERED(P4.D381 + P4.D387 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `5efe53ea7` | 2026-10-31 | document-mode: folder browser in the picker, read-only viewers | **PORT (Document Mode open / read / write refuse non-text) + PORT-NEW (SPA picker)** (classified 2026-11-04 from the hunks; 24 files +565 / −385; `dev.24`). `lib/documents/operator-doc-actions.ts` +68: store files that are not text (images, PDFs, `.docx`, binaries) — `open-document` / `read-document` return a VIEWER TARGET instead of reading bytes as text, `write-document` REFUSES them; the chat documents action + `documents` route one line each; SPA: the Open Document picker on the folder browser (pick mode), `DocumentViewerPane`; `BaseModal` ignores an outside click / Escape belonging to a layered dialog; `help/scriptorium.md`. | **v5 intersection — PORT:** Document Mode's operator actions (P4.6-era Document Mode vertical, the chat `documents` action and `/api/v1/documents`), the SPA picker + modal stacking. | ORDERED(P4.D380 + P4.D387) — the `624d0d25c` round, 2026-11-04 |
-| `a299de9f5` | 2026-10-31 | docs: close out the folder browser; retire the SVAR specs | **NO-PORT? — docs only, VERIFIED** (11 files +65 / −23; `dev.24`): `folder-browser.md` + two SVAR specs moved to `features/complete/`, `API.md`, `FEATURES.md`, `DEAD-CODE-REPORT.md`. | **v5 intersection:** the `docs/v4/` mirror (three moved paths). | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `c17033f04` | 2026-10-31 | document-mode: store browser for picker libraries; uploaded text and outside edits | **PORT (Document Mode's General library + blob text editing + the accessible-stores wire) + PORT? (mount watcher realtime hint — v5 has NO mount watcher)** (classified 2026-11-04 from the hunks; 29 files +502 / −557; `dev.26`). Document Mode's General library opens Quilltap General (`generalLibrary` returned by `accessible-stores`; the old `files/_general/` resolution, which "no longer exists", failed every pick); text files stored as blobs in a database store open in the editor (`readEditableDocument` → `readDatabaseBlobAsDocument`, `database-store.ts` +30), the first save turns them into documents, unsavable text kinds open read-only; `projects/[id]/mount-points` route +11; `FileBrowser`'s mount mode retired (NEW `ProjectStoreBrowser`); `lib/mount-index/watcher.ts` +28 (a debounced realtime hint on outside changes); orphan `useMountPointBlobUpload` deleted. | **v5 intersection — PORT:** Document Mode (`operator-doc-actions` / the chat documents action / accessible-stores), `db/doc_mount_*` blob reads, the project Files card (#135's fix, P4.6l), the attachment picker. NO-COUNTERPART: the watcher hint. | ORDERED(P4.D380 + P4.D387) — the `624d0d25c` round, 2026-11-04 |
-| `ba6c8fe0f` | 2026-11-01 | prompt-trust: retire the slips ledger, record repairs ("the probation") | **PORT — model-visible prompt text across generators, memory extraction, consolidation, recall tags and the sample system prompts; NO D23 move, NO route** (classified 2026-11-04 from the hunks; 52 files +958 / −69; `dev.27`; NEW spec `prompt-trust-the-probation.md`). `lib/services/character-field-semantics.ts` (`COMPANION_TRUST_DISPOSITION`, `TRUST_SAFEGUARDS_DIRECTION` gains a sixth rule), `context-builder.service.ts` +12 (`GROUP_SCENE_DISCIPLINE` scoped to the cast), extraction `shared.ts` +23 (`REPAIRS_INSTRUCTION_BLOCK`) / `self.ts` / `other.ts` / `episode.ts`, `memory/recall/tags.ts` +33 (repair anchors), `consolidation-tasks.ts` +30, `consolidation-plan.ts` +29, `consolidation.ts`, `maintenance/consolidate.ts`; **`qtap-plugin-default-system-prompts` 1.1.30 — 21 sample prompts edited**; four help pages. | **v5 intersection — PORT:** the generators (P4.9k wizard / optimizer), the context builder (the round's P4.D347 lane), extraction prompts (P4.D296; the round's P4.D342 importance-rubric lane edits `shared.ts` too), recall tags (P4.D291), consolidation (P4.D271 / P4.D297), and v5's embedded sample prompts (`services/builtin_prompt_templates.json`). Prompt-byte families redden at a post-pin regen. | ORDERED(P4.D373 + P4.D371) — the `624d0d25c` round, 2026-11-04 |
-| `d439f6dc9` | 2026-11-01 | connection-profiles: cap images sent per request (default 4) | **PORT + PORT-NEW WITH THE TWENTY-THIRD D23 MOVE — `connection_profiles."maxImagesPerRequest" INTEGER DEFAULT 4` (`add-profile-max-images-per-request-v1`, main, additive, plus an `UPDATE … SET 4 WHERE NULL` backfill — a no-op on rows ADD COLUMN filled, so NOT a data rewrite of substance) + an SDK move** (classified 2026-11-04 from the hunks; 25 files +4,280 / −3,465 — 6,606 of them a re-vendored `public/pdf.worker.mjs`; `dev.28`). **Schema:** `maxImagesPerRequest: z.number().int().min(1).max(50).default(4)` between `supportsImageUpload` and `tags` — TWO shapes (schema order vs the migration's append; `DDL.md` lists it last). `resolveMaxImagesPerRequest()` (`connection-profile-utils.ts` +34; legacy fields); `adaptMessagesForProfile` enforces the cap, describing overflow (newest kept); the Lantern walk spends it; failover understudies re-adapted; both profile routes validate; restore / import seed; export schema +10; the profile editor field; `help/connection-profiles.md`. **`openai` ^7.45.1 → ^7.47.0, `@openrouter/sdk` ^1.5.21 → ^1.5.33** ride this commit. | **v5 intersection — PORT:** `fresh_schema.json` re-dump + an UNSTAMPED column-gated ensure (its backfill only fills NULLs) + boot-align; `db/connection_profiles.rs`, the profile routes + Zod twin (bounds 1..50), the backup / restore / `.qtap` carriers, the context builder's image path (rewritten again by `29c1e2690` — port the two together), the Settings profile editor (P4.6e). ⚠ `provider_sdk_version_guard` (`INSTALLED_ROOT_OPENAI_SDK` / `INSTALLED_ROOT_OPENROUTER_SDK`) moves at any pin ≥ this commit. | ORDERED(P4.D362 + P4.D367 + P4.D364 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `4efea65e5` | 2026-11-02 | wardrobe: Green Room multi-slot picks fill every slot they cover | **PORT (wardrobe outfit selection) — model-visible prompt text + a pure function** (classified 2026-11-04 from the hunks; 19 files +8,188 / −6,168 — almost all `package-lock.json` / tests; `dev.29`). NEW `spreadAcrossCoveredSlots` (`slot-ops.ts` +29) puts each item into every slot its types declare; `applyOutfitSelections` runs it on the LLM's pick after dissolving composites; `cheap-llm-tasks/outfit-selection.ts` states the rule (+2 prompt text); `help/wardrobe.md`. | **v5 intersection — PORT:** the Green Room outfit selection (P4.4 unit 2 + the wardrobe programme's `apply_outfit_selections` / slot ops, P4.D279 / P4.D282). Tier-1 candidate: `spreadAcrossCoveredSlots`. | ORDERED(P4.D373) — the `624d0d25c` round, 2026-11-04 |
-| `27fb3ec77` | 2026-11-02 | salon: avatar opens full size; carried items shown under the title | **PORT-NEW (SPA)** (classified 2026-11-04 from the hunks; 15 files +253 / −19; `dev.30`). The message-row desktop avatar's picture opens the Salon image viewer (`Avatar.onImageClick`); equipped Inventory items listed under the title (SVG / emoji / two-letter abbreviation + Tooltip; `InventoryGlyph` `fallback: 'abbreviation'`); `useChatCarriedItems` shares `useChatInventory`'s cache; `getMessageAvatar` returns `characterId`. Help: `chats.md`, `inventory.md`. No server hunk. | **v5 intersection:** the Salon message row (P4.6a) + the Inventory SPA glyph (the `322a5488e` round). | ORDERED(P4.D385) — the `624d0d25c` round, 2026-11-04 |
-| `4310d435f` | 2026-11-02 | doc-edit: operator document actions go through resolved-file helpers, not fs | **PORT? (a refactor with ONE behaviour change)** (classified 2026-11-04 from the hunks; 16 files +1,016 / −67, mostly tests; `dev.31`). `doc-edit/path-resolver.ts` NEW `statResolvedFile` / `moveResolvedFile` / `deleteResolvedFile`; `operator-doc-actions.ts` stops importing `fs/promises`; **`statResolvedFile` treats only `ENOENT` / `ENOTDIR` as absent — other errors now THROW** (before: any error read as absent). | **v5 intersection:** Document Mode's operator actions + v5's doc-edit path resolver (the P4.6-era Document Mode / doc_* tools port) — measure v5's stat arm for the error class. | ORDERED(P4.D380) — the `624d0d25c` round, 2026-11-04 |
-| `f12bda3d1` | 2026-11-02 | docs: changelog for the release-checklist test coverage pass | **NO-PORT? — CHANGELOG only, VERIFIED** (1 file +11). | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `3d39c303c` | 2026-11-02 | Use API response helpers in announcement and project mount-point routes (#123) | **NO-PORT? — "Output is unchanged", VERIFY at port time** (2 files +6 / −6; `NextResponse.json` → `created()` / `successResponse()` in the announcement action and `projects/[id]/mount-points`). The helpers may differ in status / headers from the raw call — a byte compare on the two routes settles it. | **v5 intersection:** the two routes' families (P4.6-era announcement action; project mount-points) — measure, don't assume. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `134961572` | 2026-11-02 | Remove dead Inventory folder wrappers and unused type (release checklist 5) (#124) | **NO-PORT? — dead code, VERIFIED** (4 files +29 / −36): `createInventoryFolder` / `renameInventoryFolder` / `deleteInventoryFolder` / `normalizeInventoryFolderName` + the `AnnouncementRouteSender` type removed; `DEAD-CODE-REPORT.md`. | **v5 intersection:** none (check v5 carries no twin of the dead wrappers — a census nicety, not a port). | ORDERED(P4.D361 + P4.D377) — the `624d0d25c` round, 2026-11-04 |
-| `f1c2b178d` | 2026-11-02 | Test maxImagesPerRequest through backup restore (#125) | **NO-PORT? — tests only, VERIFIED** (2 files +43). | **v5 intersection:** an oracle-side reference for `d439f6dc9`'s carrier row. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `06efd9ca2` | 2026-11-02 | cli: correct the README's native-module note (release checklist 12) (#126) | **NO-PORT? — docs + stamps, VERIFIED** (5 files +10 / −4: `packages/quilltap/README.md`, stamps `dev.35`). | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `d2795f72c` | 2026-11-02 | Docs: draft 4.12.0 release notes (#127) | **NO-PORT? — docs only, VERIFIED** (2 files +262: NEW `docs/releases/4.12.0.md`). | **v5 intersection:** the `docs/v4/` mirror. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `87c3860df` | 2026-11-02 | Fix undefined CSS custom properties in component styles (#128) | **PORT (SPA CSS — ~105 declarations referenced custom properties defined nowhere) + NO-PORT (storybook, the lint script)** (classified 2026-11-04 from the hunks; 13 files +2,688 / −1,023, nearly all the storybook CSS; `dev.35`). `qt-components/_chat.css` +86 / `_surfaces.css` +128 / `_content.css`: `hsl(var(--X))` → `var(--color-X)`, `hsl(var(--X) / N)` → `color-mix(…)`; restores focus indicators on the doc title input and help entity-picker filter; NEW `scripts/check-css-vars.mjs` in `npm run lint`; `help/help-chat.md`. | **v5 intersection — PORT?:** the SPA's ported `qt-components` CSS — measure whether v5 copied the undefined tokens verbatim (likely, P4.D338-era byte ports) — the round's P4.D357 WCAG/tokens lane's file family. | ORDERED(P4.D383) — the `624d0d25c` round, 2026-11-04 |
-| `94f041764` | 2026-11-02 | UI: WCAG 2.2 AA pass across bundled themes (release checklist 13) (#129) | **PORT (SPA CSS + five theme packs + accessible names / keyboard tabs)** (classified 2026-11-04 from the hunks; 50 files +752 / −91; `dev.35`). Contrast fixes in `qt-components` (`_chat`, `_content`, `_layout`, `_workspace`, `_intervention`, `_storyteller`, `_surfaces`) and five bundled themes (`art-deco`, `earl-grey`, `great-estate`, `old-school`, `rains` — `styles.css` + `theme.json` bumps); keyboard-operable workspace tabs (`TabStrip.tsx` +56); inert closed slide-over panels; focus rings on Staff bars / chips; accessible names / states on glyph-only and toggle controls (~20 components); `help/tabbed-workspace.md`, `help/themes.md`. | **v5 intersection — PORT:** the round's TWO WCAG lanes (P4.D357 tokens / CSS / theme packs; P4.D358 dialog semantics / accessible names) land the PRE-pin pass — this is a SECOND, later pass over the same files; the workspace tab strip (`p4.9j`); the vendored theme packs. | ORDERED(P4.D383 (+ each file owner, §R.10 (x))) — the `624d0d25c` round, 2026-11-04 |
-| `25a20221c` | 2026-11-02 | docs: Refactor 4.12 specs for what the 4.12-dev cycle touched (#130) | **NO-PORT? — docs only, VERIFIED** (11 files +793: eight NEW `refactor-4-12-*.md` specs + ROADMAP). The specs describe `05264ace3` / `29c1e2690` / `604a082c4` / `a3d53eae1` / `0c47f4539` / `600c2906f` / `705b954c2` — read them as the design intent for those rows. | **v5 intersection:** the `docs/v4/` mirror. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `705b954c2` | 2026-11-02 | Build: generate theme-storybook qt-components.css from the app source (#131) | **NO-PORT? — build tooling; the app CSS "compiles byte-identical"** (classified 2026-11-04 from the hunks; 30 files +14,847 / −7,287 — the generated storybook CSS; `dev.41`). The `@theme inline` block + the dark variant MOVED from `app/globals.css` into NEW `app/styles/theme-tokens.css`; generator + lint scripts; `release.yml` publishes theme-storybook. | **v5 intersection:** none in behaviour; the SPA's ported token map lives where v5 put it — a file-path note for any byte-port census over `globals.css`. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `ec8d91667` | 2026-11-02 | Storybook: stories use only the app's real qt-* classes and markup (#132) | **NO-PORT? — storybook package only, VERIFIED** (9 files +190 / −64). | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `05264ace3` | 2026-11-02 | Refactor: one recursive watcher core under both filesystem watchers (#138) | **NO-PORT? for the watchers (NO-COUNTERPART in v5) + PORT? (the two scanners' walk + the files/ scanner's placeholder skip + shutdown ordering)** (classified 2026-11-04 from the hunks; 27 files +1,266 / −664; `dev.43`). NEW `lib/files/recursive-watcher.ts` (265) + `lib/files/walk.ts` (`walkTree` under `walkDirectory`, `listFilesystemFolders`, `walkDisk`, `scanDirectory`); `lib/mount-index/scanner.ts` +122 / `lib/file-storage/scanner.ts` +90 / `sync/walk-disk.ts` rewritten onto `walkTree` (behaviour claimed equal — measure); the files/ watcher no longer hashes evicted iCloud / OneDrive placeholders; one 750 ms debounce; NEW `lib/startup/watcher-shutdown.ts` (stop functions on SIGTERM / SIGINT ahead of the DB close; `instrumentation.ts`); `help/files.md`. | **v5 intersection:** v5 has NO watcher (the standing deferral); the mount scanner (ported, and the `bf7a457f6` scanner fix sits UNPROCESSED beside it — port the two together) and the files/ scanner; v5's SIGINT / SIGTERM shutdown (dogfood #153's fix) has nothing to stop. | ORDERED(P4.D381) — the `624d0d25c` round, 2026-11-04 |
-| `29c1e2690` | 2026-11-02 | Refactor: one image transport budget on the way to a provider (#139) | **PORT — the Salon's image selection is REWRITTEN (behaviour moves: a 4 MB base64 total, provenance ranking, an omission text); NOT neutral** (classified 2026-11-04 from the hunks; 20 files +1,227 / −703; `dev.43`). NEW `lib/chat/image-transport-budget.ts` (508 — `applyImageTransportBudget` on the FINAL message array for the primary and each failover substitute: one count cap + one byte budget `LLM_TRANSPORT_TOTAL_BASE64` = 4 MB of base64 over uploads, re-hydrated uploads and Lantern images; ranked upload > re-hydrated > Lantern, newest first, from a transport TAG the loaders set; overflow described, or omitted with `[image omitted: over the request budget]`; vault images (mount-link ids) omitted, never described); `LANTERN_IMAGE_BASE64_BUDGET` retired; `message-attachment-adapter.ts` REMOVED (its `d439f6dc9` cap absorbed); `context-builder.service.ts` +258; `provider-failover.service.ts`; `streamMessage` strips the tag; `lib/files/llm-image-budget.ts`; `help/connection-profiles.md`. | **v5 intersection — PORT:** the context builder's image path + the Lantern walk + provider failover (the production chat spine, P4.2 / P4.6-era courier + chat images; the round's P4.D347 context-builder lane works in the same builder). Port with `d439f6dc9`. | ORDERED(P4.D367 + P4.D361) — the `624d0d25c` round, 2026-11-04 |
-| `604a082c4` | 2026-11-02 | Refactor 4.12 spec 5: Salon stream frames as a tagged union (#142) | **PORT — THE SALON SSE WIRE MOVES: every Salon turn-path frame is now `kind`-tagged (phase 2); NOT neutral** (classified 2026-11-04 from the hunks + the merged body; 42 files +2,050 / −771; `dev.50`). NEW `lib/chat/stream-frames.ts` (524 — a Zod discriminated union on `kind`: `content`, `reasoning`, `status`, `fileProcessing`, `toolsDetected`, `toolResult`, `turnStart`, `done`, `turnComplete`, `chainComplete`, `error`, `pendingExternalTurn`, `posted`, `storytellerRound`, `storytellerBid`, `roundOpen`, `handAsked`, `handAnswered`, `confirmationResult`, `swipeDone`; `encodeFrame` the only producer); `done` carries ONE `outcome` instead of `skipped` / `yielded` / `stopped` / `emptyResponse`; a swipe stream ends with `swipeDone`; concurrent Storyteller turns write through `seatedFrameEncoder` (the byte-level `tagSseChunk` / `taggingController` and `lib/storyteller/sse-tag.ts` DELETED); **Help chat, the Brahma console, the Scenario Builder and the one-shot tool loop KEEP the old bag** (`legacyFrameEncoder` → `toLegacyBag`); `streaming.service.ts` +161, `tool-execution.service.ts`, `regenerate-swipe-stream.ts`, `turn-outcome.service.ts`; SPA `useSSEStreaming` (748) / `useRegeneration` rewritten on `parseFrame`; a concurrent-Storyteller empty-bubble fix; `API.md` documents the kinds. | **v5 intersection — PORT (large):** `quilltap-web`'s Salon SSE + the core streaming encoders (P4.2 production chat spine; P4.13/P4.14 `StreamMessage`), the Storyteller concurrent-seat tagging (the round's P4.D343 / P4.D344 Storyteller lanes port the PRE-pin `tagSseChunk` shape this deletes), the raise-hand frames (`9eab8d2da`), the SPA's Salon stream reader + regenerate, and every Salon-streaming Playwright beat. The legacy surfaces (Help chat, Brahma, Scenario Builder, one-shot loop) keep v5's current bytes. | ORDERED(P4.D366 + P4.D384 + P4.D361) — the `624d0d25c` round, 2026-11-04 |
-| `a3d53eae1` | 2026-11-02 | Refactor: Extract document core for Document Mode and doc_* tools (#140) | **PORT — two v4 bug fixes + a refactor (`Fixes #133`, `#134`, `#137` — all "Original to v4", v5 status "Not assessed"; NOT convergences)** (classified 2026-11-04 from the hunks + the merged body; 40 files +1,946 / −1,054; `dev.56`). #133: a Document Mode save / rename in `project` scope into the project's official store now re-indexes (gated on the resolved `mountPointId`, hard-link siblings re-indexed); #134: ONE blob reader `readDatabaseBlobForDocument` (raw bytes for native-text kinds, extracted text for converted kinds) under both Document Mode and `doc_read_file`; #137: `doc_open_document` records a new blank document under the scope it was CREATED in; NEW `lib/documents/core/*` (read / write / move / delete / view-target / errors); `operator-doc-actions.ts` −416 net, `operator-doc-http.ts`, the four doc-edit handler files, `database-store.ts` +31, the chat documents action + `documents` route. | **v5 intersection — PORT:** Document Mode + the `doc_*` tools (the Document Mode vertical; the tool subsystem's doc-edit family) — three v4 defects v5 likely shares (each to be measured before porting). | ORDERED(P4.D380) — the `624d0d25c` round, 2026-11-04 |
-| `0c47f4539` | 2026-11-02 | Refactor: settle tier walk once in reach.ts (Refactor 4.12) (#141) | **PORT — #135 / #136 fixed (`Fixes #135`, `#136`, "Original to v4", NOT convergences) + the tier-walk refactor (behaviour claimed equal — measure)** (classified 2026-11-04 from the hunks + the body; 54 files +1,589 / −756; `dev.52`). #135 / #136: the wardrobe collection GET + `?action=instructions` GET, the groups / scenarios cast GET and the scenario collection list GET no longer resolve their location with `ensure: true` — a READ no longer mints a project / group store (an owner with no store answers EMPTY). NEW `lib/mount-index/reach.ts` (468: `resolveOwnerStore`, `groupMountsFor` / `groupOriginMap`, `resolveCastPool` / `castGroupMounts`); `tiered-mount-pool.ts`, `scenario-builder/mount-pool.ts`, `scenarios/location.ts`, `wardrobe/location.ts`, `inventory/location.ts` / `pool.ts` / `dependents.ts`; `core-whisper.ts` and `self_inventory` builders drop hand-written loops; `knowledge-injector.ts` +34 (context); `search-scriptorium-handler.ts`; `pascal/custom-tools.ts` / `tool-preset-pool.ts`. | **v5 intersection — PORT:** the wardrobe / scenario / group routes (P4.D281, P4.D295 scenarios-from-anywhere), v5's tier walks (wardrobe pool P4.D279, Inventory pool, Scenario Builder pool, core whisper, `self_inventory`, Pascal walk, `search_scriptorium`, the knowledge injector) — a read that provisions in v5 writes a store row v4 now refuses to mint. | ORDERED(P4.D376 + P4.D378) — the `624d0d25c` round, 2026-11-04 |
-| `600c2906f` | 2026-11-02 | Refactor 4.12 spec 6, Phases 1–3: the browser family, finished (#143) | **PORT (server: wardrobe GETs stop provisioning, a NEW `?action=duplicate`, a NEW `wardrobe` realtime topic, the shared image-route factory) + PORT? (SPA browser refactor)** (classified 2026-11-04 from the hunks + the body; 79 files +3,826 / −2,423; `dev.53`). Server: shared route-factory preamble + `withItemErrors` (`item-folder-routes.ts` +236); wardrobe GETs no longer provision stores; wardrobe `?action=duplicate`; `createItemImagesRoute(kind)` (`lib/mount-index/item-images-route.ts` 377) under both `wardrobe/[itemId]/images` and `inventory/[itemId]/images`; `lib/inventory/routes/responses.ts`, `request.ts`; three `normaliseRelativePath` copies onto `path-utils.ts`; a `wardrobe` realtime topic published from every wardrobe location write (`job-topics.ts`, `topic-map.ts`, `realtime.types.ts`); SPA: `ItemControlDialogShell`, one `ItemFolderPickerDialog`, `ItemImageViewer`, `ItemDialogProvider`, `useItemFolders`. | **v5 intersection — PORT:** the wardrobe / Inventory route factories + item-image routes (P4.D263, P4.D281, the Inventory round), the realtime topic map, the SPA wardrobe / Inventory dialogs (P4.D285 / P4.D286 / P4.D277's picture viewer). Measure every error body through `withItemErrors`. | ORDERED(P4.D377 + P4.D386) — the `624d0d25c` round, 2026-11-04 |
-| `30a3b4cb7` | 2026-11-03 | Fix: document moves follow every open copy; edits over uploads drop stale text | **PORT — two v4 defects (from v4's own live pass; no issue)** (classified 2026-11-04 from the hunks; 17 files +444 / −176; `dev.54`). `sweepChatDocumentsAfterMove` + NEW `sweepChatDocumentsAfterFolderMove` (`documents/core/move.ts`) take the resolved `mountPointId` and match `chat_documents` rows by the store they REACH (document_store by store name, project through the chat's project's official store, general literally) — a `project`-scope move no longer leaves a store-name-open copy behind or repoints a same-named file in another project; `doc_move_folder` records the resolved store name, not a raw `self`; `chat-documents.repository.ts` +83 (`renameFilePathInStore` / `renameFolderPathInStore`); an edit over an upload drops the blob's stale extracted text (`doc-mount-file-links.repository.ts`). | **v5 intersection — PORT:** `db/chat_documents`, the doc-edit move tools, Document Mode rename routes, `db/doc_mount_file_links` — port with `a3d53eae1`. | ORDERED(P4.D380) — the `624d0d25c` round, 2026-11-04 |
-| `d4ddeb943` | 2026-11-03 | Fix: avatar regeneration no longer absorbs changes made mid-job | **PORT — a one-line job-queue fix** (classified 2026-11-04 from the hunks; 7 files +44 / −6; `dev.55`). `queue-service.ts`: avatar-job reuse adds `&& job.status === 'PENDING'` (a PROCESSING job is no longer collapsed onto, matching the wardrobe item-image path). | **v5 intersection — PORT:** the job runner's avatar-generation enqueue / collapse (Avatar Rolls + the avatar refresh, P4.D282; the in-process job runner). | ORDERED(P4.D368) — the `624d0d25c` round, 2026-11-04 |
-| `547f1a739` | 2026-11-03 | Cleanup: remove obsolete top-level files, cicd, and devssl | **NO-PORT? — infra / docs, VERIFIED** (7 files +9 / −209: `GEMINI.md`, `cicd/deploy.sh`, `process_qt.sh` deleted; `DEVELOPMENT.md`, `migrations/README.md`). | **v5 intersection:** the `docs/v4/` mirror. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `856ed4f2b` | 2026-11-03 | Cleanup: remove Playwright e2e tests and dependency | **NO-PORT? (tests / tooling) + PORT (one About-credits line)** (19 files +13 / −1,033; `dev.56`): `@playwright/test` dropped, `playwright.config.ts` + `__tests__/integration/*.spec.ts` deleted; `AboutView.tsx` −Playwright. | **v5 intersection:** the About credits list (P4.D359) only; v5's OWN Playwright suite is unaffected. | ORDERED(P4.D382 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `8f83041aa` | 2026-11-03 | Chore: update npm dependencies across root, packages, and plugins | **NO-PORT? (dependency stamps) — but `@openrouter/sdk` moves again (^1.5.33 → ^1.5.34) and `mermaid` 12.2 → 12.3** (51 files +18,043 / −14,767; `dev.57`): TanStack 5.105.3, `next` 16.4.4, `semver` 7.8.6; every plugin manifest +1; `plugin-utils` stamp; storybook CSS regenerated. | **v5 intersection:** `provider_sdk_version_guard`'s OpenRouter constant; the round's P4.D353 diagrams lane pins `mermaid` at the pre-pin version (a re-pin moves it). | ORDERED(P4.D382 + P4.D388 + P4.D364) — the `624d0d25c` round, 2026-11-04 |
-| `9b5bb27df` | 2026-11-03 | Docs: bring 4.12.0 release notes up to date | **NO-PORT? — docs only, VERIFIED** (2 files +51 / −7). | **v5 intersection:** the `docs/v4/` mirror. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `c539c82e0` | 2026-11-03 | Feature: Brahma lookup shortcuts and an engine setting for @Brahma | **PORT-NEW (four operator-only tools + the inline-Brahma profile resolution) + PORT (`run_sql` budget, the Brahma SQL prompt, the global message-search hit shape) — a NEW VAULT KEY, NOT a D23 move** (classified 2026-11-04 from the hunks; 47 files +2,108 / −69; `dev.58`; no migration). NEW tools `lookup_character`, `lookup_memories` (inspection, NO access stamp), `lookup_messages` (FTS5, with conversation title / date / speaker), `read_messages` (`brahma-lookup-handler.ts` 548 + four definition files, declared effects) — refused off the operator surface with `${name} is only available in the Brahma Console.`; `run_sql` results under a 24,000-character `fitToBudget`; `brahma-sql-prompt.ts` leads with the shortcuts, forbids LIKE scans of message text; `searchMessagesGlobal` hits carry `participantId`; inline `@Brahma` resolves project → global → default (`inline-profile.ts`, `resolveInlineBrahmaConnectionProfile`, a stale id falls through); **`brahmaConsole.inlineConnectionProfileId`** (a JSON key in the existing settings value; the PUT's `logSummary` gains it) and **`properties.json` `brahmaConnectionProfileId`** (a project VAULT key; `ProjectSchema`, the export schema, `uuid-remap.ts` new-account remap, `.qtap` import reconcile); SPA pickers (Settings → Chat → Brahma Console; the project Model Behavior card); help `brahma-console.md` / `carina.md` / `project-settings.md`. | **v5 intersection — PORT:** the Brahma console + one-shot (P4.165 / the Brahma vertical), the tool registry + effects (the round's P4.D343 declared-effects lane), `run_sql`, `chats_search` (with `902c6efe9`), the Brahma settings PUT, the project `properties.json` reader / writer (#136's three-state keys; the round's P4.D349 vault-keys lane), the restore remap + `.qtap` import, the SPA settings + project cards. ⚠ LIVE-DATA (§1): a v5 project properties write ERASES `brahmaConnectionProfileId`. | ORDERED(P4.D374 + P4.D363 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `cbf4805c0` | 2026-11-03 | Docs: cover the Brahma lookup shortcuts in the 4.12.0 release notes | **NO-PORT? — docs only, VERIFIED** (2 files +15 / −3). | **v5 intersection:** the `docs/v4/` mirror. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `70d2859d8` | 2026-11-03 | Docs: release checklist 14 pass; describe database encryption correctly; fix db integrity | **PORT (CLI `db integrity`) + docs** (classified 2026-11-04 from the hunks; 27 files +134 / −109; `dev.59` — **4.12.0's code**). `packages/quilltap/lib/db-commands.js` +45: `quilltap db integrity` NO LONGER runs `cipher_integrity_check` (a SQLCipher pragma the sqleet driver lacks, which always reported `ok`) — `integrity_check` alone; a page that fails decryption is reported as an issue (exit 1) instead of crashing; `bin/quilltap.js` +9; `scripts/audit-mount-blob-sha256.mjs`'s key check fixed the same way. **Docs: v4 now describes the databases as ChaCha20-Poly1305 (SQLite3MC default, raw key), NOT SQLCipher** — across `DATABASE_ENCRYPTION.md`, help (`database-protection.md`, `data-directory.md`, `mount-points.md`), READMEs, About, CLAUDE.md. | **v5 intersection — PORT:** the CLI's `db integrity` (Tier R — v5's `db_cmd.rs` / `db_help.txt:60,108` still document `cipher_integrity_check`); the About page text; `docs/v4/developer/DATABASE_ENCRYPTION.md` — the file this repo's CLAUDE.md calls WRONG is now right upstream (re-vendor it; the CLAUDE.md warning can then cite v4's own correction). | ORDERED(P4.D365 + P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `7bdb45873` | 2026-11-03 | release: 4.12.0 | **NO-PORT? — version stamps, VERIFIED BY CONTENT** (sole parent `1ca45c171`, the squash; `git diff 70d2859d8 7bdb45873` = 4 files +5 / −5: `package.json` / `package-lock.json` / README badge / the CHANGELOG heading). **4.12.0's code = `70d2859d8`'s tree.** Tag `4.12.0`. | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `b37769882` | 2026-11-03 | merge: 4.12.0 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `70d2859d8` + `7bdb45873`; first-parent diff = the release stamps). Same topology as 4.11.0's `9e01ebd25`. | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `013b99b5d` | 2026-11-03 | dev: started 4.13.0 development | **NO-PORT? — version stamps, VERIFIED** (`4.13.0-dev.0`). | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `7b4e1b9fa` | 2026-11-03 | docs: CHANGELOG update for new version | **NO-PORT? — docs only, VERIFIED** (`docs/CHANGELOG.md` −614 → NEW `docs/CHANGELOG_V4.md` +614; the 4.x history split out). | **v5 intersection:** the `docs/v4/` mirror if it carries the CHANGELOG. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `9d6f155c5` | 2026-11-04 | docs: design spec for character kind and roleplay defaults | **NO-PORT? — docs only, VERIFIED** (2 files +235 / −1: NEW `docs/developer/features/character-kind-and-roleplay-defaults.md`, CHANGELOG). The spec of record for `b09ca46bb` … `7ff5fda89`; later commits amend it. | **v5 intersection:** the `docs/v4/` mirror (the catch-up's help / docs lane re-vendors the spec at its final shape). | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `b09ca46bb` | 2026-11-04 | feat: character kind (roleplay or assistant) | **PORT-NEW (character kind, phase 1) — NO migration, NO D23 move** (classified 2026-11-04 from the hunks; 31 files +518 / −31; `4.13.0-dev.2`). NEW `lib/characters/kind.ts` (client-safe): `CHARACTER_KINDS = ['roleplay','assistant']`, `DEFAULT_CHARACTER_KIND = 'roleplay'`, `characterKindOrDefault` (anything unrecognized → `roleplay`), `resolveCharacterKind`, `isAssistantCharacter`; a NEW grep-test `kind-chokepoint.test.ts` refuses hand comparisons against a kind literal elsewhere. **Vault (`properties.json`):** `CharacterVaultPropertiesSchema.kind` = `z.preprocess(characterKindOrDefault, z.enum(...).optional().default('roleplay'))` (lenient like `diagramStyle`, so an old vault never fails the strict parse); `MANAGED_FIELDS` gains `kind`; `readCharacterVaultManagedFields` snapshots it; `writeCharacterVaultManagedFields` writes `kind: characterKindOrDefault(character.kind)` LAST after `diagramStyle`; `applyDocumentStoreWriteOverlay`'s `propsKeys` gains `kind` (same seed / `'kind' in patch` rule) + a NEW DEBUG `[VaultOverlay] Writing character kind to properties.json { characterId, kind }`; `hydrateOne` carries it; the scaffold's `PROPERTIES_JSON` gains `kind: 'roleplay'` after `diagramStyle`. **Schema:** `CharacterSchema.kind` `z.enum(...).default('roleplay')` after `diagramStyle`. **API:** the PUT's `updateCharacterSchema.kind` `z.enum(CHARACTER_KINDS).optional()`; the character list GET emits `kind: resolveCharacterKind(character)` after `diagramStyle`. **`.qtap` schema:** `kind` (enum, description) after `diagramStyle`. **SPA:** NEW `components/characters/CharacterKindPicker.tsx` (a radiogroup named via `useId`), `app/aurora/shared/save-character-kind.ts`, a "Kind of character" card on the Details tab of BOTH the view and edit pages (saves on change). **Help:** `character-editing.md` +13 / −2. `docs/developer/DDL.md`'s `properties.json` row. Nothing reads the kind for behaviour yet. | **v5 intersection — PORT-NEW on the ported vault:** `db/character_vault.rs` / `vault_read_overlay.rs` / `vault_character_write.rs` / `vault_character_update.rs` / `vault_overlay.rs` (the `properties.json` key order — `kind` after `diagramStyle` in every writer — and the lenient parse, exactly as P4.D349 carried `canDrawDiagrams` / `diagramStyle`), `services/provisioning` + the scaffold, `db/characters*.rs` + `api/characters.rs` (the PUT enum arm and the list GET key), `generators/qtap-export.schema.json` + the `.qtap` carriers (P4.D272 / P4.D294 family — export / import / backup round-trip the vault file whole), the overlay tier-2 corpora (the `diagramStyle` rows are the template). A v5 analog of the chokepoint grep-test belongs beside the census guards. **SPA:** the Aurora view + edit Details tabs (the P4.6-series character vertical) — a radiogroup per workspace tab (v4's `useId` reason: side-by-side tabs). `help/character-editing.md` re-vendors. | ORDERED(P4.D369 + P4.D388) — the `624d0d25c` round, 2026-11-04 |
-| `763dfaceb` | 2026-11-04 | docs: add feature spec for better searches | **NO-PORT? — docs only, VERIFIED** (1 file +315: `docs/developer/features/search-window-first-and-honest-empty.md`; the same spec `bugfix`'s `749800d46` added and 4.12.1 moved to `complete/`). | **v5 intersection:** the `docs/v4/` mirror (take 4.12.1's `complete/` copy). | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `96156566b` | 2026-11-04 | feat: Agent Mode and tool rules follow the character's kind | **PORT (Agent Mode + the native tool-rules preamble, on ported surfaces)** (classified 2026-11-04 from the hunks; 26 files +452 / −118; `dev.4`). `kind.ts` gains `AgentModeFlavor` (`research` / `in-character`), `ToolRulesVariant` (`assistant` / `roleplay`), `KindPolicy` + `kindPolicy` / `characterKindPolicy` (roleplay → in-character + roleplay; assistant → research + assistant). **`agent-mode-resolver.service.ts`:** `ResolvedAgentMode.flavor = characterKindPolicy(character).agentFlavor` (the cascade still decides `enabled`); `buildAgentModeInstructions(maxTurns, flavor)` — `in-character` returns a NEW `## Acting in the scene` block (verbatim text in the hunk, `**${maxTurns} tool steps**`); `buildForceFinalMessage(flavor)` — `in-character` returns a NEW no-tools sentence. **`native-tool-loop.service.ts`:** `submitOffered = agentMode.enabled && flavor === 'research'` gates the `submit_final_response` detection AND the force-final promotion; the force-final log gains `flavor`. **`orchestrator.service.ts`:** the slate's `agentModeEnabled` → `offerSubmitFinalResponse` (research only) — so a roleplay character's slate NEVER carries `submit_final_response`; the Agent-Mode INFO gains `flavor`. **`turn-tools.service.ts`:** `buildNativeToolSystemInstructions(characterKindPolicy(character).toolRules)`. **`native-tool-prompt.ts`:** the six rules become ONE exported `NATIVE_TOOL_RULES` constant under two `PREAMBLES` — `assistant` keeps `## Tool Execution Rules (MANDATORY — overrides all other behavioral patterns)`, `roleplay` is `## Using tools` + "A tool call is something you do; making one does not change who you are or how you speak." `buildNativeToolInstructions(variant, hasTools)`. **Pinned `research` + `assistant`:** Brahma console, Help chat, one-shot loop (bytes unchanged there). `turn-extras.ts`'s `agentMode` gains `flavor`. Text-block and simple-JSON instructions unchanged. Help `agent-mode.md` +26 / −6. | **v5 intersection — PORT:** `services/agent_mode.rs` (the resolver + both builders; the INFO line's new key), `tools/native_tool_prompt.rs` (both preambles; 4.12.1's rule-6 sentence lands in the shared constant too — take `main`'s file, not 4.12.1's), the native tool loop (P4.13/P4.14-era loops; `submit_final_response` detection + force-final promotion), the turn tool slate (`tool_build.rs`'s `agent_mode_enabled` arm → research-only — the `tool_build_equivalence` family's slates for a roleplay character LOSE `submit_final_response`), turn extras token counts, the Brahma / Help chat / one-shot callers (pass `research` / `assistant` explicitly). ⚠ Every default character is `roleplay`, so on v4 HEAD **every existing Agent-Mode chat changes behaviour** — the tier-3 orchestrator corpora with Agent Mode on will move at the next pin. Help `agent-mode.md` re-vendors. | ORDERED(P4.D370) — the `624d0d25c` round, 2026-11-04 |
-| `d0201575a` | 2026-11-04 | feat: roleplay and assistant sample prompts; story prompts match the stakes | **PORT (built-in prompt templates: re-vendor + a NEW prune on seed)** (classified 2026-11-04 from the hunks; 35 files +395 / −46; `dev.5`). `plugins/dist/qtap-plugin-default-system-prompts` 1.1.31 → **1.1.32**: `MODERN_GENERAL.md` RENAMED → `MODERN_ROLEPLAY.md` (+ group-scene rules, the flattening and mediator failure modes), NEW `MODERN_ASSISTANT.md` (61 lines), a "match the stakes" passage in every COMPANION / ROMANTIC / PLATONIC prompt (DeepSeek's "keep the story small" governors removed); manifest descriptions updated (`promptCount` still 21 — stale). **`prompt-templates.repository.ts`:** after a registry seed that returned ≥ 1 prompt, NEW `pruneRetiredBuiltIns(shippedNames)` — `find({ isBuiltIn: true })`, `deleteOne` each row whose `name` is not shipped, INFO `Retired built-in prompt template removed { templateId, name }` per row, then DEBUG `Built-in prompt templates pruned { builtInCount, shippedCount, removed }`; user copies (not built-in) untouched. Help `prompts.md`. | **v5 intersection — PORT:** `services/builtin_prompt_templates.json` (v5's vendored copy of the plugin's prompts — still carries `MODERN_GENERAL`) + `builtin_prompt_templates.rs`'s every-boot seed (P4.D241 / P4.D244 lineage) gains the prune with v4's two lines and its "only after a non-empty seed" guard; the seed tier-2 family (the prune DELETES a row on an existing instance — 💸 the first v5 boot of a Friday copy that still holds `MODERN_GENERAL` removes it, as v4's boot already did on live Friday). `help/prompts.md` re-vendors. Rides with `7ff5fda89` (1.1.33). | ORDERED(P4.D373) — the `624d0d25c` round, 2026-11-04 |
-| `3ae4cf582` | 2026-11-04 | feat: prompt generators follow the character's kind | **PORT (the four generators' prompt text by kind) + a token-budget fix** (classified 2026-11-04 from the hunks; 23 files +408 / −64; `dev.6`). `kind.ts`'s `KindPolicy` gains `generatorDirection` (`stakes` / `task`). **`character-field-semantics.ts`:** NEW `STAKES_AND_REACTION_DIRECTION`, `ASSISTANT_TASK_DIRECTION`, `generatorDirectionFor(kind)`, `FLATTENING_DRIFT_SIGNAL`, `kindDriftSignalFor(kind)` (roleplay only). **Generators:** Summon From Lore's `SYSTEM_PROMPTS_PROMPT` adds `generatorDirectionFor(DEFAULT_CHARACTER_KIND)` (new characters are roleplay; never guessed); the Wizard's default-system-prompt meta-prompt becomes `buildSystemPromptFieldPrompt(kind)` (reads the stored kind) and its system-prompt field gets a **2500-token budget** (was the shared 1000 cap — a reasoning model truncated); External Prompt's `META_SYSTEM_PROMPT` → `buildMetaSystemPrompt(kind)` + a DEBUG `External prompt meta-prompt built for the character's kind { characterId, kind }`; the Optimizer's `getAnalysisPrompt(kind)` (a flattening look-for + the drift signal), `getSystemPromptSuggestionPrompt(…, kind)` and `getNewSystemPromptsSuggestionPrompt(analysis, kind)`. Help: four generator pages. | **v5 intersection — PORT on the `p4.9k` generators:** `generators/field_semantics.rs` (the new constants verbatim), `wizard.rs` / `wizard_prompts.rs` (the meta-prompt builder + the 2500 budget), `ai_import.rs`, `external_prompt.rs` (+ the DEBUG line), `optimizer.rs` (three signatures). Their tier-1 prompt-text families move at the next pin. Help re-vendors. | ORDERED(P4.D371) — the `624d0d25c` round, 2026-11-04 |
-| `c69a08882` | 2026-11-04 | feat: group scenes need not agree; informs carry feelings | **PORT (two model-visible strings)** (classified 2026-11-04 from the hunks; 15 files +80 / −17; `dev.7`). `INFORM_BLOCK_HEADER` REWORDED to "Things now true in this story and in you, as of this moment — what has happened, what you know, and how you feel or what you have resolved. Where any of it conflicts with an older memory, your records, or your usual temperament, this is the current truth:"; `GROUP_SCENE_DISCIPLINE` gains a NEW bullet before its last ("The cast does not have to agree. …"). Help `inform.md`, `chat-multi-character.md`; `salon-inform.md` amendment. | **v5 intersection — PORT:** `services/inform_block.rs`'s header (P4.D254's vouching header — the inform-block tier-2 / capture families and the standing-inform corpora carry the old bytes) and `services/message_context.rs`'s `GROUP_SCENE_DISCIPLINE` (the context-builder families, P4.D347). Help re-vendors. | ORDERED(P4.D373) — the `624d0d25c` round, 2026-11-04 |
-| `7ff5fda89` | 2026-11-04 | fix: story characters no longer invent where the user is | **PORT (prompt text)** (classified 2026-11-04 from the hunks; 34 files +108 / −12; `dev.8`). `STAKES_AND_REACTION_DIRECTION` gains one bullet (`{{user}}` off-screen); default-system-prompts **1.1.33** — one line in every story prompt, two in `MODERN_ROLEPLAY` ("the invented absence"). No code path beyond the string. | **v5 intersection — PORT:** `generators/field_semantics.rs` and `builtin_prompt_templates.json` (with `3ae4cf582` / `d0201575a`). | ORDERED(P4.D373 + P4.D371) — the `624d0d25c` round, 2026-11-04 |
-| `6121f59b9` | 2026-11-04 | release: 4.12.1 | **PORT (window-first dated search + the honest empty search) + version stamps** (classified 2026-11-04 from the hunks; 37 files +2,332 / −693, of which the CHANGELOG split is ~1,236; tag `4.12.1`; sole parent `7bdb45873`; its content = `bugfix`'s `182282af4` + `97f5c849f` + docs). **Memories:** NEW `memories.findIdsInEventWindow(characterId, {from,to}, {hotOnly})` — raw SQL `COALESCE(occurredAt, createdAt)` between the bounds (lexical ISO), `+ HOT_TIER_SQL` when hot-only, DEBUG `Found memories in event window`, `safeQuery` fallback `[]` with `Error finding memories in event window`. **Index:** `MemoryIndexSearchOptions.includeIds`. **Recall gather:** with `query.window`, a window pass scoring only the period's ids (`via: 'window'`, a better score replaces), in BOTH the vector and the text strategy (text: newest-first `findByIds`, `limit × 3`, score may be 0); `probes.length > 0` guard on the text max; trace keys `window` / `windowAdded`; DEBUG `[Memory] Window-first gather`. `HitSource` gains `'window'`. **Score:** NEW `TOOL_WINDOW_FLOOR_MAX_DAYS = 14`, `isNarrowToolWindow`; on the TOOL path (no recall context) an in-window row passes the floor when the window is ≤ 14 days (`floorRelaxed: true` in the trace). **Assemble:** the retrospective mini-recap lists unsummarized in-window chats (`relativePath: null`, `score: 0`, trace `unsummarized`). NEW `lib/scriptorium/chat-window.ts` (`chatSpanOf` = `[createdAt, lastMessageAt ?? updatedAt ?? createdAt]`, `chatOverlapsWindow`, `findChatsInWindow` + WARN / DEBUG lines). `conversation-search.ts`: `chatIds` restriction + `minScore ?? 0.3` (was `||` — a `0` now sticks). **Search tool:** `search-scriptorium-handler.ts` +221 (window-first conversation search, the window census, the honest-empty text), `formatSearchScriptoriumResults(results, { query, windowCensus })`, the executor passes `chatId` and logs `windowCensus`; three tool-description strings (`query`, `since`, `sources`). **Rule 6** reworded in `native-tool-prompt.ts` and `simple-json-prompt.ts`. Help `episodic-memory.md`, `memory-recall-relevance.md`. "No data or export format has changed." | **v5 intersection — PORT on the memory-refactor recall pipeline (P4.D291) and the search tool:** `db/memories_read.rs` (the new window query), the TF-IDF / vector index search (`includeIds`), `services/recall/gather.rs` / score / assemble (the `[Recall]` record's trace keys — P4.D291's record), the chat-window module (NEW), conversation search (`minScore ??` — a JS-falsy divergence to carry), `tools/search.rs` + `tools/executor.rs` (the handler, the census, the formatter), the tool-definition strings (`tool_build_equivalence` / the derived-parameter snapshots), `tools/native_tool_prompt.rs` + the simple-JSON prompt (rule 6). The recall tier-2 / tier-3 families with a window move at the next pin. Help re-vendors. **CI hunk** (`ci.yml`) NO-PORT. | ORDERED(P4.D375 + P4.D370) — the `624d0d25c` round, 2026-11-04 |
-| `afec0af10` | 2026-11-04 | merge: 4.12.1 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `7ff5fda89` + `6121f59b9`; brings 4.12.1's content onto `main`; `git diff 6121f59b9 main` over 4.12.1's `lib/` / `app/` files = only `native-tool-prompt.ts`, `96156566b`'s refactor). Same topology as 4.12.0's `b37769882`. | **v5 intersection:** none of its own — the content is `6121f59b9`'s row. | ORDERED(P4.D382 (content: P4.D370 / P4.D375)) — the `624d0d25c` round, 2026-11-04 |
-| `624d0d25c` | 2026-11-04 | ci: restore the 8 GB heap for the coverage run | **NO-PORT? — CI / stamps, VERIFIED** (2 files +5 / −1: `package.json` script, CHANGELOG). | **v5 intersection:** none. | ORDERED(P4.D382) — the `624d0d25c` round, 2026-11-04 |
-| `4089469a8` | 2026-11-04 | feat: Refine from Memories & Instructions | **UNCLASSIFIED — recorded by `/setupphase` (2026-11-04 evening), NOT this round's (§R.1 R-B: the work follows the pin `624d0d25c`)**. 19 files +618 / −140; `4.13.0-dev.12`; sole parent `624d0d25c`; on `main` (not `bugfix`). The live checkout's uncommitted Optimizer edits seen at the round's first probe, now committed: `optimizeStreamSchema` gains `useMemories` / `instructions` (+ a refine requiring one of them), NEW `lib/characters/optimizer-limits.ts`, `character-optimizer.service.ts` +305 / −… , the Aurora button label, `help/character-optimizer.md` / `character-external-prompt.md`. | **v5 intersection (to measure at `/driftcheck`):** the Optimizer generator (P4.D371's surface this round), the characters POST optimize stream, the Aurora header (SPA), `help/` (P4.D382's tree). | UNPROCESSED |
+| `4089469a8` | 2026-11-04 | feat: Refine from Memories & Instructions | **PORT (the Character Optimizer's request + prompts) — supersedes the UNCLASSIFIED row** (19 files +618 / −140; `dev.12`). `app/api/v1/characters/[id]/handlers/post.ts`: `optimizeStreamSchema` gains `useMemories` (default `true`) + `instructions` (`max(OPTIMIZER_INSTRUCTIONS_MAX_LENGTH)`, default `''`) + a `.refine` "A refinement needs memories to consult, instructions to follow, or both." (path `instructions`); new INFO keys `useMemories` / `instructionsLength`. NEW `lib/characters/optimizer-limits.ts`. `lib/services/character-optimizer.service.ts` +219 / −86 (instructions in the shared context, outranking memories; continue on instructions alone when too few reinforced memories; analysis prompt / progress / evidence labels / vault suggestions file by source). SPA: the optimizer modal's textarea + "Consult the Commonplace Book" checkbox. `help/character-optimizer.md`. | **v5:** the `p4.9k` generators — the Optimizer (`quilltap-host/src/generators_detail_driver.rs`, core's optimizer service and its tier-1/3 families, `kind_directions_order` / `trust_directions_order` tests), the round's P4.D371 (the Optimizer's flattening drift signal) moves the same file; the SPA optimizer dialog; `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `8dfe307f5` | 2026-11-04 | fix: OpenAI model fetch lists GPT-6 and later generations | **PORT (OpenAI provider: model-list filter, reasoning / 24h-retention family rules, one 400 retry)** (8 files +350 / −51; `dev.12`; in 4.12.2 as `27f607a2a`). NEW `plugins/dist/qtap-plugin-openai/model-families.ts` (chat = gpt-4+ and every o-series, gpt-3.5 out; reasoning = gpt-5+ and o-series; 24h retention = gpt-5.1/5.2/5.5 and gpt-6+ except `-chat-latest`); `provider.ts`: a `createResponse` wrapper retries ONCE without `prompt_cache_retention` on a 400 naming it (all four request paths); plugin 1.0.69. | **v5:** the provider layer — OpenAI's declarative manifest / model listing and the Responses request builder (`model/request_builder/responses_api.rs`, `provider_manifest/`); the reasoning-model and retention predicates wherever v5 hard-codes v4's old prefix lists; `help/connection-profiles.md`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `b9b9621e8` | 2026-11-05 | fix: restore Anthropic prompt-cache hits in Brahma loops and the Salon | **PORT (one-shot / Brahma / help-chat pass the profile's params; Anthropic breakpoint placement)** (15 files +394 / −94; `dev.14`; in 4.12.2 as `a7c8ec0fe`). `lib/services/agent-loop/one-shot-loop.ts`, `brahma-console/orchestrator.service.ts`, `help-chat/orchestrator.service.ts`: `modelParams: {}` → `profileParams(connectionProfile) ?? {}`. Anthropic plugin 1.0.66: the conversation breakpoint moves to the message BEFORE the final one; a mid-history breakpoint stepped at K=15 when ≥ 20 messages; the four-breakpoint budget respected. (Re-shaped again by `819fc9c82`.) | **v5:** `services/brahma_console/orchestrator.rs`, the one-shot loop (`services/primary_stream.rs` callers), the help-chat orchestrator; the Anthropic request builder's `cache_control` placement + its tier-1 builder families (round P4.D364 re-records providers at `624d0d25c`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `9d68d8421` | 2026-11-05 | feat: per-profile tool-result elision window | **PORT-NEW WITH A D23 MOVE (suggested 24th) — `connection_profiles."toolResultVerbatimTurns" INTEGER DEFAULT 3`, migration `add-profile-tool-result-verbatim-turns-v1` (additive; `dependsOn add-profile-max-images-per-request-v1`; `ADD COLUMN … INTEGER DEFAULT 3` then `UPDATE … SET = 3 WHERE IS NULL` — a no-op backfill after a defaulted ALTER)** (25 files +496 / −35; `dev.15`). `lib/schemas/profile.types.ts`: `toolResultVerbatimTurns: z.number().int().min(0).max(1000).default(3)` (+ `DEFAULT_…` / `…_CEILING` / `…_NEVER_ELIDE = 0`) — a schema field, so generateDDL renders it (position to MEASURE at re-dump). `lib/llm/connection-profile-utils.ts`: NEW `resolveToolResultVerbatimTurns` / `parseToolResultVerbatimTurns`. `context-builder.service.ts`: the constant 3 → the profile's window; `0` never elides; the stub text `result elided (>${n} turns old)`. Brahma's `buildConversationMessages` takes it too. Profile POST / PUT routes parse it; `qtap-export.schema.json` +6; `lib/startup/prettify.ts` +1. | **v5:** `fresh_schema.json` (re-dump) + a boot ensure for the migration; `services/message_context.rs` / the conversation builder's tool-result elision (v5's literal 3 + stub text); the Brahma orchestrator; connection-profile repo / routes / `.qtap` + backup carriers; the SPA profile editor (P4.D388 already edits that dialog); `help/connection-profiles.md`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `c874ae9ba` | 2026-11-05 | fix: Character Optimizer prompt caching and usage logging | **PORT (Optimizer message shape + LLM-log usage)** (7 files +115 / −22; `dev.16`; in 4.12.2 as `0f47488f4`). `character-optimizer.service.ts`: the shared context and the per-pass instruction become SEPARATE user messages; optimizer log rows now carry usage, cache usage and raw provider usage. | **v5:** the Optimizer service (with `4089469a8`) and its `logLLMCall` sites (the `p4.9k` families, the llm-logs comparands). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `403d60081` | 2026-11-05 | feat: choose the vision profile in Import from image; fix Gemini arrival false positive | **PORT (bug-116 arrival ceiling) + PORT-NEW (the analyze-image profile picker)** (14 files +326 / −30; `dev.17`; its fix half in 4.12.2 as `35d0bd803`). `lib/llm/vision-request.ts`: `textOnlyTokenCeiling` = min(text/2.5, text/4 + 85). `app/api/v1/wardrobe/analyze-image/route.ts`: a NEW GET (eligible profiles + default); POST accepts `profileId` (400 when unusable). `lib/wardrobe/image-analysis.ts`; the import modal's dropdown. | **v5:** `llm/vision_request.rs` (bug 116 / 197's module — the ceiling is a pure-function tier-1 change); `analyze-image` is REFUSAL-ARMED in v5 (`quilltap-web/src/wardrobe_routes.rs`, `api/types.rs`; round ruling R-L), so the picker rides that deferral. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `4b97636b2` | 2026-11-05 | fix: OpenAI prompt-cache hits on GPT-5.6 and later | **PORT (OpenAI Responses: `previousResponseId` chaining REMOVED from the spine; cache breakpoints)** (20 files +691 / −266; `dev.18`; in 4.12.2 as `647f2a0b5`). `primary-stream.service.ts`: `findPreviousResponseId` DELETED; `orchestrator.service.ts` / `streaming.service.ts` / `provider-failover.service.ts` drop `previousResponseId`. OpenAI plugin: NEW `cache-breakpoints.ts` (206 lines), `model-families.ts` +27, `provider.ts` −93 / +43. | **v5:** `services/primary_stream.rs` / the orchestrator spine, `model/stream.rs`, `streaming_provider.rs`, `completion_provider.rs`, `request_builder/responses_api.rs` (all carry `previous_response_id`); the OpenAI builder families. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `0ae0ba3a7` | 2026-11-05 | fix: Green Room opening outfits vary from chat to chat | **PORT (the Green Room `llm_choose` outfit pass)** (15 files +427 / −17; `dev.19`; in 4.12.2 as `d4b393d0d`). NEW `lib/wardrobe/recent-openings.ts` + `chatWardrobeHistory.findRecentOpenings` (entry 0 of real arrivals, never seeded rows, excluding the chat being dressed — read-only); the outfit prompt shows the last five openings; the wardrobe list SHUFFLED per call; `CheapLLMTaskOptions.temperature` (default 0.3), outfit selection 0.8. | **v5:** `services/outfit_selections.rs` / `chat_create.rs` / `api/chat_cast.rs` and the cheap-LLM task (`cheap_llm.rs`); the `chat_wardrobe_history` repo (P4.D315/316). ⚠ The shuffle is nondeterministic — tier-3 needs a seeded / masked comparand. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `4d3b00621` | 2026-11-05 | fix: Green Room never dresses a character in two outfit sets | **PORT** (10 files +147 / −8; `dev.20`; in 4.12.2 as `9a72101e6`). NEW `lib/wardrobe/slot-ops.ts` (drop the weaker of two ensembles sharing top / bottom when either is a composite, before dissolving); one prompt line in `outfit-selection.ts`. | **v5:** `services/outfit_selections.rs` (P4.D282 / P4.D306's composite dissolve). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `89f259c2f` | 2026-11-05 | feat: Green Room wardrobe model setting; wear single pieces of outfit sets | **PORT-NEW (`cheapLLMSettings.outfitSelectionProfileId` — a JSON key inside `chat_settings."cheapLLMSettings"`, NO column, NO D23 move)** (21 files +268 / −15; `dev.21`). `settings.types.ts` `CheapLLMSettingsSchema.outfitSelectionProfileId: UUIDSchema.nullable().optional()`; `app/api/v1/settings/chat/route.ts` refuses a non-UUID ("outfitSelectionProfileId must be a profile id or null"); NEW `lib/wardrobe/green-room-model.ts` (`selectGreenRoomLLM`, stale id → cheap LLM); `lib/backup/restore/uuid-remap.ts` +1; the outfit prompt names each composite's pieces and allows one piece of a set. | **v5:** the chat-settings PUT arm + `cheapLLMSettings` validation (the F-1 CONVERGE ruling's bag), the restore uuid-remap key list, `cheap_llm.rs` selection; SPA Cheap LLM Settings card. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `99391975f` | 2026-11-05 | fix: pin OpenRouter plugin to @openrouter/sdk 1.5.56 | **NO-PORT? (plugin-dir dependency pin + rebuilt bundle)** (8 files; `dev.22`; in 4.12.2 as `a528f7946`). `plugins/dist/qtap-plugin-openrouter/package.json` pins `@openrouter/sdk` 1.5.56 (1.5.57 removed `callModel()` / chat-compat — #145); `index.js` rebuilt. | **v5:** none in code; ⚠ `provider_sdk_version_guard` / `.claude/pin-plugin-sdks.sh` floors read plugin SDK versions — re-check at the next pin. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `5f8c45966` | 2026-11-05 | docs: spec for moving the OpenRouter plugin off callModel() (#145) | **NO-PORT? — docs only, VERIFIED** (3 files +172: NEW `docs/developer/features/openrouter-plugin-chat-completions-streaming.md`). | **v5:** `docs/v4/` mirror. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `f5d37e718` | 2026-11-05 | fix: OpenRouter plugin streams every turn over Chat Completions | **PORT? (OpenRouter transport — measure against v5's own builder)** (19 files; `dev.24`; #145; in 4.12.2 as `bd05d7f26`). `plugins/dist/qtap-plugin-openrouter/provider.ts` +238 / −443: streaming (every turn shape) and image sends speak Chat Completions over a direct fetch; the SDK only for `chat.send` (text-only non-streaming) + `models.list`; `user` = the cache key. `scripts/build-plugins.ts` + NEW `scripts/lib/plugin-resolution-guard.ts` and the `__mocks__` are build / test only (NO-PORT). | **v5:** the OpenRouter manifest / request builder + stream decoder (P4.13/P4.14 `StreamMessage`; P4.D364's full re-record). If v5 already speaks Chat Completions for OpenRouter this is a byte-diff of the body, not a transport change — MEASURE. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `19e45d664` | 2026-11-05 | feat: character birthdays, public progressions, composed public identity | **PORT-NEW (birthday, `public` progressions, `public-identity.ts`) + a PROBABLE FRESH-ONLY generateDDL move (`characters."birthday"`, transient — see `1dc11e947`)** (50 files +830 / −79; `dev.25`). NEW `lib/characters/birthday.ts` (YYYY-MM-DD; age on the instance calendar, never stored) — a `properties.json` key through the vault overlay (`managed-fields.ts` / `read-overlay.ts` / `schema.ts`); `CharacterSchema.birthday` added (at this commit `CharacterSchema` still drives `ensureCollection('characters')`, so a FRESH v4 table gains `birthday`; NO migration, existing instances unchanged — v4's `generateAlterStatements` is exported, never called). `lib/progressions/schema.ts` `public: z.boolean().default(true)` (+ the Pascal writable field, `qtap-progression.schema.json`); NEW `lib/characters/public-identity.ts` (age, public progressions in fixed third-person wording, pronouns, then identity.md) used by the Host join announcement (`host-notifications/writer.ts` +55 / −30), off-scene cards (`system-prompt-builder.ts`), Carina's asker card, `self_inventory`, Brahma's `lookup_character`; `absent-mentions.ts`, `apply-chat-continuation.ts`, `turn-trailing.ts`; `qtap-export` / `qtap-custom-tool` schemas. | **v5:** the vault read / write overlay (`db/vault_character_update.rs` — its RMW preserves untouched keys, so a v4 `birthday` survives a v5 write; MEASURE), progressions (`lib.rs` progressions module + Pascal sheet), `system_prompt.rs` / `carina_query.rs` (the `public_identity` sites), `tools/brahma_lookup.rs`, `self_inventory`, the Host announcement writer; `.qtap` carriers; SPA Aurora + progression editor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `7624332c0` | 2026-11-06 | feat: one character page in Aurora; autosave everywhere | **PORT-NEW (SPA: one character page, autosave) + PORT (two small server moves)** (149 files +6,535 / −6,283; `dev.26`; Fixes #146). Server: `characters/[id]/handlers/get.ts` `?action=stats` gains `subprompts` / `mail` / `scenarioFiles` / `missingCharacterFiles` and a top-level `vault {mountPointId,name}` + a NEW DEBUG `[Characters v1] Character stats computed`; `characters/[id]/scenarios/route.ts` DELETE clears `defaultScenarioId` when it names the deleted scenario (+ DEBUG); `lib/realtime/topic-map.ts` adds `characters.stats`. Client: `app/aurora/[id]/**` rewritten (view / edit merged), `lib/autosave/autosave-engine.ts`, `lib/characters/page-sections.ts`, workspace intent / persistence / legacy redirect; #146 (the "System Prompt" field discarded on save) is a client fix. ~30 `help/` files. | **v5:** the characters `?action=stats` route + scenarios DELETE (the characters vertical), the realtime topic map; the SPA Aurora character view / edit (P4.6 characters vertical, P4.D388's kind card); workspace tab kinds; `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `ef5b180e7` | 2026-11-06 | docs: correct transparency storage and replace fictional Partnerships | **NO-PORT? — help text + one header string** (9 files +38 / −128: `help/character-management.md` / `-system-transparency.md` / `characters.md`; one line in `app/aurora/[id]/CharacterHeader.tsx`). | **v5:** `help/` vendor; the SPA header line (rides `7624332c0`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `ebb0ca13a` | 2026-11-06 | feat: Salon avatars fixed to the moment they were written | **PORT-NEW WITH A D23 MOVE (suggested 25th) — a NEW TABLE `chat_avatar_timeline`, migration `add-chat-avatar-timeline-table-v1` (`dependsOn sqlite-initial-schema-v1`; `shouldRun` = table absent; additive, NO backfill)** (48 files +1,639 / −19; `dev.28`). DDL single source `lib/database/backends/sqlite/chat-avatar-timeline-ddl.ts`: `id` TEXT PK, `chatId` NOT NULL `REFERENCES chats(id) ON DELETE CASCADE`, `characterId` NOT NULL (no FK), `imageId`, `effectiveAt` NOT NULL, `source` NOT NULL (`baseline` / `generated` / `cache` / `operator` / `operator-removed`), `createdAt` NOT NULL + `idx_chat_avatar_timeline_chat (chatId, characterId, effectiveAt)`. NOT a Zod collection — a MIGRATION-ONLY table (the `chat_wardrobe_history` class; v5 ruling 2026-10-19: boot ensure). NEW repo (`record` writes a `baseline` first per pair; buffered from the job child), `lib/chat/salon-avatar.ts` (`avatarAt`) + loader; `GET /api/v1/chats/[id]?action=avatar-timeline`; `set-avatar` / `remove-avatar` record; `character-avatar` job binds record; cascade delete `deleteByCharacter`; backup `data/avatar-timeline.json` + restore remap / preview / delete; `.qtap` `avatar_timeline` records (`qtap-export.schema.json` +19); realtime on the chats topic; `method-classification.ts`. | **v5:** host boot ensures (beside `chat_wardrobe_history`'s three) + `restore_vintage_state`'s boot-align list; the avatar job (P4.1 host drivers / avatar refresh — P4.D282), `api/salon.rs` chat actions, cascade delete, the backup / restore / `.qtap` carriers (P4.D317-class); SPA Salon bubble avatar. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `3a79f744c` | 2026-11-06 | fix: character page follow-ups; retire physical description name and usage context | **PORT (physical description `name` / `usageContext` RETIRED; appearance resolution one-description; identity-stack v3) + SPA** (56 files +830 / −426; `dev.29`). `character.types.ts`: `PhysicalDescriptionSchema` drops `name` / `usageContext` (not strict — old keys stripped on read; neither was stored in the vault; NO migration). `lib/image-gen/appearance-resolution.ts` / `prompt-expansion.ts`, `cheap-llm-tasks/image-scene-tasks.ts` / `types.ts`: `selectedDescriptionId` / `physicalDescriptionName` removed; `system-prompt-builder.ts` drops the label and "(best used: …)" — `IDENTITY_STACK_BUILDER_VERSION` 3; `ai-import` / wizard / optimizer / rename / NPC drop the keys; `?action=stats` returns `stats.inventory`; `put.ts` / `post.ts`. SPA: Metadata card, ListPager, `useFixedMenu` / `useAnchorReveal`. | **v5:** the physical-description model + vault overlay (`db/vault_read_overlay.rs`), `system_prompt.rs` identity stack (the P4.D343-class golden families), the image appearance resolution + scene tasks, the generators (`p4.9k`), AI import; the SPA Aurora page. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `cc6b2dadb` | 2026-11-06 | chore: dev-tag cleanup deletes Docker Hub images by digest | **NO-PORT? — tooling, VERIFIED** (1 file: `.claude/commands/remove-old-dev-tags.md`). | **v5:** none. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `3cc12d346` | 2026-11-06 | feat: Brahma Console SQL cards collapse and interleave with thinking; turn caps | **PORT (Brahma turn budget + per-turn reasoning save; Salon agent-mode cap) + SPA** (32 files +540 / −164; `dev.31`). `settings.types.ts`: `BrahmaConsoleSettingsSchema.maxAgentTurns` `min(5).max(200).default(50)` → `min(1).default(DEFAULT_BRAHMA_MAX_AGENT_TURNS = 10)` (JSON in `instance_settings`; a stored 5–200 value still parses, the DEFAULT moves 50 → 10); `storyteller.types.ts` agent-mode `maxTurns` max 25 → 50; `brahma-console/turn-budget.ts`; `brahma-console/orchestrator.service.ts`: each tool-call turn's assistant row stores the reasoning since the last save (`unsavedReasoning`) + a NEW DEBUG `Brahma Console saved tool-call turn`; `instance-settings/index.ts`. SPA: collapsed `run_sql` cards, thinking interleave, `ThinkingBlock align`. | **v5:** `db/instance_settings.rs` / `api/settings.rs` (`max_agent_turns`), the Almanack's `turn_budget`, `services/brahma_console/orchestrator.rs` (+ its tier-3 family), agent-mode cap; the SPA Brahma console (floating console, P4.D358-era) + settings dial. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `f1037ba27` | 2026-11-06 | security: move Docker production image from Debian bookworm to Wolfi | **NO-PORT? — Docker / docs** (5 files: `Dockerfile`, `Dockerfile.ci`, `docs/DEPLOYMENT.md`, one `help/ariel.md` line; in 4.12.2 as `bc484765f`). | **v5:** none in code (v5's own P4.10 Docker packaging is independent); `help/ariel.md` vendor line. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `c9b281ec9` | 2026-11-06 | release: 4.12.2 | **NO-PORT? — release squash, VERIFIED BY CONTENT** (62 files; tag `4.12.2`; sole parent `6121f59b9`). Its code = the nine `bugfix` cherry-picks listed in §1 (each has its own `main` row) + `docs/releases/4.12.2.md`. | **v5:** none of its own — the content rows are `8dfe307f5`, `99391975f`, `f5d37e718`, `b9b9621e8`, `c874ae9ba`, `4b97636b2`, `0ae0ba3a7`, `4d3b00621`, `403d60081`, `f1037ba27`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `452e61ea9` | 2026-11-06 | merge: 4.12.2 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `f1037ba27` + `c9b281ec9`; first-parent diff = `docs/releases/4.12.2.md` only, +48). Same topology as `afec0af10`. | **v5:** `docs/v4/` (release notes). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `78aca159d` | 2026-11-06 | fix: Z.AI sends prompt-cache key as user_id; DeepSeek logs raw cache usage | **PORT (two providers + `cache-key.ts`)** (16 files +180 / −27; `dev.35`). `lib/llm/cache-key.ts`; Z.AI plugin 1.1.35 sends `user_id` (6–128 chars; omitted outside) on send + stream instead of `user`; DeepSeek 1.0.31 keeps `rawProviderUsage` on the final stream chunk. | **v5:** the Z.AI / DeepSeek request builders + stream decoders, `cache_key` (`cheap_llm.rs`, `spine.rs`), the llm-logs usage fields. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `819fc9c82` | 2026-11-07 | fix: prompt caching for OpenRouter, NanoGPT and Anthropic plugins | **PORT (three providers' cache placement + usage readers)** (26 files +1,012 / −396; `dev.36`). OpenRouter 1.0.72: every send uses the one Chat Completions body, one usage reader incl. `cache_write_tokens`, `rawProviderUsage`, cache key also as `session_id` + `prompt_cache_key`, opt-in explicit Claude breakpoints (NEW `cache-breakpoints.ts`), all content lifted to text parts. NanoGPT 1.2.14: `cutAfterMessageIndex` before the newest user line. Anthropic 1.0.67: the history breakpoint placement revised again (supersedes `b9b9621e8`'s). `lib/llm/cache-key.ts`; `help/connection-profiles.md`. | **v5:** OpenRouter / NanoGPT (P4.D-NanoGPT, bug 269) / Anthropic builders + decoders and their recorded corpora (P4.D364's re-record is at `624d0d25c` — these move again). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `8d5eb8f0e` | 2026-11-07 | feat: edit any Salon line, with LLM-seen warning and memory regeneration | **PORT-NEW (edit impact + memory regeneration) + PORT (message PUT / GET)** (27 files +1,056 / −128; `dev.37`). `app/api/v1/messages/[id]/route.ts`: GET dispatches `?action=edit-impact` (NEW `lib/services/chat-message/message-edit-impact.ts` `assessMessageEditImpact` — later chat `llm_logs` less its own generation calls, later character lines as fallback, memories formed); PUT accepts `regenerateMemories` (retires sourced memories with reason `message-edit` via `lib/memory/retire.ts`, enqueues the source's job — the extraction turn backfill / `CARINA_MEMORY_EXTRACTION` / `ESTABLISHED_FACT_MEMORIES`; nothing retired without a profile); editing clears a stale `opaqueContent`. NEW `LLMLogsRepository.countForChatSince` (read). `chats/[id]/actions/memories.ts` → shared `resolveChatExtractionProfileId` (`lib/memory/extraction/context.ts`). `message-edit-impact.types.ts`. SPA: `MessageEditor`, the pencil on every row. | **v5:** `api/salon.rs` / `api/engine.rs` message edit (the `salon_mutations_equivalence` family), the memory retire path (P4.D297-class maintenance) + extraction enqueue (P4.D296), the llm-logs repo; SPA Salon message row. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `b941280d5` | 2026-11-07 | feat: Turns mode for the Salon; Paused renamed Manual | **PORT-NEW (a third `turnMode` value `'turns'`) — NO migration, NO DDL move** (`chats."turnMode"` stays bare `TEXT`; the Zod enum widens to `['rotation','turns','storyteller']`) (34 files +571 / −122; `dev.38`). `lib/chat/turn-manager/state.ts` +64 / −38 (`turnClosesCycle`); `turn-orchestrator.service.ts` +66 (`executeTurnChain` stops after each turn when the cycle closes, re-reads `turnMode`, chain-complete reason `turn_complete`, queues memory extraction for the round); `message-finalizer.service.ts` +34 (`ProcessMessageResult.closedCycle`); `turn-outcome.service.ts`; `lib/chat/stream-frames.ts` +1; `chats/[id]/schemas.ts` (the PATCH enum); `qtap-export.schema.json`; `chats.repository.ts` +1. SPA: four-position control, Next Round, toast; Continue's "the floor is theirs" text. | **v5:** the turn manager (Phase-1 tier-1 family), the turn chain / orchestrator (Storyteller P4.D343 / P4.D344 and the round's P4.D368 item 41 sit beside it), the finalizer, stream frames (P4.D366 / P4.D384), the turn-mode PATCH arm + `.qtap` enum; SPA sidebar control. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `3db965416` | 2026-11-08 | feat: the Green Room chooses what a character carries | **PORT-NEW (the Green Room inventory pass)** (21 files +896 / −94; `dev.39`). NEW `lib/inventory/green-room.ts` (`chooseArrivalInventory` — reachable carriable objects + kits, no archetypes / archived / closed project shelf) + NEW cheap-LLM task `inventory-selection.ts`; picks equipped leniently and silently under the chat lock; failure / timeout → the source-chat copy and the defaults; `lib/inventory/apply-defaults.ts` +76; chat create (`chats/route.ts`), `participants.ts`, `apply-chat-merge.ts` pass `choose`; `apply-outfit-selections.ts` −75 (helpers to `green-room-model.ts`). (Re-homed under `lib/chat/opening/` by `348172b9c`.) | **v5:** the Inventory programme's arrival defaults (P4.D325-class, `inventory/`), `services/outfit_selections.rs` / `chat_create.rs` / `api/chat_cast.rs`, merge + add-participant; a new cheap-LLM task family. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `fee1bd63d` | 2026-11-08 | feat: wardrobe image-prompt optimizer; import-from-image writes image prompts | **PORT-NEW (two wardrobe route actions + a cheap-LLM review) + PORT (one 200-char clamp)** (25 files +1,236 / −19; `dev.40`). `POST /api/v1/characters/[id]/wardrobe?action=optimize-image-prompts` (review; writes nothing) + `?action=apply-image-prompts` (NEW `updateItemImagePrompts` in `item-mutations.ts`) via `wardrobe-route-factory.ts` + NEW `routes/prompt-optimizer-handlers.ts` / `prompt-optimizer.ts`; `wardrobe.types.ts` request schemas (`itemIds ≤ 1000`; `changes` 1–1000, `imagePrompt ≤ 2000`); NEW `lib/wardrobe/image-prompt-limit.ts` (ONE 200-char limit / clamp — the item editor, image analysis, the optimizer); `image-analysis.ts` asks for `imagePrompt` per item. | **v5:** the wardrobe route factory (P4.D281 — one factory, four tiers), item mutations, image analysis (rides the refused `analyze-image`); SPA wardrobe dialog. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `aefbdde05` | 2026-11-08 | feat: portrait-cue wizard on every wardrobe tier; wardrobe pop-ups above the rail | **PORT-NEW (the two actions on all four tiers) + SPA** (19 files +161 / −94; `dev.41`). `wardrobe-route-factory.ts` registers `optimize-image-prompts` / `apply-image-prompts` on every tier (only a character review is filed against the character in LLM logs); `prompt-optimizer.ts` / handlers per container. SPA portals to `document.body`. | **v5:** with `fee1bd63d`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `88c9cc81d` | 2026-11-08 | fix: folder moves match folder paths case-insensitively | **PORT (a bug THIS PORT FILED — #147 — that v5 ported FAITHFULLY; no carve to retire)** (11 files +120 / −13; `dev.42`; Fixes #147). `lib/mount-index/folder-ops.ts` `moveFolderWithinMount`: the source folder row + descendant prefixes + file links matched CASE-INSENSITIVELY (`isUnderSource` via `under()`; slice by prefix length); BOTH the database-store and filesystem branches now call NEW `sweepOpenDocuments` → `sweepChatDocumentsAfterFolderMove` (scope `document_store`) + a NEW DEBUG `Swept open documents after a store-browser folder move`. `chat-documents.repository.ts` `findUnderFolder` lower-cases prefix and path. `help/mount-points.md`. | **v5:** P4.D381 (R-6, "v5 ports all three faithfully"; draft `work-orders/surveys/2026-11-04-p4.d381-v4-folder-sweep-case-draft.md`) — v5's folder-ops move + `chat_documents` repo; the doc tools' folder sweep. ⚠ The fix is DISK-dependent (case-insensitive APFS vs case-sensitive; see `5f0bb6b0b`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `43623cca3` | 2026-11-09 | fix: custom tooltips no longer stick open | **PORT (SPA only)** (9 files +196 / −25; `dev.43`). `components/ui/Tooltip.tsx`: document `pointermove` close-grace, outside `pointerdown` / window blur / hidden document close it, focus opens only on `:focus-visible`, touch `pointerenter` no longer opens. `help/appearance-settings.md` +4. | **v5:** the SPA tooltip directive (the tooltips vertical; P4.D385's tooltips); `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `5f0bb6b0b` | 2026-11-09 | test: make the #147 folder-move casing test disk-aware | **NO-PORT? — test only, VERIFIED** (2 files: `folder-ops-fs-move.test.ts` +14, CHANGELOG). On a case-sensitive disk the other-casing move is refused `SOURCE_NOT_FOUND` with no rows written. | **v5:** none in code — but it states v4's intended behaviour on Linux, which the `88c9cc81d` port's tests should pin both ways. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `3277aa572` | 2026-11-09 | docs: spec for refactoring the character repository, the vault and Aurora's writes | **NO-PORT? — docs only, VERIFIED** (NEW `docs/developer/features/refactor-character-repository-and-vault.md`, ROADMAP). Spec of record for `1dc11e947`; files #148–#150. | **v5:** `docs/v4/` (take `1dc11e947`'s `complete/` copy). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `d281c2332` | 2026-11-09 | docs: spec for refactoring the Green Room, casting and the opening | **NO-PORT? — docs only, VERIFIED** (NEW `docs/developer/features/refactor-green-room-and-opening.md`, ROADMAP). Spec of record for `348172b9c`; files #151–#154. | **v5:** `docs/v4/`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `1dc11e947` | 2026-11-09 | refactor: character repository, vault layout table, and Aurora's writes | **PORT (the character repository / vault — behaviour on ported surfaces, three v4 bug fixes #148 / #149 / #150) + PORT-NEW (vault-health / repair-vault / patch-metadata actions; frontmatter `id:` on Prompts / Scenarios) + a PROBABLE FRESH-ONLY generateDDL move (MEASURE)** (197 files +6,244 / −4,850; `dev.47`). **Schema:** `CharacterRowSchema` (the table) / `CharacterManagedFieldsSchema` (vault) / `CharacterSchema` = row.extend(managed); `CharactersRepository extends AbstractStoreBackedRepository<CharacterRow, Character>` with `super('characters', CharacterRowSchema)` — so `ensureCollection` on a FRESH instance renders only the row columns: the 19 managed columns (`title`, `identity`, `description`, `manifesto`, `personality`, `scenarios`, `firstMessage`, `exampleDialogues`, `systemPrompts`, `metadata`, `talkativeness`, `canChooseOutfit`, `canDrawDiagrams`, `diagramStyle`, `kind`, `aliases`, `pronouns`, `birthday`, `physicalDescription`) DISAPPEAR from a fresh v4 `characters` table; `name` stays. NO migration — existing tables keep every column (not destructive). **Behaviour:** the startup `backfillCharacterVaults` NEVER writes over content (#148): seeds an ABSENT `properties.json` (defaults) / `metadata.json` (`{}`), reports a present-but-invalid one (`keystonesInvalid`, Almanack), no more repopulate-from-raw-row; clearing a physical description empties both files (#149); a whole-array scenarios PUT refused (#150); prompts / scenarios written per item (`lib/characters/vault/items.ts`), never swept when unparseable; `Prompts/*.md` / `Scenarios/*.md` frontmatter `id:` (a file without one keeps the path-derived `stableUuidFromString`, the next write STAMPS it — `lib/utils/stable-uuid.ts` `resolveFileItemId`); a keystone present-but-unparseable makes `findById` throw while list reads default it; Character API schemas derived + strict, one envelope (`lib/characters/api-schemas.ts`), new `?action=vault-health` / `repair-vault` / `patch-metadata`; `vault-overlay/` deleted → `lib/characters/vault/*` (layout table drives hydrate / write / scaffold / keystones / archive keep-set); `ensureCharacterVault` scaffolds only (`cutover-characters-to-vault.ts` adjusted). Also: `lib/api/middleware/context.ts` +11, `store-backed.repository.ts`, Almanack phase-4 lines, `self-inventory/builders.ts` +53, `character-rename.service.ts`, `brahma-sql-prompt.ts`, `memory/maintenance/run.ts`. | **v5:** the character vault read / write overlay + boot backfill (`vault_overlay.rs`, `db/vault_read_overlay.rs`, `db/vault_character_update.rs`, `db/character_vault.rs`, the host boot backfill — v5 at the pin still repopulates from the raw row), `db/scenarios.rs` + `scenarios/location.rs` (`stable_uuid` path-derived ids), the characters routes (P4.D369 kind keystone moves the same PUT / GET), Almanack, `self_inventory`, rename; `fresh_schema.json` (re-dump); SPA Aurora vault-repair card. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `c135a5561` | 2026-11-09 | fix: keep node:crypto out of the client bundle | **NO-PORT? — client-bundle module split, no behaviour** (8 files +76 / −30; `dev.48`). NEW client-safe `lib/characters/vault/paths.ts` (vault path constants) re-exported by `layout.ts`; `character-field-semantics.ts` imports from it. | **v5:** none (a Next.js bundling constraint; any constant moved is byte-identical). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `523503e8a` | 2026-11-09 | docs: spec for rebuilding the Settings page | **NO-PORT? — docs only, VERIFIED** (NEW `docs/developer/features/settings-redesign.md`, ROADMAP). Spec for `f1386cebd`. | **v5:** `docs/v4/`. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `348172b9c` | 2026-11-09 | refactor: casting, the opening, and the Green Room in the Salon | **PORT (chat creation and the greeting REWRITTEN on the Salon spine — #151–#154) + PORT-NEW (the opening state machine, `?action=open`, `?action=casting-defaults`, the `greenRoom` stream frames) WITH A D23 MOVE (suggested 26th) — three MIGRATION-ONLY `chats` columns via `add-chat-opening-state-v1` (`dependsOn sqlite-initial-schema-v1`; additive: `openingState TEXT NOT NULL DEFAULT 'done'`, `openingPhase TEXT DEFAULT NULL`, `openingPlan TEXT DEFAULT NULL`; not in `ChatSchema`, patch-only, NOT exported)** (134 files +5,927 / −9,680; `dev.50`; Fixes #151 / #152 / #153 / #154). `POST /api/v1/chats` (`chats/route.ts` −1,485 / +64) is casting only (`castChat`; `resolveCastingDefaults`, also `GET ?action=casting-defaults`), row created `openingState 'pending'`, no model call before the response. `lib/chat/opening/` NEW (`run.ts` `runOpening` over `OPENING_PHASES` resumable by `openingPhase`, `arrival.ts` one `seatArrival` for start / add-participant / merge, `cast.ts`, `concierge.ts`, `defaults.ts`, `narrator*.ts`, `staff.ts`, `schema.ts`); the greeting is a turn (purpose `'opening'`) — `lib/chat/initial-greeting.ts`, `first-message-context.ts`, `initialize.ts`, `creation-progress.ts` DELETED with the SYSTEM fossil row, the private recall copy (#153) and the greeting ladder; a scripted `firstMessage` closes via `finalizeScriptedOpener`; `chats.repository.ts` +99 (`getOpeningState` / `setOpeningState`, a stale `running` → `pending` reset); `app/api/v1/chats/creation-progress/route.ts` REMOVED; `actions/open.ts` NEW (drains a `continueMode + opening` stream; `{openingState}`); add-participant can narrate the join (`narrate`); `instrumentation.ts` +13; `autonomous-run-start.ts` +10; `brahma-console/route.ts` / `help-chats/route.ts` −11 each; `message-finalizer` +144, `orchestrator` +109, `context-builder`, `turn-trailing.ts`, `stream-frames.ts` +34; `lib/wardrobe/outfit-summary.ts`; `settings.types.ts` one line. SPA: the Green Room panel, New Chat on TanStack Query. | **v5:** the New-Chat vertical + `services/chat_create.rs` / `api/chat_cast.rs` (P4.4 unit 2 "chat creation + the Green Room"), `services/first_message_context.rs` / `initial_greeting` (both DELETED in v4), `creation_progress` in `quilltap-host/src/host.rs` / `spine.rs` + the Almanack, the Salon spine / finalizer / stream frames (P4.D366 / P4.D384 `kind`-tagged frames), add-participant + merge, the autonomous run start (enclave); host boot ensures + `restore_vintage_state` boot-align. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `dca8ff120` | 2026-11-09 | style: the Green Room panel on qt-* classes | **PORT (SPA / CSS only)** (10 files: NEW `app/styles/qt-components/_green-room.css` +170, `GreenRoomPanel.tsx`, theme-storybook CSS). | **v5:** SPA Green Room panel (with `348172b9c`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `f1386cebd` | 2026-11-09 | feat: the Foundry rebuilt — settings by what things do, with search | **PORT-NEW (SPA: the settings page re-organised) + help text; NO server hunk** (174 files +6,232 / −1,925; `dev.52`). `lib/settings/registry.ts` (862, client — groups / cards / `resolveSettingsLink`, legacy `?tab=` links), `lib/settings/hrefs.ts`, `lib/foundry/subsystem-defaults.ts` (Brahma a subsystem), `help-guide/categories.ts`, `navigation/route-to-intent.ts`, workspace tab meta; the eight `*TabContent` files gone, ten groups in a rail, persona badges, search, attention strip, Connections → per-provider cards; `ImageProfileForm` `initialProvider`; NEW art `public/images/brahma.webp`. ~75 `help/*.md` files (settings links rewritten). `lib/tools/help-navigate-tool.ts` / `legacy/text-block-prompt.ts` one line each (help-link text — MEASURE: model-visible). | **v5:** the SPA settings vertical (P4.6c-e + the Foundry lens pages), workspace settings tab; `help/` vendor (+ `help_search` corpus) and the help-navigate tool string. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `7ea21c151` | 2026-11-09 | theme: Madman's Box backdrops for the Concierge, Pascal, Saquel and Brahma | **PORT (bundled theme assets)** (10 files: four `.webp` textures + `themes/bundled/madmans-box/theme.json` +6 / −2). | **v5:** bundled themes (the five packs P4.D357 / P4.D358 / P4.D383 carry). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `921fe94bb` | 2026-11-09 | fix: list the Inventory pool's consulted stores in tier order | **CONVERGENCE — v4 adopting THIS PORT's ruling `CONSULTED_CROSS_TIER_INTERLEAVE` (filed as #155, P4.D378, RULED 2026-11-09)** (7 files +70 / −29; prod = `lib/inventory/pool.ts` +44 / −24; `dev.54`; Fixes #155). `readTier` now returns its own `{records, consulted, unread}`; `loadInventoryPool` keeps the reads under one `Promise.all` but concatenates the bookkeeping in tier order own → group → project → General (`EMPTY_TIER`); the own tier with `opts.ownRecords` keeps `[ownMountPointId]`; `loadPoolForLocation` the same. NOTE: **`unread` is also tier-ordered now** (it was settle-ordered too); records / verdict unchanged. NEW test `pool-order.test.ts`. | **v5:** `crates/quilltap-core/src/inventory/pool.rs` + `title_lint.rs`; P4.D378's carve on `inventory_title_lint_equivalence` (Census `poolsJson` v4 `[Vault, General, Covenant]` vs v5 `[Vault, Covenant, General]`; consulted v4 `[vault, dangling, general, covenant]` vs v5 `[vault, dangling, covenant, general]`) and the printed row in `inventory_pool_order_tier2` — **both-directions pins trip at the baseline move BY DESIGN; retire by measurement (§5.4)**, and check v5's `unread_mounts` order against v4's new tier order (the ruling covered `consulted`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `309741661` | 2026-11-09 | feat: the Green Room panel closes and docks into the transcript | **PORT (SPA only — "Client-only")** (15 files +453 / −120; `dev.55`). `useGreenRoom` room list with docked / expanded state; RenderItem kind `'green-room'` (`insertGreenRoomItems`, `renderItemMessageIds`); CSS. `help/chats.md`. | **v5:** SPA Salon transcript (with `348172b9c`); `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `2f0a033ca` | 2026-11-09 | feat: opaque characters may use their own vault's non-core folders | **PORT (doc-edit tool reach for a character without `systemTransparency`)** (18 files +692 / −111; `dev.56`). NEW `lib/characters/vault/core-guard.ts` (root-level files + `Prompts` / `Wardrobe` / `Outfits` / `Inventory` / `Mail` / images folders neither readable nor writable; those folders and the root not deletable / movable); `lib/doc-edit/path-resolver.ts` `hideCharacterVaults` → `guardOwnVault` (peer vaults hidden; own vault reachable; results tagged `ownVaultGuarded`); `tools/handlers/doc-edit/{shared,text-handlers,blob-handlers}.ts` filter / refuse core paths; `read-mail-tool.ts` / `read-mail-handler.ts` one line each (model-visible). `help/character-system-transparency.md` / `document-editing-tools.md`. | **v5:** `tools/doc_edit/` path resolver (`project_roster_access.rs` / `document_ui.rs` sites), the doc-tool handlers' reach (the system-transparency gate), the read-mail tool description; `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -732,6 +587,91 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `624d0d25c` 4.12.x catch-up round (2026-11-09, baseline `236c04e35`
+  → `624d0d25c`; twenty-eight lanes P4.D361–P4.D388, nine stacking commits
+  `REAIM` / `SCHEMA` / `PROVIDERS` / `KIND` / `CATALOG` / `FRAMES` /
+  `REACH` / `CSS` / `BROWSER`):** all seventy-four rows `b15fe9404` +
+  `8832cfd20` … `624d0d25c` retired, `b15fe9404` among them (its PARTIAL
+  hold ends: P4.D368 landed P4.D343 items 41 and 29). The round was pinned
+  at the new baseline. The 45 commits past it stay UNPROCESSED in §3
+  (`/driftcheck`, 2026-11-09). Round record: `status-log.md` → "The
+  `624d0d25c` 4.12.x catch-up round … — UNIFICATION record (2026-11-09)".
+  - **`NO-PORT-RATIFIED(624d0d25c)`** — P4.D382's NO-PORT record (32
+    blocks, each with its evidence), 24 whole rows:
+    - `f56965ef9` (interim root SDK stamps; the guard re-pin is
+      P4.D364's), `eb90eb466` (Lexical 0.53 — on the measured zero-diff
+      re-record), `7dedfa067` (ESLint 10), `3e4f9dea9` (TypeScript 6).
+    - `d03eb2d63`, `a299de9f5`, `f12bda3d1`, `d2795f72c`, `25a20221c`,
+      `9b5bb27df`, `cbf4805c0`, `9d6f155c5`, `763dfaceb`, `7b4e1b9fa` —
+      docs / specs / release notes / CHANGELOG (vendored by P4.D382 where
+      mirrored).
+    - `3d39c303c` (API response helpers — output unchanged, verified),
+      `f1c2b178d` (a v4 test), `06efd9ca2` (the CLI README note, mirrored),
+      `705b954c2` / `ec8d91667` (theme-storybook), `547f1a739` (top-level
+      file cleanup).
+    - `7bdb45873`, `b37769882`, `013b99b5d`, the 4.12.0 release, its
+      merge-back and the 4.13.0-dev stamps; `624d0d25c`, the CI heap flag.
+  - **NO-PORT in half (P4.D382), the PORT half ABSORBED by its owner:**
+    `db4a76e39` (+ P4.D388, the About line; watchers NO-COUNTERPART),
+    `3936fdf65` (croner → PORT, P4.D365; jest-fetch-mock / yauzl NO-PORT),
+    `9f761e157` (+ P4.D364, the SDK floors), `134961572` (+ P4.D361 /
+    P4.D377, the IMPORT-DEAD re-aim), `05264ace3` (+ P4.D381 verify +
+    P4.D382 help; the watcher core NO-COUNTERPART), `856ed4f2b` (+
+    P4.D388), `8f83041aa` (+ P4.D364 + P4.D388), `afec0af10` (4.12.1's
+    content → P4.D375 + P4.D370; the heap flag NO-PORT).
+  - **`ABSORBED(624d0d25c)`** (owners as ordered; P4.D382 also vendored
+    every `help/` / `docs/` hunk in the span):
+    - `b15fe9404` (P4.D368: items 41 + 29), Storyteller "All at once" and
+      the `.qtap` import refusals.
+    - `8832cfd20` (P4.D365), the v13 driver — v5's amalgamation to
+      SQLite3MC 2.4.0 / SQLite 3.53.4 (R-A); the real-instance open is
+      owed to dogfood.
+    - `bf7a457f6` (P4.D381), the iCloud-placeholder scan.
+    - `544c7ab1e` (P4.D362 + P4.D364 + P4.D388), Anthropic `2026-10-21`
+      without sampling + the stamped strip heal.
+    - `902c6efe9` (P4.D363), Staff rows out of the FTS index.
+    - `db6190b44` (P4.D362 + P4.D372 + P4.D385 + P4.D383 + P4.D382), Deus
+      Ex Machina — the TWENTY-SECOND D23 move.
+    - `d439f6dc9` (P4.D362 + P4.D367 + P4.D364 + P4.D388), the per-profile
+      image cap — the TWENTY-THIRD move.
+    - `29c1e2690` (P4.D367 + P4.D361), the image transport budget.
+    - `604a082c4` (P4.D366 + P4.D384 + P4.D361), the `kind`-tagged Salon
+      frames, rendered at the sink (R-G).
+    - `9eab8d2da` (P4.D366 + P4.D384 + P4.D385), gesture-only yields + the
+      raised-hand chip.
+    - `a3d53eae1`, `30a3b4cb7`, `4310d435f` (P4.D380), the document core,
+      moves, operator actions; `5efe53ea7`, `c17033f04` (P4.D380 +
+      P4.D387), Document Mode.
+    - `aec626eff` (P4.D381 + P4.D387), `c34986421` (P4.D381 + P4.D387 +
+      P4.D388), the document-store API and browser (D18 RETIRED, R-D;
+      `.docx` `render-html` a named refusal, R-E).
+    - `0c47f4539` (P4.D376 + P4.D378), the tier walk; `a0ed5ecad`
+      (P4.D377 + P4.D378), the shared folder layer and the transfers GET
+      removal; `600c2906f` (P4.D377 + P4.D386), the item-route family;
+      `b2b783b47` (P4.D386), the shared item browser.
+    - `fd165fce0` (P4.D379 + P4.D388), Pascal presets on the tool walk.
+    - `c539c82e0` (P4.D374 + P4.D363 + P4.D388), the Brahma lookups and
+      the `@Brahma` profile.
+    - `d4ddeb943` (P4.D368), avatar-job reuse PENDING-only.
+    - `ba6c8fe0f` (P4.D373 + P4.D371), the probation prompts;
+      `4efea65e5`, `d0201575a`, `c69a08882` (P4.D373), `7ff5fda89`
+      (P4.D373 + P4.D371), Green Room spread, sample prompts 1.1.33, the
+      inform header, group scenes.
+    - `b09ca46bb` (P4.D369 + P4.D388), `96156566b` (P4.D370), `3ae4cf582`
+      (P4.D371), the character-kind programme.
+    - `6121f59b9` (P4.D375 + P4.D370), 4.12.1's window-first dated search.
+    - `70d2859d8` (P4.D365 + P4.D382), `db integrity` without
+      `cipher_integrity_check` + the ChaCha20 docs.
+    - `29ba4d3f8` (P4.D383 + P4.D386), `3c41cf3da`, `4f5047241` (P4.D384
+      + P4.D383), `671c59a53`, `df8d4d70a`, `27fb3ec77` (P4.D385),
+      `87c3860df` (P4.D383), `94f041764` (P4.D383 + each file owner) —
+      the SPA / CSS / WCAG 2.2 rows.
+  - **Caught at unify:** the `doc_mount_file_links` overlay writes'
+    missing store hint (v4 `aec626eff`'s one chokepoint, `6f9633ac2`); the
+    production tool runners' `ErasedEmbeddingProvider::none()`
+    (`d6202b2d3`). `921fe94bb` (#155, past the pin) converges on
+    P4.D378's ruling; the carves were narrowed (`5c3930619`) and wait for
+    the next baseline move.
 - **The `236c04e35` 4.11.0 catch-up round (2026-11-04, baseline `322a5488e`
   → `236c04e35`; twenty lanes P4.D341–P4.D360, five stacking commits
   `KEYSTONE` / `CATALOG` / `CONTEXT` / `SPINE` / `FILES`):** sixty-eight of
