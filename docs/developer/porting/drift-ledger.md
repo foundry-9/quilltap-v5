@@ -32,10 +32,17 @@ probe verifies against._
   `b15fe9404` + `8832cfd20` … `624d0d25c` retired to §6 — `b15fe9404`
   whole at last (P4.D368 landed P4.D343 items 41 and 29). The previous
   baseline was `236c04e35` (2026-11-04 → 2026-11-09).
-- **Checked:** 2026-11-09 (afternoon), by `/driftcheck` on v5 main
-  (`a11fbe767`), during the `624d0d25c` round (lanes in flight); re-read
-  at the round's unification (same tips, tree clean). NOT fetched; local
-  refs read as they stand.
+- **Checked:** 2026-11-10 (morning), by `/driftcheck` on v5 main
+  (`07f32dded`, the `624d0d25c` round's unification commit; tree clean).
+  NOT fetched; local refs read as they stand.
+  - The §2 probe FAILED on **3 new `main` commits** past the 2026-11-09
+    tip `2f0a033ca`: `bb875c6f2` (`dev.57`), `ac6b60c21` (`dev.58`),
+    `0d73a4aee` (`dev.59`). `bugfix` (`d67c70a51`) and `release`
+    (`c9b281ec9`) did NOT move. No new bug issues past #155 (`gh issue
+    list`, 2026-11-10); none of the three cites `Fixes #N`.
+  - The facts below for the 45 earlier commits are the 2026-11-09
+    (afternoon) check's, on v5 main `a11fbe767` during the round, re-read
+    at its unification (same tips, tree clean).
   - The §2 probe FAILED on **45 new `main` commits** past `624d0d25c`
     (`4089469a8` … `2f0a033ca`, `4.13.0-dev.12` → `dev.56`), a moved
     `bugfix` (`997657639` → `d67c70a51`, 11 commits) and a moved `release`
@@ -61,10 +68,12 @@ probe verifies against._
     `921fe94bb` #155. **#147 and #155 were FILED BY THIS PORT** (P4.D381
     R-6, P4.D378 `CONSULTED_CROSS_TIER_INTERLEAVE`); the rest are v4
     code-reading or CI finds.
-- **v4 `main` HEAD at check: `2f0a033ca`** ("feat: opaque characters may
-  use their own vault's non-core folders", 2026-11-09 13:13 −0600,
-  `4.13.0-dev.56`) — **FORTY-FIVE commits past the baseline `624d0d25c`,
-  all UNPROCESSED in §3** (118 past the old baseline `236c04e35`; the 73 in
+- **v4 `main` HEAD at check: `0d73a4aee`** ("fix: Wardrobe History's Wear
+  again stages until Done", 2026-11-10 01:04 −0600, `4.13.0-dev.59`) —
+  **FORTY-EIGHT commits past the baseline `624d0d25c`, all UNPROCESSED in
+  §3.** The 2026-11-09 tip was `2f0a033ca` ("feat: opaque characters may
+  use their own vault's non-core folders", 13:13 −0600, `dev.56`) —
+  forty-five past the baseline (118 past the old baseline `236c04e35`; the 73 in
   between are this round's, now absorbed). `4089469a8` (the Optimizer's
   "Refine from Memories & Instructions", committed during the round's
   planning and held out of it by ruling R-B) is now classified among the
@@ -77,12 +86,22 @@ probe verifies against._
   bugfix content.** The §2 probe's bugfix base is `d67c70a51`.
   **`release` tip:** `c9b281ec9` (`release: 4.12.2`). Re-probe ALL THREE
   branches every time.
-- **Checkout at check:** branch **`main`** at `2f0a033ca`, tree **CLEAN**.
-  Its code is `4.13.0-dev.56`, forty-five commits past the baseline, so a
+- **Checkout at check:** branch **`main`** at `0d73a4aee`, tree **CLEAN**.
+  Its code is `4.13.0-dev.59`, forty-eight commits past the baseline, so a
   regen from it is poisoned by DRIFT.
-- **Verdict: DRIFT PENDING — 45 commits past the baseline `624d0d25c`,
-  all UNPROCESSED (§3).** By leading class: 1 CONVERGENCE, 19 PORT-led, 13
+- **Verdict: DRIFT PENDING — 48 commits past the baseline `624d0d25c`,
+  all UNPROCESSED (§3).** By leading class: 2 CONVERGENCE, 21 PORT-led, 13
   PORT-NEW-led, 12 NO-PORT? candidates.
+  - **The three 2026-11-10 commits** (no migration, no DDL, no `lib/`
+    server hunk): `bb875c6f2` the `:` / `\` typeaheads in every Markdown
+    editor (SPA PORT); `ac6b60c21` the dependency sweep — **new provider SDK
+    floors** `openai` 7.54.0, `@anthropic-ai/sdk` 1.7.0, `@openrouter/sdk`
+    1.5.73, plugin-utils 2.7.4 (plugins) / 2.7.5 (package) — a PORT for the
+    recorded request corpora at the next pin, as P4.D364 was; `0d73a4aee`
+    v4 FIXES the bug behind this port's **R-L** ruled divergence (P4.D318,
+    2026-10-19) in a DIFFERENT shape — Wear again now STAGES the rollback
+    until Done instead of v5's discard-then-post — so R-L retires and v5
+    re-ports v4's shape (a CONVERGENCE-of-intent row; §5.4).
   - **THREE v4 migrations**, all additive (one NULL backfill; none
     destructive): `add-profile-tool-result-verbatim-turns-v1`
     (`9d68d8421`), `add-chat-avatar-timeline-table-v1` (`ebb0ca13a`, a NEW
@@ -117,8 +136,8 @@ probe verifies against._
     wardrobe image-prompt optimizer (`fee1bd63d`, `aefbdde05`); opaque
     characters' own-vault reach (`2f0a033ca`).
 - **Regen rule: PIN REQUIRED at `624d0d25c`** (§5.1) — HEAD is past the
-  baseline. Never regen from the live checkout: it is forty-five commits
-  past it.
+  baseline. Never regen from the live checkout: it is forty-eight commits
+  past it. (Unchanged from 2026-11-09.)
   - The pin's root takes its own `npm ci` (the unifier's pin
     `/tmp/qt-v4-pin-unify624-624d0d25c` did); its lockfile carries the
     13.0.3 driver (SQLite3MC 2.4.0 / SQLite 3.53.4), which now matches v5's
@@ -130,12 +149,15 @@ probe verifies against._
     baseline are P4.D364's (`openai` 7.47.0, `@anthropic-ai/sdk` 1.4.0,
     `@google/genai` 2.32.0, `@openrouter/sdk` 1.5.34, plugin-utils 2.7.3).
   - ⚠ **`provider_sdk_version_guard` is an env artifact at every gate**
-    until the next pin: it reads the LIVE v4 plugin install (openrouter
-    1.5.62 / plugin-utils 2.7.4), past the pin's 1.5.34 / 2.7.3. (Past the
-    baseline, `99391975f` / `f5d37e718` pin the OpenRouter **plugin's**
-    `@openrouter/sdk` to 1.5.56 at that commit.) Re-read the live versions
-    and re-check the printed floors against the guard before the next pin
-    set-up.
+    until the next pin: it reads the LIVE v4 install, now (read
+    2026-11-10, after `ac6b60c21`) root `openai` 7.54.0 / `@openrouter/sdk`
+    1.5.73 / plugin-utils 2.7.4, the plugins' `@anthropic-ai/sdk` 1.7.0,
+    `openai` 7.54.0, `@openrouter/sdk` 1.5.73, `@google/genai` 2.32.0
+    (unmoved) — past the pin's 7.47.0 / 1.4.0 / 1.5.34 / 2.7.3. (Past the
+    baseline, `99391975f` / `f5d37e718` had pinned the OpenRouter
+    **plugin's** `@openrouter/sdk` to 1.5.56; it is `^1.5.73` since
+    `ac6b60c21`.) Re-read the live versions and re-check the printed floors
+    against the guard before the next pin set-up.
   - `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin.
 
 ### ⚠ LIVE-DATA — what stands at this baseline
@@ -419,6 +441,9 @@ passes the commit.
 | `921fe94bb` | 2026-11-09 | fix: list the Inventory pool's consulted stores in tier order | **CONVERGENCE — v4 adopting THIS PORT's ruling `CONSULTED_CROSS_TIER_INTERLEAVE` (filed as #155, P4.D378, RULED 2026-11-09)** (7 files +70 / −29; prod = `lib/inventory/pool.ts` +44 / −24; `dev.54`; Fixes #155). `readTier` now returns its own `{records, consulted, unread}`; `loadInventoryPool` keeps the reads under one `Promise.all` but concatenates the bookkeeping in tier order own → group → project → General (`EMPTY_TIER`); the own tier with `opts.ownRecords` keeps `[ownMountPointId]`; `loadPoolForLocation` the same. NOTE: **`unread` is also tier-ordered now** (it was settle-ordered too); records / verdict unchanged. NEW test `pool-order.test.ts`. | **v5:** `crates/quilltap-core/src/inventory/pool.rs` + `title_lint.rs`; P4.D378's carve on `inventory_title_lint_equivalence` (Census `poolsJson` v4 `[Vault, General, Covenant]` vs v5 `[Vault, Covenant, General]`; consulted v4 `[vault, dangling, general, covenant]` vs v5 `[vault, dangling, covenant, general]`) and the printed row in `inventory_pool_order_tier2` — **both-directions pins trip at the baseline move BY DESIGN; retire by measurement (§5.4)**, and check v5's `unread_mounts` order against v4's new tier order (the ruling covered `consulted`). | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
 | `309741661` | 2026-11-09 | feat: the Green Room panel closes and docks into the transcript | **PORT (SPA only — "Client-only")** (15 files +453 / −120; `dev.55`). `useGreenRoom` room list with docked / expanded state; RenderItem kind `'green-room'` (`insertGreenRoomItems`, `renderItemMessageIds`); CSS. `help/chats.md`. | **v5:** SPA Salon transcript (with `348172b9c`); `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
 | `2f0a033ca` | 2026-11-09 | feat: opaque characters may use their own vault's non-core folders | **PORT (doc-edit tool reach for a character without `systemTransparency`)** (18 files +692 / −111; `dev.56`). NEW `lib/characters/vault/core-guard.ts` (root-level files + `Prompts` / `Wardrobe` / `Outfits` / `Inventory` / `Mail` / images folders neither readable nor writable; those folders and the root not deletable / movable); `lib/doc-edit/path-resolver.ts` `hideCharacterVaults` → `guardOwnVault` (peer vaults hidden; own vault reachable; results tagged `ownVaultGuarded`); `tools/handlers/doc-edit/{shared,text-handlers,blob-handlers}.ts` filter / refuse core paths; `read-mail-tool.ts` / `read-mail-handler.ts` one line each (model-visible). `help/character-system-transparency.md` / `document-editing-tools.md`. | **v5:** `tools/doc_edit/` path resolver (`project_roster_access.rs` / `document_ui.rs` sites), the doc-tool handlers' reach (the system-transparency gate), the read-mail tool description; `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-09; past the round pin `624d0d25c` (§R.1 R-B) |
+| `bb875c6f2` | 2026-11-09 | feat: emoji and symbol typeaheads in every Markdown editor | **PORT (SPA only)** (11 files +33 / −10; `dev.57`). `components/markdown-editor/MarkdownLexicalEditor.tsx` +8: mounts `CharTypeaheadPlugin` for `EMOJI_PROFILE` and `UNICODE_PROFILE` (each still gated by its composer setting; `/` and `@` stay composer-only). `_surfaces.css`: `.qt-typeahead-menu` `z-50` → `z-index: 200` (above modal overlays 60–101, below toasts 1000). `help/chat-settings-composer.md` +2 (a "Not the Salon alone" paragraph). No server hunk. | **v5:** `apps/web/src/app/editor/rich-editor.ts` already carries `charTypeaheadPlugin` gated by `composerEmoji` / `composerUnicode` inputs that only the Salon composer and Document Mode pass (the composer typeahead verticals); the port is `markdown-field.ts` reading the chat settings and passing both, plus `apps/web/src/styles/qt-components/_surfaces.css:1045` (`z-50` → 200); `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-10 |
+| `ac6b60c21` | 2026-11-09 | chore: dependency updates across root, packages and plugins | **PORT (provider SDK floors → recorded corpora) / NO-PORT for the rest** (54 files, mostly rebuilt plugin bundles; `dev.58`). Root: `openai` ^7.54.0, `@openrouter/sdk` ^1.5.73, `@quilltap/plugin-utils` ^2.7.4, next 16.4.6, TanStack Query 5.107.1, `ws` 8.22.2, patch bumps. `packages/plugin-utils` 2.7.5 (its `openai` ^7.54.0). Plugins (14 bumped + rebuilt; NO `provider.ts` source hunk — only `index.js` / `manifest.json` / `package.json`): `@anthropic-ai/sdk` ^1.4.0 → ^1.7.0 (anthropic 1.0.68), `openai` ^7.54.0 (deepseek, grok, nanogpt, openai, openai-compatible, z-ai), `@openrouter/sdk` ^1.5.60 → ^1.5.73 (openrouter 1.0.73), plugin-utils ^2.7.4 everywhere; `@google/genai` unmoved. | **v5:** `crates/quilltap-harness/tests/provider_sdk_version_guard.rs` (`RECORDED_*` 7.47.0 / 1.4.0 / 1.5.34 / 2.7.3, P4.D364) and the recorded corpora it stamps (`request-envelopes.recorded.ndjson`, `image-dialects.recorded.ndjson` — UA / `x-stainless-package-version` bytes) — re-record at the new pin and MEASURE any wire change between SDK versions (anthropic 1.4 → 1.7 is three minors). The guard is already an env artifact (§1). Next / TanStack React / storybook / `ws`: NO-PORT (v5's SPA is Angular). | UNPROCESSED — recorded by `/driftcheck` 2026-11-10 |
+| `0d73a4aee` | 2026-11-10 | fix: Wardrobe History's Wear again stages until Done | **CONVERGENCE OF INTENT, DIFFERENT SHAPE — v4 fixes the bug behind this port's R-L RULED DIVERGENCE (P4.D318, ruled 2026-10-19: clean *Wear again* left v4's Live staging in place, so a later Done `set_all` undid the rollback) — + PORT (SPA only)** (14 files +408 / −139; `dev.59`; no `Fixes #N`, no issue filed). `lib/wardrobe/staged-live-outfits.ts` (client-only) +78: `rollbackTargetSlots` (the client mirror of the server's `filterStaleItems` — missing items off, archived off unless already worn in that slot), `rollbackGesture` (replaces slots outright), `standingRollbacks` (at Done, an unedited staged rollback with a baseline and no worn bundles commits via `?action=wardrobe-rollback`; anything edited since goes the ordinary `set_all`). `useStagedLiveOutfits.ts` +145 / `outfit-history-tab.tsx` / `wardrobe-control-dialog.tsx`: *Wear again* STAGES (nothing sent until Done), `stagedIndex` marks the entry with an **Unstage** button, `discard` loses its `options`. `help/wardrobe.md` one paragraph; `docs/…/complete/wardrobe-outfit-history.md`. No server hunk. | **v5:** P4.D318's History tab (`5233dc3c1` — `wearAgain` confirms only when dirty then ALWAYS discards and POSTs immediately, R-9's `rollbackPending`); the Live-tab staging service. R-L RETIRES: re-port v4's staged shape and its Done-time split (rollback vs `set_all`); retire R-L's red-first pins by measurement (§5.4). `help/` vendor. | UNPROCESSED — recorded by `/driftcheck` 2026-11-10 |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
