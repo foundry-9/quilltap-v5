@@ -2735,9 +2735,16 @@ fn system_import_execute_state_equivalence() {
     // not import WARNs (silence legs). Re-derived from the `236c04e35` oracle
     // at unification: 79 cases carry `importWarns` (the lane's own gate never
     // reached these counters — its run stopped on sibling reds above them).
+    // [unify 624] 79 → 82: P4.D362's `execute_p4d362_carriers` (+1) and
+    // P4.D368's `execute_storyteller_chat_refusals` /
+    // `execute_storyteller_message_refusals` (+2) — each lane added its arms
+    // without moving this union count. Re-measured from the `624d0d25c` pin's
+    // oracle: 82 cases carry `importWarns`, all three new arms silence legs
+    // (53 lines unchanged — their refusals are the result's `warnings`, not
+    // import WARNs).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        79,
+        82,
         "cases comparing the import WARNs"
     );
     assert_eq!(
@@ -2763,9 +2770,11 @@ fn system_import_execute_state_equivalence() {
     // (`execute_memory_preserved_numeric_id` — a silence leg).
     // [P4.D351] 77 → 79 (`execute_novel_template` /
     // `execute_template_refusals` — silence legs; 8 lines unchanged).
+    // [unify 624] 79 → 82 (P4.D362's carrier arm + P4.D368's two storyteller
+    // refusal arms — silence legs; 8 lines unchanged, measured from the pin).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        79,
+        82,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2787,9 +2796,12 @@ fn system_import_execute_state_equivalence() {
     // [P4.167] 74 → 76 cases (the chat-record-column arms import no memory)
     // → 77 (`execute_memory_preserved_numeric_id` — the string-id memory's line).
     // [P4.D351] 77 → 79 cases (the two template arms import no memory).
+    // [unify 624] 79 → 82 cases (P4.D362's carrier arm + P4.D368's two
+    // storyteller refusal arms import no memory; 52 lines unchanged, measured
+    // from the pin).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        79,
+        82,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
@@ -2813,9 +2825,13 @@ fn system_import_execute_state_equivalence() {
     // the same three ERRORs + the WARN) (17).
     // [P4.167] …+ `execute_memory_preserved_numeric_id` (three refused memories ×
     // v4's three repository ERRORs) (18).
+    // [unify 624] …+ P4.D368's `execute_storyteller_chat_refusals` and
+    // `execute_storyteller_message_refusals` (the refused chat creates' lines
+    // and `addMessage`'s `Failed to add message to chat`) (20) — measured from
+    // the `624d0d25c` pin's oracle.
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        18,
+        20,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(
