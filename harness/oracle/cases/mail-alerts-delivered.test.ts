@@ -169,6 +169,14 @@ async function main(): Promise<void> {
     }
 
     const { markMailAlertsDelivered, collectUnalertedMail } = await import('@/lib/post-office/mailbox');
+    // The realtime bus is a `globalThis` singleton that survives
+    // `jest.resetModules()`: without this reset a scenario's store hint
+    // (`publishMountChange(vaultId)`, v4 `aec626eff`) lands inside the PREVIOUS
+    // scenario's 250 ms coalescing window on the same key and logs nothing —
+    // a cross-scenario artifact, not v4 behaviour. Each scenario starts with an
+    // empty pending map, as the Rust side's per-scenario re-arm does.
+    const { __resetRealtimeBusForTests } = await import('@/lib/realtime/bus');
+    __resetRealtimeBusForTests();
     const owed = sc.owed === 'null' ? null : { vaultId: meta.readerVault, paths: sc.owed.paths };
     current = [];
     let threw: string | null = null;

@@ -5,7 +5,8 @@
 //! Each oracle record is one scenario on a FRESH copy of the Post Office
 //! fixture (`build-mail-carina-tools-fixture.ts` — the reader vault's
 //! letters): the same owed list replayed here, then compared —
-//!   - every DEBUG / WARN / ERROR line v4 logged during the call (message +
+//!   - every DEBUG / WARN / ERROR line v4 logged during the call — the
+//!     store's `Realtime publish queued` hint included (message +
 //!     the context keys in v4's order, values verbatim), against the lines v5
 //!     logged on ANY thread — `mark_alerted`'s own WARN and the repository
 //!     fallback's ERROR run inside the writer closure, on the writer thread,
@@ -212,6 +213,13 @@ fn mail_alerts_delivered_matches_oracle() {
         });
         let via = via_of(rec["via"].as_str().unwrap());
 
+        // v4's oracle runs the REAL realtime bus, so each successful flip's
+        // `emitDocumentWritten` → `publishMountChange(vaultId)` (v4 `aec626eff`,
+        // `db-store-events.ts:68-83`) logs `Realtime publish queued` once per
+        // coalescing window. Re-armed per scenario (a fresh coalescing map; the
+        // flush futures are dropped) so each scenario's first publish logs.
+        let (bus_tx, _bus_rx) = tokio::sync::broadcast::channel(16);
+        quilltap_core::realtime::bus::arm_realtime_bus(bus_tx, std::sync::Arc::new(|_flush| {}));
         logs.lock().unwrap().clear();
         rt.block_on(mark_mail_alerts_delivered(
             &db,
@@ -219,9 +227,11 @@ fn mail_alerts_delivered_matches_oracle() {
             "chat-mail",
             via,
         ));
+        quilltap_core::realtime::bus::disarm_realtime_bus();
         let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());
         // Only the lines this unit owns or reaches (the mailbox, the document
-        // store's fallback) — the runtime's own boot lines are not v4's.
+        // store's fallback, the store's realtime hint) — the runtime's own boot
+        // lines are not v4's.
         let relevant: Vec<String> = lines
             .into_iter()
             .filter(|l| {
@@ -231,6 +241,7 @@ fn mail_alerts_delivered_matches_oracle() {
                     || l.contains("markMailAlertsDelivered")
                     || l.contains("markAlerted")
                     || l.contains("Error finding document")
+                    || l.contains("Realtime publish queued")
             })
             .collect();
         let want = rec["logs"].as_array().unwrap();
