@@ -839,10 +839,10 @@ fn want_of(want_row: &OracleRow) -> Value {
 }
 
 /// P4.D371 U1 / H1 — the planted assistant-kind row, apart from the main test
-/// so it stays green on the lane branch. RED here BY DESIGN until P4.D369's
+/// It was red on the lane branch until P4.D369's
 /// read overlay carries `kind` (v5 resolves `roleplay`: the kind DEBUG line
 /// reads `roleplay`, and the analysis call carries the flattening look-for v4
-/// left out); green on the union.
+/// left out); GREEN since the `624d0d25c` unification.
 #[test]
 fn character_optimizer_assistant_kind_rows() {
     let Some((spec, corpus, oracle)) = load_family() else {

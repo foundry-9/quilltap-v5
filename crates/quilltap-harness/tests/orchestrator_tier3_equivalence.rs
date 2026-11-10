@@ -176,18 +176,14 @@ struct CharacterKindPlantW {
     kind: String,
 }
 
-/// UNION_GATED_ON_P4D369 — P4.D370 Tier 2 item 13. These two calls plant Friday
-/// as an ASSISTANT (v4's `repos.characters.update(id, {kind})` → the vault's
-/// `properties.json`) and expect v4's research surface: the MANDATORY tool-rules
-/// preamble, the `## Agent Mode Instructions` block and `submit_final_response`
-/// on the slate when Agent Mode is ON, and `flavor=research` on both agent-mode
-/// INFO lines. On P4.D370's branch they are RED by construction: the `kind` key
-/// reaches v5's vault writer (`vault_character_update::update_character`) and its
-/// read overlay only with P4.D369's later commits (`b8024c66c`), so v5 still
-/// resolves Friday as `roleplay`. They are NEVER skipped — they run and fail
-/// loudly until the union, where the unifier flips them by running the family.
-#[allow(dead_code)]
-const UNION_GATED_ON_P4D369: &[&str] = &["p4d370_assistant_agent_on", "p4d370_assistant_agent_off"];
+// P4.D370 Tier 2 item 13: `p4d370_assistant_agent_on` / `_off` plant Friday as
+// an ASSISTANT (v4's `repos.characters.update(id, {kind})` → the vault's
+// `properties.json`) and expect v4's research surface: the MANDATORY tool-rules
+// preamble, the `## Agent Mode Instructions` block and `submit_final_response`
+// on the slate when Agent Mode is ON, and `flavor=research` on both agent-mode
+// INFO lines. They were red on P4.D370's branch alone (the `kind` key reaches
+// the vault writer only with P4.D369) and went GREEN at the `624d0d25c`
+// unification, where the union gate retired.
 // === P4.D370 ===
 
 #[derive(Deserialize, Clone)]
@@ -235,7 +231,7 @@ struct CallW {
     wardrobe_items: Vec<WardrobeItemW>,
     // === P4.D370 === (Tier 2 item 13) a character's kind planted IN-CASE
     // before the call (and restored to `roleplay` after it), through the
-    // production update chokepoint — see `UNION_GATED_ON_P4D369`.
+    // production update chokepoint (the P4.D370 item-13 note above).
     #[serde(default)]
     character_kind: Option<CharacterKindPlantW>,
     // === P4.D370 ===

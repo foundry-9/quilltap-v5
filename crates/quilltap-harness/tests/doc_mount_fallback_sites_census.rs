@@ -857,6 +857,10 @@ fn the_class_counts_are_pinned() {
 /// no-v4-counterpart, strict-by-ruling, strict-by-ruling(write-path), fallback-in-v4),
 /// with the arithmetic:
 ///
+/// - **The `624d0d25c` union**: 182 = 103 + 14 + 20 + 1 + 13 + 5 + 1 + 20 + 5 —
+///   converted 103 = 95 (main) + 1 (P4.D380's `view_target_for`) + 7 (P4.D381,
+///   below). Each lane measured on its own base, so each line below counts
+///   without the other's row.
 /// - **P4.D381**: 181 = 102 + 14 + 20 + 1 + 13 + 5 + 1 + 20 + 5 — +7 converted:
 ///   the folder family's v4 fallbacks (`delete_empty_folder`'s folder-row read,
 ///   `move_folder_within_mount`'s folder rows, `read_folder_tree` × 3) and the

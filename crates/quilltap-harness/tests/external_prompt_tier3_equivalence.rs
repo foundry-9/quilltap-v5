@@ -717,10 +717,10 @@ async fn external_prompt_matches_oracle() {
 }
 
 /// P4.D371 U1 / H1 — the planted assistant-kind row, apart from the main test
-/// so it stays green on the lane branch. RED here BY DESIGN until P4.D369's
+/// It was red on the lane branch until P4.D369's
 /// read overlay carries `kind` (v5 builds the STAKES meta prompt, so the
 /// canned table keyed on v4's TASK prompt misses, and the kind line reads
-/// `roleplay`); green on the union.
+/// `roleplay`); GREEN since the `624d0d25c` unification.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn external_prompt_assistant_kind_rows() {
     let Some((corpus, oracle)) = load_family() else {

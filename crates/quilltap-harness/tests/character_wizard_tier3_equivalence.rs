@@ -51,9 +51,9 @@
 //! `writeDatabaseDocument` / `write_database_document` (the same bytes; the
 //! oracle self-checks that v4's `findById` then resolves the planted kind).
 //! Planted rows run in their OWN test, `character_wizard_assistant_kind_rows`
-//! (U1 / H1): RED on the P4.D371 branch BY DESIGN — `KIND` alone does not make
+//! (U1 / H1): red on the P4.D371 branch alone — `KIND` alone does not make
 //! `characters_read::find_by_id` carry a stored `kind` (P4.D369's read
-//! overlay does) — and green on the union.
+//! overlay does) — and GREEN since the `624d0d25c` unification.
 //!
 //! Regenerate the oracle (Node 24, from the v4 checkout — see the .ts header):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -731,9 +731,9 @@ fn compare_case(spec: &Spec, c: &Case, want_row: &OracleRow) -> Option<String> {
 }
 
 /// P4.D371 U1 / H1 — the planted assistant-kind rows, apart from the main
-/// test so it stays green on the lane branch. RED here BY DESIGN until
+/// test. It was red on the lane branch until
 /// P4.D369's read overlay carries `kind` (the first diff is the STAKES text
-/// where v4 sent the TASK text); green on the union. Never `#[ignore]`d, never
+/// where v4 sent the TASK text); GREEN since the `624d0d25c` unification. Never `#[ignore]`d, never
 /// env-gated beyond the family's own oracle variable.
 #[test]
 fn character_wizard_assistant_kind_rows() {
