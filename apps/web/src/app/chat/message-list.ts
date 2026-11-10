@@ -9,6 +9,7 @@ import {
   inject,
   input,
   output,
+  signal,
   untracked,
   viewChild,
   type Signal,
@@ -56,6 +57,9 @@ import { VirtualRow } from './virtual-row';
  * stick-to-bottom intent, completion-gated auto-scroll, the jump-to-bottom
  * button — lives in {@link AutoScrollController}.
  */
+/** The empty reveal set — no chip opened by a reveal (a stable identity for the input). */
+const NO_REVEAL: ReadonlySet<string> = Object.freeze(new Set<string>());
+
 @Component({
   selector: 'qt-message-list',
   // Stretch inside .qt-chat-messages-viewport so .qt-chat-messages (flex-1 +
@@ -135,6 +139,7 @@ import { VirtualRow } from './virtual-row';
                     [conciergeRetry]="conciergeRetry()"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
+                    [revealExpand]="revealExpand()"
                   />
                 }
               </div>
@@ -181,6 +186,7 @@ import { VirtualRow } from './virtual-row';
               [conciergeRetry]="conciergeRetry()"
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
+              [revealExpand]="revealExpand()"
             />
           }
         }
@@ -360,6 +366,21 @@ export class MessageList {
   private revealFrame = 0;
   /** The pending highlight-removal timers, cleared on destroy. */
   private readonly revealHighlightTimers = new Set<ReturnType<typeof setTimeout>>();
+
+  /**
+   * The chips a reveal has opened, for the chat they were opened in (v4
+   * `SalonView.tsx:1433-1438` — a target inside a collapsed announcement group
+   * is added to `expandedSystemMessageIds` before the settle loop runs).
+   * v5's expanded set lives in `AnnouncementGroup`, so the reveal reaches it
+   * through that component's `revealExpand` input (HANDOFF H3 / H3-IN). Like
+   * v4's set it only grows; each reveal hands the groups a NEW set, which is
+   * what re-opens a chip the operator had closed since an earlier reveal.
+   */
+  private readonly revealedChips = signal<{ chatId: string; ids: ReadonlySet<string> } | null>(null);
+  protected readonly revealExpand = computed<ReadonlySet<string>>(() => {
+    const revealed = this.revealedChips();
+    return revealed && revealed.chatId === this.chat().id ? revealed.ids : NO_REVEAL;
+  });
   // === end P4.D384 ===
 
   /**
@@ -552,9 +573,11 @@ export class MessageList {
    *   `id="message-<id>"` (v4 stamps both; `message-row.ts` keeps the id only),
    *   which the chips carry too — so the lookup is by that id.
    * - A message inside a collapsed announcement group: v4 expands the chip first
-   *   and reveals the message's own row; v5's expansion state is private to
-   *   `AnnouncementGroup` (handoff H3), so this scrolls to and flashes the GROUP
-   *   row (the chip's `.qt-chat-announcement-group`).
+   *   and reveals the message's own row; v5 opens the chip the same way
+   *   (`revealExpand`, handoff H3), but an expanded announcement stays inside
+   *   its `AnnouncementGroup` rather than breaking out into a row of its own,
+   *   so this scrolls to and flashes the GROUP row (the chip's
+   *   `.qt-chat-announcement-group`).
    *
    * A target not in the render-item array is a silent no-op (the caller — the
    * Salon — says why with a toast first). A new reveal cancels the one in
@@ -564,6 +587,17 @@ export class MessageList {
     this.cancelReveal();
     const index = this.renderIndexOf(messageId);
     if (index === -1) return;
+
+    // A target inside a collapsed announcement group: open its chip first
+    // (v4 `SalonView.tsx:1433-1438`, HANDOFF H3).
+    const target = this.items()[index];
+    if (target.type === 'announcement-group') {
+      const chatId = this.chat().id;
+      const prev = untracked(this.revealedChips);
+      const ids = new Set(prev && prev.chatId === chatId ? prev.ids : []);
+      ids.add(messageId);
+      this.revealedChips.set({ chatId, ids });
+    }
 
     this.virtualizer.scrollToIndex(index, { align: 'start' });
     let attempts = 0;

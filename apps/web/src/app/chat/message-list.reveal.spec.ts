@@ -279,6 +279,31 @@ describe('MessageList.revealMessage — v4’s settle loop (P4.D384)', () => {
     expect(chip.classList.contains('qt-memory-source-highlight')).toBe(false);
   });
 
+  it('a reveal opens the collapsed chip it targets first, and later reveals add to the set (v4 SalonView:1433-1438, H3)', () => {
+    const { fixture, list, container } = render();
+    const chip = (id: string) => rowOf(container, id);
+    expect(chip('h2').getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('The Host notes another.');
+
+    list.revealMessage('h2');
+    fixture.detectChanges();
+    expect(chip('h2').getAttribute('aria-expanded')).toBe('true');
+    expect(chip('h1').getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).toContain('The Host notes another.');
+
+    // A plain message's reveal opens nothing and closes nothing.
+    list.revealMessage('m1');
+    fixture.detectChanges();
+    expect(chip('h2').getAttribute('aria-expanded')).toBe('true');
+    expect(chip('h1').getAttribute('aria-expanded')).toBe('false');
+
+    // A second chip's reveal keeps the first open, as v4's add-only set does.
+    list.revealMessage('h1');
+    fixture.detectChanges();
+    expect(chip('h1').getAttribute('aria-expanded')).toBe('true');
+    expect(chip('h2').getAttribute('aria-expanded')).toBe('true');
+  });
+
   it('a target not in the transcript is a silent no-op', () => {
     const { list, scrollToIndex } = render();
     list.revealMessage('not-here');

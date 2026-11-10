@@ -363,7 +363,9 @@ test.describe('P4.D384 — "This conversation" search, the ?msg= reveal, the bre
     // instance. Here: the chip is mounted at rest, idle and toast-free.
     await openChat(page);
     // The premise: the chip's live region exists. Run early, this fails here.
-    await expect(page.locator('.qt-chat-composer [aria-live]')).toHaveCount(1);
+    // Scoped to the chip: v4's composer keeps a SECOND always-mounted live
+    // region beside it, the Deus Ex Machina armed note (ChatComposer.tsx:474).
+    await expect(page.locator('.qt-chat-composer qt-raised-hand-chip [aria-live]')).toHaveCount(1);
     await expect(page.getByText('carried on regardless')).toHaveCount(0);
   });
 
@@ -379,7 +381,16 @@ test.describe('P4.D384 — "This conversation" search, the ?msg= reveal, the bre
     });
     const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
     await composer.click();
-    await page.keyboard.type('/deus The bridge is out.');
+    // `/deus` is a slash command (v4 SlashCommandPlugin `deus`): picked from
+    // the menu it ARMS the composer, and the next line is sent as fact. Typed
+    // straight on with its line, the space closes the menu and the words go
+    // out as plain text.
+    await page.keyboard.type('/deus');
+    await expect(
+      page.locator('#qt-slash-command-listbox [role="option"]', { hasText: 'Deus Ex Machina' }),
+    ).toBeVisible({ timeout: 10_000 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('The bridge is out.');
     await page.keyboard.press('Enter');
     await expect.poll(() => sent.length, { timeout: 10_000 }).toBeGreaterThan(0);
     expect(sent[0]).toMatchObject({ isEstablishedFact: true });
