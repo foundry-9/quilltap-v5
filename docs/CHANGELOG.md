@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-10 — docs(porting): driftcheck — 3 more v4 commits past `624d0d25c` (Markdown-editor typeaheads, SDK floors, staged Wear again); 48 pending
+
+_Docs-only change._
+
+Drift ledger re-checked against v4 `main` `0d73a4aee` (`4.13.0-dev.59`); `bugfix` and `release` unchanged. Three new rows in §3, all UNPROCESSED:
+- `bb875c6f2` (SPA port): the `:` emoji and `\` symbol typeaheads in every Markdown editor; the typeahead menu's z-index raised to 200.
+- `ac6b60c21` (port for the recorded corpora): new provider SDK floors — `openai` 7.54.0, `@anthropic-ai/sdk` 1.7.0, `@openrouter/sdk` 1.5.73, plugin-utils 2.7.4/2.7.5.
+- `0d73a4aee` (convergence of intent, different shape): v4 fixes the bug behind the R-L ruled divergence (P4.D318); Wear again now stages until Done, so R-L retires and v5 re-ports v4's shape.
+
+§1 rewritten: 48 commits pending (2 convergence, 21 port-led, 13 port-new-led, 12 no-port candidates). The regen rule is unchanged: a pin is required at `624d0d25c`. (The ledger landed in the previous commit; this entry records it.)
+
 #### 2026-11-09 — unify(624d0d25c): the 4.12.x catch-up round — twenty-eight lanes (P4.D361–P4.D388) on main; the oracle baseline moves to `624d0d25c`
 
 _Versions: core 0.0.1440, host 0.0.227, cli 0.0.40, SPA 0.5.986; web 0.0.257, tauri 0.0.9, harness 0.0.1110 and sqlite3mc-sys 0.2.0 unchanged by the unifier._
