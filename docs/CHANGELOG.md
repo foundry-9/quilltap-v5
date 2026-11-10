@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-10 — docs(porting): order the `624d0d25c` follow-ups smalls round — twenty lanes (P4.175–P4.194), written for Opus 5.5 lanes
+
+_Docs-only change._
+
+The next round is ordered: twenty work orders, all cut from `main`, pinned at the baseline `624d0d25c`. It ports no v4 change; the 48 drift commits stay pending for the next catch-up.
+- Six read-only surveys measured every open item of the last two catch-up rounds and the previous smalls round against main (`work-orders/surveys/2026-11-10-setupphase-followups-*.md`).
+- Rulings made: keep `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`; draft every v4 bug filing and file none; wire in-chat image generation; measure the turn prompt's character fields, then fix.
+- Lanes: the Storyteller live run fold (P4.175), spine wires (P4.176), Carina's stream error and LLM-log rows (P4.177), the Pascal fixture pair (P4.178), roleplay-template validation (P4.179), repository fallbacks (P4.180), settings log lines (P4.181), wardrobe / image smalls (P4.182), store realtime hints (P4.183), Document Mode (P4.184), mount-files routes (P4.185), the foreign-keys default (P4.186), three harness lanes (P4.187–P4.189, including both standing reds), the v4 filing drafts (P4.190), and four SPA / e2e lanes (P4.191–P4.194).
+- `phase-4.md` gains the ORDERED section; the drift ledger's "Next" list records the ordering and the two rulings.
+
 #### 2026-11-10 — docs(porting): driftcheck — 3 more v4 commits past `624d0d25c` (Markdown-editor typeaheads, SDK floors, staged Wear again); 48 pending
 
 _Docs-only change._

@@ -7162,6 +7162,106 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `624d0d25c` follow-ups smalls round (P4.175 ∥ P4.176 ∥ … ∥ P4.194, twenty lanes) — ORDERED 2026-11-10
+
+**ORDERED 2026-11-10 — NEXT item 1 of the `624d0d25c` unification.** Pinned
+at the baseline `624d0d25c` (a follow-ups round ports no v4 change; regen
+rule PIN REQUIRED — the live checkout is 48 commits ahead, `0d73a4aee`). The
+ledger's §3 rows stay UNPROCESSED for the next catch-up; the §2 probe passed
+at planning and again before the orders' commit. **Every order is written
+for an Opus 5.5 lane** (the human's instruction): exact files, lines and
+commands, every measurement an explicit step with a branch per outcome, no
+open design decision.
+
+**Surveys of record:** six read-only surveys measured every OPEN / recorded
+/ Tier-3 item of P4.D341–P4.D388 and P4.165–P4.174 plus the carried lists at
+the pin against main `8ad1a0640` — about 100 still open, 30 closed by
+measurement, 47 no-action, and about 30 DEFERRED to the catch-up because a
+v4 commit past the pin rewrites the surface. Committed as
+`work-orders/surveys/2026-11-10-setupphase-followups-{spine-storyteller-
+pascal,schema-vault-memory-prompts,documents-stores-files-log,wardrobe-
+items-carriers-providers,spa-e2e,harness-guards-filings}.md`.
+
+- **The human's rulings (2026-11-10):**
+  - **H-1** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT` — KEEP the divergence (v4's
+    own hydrator coerces the cell, so the string shape cannot occur in v4
+    production).
+  - **H-2** v4 filings — draft all, file none (P4.190 writes 24 candidates
+    into one file; the `'0.0'` flag draft is among them).
+  - **H-3** in-chat image generation — WIRE it now (P4.176).
+  - **H-4** the prompt character — measure one real turn prompt against v4,
+    then point `to_sys_char` at the full projector (P4.176).
+- **The planner's calls** (§R.7 P-1 … P-14 in every order; the human may
+  overrule before lane start): the Storyteller reply HELD, one lane (P-1);
+  chats-by-character converts the read-only callers, destructive ones stay
+  strict (P-2); `NAN_ENTRY_INDEX_READS_ZERO` kept and driven (P-3); the
+  filesystem-store hint published from the refresh (P-4);
+  `SQLITE_DEFAULT_FOREIGN_KEYS` converged in its own lane with a re-hold
+  rule, no sys version bump (P-5); `UPLOAD_TEXT_BACKFILL_IN_BOOT` recorded
+  (P-6); `accessible_stores` takes the session user (P-7); the Ariel
+  bytes-only cell carved under the P4.144 ruling (P-8); `help-ensure` R-3
+  closed (P-9); W10 ratified (P-10); the depiction tabs fixed now (P-11);
+  the roleplay-template twin as one change, malformed POSTs answering v4's
+  500 (P-12); `CARD_ANCHOR_INPLACE_DRILL_ONLY` kept (P-13); C.7 / C.12
+  measure-first (P-14).
+- **Lanes (all cut from `main`; no stacking):**
+  - **P4.175** the Storyteller live run fold — FIRST item (ruled 2026-11-10
+    "land, then order"): the run reply held to the round's close, the SPA
+    fold, beat (K).
+  - **P4.176** spine wires: the prompt character, the image-generation
+    wire, `[TurnFairness]`, the enclave `LogContext` sites.
+  - **P4.177** Carina's stream error (`llm-failed`), error-after-done in
+    three loops, `LogContext` on sub-calls.
+  - **P4.178** the Pascal `pascal-run-custom` pair widened IN PLACE; the
+    held / veto rows; the roster row; F.6 gated.
+  - **P4.179** the roleplay-template whole-entity Zod twin (route + import
+    + restore); K7; B-8; D273-23.
+  - **P4.180** repository fallbacks round 6 (contract C2).
+  - **P4.181** settings + External Prompt log lines; NULL `sidebarWidth`.
+  - **P4.182** wardrobe / image server smalls (ten P4.170 residues).
+  - **P4.183** the store's realtime hint at eight blob writers; the
+    `SINGLE_USER_ID` constant (a NEW finding).
+  - **P4.184** Document Mode + doc-tool smalls.
+  - **P4.185** mount-files route lines, the folder-move NULL parent, the
+    filesystem-store hint.
+  - **P4.186** the foreign-keys default at the sys crate + boot smalls.
+  - **P4.187** GATE (harness): the sweep driver exports the pin to run
+    stages; the six non-extractable families; `backup_uuid_remap`.
+  - **P4.188** the two STANDING reds (`search_replace`,
+    `ariel_writers_tier3`) + harness rows + a v4 specifier census.
+  - **P4.189** item-route differential rows (harness).
+  - **P4.190** the v4 filing drafts (docs only).
+  - **P4.191** SPA: theme `tokens.json` applied, the a11y project on its
+    own server, card anchors.
+  - **P4.192** SPA: forms seeded in a `queryFn`, shared-key filters, a
+    capture census.
+  - **P4.193** SPA: Markdown in the store viewer; the Inventory select-mode
+    gap.
+  - **P4.194** e2e settle waits and budgets (specs only).
+- **Unifier order:** P4.187 → P4.186 → P4.180 → P4.179 → P4.181 → P4.182 →
+  P4.183 → P4.184 → P4.185 → P4.177 → P4.178 → P4.175 → P4.176 → P4.188 →
+  P4.189 → P4.190 → P4.191 → P4.192 → P4.193 → P4.194. Contracts C1 (the
+  Storyteller run reply), C2 (`find_by_character_id_or_empty`), C3 (the
+  store-hint helpers). The oracle baseline does NOT move.
+- **Left out (§R.12):** the 48-commit catch-up (next round); everything the
+  surveys marked DEFER-TO-CATCH-UP (the character repository / vault, the
+  physical-description rows, the chat-row schema twin, the 156.c merge, the
+  finalizer / `ProcessClock` seam, the Optimizer, the provider-corpus
+  notes, the Core-whisper card); the Storyteller tier-3 round family; the
+  `js_truthy` DRY pass; the P4.D386 shells; `salon-regenerate-stream-flow`;
+  filing any v4 issue.
+- **Found by the surveys, not on any carried list:** production builds the
+  prompt character from seven fields (H-4); in-chat image generation was
+  never wired (H-3); three SPA forms seed inside a cached `queryFn` (one
+  writes blank depiction guidelines); Show Archived leaks archived
+  characters into a shared query key; eight blob writers never publish the
+  store hint; the keep-image fallback's wrong single-user id; the two
+  "standing" reds are an oracle-case premise and an already-ruled class.
+
+**NEXT after this round unifies:** the 48-commit catch-up (`/driftcheck`
+first — P4.188's census already lists sixteen v4 modules the oracle imports
+that are deleted at live v4), then the owed dogfood pass.
+
 ## The `624d0d25c` 4.12.x catch-up round (P4.D361 → {P4.D362 → {P4.D363 ∥ P4.D364 → P4.D367 ∥ P4.D369 → {P4.D370 ∥ P4.D371} ∥ P4.D372 ∥ P4.D374 → P4.D375} ∥ P4.D366 → P4.D368 ∥ P4.D373 ∥ P4.D376 → {P4.D377 ∥ P4.D378 ∥ P4.D379 ∥ P4.D380} ∥ P4.D381} ∥ P4.D365 ∥ P4.D382 ∥ P4.D383 → {P4.D384 ∥ P4.D385 ∥ P4.D386 → P4.D387 ∥ P4.D388}) — UNIFIED 2026-11-09 (ordered 2026-11-04)
 
 **UNIFIED on main (2026-11-09; fast-forward from `unify/624`). ALL
@@ -7226,7 +7326,9 @@ exact OPEN remainder.
 **NEXT** (in order; the 2026-11-04 ruling stands — the dogfood pass waits
 until v5 has caught up with the v4 state live Friday is at):
 
-1. **A follow-ups smalls round.**
+1. ✅ **ORDERED 2026-11-10 as the `624d0d25c` follow-ups smalls round
+   (P4.175–P4.194; the section above; both rulings made).** Was: **A
+   follow-ups smalls round.**
    - ⚖ **Two human rulings first:** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`
      (a recorded divergence — confirm); `put_zero_one_flag` maps `"0.0"` →
      `true` as v4's `Boolean('0.0')` does (a v4 issue is DRAFTED, not

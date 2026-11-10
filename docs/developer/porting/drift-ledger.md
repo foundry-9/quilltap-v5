@@ -341,14 +341,16 @@ probe verifies against._
     Salon frames rendered at the sink (R-G); Storyteller "All at once" LIVE
     (P4.D368 — the 2026-11-04 disabled-until-ported ruling retires);
     `WARDROBE_VIEWER_ESCAPE_LAYERED` re-measured by P4.D387 and STANDS.
-  - **⚖ For the human's confirmation:** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT`
-    (a recorded divergence); `put_zero_one_flag` maps `"0.0"` → `true` as
-    v4's `Boolean('0.0')` does — a v4 issue DRAFTED, not filed.
+  - **⚖ RULED 2026-11-10:** `NON_BOOLEAN_CHARACTER_AGENT_DEFAULT` — KEEP the
+    divergence; `put_zero_one_flag` `"0.0"` → `true` — the v4 issue is
+    drafted with every other candidate by P4.190, NONE filed yet.
 - **The `236c04e35` round — UNIFIED 2026-11-04.**
 - **Next:**
-  1. A follow-ups smalls round: the round record's "Recorded, not fixed"
-     list and the order headers' OPEN items (`phase-4.md`), after the two
-     rulings above.
+  1. ✅ ORDERED 2026-11-10 (P4.175–P4.194, pinned at `624d0d25c`; no §3 row
+     is ordered — a follow-ups round absorbs no drift; the §2 probe passed
+     at planning and before the orders' commit). Was: a follow-ups smalls
+     round: the round record's "Recorded, not fixed" list and the order
+     headers' OPEN items (`phase-4.md`), after the two rulings above.
   2. The 45-commit catch-up (`/driftcheck` first): D23 moves 24–26 and the
      `characters` fresh-only measurement in ONE re-dump, the live-data
      hazards (a)–(g) measured first, the IMPORT-DEAD re-aims, the
