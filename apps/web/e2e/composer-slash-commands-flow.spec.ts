@@ -251,8 +251,18 @@ test.describe('Composer / slash commands (P4.D308, v4 4877fc2da)', () => {
 
     // (g) One undo brings a committed word back. `/atta` + Enter clicks the
     // hidden file input — answer the chooser so nothing is left waiting.
-    await typeInComposer(page, '/atta');
+    // The menu opens at the caret, right under the pointer that clicked the
+    // editor — and a row arriving under it (the Prospero roster's
+    // `/attach_image`) is hovered into the highlight, as in v4, whose rows take
+    // `onMouseEnter` too. Park the pointer off the menu before typing, so Enter
+    // commits the row this beat is about.
+    await composerEditor(page).click();
+    await page.mouse.move(0, 0);
+    await page.keyboard.type('/atta');
     await expect(labels(page).first()).toHaveText('/attach — Attach file');
+    await expect(menu(page).locator('[role="option"][aria-selected="true"]')).toContainText(
+      '/attach — Attach file',
+    );
     const chooser = page.waitForEvent('filechooser');
     await page.keyboard.press('Enter');
     await chooser;
@@ -260,6 +270,10 @@ test.describe('Composer / slash commands (P4.D308, v4 4877fc2da)', () => {
     await composerEditor(page).click();
     await page.keyboard.press(isMac ? 'Meta+z' : 'Control+z');
     await expect(composerEditor(page)).toHaveText('/atta');
+    // The restored `/atta` reopens the menu over the editor (three rows tall
+    // now `/attach_image` matches too), where `blankComposer` would click.
+    await page.keyboard.press('Escape');
+    await expect(menu(page)).toHaveCount(0);
     await blankComposer(page);
   });
 
