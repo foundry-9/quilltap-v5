@@ -66,7 +66,9 @@ async function injectFailedLedger(page: Page): Promise<void> {
             if (!injected && typeof data === 'string') {
               try {
                 const frame = JSON.parse(data) as Record<string, unknown>;
-                if (frame['done'] === true) {
+                // The `kind`-tagged frame (v4 `604a082c4`, P4.D366):
+                // `{kind: 'done', outcome, …}` — no `done: true` flag.
+                if (frame['kind'] === 'done') {
                   frame['attachmentResults'] = {
                     sent: [],
                     failed: [
