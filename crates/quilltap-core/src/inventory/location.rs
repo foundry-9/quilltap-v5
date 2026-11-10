@@ -599,13 +599,25 @@ mod publish_tests {
                     .clone(),
             );
             format!(
-                "{:?}",
-                loc.create(main, mount, &record).map(|r| r.id().to_string())
+                "{:?}|{}",
+                loc.create(main, mount, &record).map(|r| r.id().to_string()),
+                loc.mount_point_id
             )
         })
         .await;
+        let (created, store) = created.split_once('|').unwrap();
         assert_eq!(created, format!("Ok({ITEM:?})"));
-        assert_eq!(cap.drain_expecting(1).await, vec![inventory()]);
+        // The record lands through the store's `writeDatabaseDocument`
+        // chokepoint, which tells that store's browsers first
+        // (`emitDocumentWritten` → `publishMountChange`); the location's own
+        // `inventory` follows.
+        assert_eq!(
+            cap.drain_expecting(2).await,
+            vec![
+                ("mountPoints".to_string(), Some(store.to_string())),
+                inventory()
+            ]
+        );
 
         // A read announces nothing; an update or a delete that matched nothing
         // changed nothing and announces nothing.

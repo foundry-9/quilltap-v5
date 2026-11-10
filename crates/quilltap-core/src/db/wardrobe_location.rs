@@ -901,12 +901,19 @@ mod publish_tests {
         let mut cap = HintCapture::start();
         let (_dir, db) = db();
         cap.arm_writer_thread(&db).await;
-        let (created, _) = in_general(&db, |main, mount, loc| {
+        let (created, store) = in_general(&db, |main, mount, loc| {
             format!("{:?}", loc.create(main, mount, &item()).map(|i| i.id))
         })
         .await;
         assert_eq!(created, format!("Ok({ITEM:?})"));
-        assert_eq!(cap.drain_expecting(1).await, vec![wardrobe()]);
+        // The item lands through the store's `writeDatabaseDocument`
+        // chokepoint, which tells that store's browsers first
+        // (`emitDocumentWritten` → `publishMountChange`); the location's own
+        // `wardrobe` follows (v4 `lib/wardrobe/location.ts:129`).
+        assert_eq!(
+            cap.drain_expecting(2).await,
+            vec![("mountPoints".to_string(), Some(store)), wardrobe()]
+        );
         let (missed, _) = in_general(&db, |main, mount, loc| {
             let updated = loc
                 .update_many(
