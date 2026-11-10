@@ -466,7 +466,9 @@ test.describe.serial('P4.D387 — the document-store browser', () => {
       .locator('[data-testid="documents-folder-row"]', { hasText: 'pics' })
       .getByRole('button', { name: 'pics', exact: true })
       .click();
-    await picker.getByRole('button', { name: 'dot.png', exact: true }).click();
+    // The upload landed as `pics/dot.webp`: a database store transcodes an
+    // uploaded picture to WebP and renames it (v4 `blob-transcode.ts:163-168`).
+    await picker.getByRole('button', { name: 'dot.webp', exact: true }).click();
     const viewer = page.locator('[data-testid="document-viewer-pane"]');
     await expect(viewer).toBeVisible({ timeout: 15_000 });
     await expect(viewer).toContainText('View only — this kind of file cannot be edited here.');
