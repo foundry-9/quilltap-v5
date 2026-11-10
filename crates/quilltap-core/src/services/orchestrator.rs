@@ -198,6 +198,7 @@ fn host_self_inventory_env() -> SelfInventoryEnv {
 /// unit-pinned: `process_message`'s call site passes the deps' seams straight
 /// through, and a dropped thread here goes red in the test below rather than
 /// vanishing unseen (the P4.49 lesson).
+#[allow(clippy::too_many_arguments)]
 fn build_turn_tool_runner(
     db: Db,
     ask_carina: crate::tools::ask_carina::ErasedAskCarina,
