@@ -69,11 +69,18 @@ export async function downloadDocument(
   }
 }
 
-/** The 422 `not_available` refusal (`DOCX_RENDER_HTML_REFUSED`, R-E) — the viewer shows the fallback. */
+/**
+ * The 422 `not_available` refusal (`DOCX_RENDER_HTML_REFUSED`, R-E) — the
+ * viewer shows the fallback. On the wire it is P4.D381's
+ * `ErrorKind::Unprocessable` (HTTP 422, kind `unprocessable`) whose message is
+ * `DocxRenderRefusal::MESSAGE`, `not_available: docx render-html`: the
+ * `not_available` names the refusal, the kind is the status.
+ */
 function isRenderRefused(error: unknown): boolean {
   return (
     error instanceof CoreDispatchError &&
-    (error.kind === 'not_available' || error.kind === 'not-available')
+    error.kind === 'unprocessable' &&
+    error.message.startsWith('not_available')
   );
 }
 

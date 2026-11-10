@@ -95,8 +95,10 @@ describe('DocumentViewer (v4 DocumentViewer.tsx)', () => {
   it('docx (DOCX_RENDER_HTML_REFUSED): the server 422 not_available shows the fallback, not the error', async () => {
     const { el } = await render(file('r.docx', { fileType: 'docx', fileSizeBytes: 2048 }), (req) =>
       req.type === 'mountFileRenderHtml'
-        ? new CoreDispatchError({
-            kind: 'not_available',
+        ? // The server's refusal as it reaches the SPA (P4.D381:
+          // `ErrorKind::Unprocessable` + `DocxRenderRefusal::MESSAGE`).
+          new CoreDispatchError({
+            kind: 'unprocessable',
             message: 'not_available: docx render-html',
           })
         : {},
