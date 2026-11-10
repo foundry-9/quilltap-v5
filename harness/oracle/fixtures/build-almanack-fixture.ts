@@ -47,6 +47,17 @@
  *
  * The differential runs every case over /tmp COPIES — the generate case WRITES.
  *
+ * ── RE-SEEDED IN PLACE (unify 624, v4 `624d0d25c`) ───────────────────────────
+ * The pin's built-in catalogue moved (plugin 1.1.33: `MODERN General` retired,
+ * `MODERN Roleplay` + `MODERN Assistant` new — P4.D373), so v4's report-time
+ * seed was no longer a no-op on the committed main (`promptTemplates.total`
+ * v4 23 / v5 22). The committed `almanack-main.db`'s `prompt_templates` rows
+ * were REPLACED by the rows v4's real `findAllForUser` (after
+ * `initializeDatabase` + `initializePlugins`, step 22's exact gesture) wrote
+ * on a scratch copy at the pin — that table only; every other table, the
+ * schema and the three siblings are byte-for-row unchanged (diffed). A full
+ * rebuild through this builder lands the same rows.
+ *
  * Regenerate (Node 24, from the PINNED v4 worktree — see
  * `oracle-regen-pinned-v4-worktree`) + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
