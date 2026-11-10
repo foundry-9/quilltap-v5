@@ -853,10 +853,17 @@ async fn query_param_semantics_match_oracle() {
     // parameter required`) = 110 refusal rows; the other 18 `bare` rows are a
     // fallback payload, less the 3 pinned = 15 handler rows. 110 + 15 = 125.
     // (Under the old `if (action)` gate the split was ~46 / ~50.)
+    // Re-measured at the `624d0d25c` union (unify 624) from the pin: P4.D381
+    // added the 33rd endpoint, `mount_file_get` — its `empty` / `unknown` /
+    // `empty_then_known` rows are v4's `Unknown action` envelope (3 more
+    // refusal rows, each cross-compared), and its `bare` row is the 4th pinned
+    // divergence (v4's fallback payload, so the handler count holds). No other
+    // lane of the round moved an endpoint: 4 × 33 = 132, less 4 pinned = 128 =
+    // 113 + 15.
     assert!(
-        refusal_rows == 110 && handler_rows == 15,
+        refusal_rows == 113 && handler_rows == 15,
         "the refusal/handler classification moved ({refusal_rows} refusal, {handler_rows} handler; \
-         expected 110 / 15) — either v4's refusal shape changed or a row stopped being compared"
+         expected 113 / 15) — either v4's refusal shape changed or a row stopped being compared"
     );
     assert_eq!(
         divergences_exercised,
