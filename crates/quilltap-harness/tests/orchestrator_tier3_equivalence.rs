@@ -1696,7 +1696,9 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_spine_log: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
     // filtered event comparison drops the frame; the requires-gate arms compare
-    // its message against `process_message`'s `Err`).
+    // its message against `process_message`'s `Err`). P4.D366: at the
+    // `624d0d25c` pin the frame is `{kind: "error", message, details, …}` —
+    // selected by its `kind` (the legacy bag's `error` key is gone).
     let mut want_error_details: HashMap<String, Vec<String>> = HashMap::new();
     // P4.D301 (bug 241; landed at the `83334b9a5` unification as P4.D291's
     // HANDOFF (6)): v4's `error` frame carries the submission ledger —
@@ -1714,7 +1716,7 @@ fn orchestrator_tier3_matches_oracle() {
                 want_error_details.insert(
                     parsed.call.clone().unwrap(),
                     arr.iter()
-                        .filter(|e| e.get("error").is_some())
+                        .filter(|e| e.get("kind").and_then(Value::as_str) == Some("error"))
                         .filter_map(|e| e.get("details").and_then(Value::as_str))
                         .map(str::to_string)
                         .collect(),
@@ -1722,7 +1724,7 @@ fn orchestrator_tier3_matches_oracle() {
                 want_error_flags.insert(
                     parsed.call.clone().unwrap(),
                     arr.iter()
-                        .filter(|e| e.get("error").is_some())
+                        .filter(|e| e.get("kind").and_then(Value::as_str) == Some("error"))
                         .map(|e| {
                             (
                                 e.get("userMessagePersisted").and_then(Value::as_bool),
@@ -3277,6 +3279,10 @@ fn orchestrator_tier3_matches_oracle() {
         // P4.D348 (v4 `a8214b253`): a held post whose responder has lost its key
         // — the requires gate exempts a held send.
         "pause_keyless_records_post",
+        // P4.D372 (v4 `db6190b44`): an established-fact post into a paused room
+        // is held like any other (v4 logs the line, emits the held frame). The
+        // lane's row sat behind earlier reds; the union reaches this list.
+        "deus_send_on_paused_chat",
     ];
     let held_frame = json!({
         "kind": "chainComplete",

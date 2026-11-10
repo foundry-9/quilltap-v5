@@ -3582,6 +3582,48 @@
     }
    ],
    "_comment": "P4.D366: v4 9eab8d2da gesture yields — interrupt_gesture_with_prose"
+  },
+  {
+   "id": "e3720001-0000-4000-8000-000000000372",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "e372a001-0000-4000-8000-0000000003a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "e372b001-0000-4000-8000-0000000003b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "ab370001-0000-4000-8000-000000000370",
+   "chatType": "salon",
+   "contextSummary": null,
+   "agentModeEnabled": true,
+   "agentTurnCount": 5,
+   "participants": [
+    {
+     "id": "ab37a001-0000-4000-8000-0000000003a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "ab37b001-0000-4000-8000-0000000003b1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": []
   }
  ],
  "calls": [
@@ -4914,7 +4956,7 @@
   {
    "name": "p4d370_assistant_agent_on",
    "kind": "chain",
-   "chatId": "ab000001-0000-4000-8000-000000000001",
+   "chatId": "ab370001-0000-4000-8000-000000000370",
    "content": "Assess the archive's ledger.",
    "continueMode": false,
    "streamLabel": "p4d370_assistant_agent_on",
@@ -4924,7 +4966,7 @@
     "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
     "kind": "assistant"
    },
-   "_comment": "P4.D370 Tier 2 item 13: Friday planted as an ASSISTANT, Agent Mode ON — the MANDATORY preamble, the research block, submit_final_response on the slate. UNION-GATED on P4.D369's read overlay."
+   "_comment": "P4.D370 Tier 2 item 13: Friday planted as an ASSISTANT, Agent Mode ON — the MANDATORY preamble, the research block, submit_final_response on the slate. UNION-GATED on P4.D369's read overlay. Its OWN agent-mode chat (the 624d0d25c unification): it shared agent_mode_on's chat, and v5 stamps BOTH posted USER rows from the frozen ProcessClock (v4's oracle advances 1 ms per read), so the two openers tied on createdAt, the finalizer's newest-USER walk found agent_mode_on's opener again and the dedupe dropped this turn's MEMORY_EXTRACTION job v4 enqueues."
   },
   {
    "name": "p4d370_assistant_agent_off",
@@ -4944,14 +4986,14 @@
   {
    "name": "deus_send_seat_line",
    "kind": "chain",
-   "chatId": "e3000003-0000-4000-8000-000000000003",
+   "chatId": "e3720001-0000-4000-8000-000000000372",
    "content": "The bridge to Ashford collapsed in the night.",
    "continueMode": false,
    "streamLabel": "deus_send_seat_line",
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "isEstablishedFact": true,
-   "_comment": "P4.D372 (v4 db6190b44): a line posted as established fact — the stored USER row carries isEstablishedFact (REAL 1.0), the request's last user message is the seat-framed body, the DEBUG's third key reads true and the INFO fires. Appended LAST (R-L3)."
+   "_comment": "P4.D372 (v4 db6190b44): a line posted as established fact — the stored USER row carries isEstablishedFact (REAL 1.0), the request's last user message is the seat-framed body, the DEBUG's third key reads true and the INFO fires. Appended LAST (R-L3). Its OWN chat (the 624d0d25c unification): it shared rng_no_fire's chat, whose Friday reply v5 stamps from the WALL clock (the recorded createdAt asymmetry — v4's oracle stamps frozenNowMs + 1 ms per read) while the posting row takes the frozen ProcessClock, so on the union (rng_no_fire's stream now keyed) the fact read OLDER than Friday's last turn and v5 dropped the reminder v4 sends. A chat Friday has never spoken in floors the reminder at the seat's join time on both sides — the arm the lane measured."
   },
   {
    "name": "deus_send_on_paused_chat",
