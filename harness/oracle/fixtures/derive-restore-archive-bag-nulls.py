@@ -19,8 +19,9 @@ So this derivation:
      entry) that only those links reference — so the archive stays
      referentially whole (no #58 orphan) and the two entities take the
      fallback arm;
-  2. WIDENS the project row to all sixteen `ProjectPropertiesSchema` keys:
-     explicit `null`s on five nullable keys, real values on `icon`,
+  2. WIDENS the project row to all seventeen `ProjectPropertiesSchema` keys:
+     explicit `null`s on six nullable keys (P4.D374's
+     `brahmaConnectionProfileId` the sixth, unify 624), real values on `icon`,
      `defaultImageProfileId` (the archive's own image profile) and
      `answerConfirmationOverride`, and real booleans on two more;
   3. gives the group `color: null` and `icon: "⚙"`.
@@ -111,6 +112,7 @@ def plan(zin, root):
         storyBackgroundsEnabled=False,
         staticBackgroundImageId=None,
         storyBackgroundImageId=None,
+        brahmaConnectionProfileId=None,
     )
     out["projects"] = projects
 

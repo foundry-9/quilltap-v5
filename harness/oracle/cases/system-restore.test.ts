@@ -965,6 +965,35 @@ function applyMocks(): void {
     ...jest.requireActual('@/lib/background-jobs/processor'),
     ensureProcessorRunning: () => {},
   }));
+  // === unify 624 (P4.D362's import fix, carried to the restore) ===
+  // v4 `544c7ab1e`'s repository strip calls `acceptsSamplingParameters`, which
+  // jest.setup's provider-validation mock (three functions) does not carry: at
+  // the pin EVERY restored profile threw `acceptsSamplingParameters is not a
+  // function` (measured: `Local Mock` in the union sweep) — a test artifact,
+  // production loads the real module. Keep the setup's three mocks and add the
+  // REAL function, over a provider registry holding the real Anthropic plugin
+  // (the one plugin that declares `samplingParameters: false`).
+  jest.doMock('@/lib/plugins/provider-registry', () => {
+    const actual = jest.requireActual('@/lib/plugins/provider-registry');
+    const rpath = require('node:path');
+    const m = require(rpath.join(process.cwd(), 'plugins', 'dist', 'qtap-plugin-anthropic', 'index.js'));
+    const plugin = m.plugin || m.default?.plugin || m.default;
+    if (!actual.getProvider('ANTHROPIC')) actual.registerProvider(plugin);
+    if (actual.getProvider('ANTHROPIC')?.capabilities?.samplingParameters !== false) {
+      throw new Error('the Anthropic plugin did not register with samplingParameters: false');
+    }
+    return actual;
+  });
+  jest.doMock('@/lib/plugins/provider-validation', () => {
+    const actual = jest.requireActual('@/lib/plugins/provider-validation');
+    return {
+      validateProviderConfig: jest.fn().mockReturnValue({ valid: true, errors: [] }),
+      acceptsApiKey: jest.fn(() => true),
+      requiresApiKey: jest.fn(() => true),
+      acceptsSamplingParameters: actual.acceptsSamplingParameters,
+    };
+  });
+  // === end unify 624 ===
   // The reconcile invalidates per-character HNSW handles through the
   // vector-store manager, which jest.setup also mocks — the mock made the
   // whole reconcile THROW into its catch (a null/zero result) the moment a
